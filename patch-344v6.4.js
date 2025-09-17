@@ -61,7 +61,6 @@
       const cuentasElegidas = !cta ? cuentas : cuentas.filter(c=> String(c.id)===String(cta));
       const cuentasResumen = cuentasElegidas.length ? cuentasElegidas : cuentas;
       const porC=cuentasResumen.map(c=>{ const tot=gastosFil.filter(g=>g.cuentaId===c.id && (!mon || g.moneda===c.moneda)).reduce((a,b)=>a+(+b.importe||0),0); const pres=+c.presupuesto>0? +c.presupuesto:0; const pct=pres? Math.min(100,(tot*100/pres)) : 0; return {label:c.nombre,moneda:c.moneda,total:tot,presupuesto:pres,pct:+pct.toFixed(1)}; }).sort((a,b)=>b.total-a.total);
-      const porC=cuentas.map(c=>{ const tot=gastosFil.filter(g=>g.cuentaId===c.id && (!mon || g.moneda===c.moneda)).reduce((a,b)=>a+(+b.importe||0),0); const pres=+c.presupuesto>0? +c.presupuesto:0; const pct=pres? Math.min(100,(tot*100/pres)) : 0; return {label:c.nombre,moneda:c.moneda,total:tot,presupuesto:pres,pct:+pct.toFixed(1)}; }).sort((a,b)=>b.total-a.total);
 // main
       const tb=$('#tabla-cuenta tbody'); if(tb){ tb.innerHTML=''; porC.forEach(r=>{ const cur=r.moneda||mon||'EUR'; const tr=document.createElement('tr'); const presTxt=r.presupuesto? fmtCur(r.presupuesto,cur):'–'; tr.innerHTML='<td>'+r.label+'</td><td>'+(r.moneda||'—')+'</td><td>'+fmtCur(r.total,cur)+'</td><td>'+presTxt+'</td><td>'+((r.pct||0))+'%</td>'; tb.appendChild(tr); }); }
       if(window.drawBarChart){ drawBarChart($('#chart-cuenta'), porC.map(x=>({label:x.label,value:x.total}))); }
