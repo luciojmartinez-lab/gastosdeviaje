@@ -1,0 +1,147 @@
+<!doctype html><html lang="es"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Gastos de Viaje</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="styles.css">
+<meta name="theme-color" content="#1976d2"/>  <link rel="icon" type="image/png" href="icon-192.png">
+</head><body>
+<header>
+  <img src="assets/icons/icon-192.png" alt="logo" width="32" height="32" style="border-radius:8px"/>
+  <h1>Gastos de Viaje</h1>
+  <nav>
+    <button id="tab-gastos" class="active">Gastos</button>
+    <button id="tab-resumen">Resumen</button>
+    <button id="tab-config">Configuración</button>
+  </nav>
+</header>
+<main>
+<section id="view-gastos">
+  <div class="card">
+    <h2>Nuevo gasto</h2>
+    <div class="row3">
+      <div><label>Fecha</label><input type="date" id="g-fecha"></div>
+      <div><label>Cuenta / Forma de pago</label><select id="g-cuenta"></select></div>
+      <div><label>Moneda</label><select id="g-moneda"></select></div>
+    </div>
+    <div class="row3">
+      <div><label>Categoría</label><select id="g-cat"></select></div>
+      <div><label>Subcategoría</label><select id="g-subcat"><option value="">(sin subcategoría)</option></select></div>
+      <div><label>Importe</label><input type="number" step="0.01" id="g-importe"></div>
+    </div>
+    <label>Descripción (opcional)</label>
+    <input id="g-desc">
+    <div class="actions"><button class="btn" id="btn-add-gasto">Añadir gasto</button><span id="msg-gasto" class="small"></span></div>
+  </div>
+  <div class="card">
+    <div class="row3" style="grid-template-columns:repeat(6,1fr)">
+      <div><label>Moneda</label><select id="f-moneda"></select></div>
+      <div><label>Cuenta</label><select id="f-cuenta"></select></div>
+      <div><label>Categoría</label><select id="f-cat"></select></div>
+      <div><label>Desde</label><input type="date" id="f-desde"></div>
+      <div><label>Hasta</label><input type="date" id="f-hasta"></div>
+      <div style="align-self:end"><button class="btn" id="f-clear">Quitar filtros</button></div>
+    </div>
+    <table id="tabla-gastos">
+      <thead><tr><th>Fecha</th><th>Categoría</th><th>Subcat.</th><th>Cuenta</th><th>Moneda</th><th>Importe</th><th>Descripción</th><th>Acciones</th></tr></thead>
+      <tbody></tbody>
+      <tfoot><tr><td colspan="5">Total (filtro)</td><td id="tg-total"></td><td colspan="2"></td></tr></tfoot>
+    </table>
+  </div>
+</section>
+
+<section id="view-resumen" style="display:none">
+  <div class="kpi">
+    <div class="box"><div class="small">Total (por moneda)</div><div id="kpi-total" class="big">–</div></div>
+    <div class="box"><div class="small">Media diaria</div><div id="kpi-media" class="big">–</div></div>
+    <div class="box"><div class="small">Presupuestos usados</div><div id="kpi-presu" class="big">–</div></div>
+  </div>
+  <div class="card">
+    <div class="row" style="grid-template-columns:1fr 1fr 1fr 1fr">
+      <div><label>Moneda base</label><select id="r-moneda"></select></div>
+      <div><label>Cuenta</label><select id="r-cuenta"></select></div>
+    </div>
+    <div id="chart-cat"></div>
+    <table id="tabla-cat"><thead><tr><th>Categoría</th><th>Subcategoría</th><th>Total</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="card">
+    <h2>Desglose por cuenta / forma de pago</h2>
+    <div id="chart-cuenta"></div>
+    <table id="tabla-cuenta"><thead><tr><th>Cuenta</th><th>Moneda</th><th>Gastado</th><th>Presupuesto</th><th>%</th></tr></thead><tbody></tbody></table>
+  </div>
+</section>
+
+<section id="view-config" style="display:none">
+  <div class="card">
+    <h2>Cuentas (formas de pago)</h2>
+    <div class="row3">
+      <div><label>Nombre</label><input id="c-nombre"></div>
+      <div><label>Moneda</label><select id="c-moneda"></select></div>
+      <div><label>Saldo inicial</label><input type="number" step="0.01" id="c-saldo"></div>
+    </div>
+    <div class="row">
+      <div><label>Presupuesto</label><input type="number" step="0.01" id="c-presu"></div>
+      <div><label>Nota</label><input id="c-nota"></div>
+    </div>
+    <div class="actions"><button class="btn" id="btn-add-cuenta">Añadir cuenta</button><span id="msg-cuenta" class="small"></span></div>
+    <table id="tabla-cuentas"><thead><tr><th>Cuenta</th><th>Moneda</th><th>Saldo</th><th>Presupuesto</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="card">
+    <h2>Categorías</h2>
+    <div class="row">
+      <div><label>Nombre</label><input id="cat-nombre"></div>
+      <div><label>¿Subcategoría de?</label><select id="cat-parent"><option value="">(Ninguna, es principal)</option></select></div>
+    </div>
+    <div class="actions"><button class="btn" id="btn-add-cat">Añadir</button><span id="msg-cat" class="small"></span></div>
+    <table id="tabla-cats"><thead><tr><th>Nombre</th><th>Tipo</th><th>Padre</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="card">
+    <h2>Exportar / Importar</h2>
+    <div class="actions">
+      <button class="btn ghost" id="btn-export">Exportar JSON</button>
+      <input type="file" id="file-import" accept="application/json" style="display:none">
+      <button class="btn" id="btn-import">Importar JSON</button>
+    </div>
+    <p class="small">Datos locales (IndexedDB). Exporta antes de resetear.</p>
+  </div>
+  <div class="card">
+    <h2>Avanzado</h2>
+    <p class="small">Si algo no responde, pulsa este botón. Borrará caché, service worker y base de datos local.</p>
+    <div class="actions"><button class="btn" id="btn-reset">Reparar / Resetear datos</button></div>
+  </div>
+</section>
+</main>
+<footer>App PWA offline • IndexedDB • Español</footer>
+
+<script>
+  
+  // reset button
+  window.addEventListener('DOMContentLoaded',()=>{
+    const b=document.getElementById('btn-reset'); if(!b) return;
+    b.addEventListener('click', async ()=>{
+      try{
+        if (window.caches){ const keys=await caches.keys(); for(const k of keys) await caches.delete(k); }
+        if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations){
+          const regs = await navigator.serviceWorker.getRegistrations(); for (const r of regs) await r.unregister();
+        }
+        await new Promise((res)=>{ const rq=indexedDB.deleteDatabase('gastos_viaje_db'); rq.onsuccess=()=>res(); rq.onerror=()=>res(); rq.onblocked=()=>res(); });
+        alert('Listo. Se recargará la app limpia.'); location.reload(true);
+      }catch(e){ alert('No se pudo resetear: '+e); }
+    });
+  });
+</script>
+<script src="app.bundle.js?v=8747978662"></script>
+  <script defer src="patch-349v7-budget.js"></script>
+
+  <script src="patch-344v6.4.js"></script>
+
+  <script src="patch-346v1.js"></script>
+
+  <script src="patch-346v9.js"></script>
+
+  <script src="patch-347v6-legend.js"></script>
+
+  <script src="patch-348v1-tables.js"></script>
+
+  <script src="patch-349v1.js"></script>
+  <script defer src="patch-349v7c-sync-budgets.js"></script>
+</body>
+</html>
