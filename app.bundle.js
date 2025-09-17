@@ -88,9 +88,9 @@ const fmtCurrency = (n,cur='EUR')=> new Intl.NumberFormat('es-ES',{style:'curren
 const fmtDate = iso=> new Date(iso).toLocaleDateString('es-ES',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
 const unique = a=> Array.from(new Set(a));
 const MONEDAS = ['EUR','USD','GBP','SEK','NOK','DKK','CHF','JPY'];
-let state={cuentas:[],categorias:[],gastos:[]};
+let state={cuentas:[],categorias:[],gastos:[],activeTab:'gastos'};
 
-function setTab(id){ ['gastos','resumen','config'].forEach(t=>{ $('#tab-'+t).classList.toggle('active', t===id); $('#view-'+t).style.display=(t===id)?'block':'none'; }); if(id==='resumen') renderResumen(); }
+function setTab(id){ state.activeTab=id; ['gastos','resumen','config'].forEach(t=>{ $('#tab-'+t).classList.toggle('active', t===id); $('#view-'+t).style.display=(t===id)?'block':'none'; }); if(id==='resumen') renderResumen(); }
 $('#tab-gastos').onclick=()=>setTab('gastos'); $('#tab-resumen').onclick=()=>setTab('resumen'); $('#tab-config').onclick=()=>setTab('config');
 
 function renderMonedas(){ ['#g-moneda','#f-moneda','#r-moneda','#c-moneda'].forEach(sel=>{ const el=$(sel); el.innerHTML=''; MONEDAS.forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; el.appendChild(o); }); }); }
@@ -100,8 +100,7 @@ async function loadAll(){
   state.categorias=await getCategorias();
   state.gastos=await getGastos();
   renderAll();
-  const tabResumen=document.querySelector('#tab-resumen');
-  if(tabResumen && tabResumen.classList.contains('active')) renderResumen();
+  if(state.activeTab==='resumen') renderResumen();
 }
 
 function renderAll(){
