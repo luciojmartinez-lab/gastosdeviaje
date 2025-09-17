@@ -59,19 +59,13 @@
     }catch(e){}
     try{
       const cuentasElegidas = !cta ? cuentas : cuentas.filter(c=> String(c.id)===String(cta));
-      const resumenPorCuenta = cuentas.map(c=>{ const tot=gastosTodasCuentas.filter(g=>g.cuentaId===c.id && (!mon || g.moneda===c.moneda)).reduce((a,b)=>a+(+b.importe||0),0); const pres=+c.presupuesto>0? +c.presupuesto:0; const pct=pres? Math.min(100,(tot*100/pres)) : 0; return {id:c.id,label:c.nombre,moneda:c.moneda,total:tot,presupuesto:pres,pct:+pct.toFixed(1)}; });
-      const resumenPorCuentaPorId = new Map(resumenPorCuenta.map(r=>[String(r.id), r]));
       const cuentasResumen = cuentasElegidas.length ? cuentasElegidas : cuentas;
-      const porC = (()=>{
-        const base = cuentasResumen.map(c=> resumenPorCuentaPorId.get(String(c.id))).filter(Boolean);
-        const lista = base.length ? base : resumenPorCuenta.slice();
-        const ordenada = cta
-          ? lista.slice().sort((a,b)=>b.total-a.total)
-          : lista.slice().sort((a,b)=>{ if(b.pct!==a.pct) return b.pct-a.pct; return b.total-a.total; });
-        return ordenada;
-      })();
-      const porCBarras = resumenPorCuenta.slice().sort((a,b)=>b.total-a.total);
-      const tb=$('#tabla-cuenta tbody'); if(tb){ tb.innerHTML=''; porC.forEach(r=>{ const cur=r.moneda||mon||'EUR'; const tr=document.createElement('tr'); const presTxt=r.presupuesto? fmtCur(r.presupuesto,cur):'–'; tr.innerHTML='<td>'+r.label+'</td><td>'+(r.moneda||'—')+'</td><td>'+fmtCur(r.total,cur)+'</td><td>'+presTxt+'</td><td>'+((r.pct||0))+'%</td>'; tb.appendChild(tr); }); }
+      const porCBase = cuentasResumen.map(c=>{ const tot=gastosFil.filter(g=>g.cuentaId===c.id && (!mon || g.moneda===c.moneda)).reduce((a,b)=>a+(+b.importe||0),0); const pres=+c.presupuesto>0? +c.presupuesto:0; const pct=pres? Math.min(100,(tot*100/pres)) : 0; return {label:c.nombre,moneda:c.moneda,total:tot,presupuesto:pres,pct:+pct.toFixed(1)}; });
+      const porCTabla = (cta
+        ? porCBase.slice().sort((a,b)=>b.total-a.total)
+        : porCBase.slice().sort((a,b)=>{ if(b.pct!==a.pct) return b.pct-a.pct; return b.total-a.total; }));
+      const porCBarras = cuentas.map(c=>{ const tot=gastosTodasCuentas.filter(g=>g.cuentaId===c.id && (!mon || g.moneda===c.moneda)).reduce((a,b)=>a+(+b.importe||0),0); return {label:c.nombre,total:tot}; }).sort((a,b)=>b.total-a.total);
+      const tb=$('#tabla-cuenta tbody'); if(tb){ tb.innerHTML=''; porCTabla.forEach(r=>{ const cur=r.moneda||mon||'EUR'; const tr=document.createElement('tr'); const presTxt=r.presupuesto? fmtCur(r.presupuesto,cur):'–'; tr.innerHTML='<td>'+r.label+'</td><td>'+(r.moneda||'—')+'</td><td>'+fmtCur(r.total,cur)+'</td><td>'+presTxt+'</td><td>'+((r.pct||0))+'%</td>'; tb.appendChild(tr); }); }
       if(window.drawBarChart){ drawBarChart($('#chart-cuenta'), porCBarras.map(x=>({label:x.label,value:x.total}))); }
     }catch(e){}
     try{ $('#r-moneda')&&($('#r-moneda').onchange=renderResumen); $('#r-cuenta')&&($('#r-cuenta').onchange=renderResumen); }catch(e){}
