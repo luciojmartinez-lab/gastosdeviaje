@@ -176,10 +176,10 @@ function renderResumen(){
   const arr=Object.entries(rows).map(([k,v])=>({cat:k.split('||')[0], sub:k.split('||')[1], total:v})).sort((a,b)=>b.total-a.total);
   const tb=$('#tabla-cat tbody'); tb.innerHTML=''; arr.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.cat}</td><td>${r.sub}</td><td>${mon? fmtCurrency(r.total,mon): r.total.toFixed(2)}</td>`; tb.appendChild(tr); });
   drawPieChart($('#chart-cat'), arr.slice(0,6).map(r=>({label:r.cat+(r.sub!=='(sin subcat)'?' · '+r.sub:''), value:r.total})));
+  const cuentasElegidas = !cta ? state.cuentas : state.cuentas.filter(c=> String(c.id)===String(cta));
   const resumenPorCuenta = state.cuentas.map(c=>{ const gx=gastosTodasCuentas.filter(x=> x.cuentaId===c.id); const total=gx.reduce((a,b)=>a+b.importe,0); const presupuesto=+c.presupuesto>0? +c.presupuesto:0; const pct=presupuesto? Math.min(100,(total*100/presupuesto)):0; return {id:c.id,label:c.nombre,moneda:c.moneda,total,presupuesto,pct:+pct.toFixed(1)}; });
-  let datosCuenta = !cta? resumenPorCuenta : resumenPorCuenta.filter(r=> String(r.id)===String(cta));
-  if(!datosCuenta.length) datosCuenta = resumenPorCuenta;
-  const porCuentaTabla = (cta? datosCuenta.slice().sort((a,b)=> b.total-a.total) : datosCuenta.slice().sort((a,b)=>{ if(b.pct!==a.pct) return b.pct-a.pct; return b.total-a.total; }));
+  const listaParaTabla = (cuentasElegidas.length? cuentasElegidas : state.cuentas).map(c=> resumenPorCuenta.find(r=> r && String(r.id)===String(c.id))).filter(Boolean);
+  const porCuentaTabla = (cta? listaParaTabla.slice().sort((a,b)=> b.total-a.total) : listaParaTabla.slice().sort((a,b)=>{ if(b.pct!==a.pct) return b.pct-a.pct; return b.total-a.total; }));
   const porCuentaBarras = resumenPorCuenta.slice().sort((a,b)=> b.total-a.total);
   drawBarChart($('#chart-cuenta'), porCuentaBarras.map(x=>({label:x.label, value:x.total}))); const tbC=$('#tabla-cuenta tbody'); tbC.innerHTML=''; porCuentaTabla.forEach(r=>{ const cur=r.moneda||mon||'EUR'; const tr=document.createElement('tr'); const presTxt=r.presupuesto? fmtCurrency(r.presupuesto,cur):'–'; tr.innerHTML=`<td>${r.label}</td><td>${r.moneda||'—'}</td><td>${fmtCurrency(r.total,cur)}</td><td>${presTxt}</td><td>${r.pct||0}%</td>`; tbC.appendChild(tr); });
 }
