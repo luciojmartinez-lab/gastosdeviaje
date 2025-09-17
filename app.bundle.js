@@ -95,7 +95,14 @@ $('#tab-gastos').onclick=()=>setTab('gastos'); $('#tab-resumen').onclick=()=>set
 
 function renderMonedas(){ ['#g-moneda','#f-moneda','#r-moneda','#c-moneda'].forEach(sel=>{ const el=$(sel); el.innerHTML=''; MONEDAS.forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; el.appendChild(o); }); }); }
 
-async function loadAll(){ state.cuentas=await getCuentas(); state.categorias=await getCategorias(); state.gastos=await getGastos(); renderAll(); }
+async function loadAll(){
+  state.cuentas=await getCuentas();
+  state.categorias=await getCategorias();
+  state.gastos=await getGastos();
+  renderAll();
+  const tabResumen=document.querySelector('#tab-resumen');
+  if(tabResumen && tabResumen.classList.contains('active')) renderResumen();
+}
 
 function renderAll(){
   renderMonedas(); if($('#g-fecha').value==='') $('#g-fecha').valueAsDate=new Date();
