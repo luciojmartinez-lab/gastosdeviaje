@@ -95,7 +95,14 @@ $('#tab-gastos').onclick=()=>setTab('gastos'); $('#tab-resumen').onclick=()=>set
 
 function renderMonedas(){ ['#g-moneda','#f-moneda','#r-moneda','#c-moneda'].forEach(sel=>{ const el=$(sel); el.innerHTML=''; MONEDAS.forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; el.appendChild(o); }); }); }
 
-async function loadAll(){ state.cuentas=await getCuentas(); state.categorias=await getCategorias(); state.gastos=await getGastos(); renderAll(); }
+async function loadAll(){
+  state.cuentas=await getCuentas();
+  state.categorias=await getCategorias();
+  state.gastos=await getGastos();
+  renderAll();
+  const tabResumen=document.querySelector('#tab-resumen');
+  if(tabResumen && tabResumen.classList.contains('active')) renderResumen();
+}
 
 function renderAll(){
   renderMonedas(); if($('#g-fecha').value==='') $('#g-fecha').valueAsDate=new Date();
@@ -160,14 +167,16 @@ function renderResumen(){
     const pcts = state.cuentas.map(c=>{ const gast=state.gastos.filter(g=> g.cuentaId===c.id && g.moneda===c.moneda).reduce((a,b)=>a+b.importe,0); return c.presupuesto? Math.min(100, (gast*100/c.presupuesto)) : 0; });
     const avg = pcts.length? (pcts.reduce((a,b)=>a+b,0)/pcts.length) : 0; $('#kpi-presu').textContent = avg.toFixed(0)+'%';
   }
-  const selMon=$('#r-moneda'); selMon.innerHTML='<option value="">(todas)</option>'; unique(state.gastos.map(g=>g.moneda)).forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; selMon.appendChild(o); });
-  const selCta=$('#r-cuenta'); selCta.innerHTML='<option value="">(todas)</option>'; state.cuentas.forEach(c=>{ const o=document.createElement('option'); o.value=c.id; o.textContent=c.nombre; selCta.appendChild(o); });
+  const selMon=$('#r-moneda'); const prevMon=selMon.value; selMon.innerHTML='<option value="">(todas)</option>'; unique(state.gastos.map(g=>g.moneda)).forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; selMon.appendChild(o); }); selMon.value=prevMon; if(selMon.value!==prevMon) selMon.value='';
+  const selCta=$('#r-cuenta'); const prevCta=selCta.value; selCta.innerHTML='<option value="">(todas)</option>'; state.cuentas.forEach(c=>{ const o=document.createElement('option'); o.value=c.id; o.textContent=c.nombre; selCta.appendChild(o); }); selCta.value=prevCta; if(selCta.value!==prevCta) selCta.value='';
   const mon=selMon.value; const cta=selCta.value; const gastos = state.gastos.filter(g=> !mon || g.moneda===mon).filter(g=> !cta || g.cuentaId===+cta);
   const rows={}; gastos.forEach(g=>{ const cat=state.categorias.find(c=>c.id===g.catId); const sub=state.categorias.find(c=>c.id===g.subcatId); const key=(cat?cat.nombre:'?')+'||'+(sub?sub.nombre:'(sin subcat)'); rows[key]=(rows[key]||0)+g.importe; });
   const arr=Object.entries(rows).map(([k,v])=>({cat:k.split('||')[0], sub:k.split('||')[1], total:v})).sort((a,b)=>b.total-a.total);
   const tb=$('#tabla-cat tbody'); tb.innerHTML=''; arr.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.cat}</td><td>${r.sub}</td><td>${mon? fmtCurrency(r.total,mon): r.total.toFixed(2)}</td>`; tb.appendChild(tr); });
   drawPieChart($('#chart-cat'), arr.slice(0,6).map(r=>({label:r.cat+(r.sub!=='(sin subcat)'?' · '+r.sub:''), value:r.total})));
-  const porCuenta = state.cuentas.map(c=>{ const gx=gastos.filter(x=> x.cuentaId===c.id && (!mon || x.moneda===c.moneda)); const total=gx.reduce((a,b)=>a+b.importe,0); const pct=c.presupuesto? (total*100/c.presupuesto):0; return {label:c.nombre, moneda:c.moneda, total, presupuesto:c.presupuesto||0, pct:+pct.toFixed(1)}; }).sort((a,b)=> b.total-a.total);
+  const cuentasElegidas = !cta ? state.cuentas : state.cuentas.filter(c=> String(c.id)===String(cta));
+  const cuentasResumen = cuentasElegidas.length ? cuentasElegidas : state.cuentas;
+  const porCuenta = cuentasResumen.map(c=>{ const gx=gastos.filter(x=> x.cuentaId===c.id && (!mon || x.moneda===c.moneda)); const total=gx.reduce((a,b)=>a+b.importe,0); const pct=c.presupuesto? (total*100/c.presupuesto):0; return {label:c.nombre, moneda:c.moneda, total, presupuesto:c.presupuesto||0, pct:+pct.toFixed(1)}; }).sort((a,b)=> b.total-a.total);
   drawBarChart($('#chart-cuenta'), porCuenta.map(x=>({label:x.label, value:x.total}))); const tbC=$('#tabla-cuenta tbody'); tbC.innerHTML=''; porCuenta.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.label}</td><td>${r.moneda}</td><td>${fmtCurrency(r.total,r.moneda)}</td><td>${r.presupuesto? fmtCurrency(r.presupuesto,r.moneda):'–'}</td><td>${r.pct||0}%</td>`; tbC.appendChild(tr); });
 }
 $('#r-moneda').onchange=renderResumen; $('#r-cuenta').onchange=renderResumen;
