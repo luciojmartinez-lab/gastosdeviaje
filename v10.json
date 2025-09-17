@@ -1,0 +1,310 @@
+{
+  "version": 1,
+  "generatedAt": "2025-09-12T19:36:23.778Z",
+  "cuentas": [
+    {
+      "nombre": "Efectivo",
+      "moneda": "EUR",
+      "saldoInicial": 300,
+      "saldoActual": -14.25,
+      "presupuesto": 500,
+      "nota": "",
+      "createdAt": "2025-09-12T19:26:24.909Z",
+      "updatedAt": "2025-09-12T19:35:16.464Z",
+      "id": 3
+    },
+    {
+      "nombre": "Revolut",
+      "moneda": "EUR",
+      "saldoInicial": 1000,
+      "saldoActual": 956.64,
+      "presupuesto": 500,
+      "nota": "",
+      "createdAt": "2025-09-12T19:26:24.909Z",
+      "updatedAt": "2025-09-12T19:26:24.921Z",
+      "id": 4
+    },
+    {
+      "nombre": "Santander",
+      "moneda": "EUR",
+      "saldoInicial": 5000,
+      "saldoActual": 4940,
+      "presupuesto": 3000,
+      "nota": "",
+      "createdAt": "2025-09-12T19:26:24.910Z",
+      "updatedAt": "2025-09-12T19:29:07.524Z",
+      "id": 5
+    }
+  ],
+  "categorias": [
+    {
+      "nombre": "Alojamiento",
+      "parentId": null,
+      "id": 11
+    },
+    {
+      "nombre": "Comida",
+      "parentId": null,
+      "id": 12
+    },
+    {
+      "nombre": "Ocio",
+      "parentId": null,
+      "id": 13
+    },
+    {
+      "nombre": "Transporte",
+      "parentId": null,
+      "id": 14
+    },
+    {
+      "nombre": "Varios",
+      "parentId": null,
+      "id": 15
+    },
+    {
+      "nombre": "Hostel",
+      "parentId": 11,
+      "id": 16
+    },
+    {
+      "nombre": "Hotel",
+      "parentId": 11,
+      "id": 17
+    },
+    {
+      "nombre": "Bar",
+      "parentId": 12,
+      "id": 18
+    },
+    {
+      "nombre": "Cafeteria",
+      "parentId": 12,
+      "id": 19
+    },
+    {
+      "nombre": "Restaurante",
+      "parentId": 12,
+      "id": 20
+    },
+    {
+      "nombre": "Super",
+      "parentId": 12,
+      "id": 21
+    },
+    {
+      "nombre": "Tienda",
+      "parentId": 12,
+      "id": 22
+    },
+    {
+      "nombre": "Bus",
+      "parentId": 14,
+      "id": 23
+    },
+    {
+      "nombre": "Coche",
+      "parentId": 14,
+      "id": 24
+    },
+    {
+      "nombre": "Gasolina",
+      "parentId": 14,
+      "id": 25
+    },
+    {
+      "nombre": "Metro",
+      "parentId": 14,
+      "id": 26
+    },
+    {
+      "nombre": "Taxi",
+      "parentId": 14,
+      "id": 27
+    },
+    {
+      "nombre": "Tren",
+      "parentId": 14,
+      "id": 28
+    },
+    {
+      "nombre": "Encargos",
+      "parentId": 15,
+      "id": 29
+    },
+    {
+      "nombre": "Loteria",
+      "parentId": 15,
+      "id": 30
+    },
+    {
+      "nombre": "Material",
+      "parentId": 15,
+      "id": 31
+    },
+    {
+      "nombre": "Otros",
+      "parentId": 15,
+      "id": 32
+    },
+    {
+      "nombre": "Regalos",
+      "parentId": 15,
+      "id": 33
+    },
+    {
+      "nombre": "Souvenirs",
+      "parentId": 15,
+      "id": 34
+    },
+    {
+      "nombre": "Entradas Culturales",
+      "parentId": 13,
+      "id": 35
+    },
+    {
+      "nombre": "Competiciones",
+      "parentId": 13,
+      "id": 36
+    },
+    {
+      "nombre": "Atracciones",
+      "parentId": 13,
+      "id": 37
+    }
+  ],
+  "gastos": [
+    {
+      "fecha": "2025-08-22",
+      "cuentaId": 3,
+      "moneda": "EUR",
+      "catId": 12,
+      "subcatId": 20,
+      "importe": 14,
+      "desc": "Cena merendero Salvacañete",
+      "createdAt": "2025-09-12T19:26:24.916Z",
+      "id": 1
+    },
+    {
+      "fecha": "2025-08-25",
+      "cuentaId": 3,
+      "moneda": "EUR",
+      "catId": 15,
+      "subcatId": 30,
+      "importe": 2,
+      "desc": "Primitiva 3-1",
+      "createdAt": "2025-09-12T19:26:24.917Z",
+      "id": 2
+    },
+    {
+      "fecha": "2025-08-25",
+      "cuentaId": 4,
+      "moneda": "EUR",
+      "catId": 12,
+      "subcatId": 21,
+      "importe": 19,
+      "desc": "Super Cañete",
+      "createdAt": "2025-09-12T19:26:24.917Z",
+      "id": 3
+    },
+    {
+      "fecha": "2025-08-25",
+      "cuentaId": 4,
+      "moneda": "EUR",
+      "catId": 15,
+      "subcatId": 31,
+      "importe": 4.36,
+      "desc": "Topes cama ferreteria",
+      "createdAt": "2025-09-12T19:26:24.918Z",
+      "id": 4
+    },
+    {
+      "fecha": "2025-08-25",
+      "cuentaId": 3,
+      "moneda": "EUR",
+      "catId": 12,
+      "subcatId": 22,
+      "importe": 3.25,
+      "desc": "Pan y madalenas",
+      "createdAt": "2025-09-12T19:26:24.918Z",
+      "id": 5
+    },
+    {
+      "fecha": "2025-09-10",
+      "cuentaId": 3,
+      "moneda": "EUR",
+      "catId": 11,
+      "subcatId": 16,
+      "importe": 30,
+      "desc": "",
+      "createdAt": "2025-09-12T19:26:24.919Z",
+      "id": 6
+    },
+    {
+      "fecha": "2025-09-10",
+      "cuentaId": 4,
+      "moneda": "EUR",
+      "catId": 12,
+      "subcatId": 19,
+      "importe": 10,
+      "desc": "",
+      "createdAt": "2025-09-12T19:26:24.920Z",
+      "id": 7
+    },
+    {
+      "fecha": "2025-09-10",
+      "cuentaId": 5,
+      "moneda": "EUR",
+      "catId": 11,
+      "subcatId": 16,
+      "importe": 60,
+      "desc": "",
+      "createdAt": "2025-09-12T19:26:24.920Z",
+      "id": 8
+    },
+    {
+      "fecha": "2025-09-10",
+      "cuentaId": 4,
+      "moneda": "EUR",
+      "catId": 15,
+      "subcatId": 30,
+      "importe": 10,
+      "desc": "",
+      "createdAt": "2025-09-12T19:26:24.921Z",
+      "id": 9
+    },
+    {
+      "fecha": "2025-09-11",
+      "cuentaId": 3,
+      "moneda": "EUR",
+      "catId": 11,
+      "subcatId": 16,
+      "importe": 95,
+      "desc": "",
+      "createdAt": "2025-09-12T19:26:24.921Z",
+      "id": 10
+    },
+    {
+      "fecha": "2025-09-12",
+      "cuentaId": 3,
+      "moneda": "EUR",
+      "catId": 11,
+      "subcatId": 16,
+      "importe": 100,
+      "desc": "",
+      "createdAt": "2025-09-12T19:35:00.735Z",
+      "id": 12
+    },
+    {
+      "fecha": "2025-09-12",
+      "cuentaId": 3,
+      "moneda": "EUR",
+      "catId": 12,
+      "subcatId": 18,
+      "importe": 15,
+      "desc": "",
+      "createdAt": "2025-09-12T19:35:16.463Z",
+      "id": 13
+    }
+  ]
+}
