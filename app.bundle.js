@@ -180,11 +180,11 @@ function renderResumen(){
   const resumenPorCuenta = state.cuentas.map(c=>{ const gx=gastosTodasCuentas.filter(x=> x.cuentaId===c.id && (!mon || x.moneda===c.moneda)); const total=gx.reduce((a,b)=>a+b.importe,0); const presupuesto=+c.presupuesto>0? +c.presupuesto:0; const pct=presupuesto? Math.min(100,(total*100/presupuesto)):0; return {id:c.id,label:c.nombre,moneda:c.moneda,total,presupuesto,pct:+pct.toFixed(1)}; });
   const resumenPorCuentaPorId = new Map(resumenPorCuenta.map(r=>[String(r.id), r]));
   const cuentasResumen = (cuentasElegidas.length? cuentasElegidas : state.cuentas);
-  let porCuenta = cuentasResumen.map(c=> resumenPorCuentaPorId.get(String(c.id))).filter(Boolean);
-  if(!porCuenta.length) porCuenta = resumenPorCuenta.slice();
-  porCuenta = (cta? porCuenta.slice().sort((a,b)=> b.total-a.total) : porCuenta.slice().sort((a,b)=>{ if(b.pct!==a.pct) return b.pct-a.pct; return b.total-a.total; }));
+  const porCuentaBase = cuentasResumen.map(c=> resumenPorCuentaPorId.get(String(c.id))).filter(Boolean);
+  const porCuentaLista = porCuentaBase.length? porCuentaBase : resumenPorCuenta.slice();
+  const porCuentaTabla = (cta? porCuentaLista.slice().sort((a,b)=> b.total-a.total) : porCuentaLista.slice().sort((a,b)=>{ if(b.pct!==a.pct) return b.pct-a.pct; return b.total-a.total; }));
   const porCuentaBarras = resumenPorCuenta.slice().sort((a,b)=> b.total-a.total);
-  drawBarChart($('#chart-cuenta'), porCuentaBarras.map(x=>({label:x.label, value:x.total}))); const tbC=$('#tabla-cuenta tbody'); tbC.innerHTML=''; porCuenta.forEach(r=>{ const cur=r.moneda||mon||'EUR'; const tr=document.createElement('tr'); const presTxt=r.presupuesto? fmtCurrency(r.presupuesto,cur):'–'; tr.innerHTML=`<td>${r.label}</td><td>${r.moneda||'—'}</td><td>${fmtCurrency(r.total,cur)}</td><td>${presTxt}</td><td>${r.pct||0}%</td>`; tbC.appendChild(tr); });
+  drawBarChart($('#chart-cuenta'), porCuentaBarras.map(x=>({label:x.label, value:x.total}))); const tbC=$('#tabla-cuenta tbody'); tbC.innerHTML=''; porCuentaTabla.forEach(r=>{ const cur=r.moneda||mon||'EUR'; const tr=document.createElement('tr'); const presTxt=r.presupuesto? fmtCurrency(r.presupuesto,cur):'–'; tr.innerHTML=`<td>${r.label}</td><td>${r.moneda||'—'}</td><td>${fmtCurrency(r.total,cur)}</td><td>${presTxt}</td><td>${r.pct||0}%</td>`; tbC.appendChild(tr); });
 }
 $('#r-moneda').onchange=renderResumen; $('#r-cuenta').onchange=renderResumen;
 
