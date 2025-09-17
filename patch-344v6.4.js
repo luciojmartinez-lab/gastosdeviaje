@@ -53,12 +53,14 @@
     try{
       const rows={}; gastosFil.forEach(g=>{ const cat=cats.find(c=>c.id===g.catId)||{nombre:'(sin cat)'}; const sub=cats.find(c=>c.id===g.subcatId)||{nombre:'(sin subcat)'}; const key=(cat.nombre||'(sin cat)')+'||'+(sub.nombre||'(sin subcat)'); rows[key]=(rows[key]||0)+(+g.importe||0); });
       const arr=Object.keys(rows).map(k=>{ const p=k.split('||'); return {cat:p[0],sub:p[1],total:rows[k]}; }).sort((a,b)=>b.total-a.total);
-      const tb=$('#tabla-cat tbody'); if(tb){ tb.innerHTML=''; arr.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML='<td>'+r.cat+(r.sub!=='(sin subcat)'?' · '+r.sub:'')+'</td><td>'+(mon? fmtCur(r.total,mon): r.total.toFixed(2))+'</td>'; tb.appendChild(tr); }); }
+      const tb=$('#tabla-cat tbody'); if(tb){ tb.innerHTML=''; arr.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML='<td>'+r.cat+'</td><td>'+r.sub+'</td><td>'+(mon? fmtCur(r.total,mon): r.total.toFixed(2))+'</td>'; tb.appendChild(tr); }); }
       if(window.drawPieChart){ const data=arr.slice(0,6).map(r=>({label:r.cat+(r.sub!=='(sin subcat)'?' · '+r.sub:''), value:r.total})); drawPieChart($('#chart-cat'), data); }
     }catch(e){}
     try{
-      const porC=cuentas.map(c=>{ const tot=gastosFil.filter(g=>g.cuentaId===c.id).reduce((a,b)=>a+(+b.importe||0),0); const pct=c.presupuesto? Math.min(100,(tot*100/c.presupuesto)) : 0; return {label:c.nombre,total:tot,pct:+pct.toFixed(1)}; }).sort((a,b)=>b.total-a.total);
-      const tb=$('#tabla-cta tbody'); if(tb){ tb.innerHTML=''; porC.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML='<td>'+r.label+'</td><td>'+(mon? fmtCur(r.total,mon): r.total.toFixed(2))+'</td><td>'+(r.pct||0)+'%</td>'; tb.appendChild(tr); }); }
+      const cuentasElegidas = !cta ? cuentas : cuentas.filter(c=> String(c.id)===String(cta));
+      const cuentasResumen = cuentasElegidas.length ? cuentasElegidas : cuentas;
+      const porC=cuentasResumen.map(c=>{ const tot=gastosFil.filter(g=>g.cuentaId===c.id && (!mon || g.moneda===c.moneda)).reduce((a,b)=>a+(+b.importe||0),0); const pres=+c.presupuesto>0? +c.presupuesto:0; const pct=pres? Math.min(100,(tot*100/pres)) : 0; return {label:c.nombre,moneda:c.moneda,total:tot,presupuesto:pres,pct:+pct.toFixed(1)}; }).sort((a,b)=>b.total-a.total);
+      const tb=$('#tabla-cuenta tbody'); if(tb){ tb.innerHTML=''; porC.forEach(r=>{ const cur=r.moneda||mon||'EUR'; const tr=document.createElement('tr'); const presTxt=r.presupuesto? fmtCur(r.presupuesto,cur):'–'; tr.innerHTML='<td>'+r.label+'</td><td>'+(r.moneda||'—')+'</td><td>'+fmtCur(r.total,cur)+'</td><td>'+presTxt+'</td><td>'+((r.pct||0))+'%</td>'; tb.appendChild(tr); }); }
       if(window.drawBarChart){ drawBarChart($('#chart-cuenta'), porC.map(x=>({label:x.label,value:x.total}))); }
     }catch(e){}
     try{ $('#r-moneda')&&($('#r-moneda').onchange=renderResumen); $('#r-cuenta')&&($('#r-cuenta').onchange=renderResumen); }catch(e){}

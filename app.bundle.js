@@ -95,7 +95,14 @@ $('#tab-gastos').onclick=()=>setTab('gastos'); $('#tab-resumen').onclick=()=>set
 
 function renderMonedas(){ ['#g-moneda','#f-moneda','#r-moneda','#c-moneda'].forEach(sel=>{ const el=$(sel); el.innerHTML=''; MONEDAS.forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; el.appendChild(o); }); }); }
 
-async function loadAll(){ state.cuentas=await getCuentas(); state.categorias=await getCategorias(); state.gastos=await getGastos(); renderAll(); }
+async function loadAll(){
+  state.cuentas=await getCuentas();
+  state.categorias=await getCategorias();
+  state.gastos=await getGastos();
+  renderAll();
+  const tabResumen=document.querySelector('#tab-resumen');
+  if(tabResumen && tabResumen.classList.contains('active')) renderResumen();
+}
 
 function renderAll(){
   renderMonedas(); if($('#g-fecha').value==='') $('#g-fecha').valueAsDate=new Date();
@@ -167,7 +174,9 @@ function renderResumen(){
   const arr=Object.entries(rows).map(([k,v])=>({cat:k.split('||')[0], sub:k.split('||')[1], total:v})).sort((a,b)=>b.total-a.total);
   const tb=$('#tabla-cat tbody'); tb.innerHTML=''; arr.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.cat}</td><td>${r.sub}</td><td>${mon? fmtCurrency(r.total,mon): r.total.toFixed(2)}</td>`; tb.appendChild(tr); });
   drawPieChart($('#chart-cat'), arr.slice(0,6).map(r=>({label:r.cat+(r.sub!=='(sin subcat)'?' · '+r.sub:''), value:r.total})));
-  const porCuenta = state.cuentas.map(c=>{ const gx=gastos.filter(x=> x.cuentaId===c.id && (!mon || x.moneda===c.moneda)); const total=gx.reduce((a,b)=>a+b.importe,0); const pct=c.presupuesto? (total*100/c.presupuesto):0; return {label:c.nombre, moneda:c.moneda, total, presupuesto:c.presupuesto||0, pct:+pct.toFixed(1)}; }).sort((a,b)=> b.total-a.total);
+  const cuentasElegidas = !cta ? state.cuentas : state.cuentas.filter(c=> String(c.id)===String(cta));
+  const cuentasResumen = cuentasElegidas.length ? cuentasElegidas : state.cuentas;
+  const porCuenta = cuentasResumen.map(c=>{ const gx=gastos.filter(x=> x.cuentaId===c.id && (!mon || x.moneda===c.moneda)); const total=gx.reduce((a,b)=>a+b.importe,0); const pct=c.presupuesto? (total*100/c.presupuesto):0; return {label:c.nombre, moneda:c.moneda, total, presupuesto:c.presupuesto||0, pct:+pct.toFixed(1)}; }).sort((a,b)=> b.total-a.total);
   drawBarChart($('#chart-cuenta'), porCuenta.map(x=>({label:x.label, value:x.total}))); const tbC=$('#tabla-cuenta tbody'); tbC.innerHTML=''; porCuenta.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.label}</td><td>${r.moneda}</td><td>${fmtCurrency(r.total,r.moneda)}</td><td>${r.presupuesto? fmtCurrency(r.presupuesto,r.moneda):'–'}</td><td>${r.pct||0}%</td>`; tbC.appendChild(tr); });
 }
 $('#r-moneda').onchange=renderResumen; $('#r-cuenta').onchange=renderResumen;
