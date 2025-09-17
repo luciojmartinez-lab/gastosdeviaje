@@ -169,15 +169,19 @@ function renderResumen(){
   }
   const selMon=$('#r-moneda'); const prevMon=selMon.value; selMon.innerHTML='<option value="">(todas)</option>'; unique(state.gastos.map(g=>g.moneda)).forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; selMon.appendChild(o); }); selMon.value=prevMon; if(selMon.value!==prevMon) selMon.value='';
   const selCta=$('#r-cuenta'); const prevCta=selCta.value; selCta.innerHTML='<option value="">(todas)</option>'; state.cuentas.forEach(c=>{ const o=document.createElement('option'); o.value=c.id; o.textContent=c.nombre; selCta.appendChild(o); }); selCta.value=prevCta; if(selCta.value!==prevCta) selCta.value='';
-  const mon=selMon.value; const cta=selCta.value; const gastos = state.gastos.filter(g=> !mon || g.moneda===mon).filter(g=> !cta || g.cuentaId===+cta);
+  const mon=selMon.value; const cta=selCta.value;
+  const gastos = state.gastos.filter(g=> !mon || g.moneda===mon).filter(g=> !cta || g.cuentaId===+cta);
+  const gastosTodasCuentas = state.gastos.filter(g=> !mon || g.moneda===mon);
   const rows={}; gastos.forEach(g=>{ const cat=state.categorias.find(c=>c.id===g.catId); const sub=state.categorias.find(c=>c.id===g.subcatId); const key=(cat?cat.nombre:'?')+'||'+(sub?sub.nombre:'(sin subcat)'); rows[key]=(rows[key]||0)+g.importe; });
   const arr=Object.entries(rows).map(([k,v])=>({cat:k.split('||')[0], sub:k.split('||')[1], total:v})).sort((a,b)=>b.total-a.total);
   const tb=$('#tabla-cat tbody'); tb.innerHTML=''; arr.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.cat}</td><td>${r.sub}</td><td>${mon? fmtCurrency(r.total,mon): r.total.toFixed(2)}</td>`; tb.appendChild(tr); });
   drawPieChart($('#chart-cat'), arr.slice(0,6).map(r=>({label:r.cat+(r.sub!=='(sin subcat)'?' · '+r.sub:''), value:r.total})));
   const cuentasElegidas = !cta ? state.cuentas : state.cuentas.filter(c=> String(c.id)===String(cta));
   const cuentasResumen = cuentasElegidas.length ? cuentasElegidas : state.cuentas;
-  const porCuenta = cuentasResumen.map(c=>{ const gx=gastos.filter(x=> x.cuentaId===c.id && (!mon || x.moneda===c.moneda)); const total=gx.reduce((a,b)=>a+b.importe,0); const pct=c.presupuesto? (total*100/c.presupuesto):0; return {label:c.nombre, moneda:c.moneda, total, presupuesto:c.presupuesto||0, pct:+pct.toFixed(1)}; }).sort((a,b)=> b.total-a.total);
-  drawBarChart($('#chart-cuenta'), porCuenta.map(x=>({label:x.label, value:x.total}))); const tbC=$('#tabla-cuenta tbody'); tbC.innerHTML=''; porCuenta.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.label}</td><td>${r.moneda}</td><td>${fmtCurrency(r.total,r.moneda)}</td><td>${r.presupuesto? fmtCurrency(r.presupuesto,r.moneda):'–'}</td><td>${r.pct||0}%</td>`; tbC.appendChild(tr); });
+  const datosCuenta = cuentasResumen.map(c=>{ const gx=gastos.filter(x=> x.cuentaId===c.id && (!mon || x.moneda===c.moneda)); const total=gx.reduce((a,b)=>a+b.importe,0); const pct=c.presupuesto? (total*100/c.presupuesto):0; return {label:c.nombre, moneda:c.moneda, total, presupuesto:c.presupuesto||0, pct:+pct.toFixed(1)}; });
+  const porCuentaTabla = (cta? datosCuenta.slice().sort((a,b)=> b.total-a.total) : datosCuenta.slice().sort((a,b)=>{ if(b.pct!==a.pct) return b.pct-a.pct; return b.total-a.total; }));
+  const porCuentaBarras = state.cuentas.map(c=>{ const gx=gastosTodasCuentas.filter(x=> x.cuentaId===c.id && (!mon || x.moneda===c.moneda)); const total=gx.reduce((a,b)=>a+b.importe,0); return {label:c.nombre, total}; }).sort((a,b)=> b.total-a.total);
+  drawBarChart($('#chart-cuenta'), porCuentaBarras.map(x=>({label:x.label, value:x.total}))); const tbC=$('#tabla-cuenta tbody'); tbC.innerHTML=''; porCuentaTabla.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.label}</td><td>${r.moneda}</td><td>${fmtCurrency(r.total,r.moneda)}</td><td>${r.presupuesto? fmtCurrency(r.presupuesto,r.moneda):'–'}</td><td>${r.pct||0}%</td>`; tbC.appendChild(tr); });
 }
 $('#r-moneda').onchange=renderResumen; $('#r-cuenta').onchange=renderResumen;
 
