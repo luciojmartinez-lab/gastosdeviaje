@@ -1,455 +1,1123 @@
+const DB_NAME = 'gastos_viaje_db';
+const DB_VERSION = 2;
+const APP_VERSION = '500v5';
+let dbPromise = null;
 
-// IndexedDB helpers
-const DB_NAME='gastos_viaje_db'; const DB_VERSION=1; let dbPromise=null;
-function openDB(){
-  if(dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve,reject)=>{
-    const req=indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded=()=>{
-      const db=req.result;
-      if(!db.objectStoreNames.contains('cuentas')){
-        const s=db.createObjectStore('cuentas',{keyPath:'id',autoIncrement:true});
-        s.createIndex('byMoneda','moneda');
+function openDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('cuentas')) {
+        const s = db.createObjectStore('cuentas', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('byMoneda', 'moneda');
       }
-      if(!db.objectStoreNames.contains('categorias')){
-        const s=db.createObjectStore('categorias',{keyPath:'id',autoIncrement:true});
-        s.createIndex('byParent','parentId');
+      if (!db.objectStoreNames.contains('categorias')) {
+        const s = db.createObjectStore('categorias', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('byParent', 'parentId');
       }
-      if(!db.objectStoreNames.contains('gastos')){
-        const s=db.createObjectStore('gastos',{keyPath:'id',autoIncrement:true});
-        s.createIndex('byFecha','fecha');
+      if (!db.objectStoreNames.contains('gastos')) {
+        const s = db.createObjectStore('gastos', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('byFecha', 'fecha');
+        s.createIndex('byViaje', 'viajeId');
+      } else {
+        const s = req.transaction.objectStore('gastos');
+        if (!s.indexNames.contains('byViaje')) s.createIndex('byViaje', 'viajeId');
+      }
+      if (!db.objectStoreNames.contains('viajes')) {
+        const s = db.createObjectStore('viajes', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('byInicio', 'fechaInicio');
+      }
+      if (!db.objectStoreNames.contains('monedas')) {
+        db.createObjectStore('monedas', { keyPath: 'codigo' });
       }
     };
-    req.onsuccess=()=>resolve(req.result);
-    req.onerror =()=>reject(req.error);
-  }); return dbPromise;
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return dbPromise;
 }
-async function tx(store,mode='readonly'){ const db=await openDB(); return db.transaction(store,mode).objectStore(store); }
 
-async function addCuenta({nombre,moneda,saldoInicial=0,presupuesto=0,nota=''}){
-  const s=await tx('cuentas','readwrite');
-  return new Promise((res,rej)=>{ const now=new Date().toISOString();
-    const req=s.add({nombre,moneda,saldoInicial:+saldoInicial,saldoActual:+saldoInicial,presupuesto:+presupuesto,nota,createdAt:now,updatedAt:now});
-    req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error);
+async function store(name, mode = 'readonly') {
+  const db = await openDB();
+  return db.transaction(name, mode).objectStore(name);
+}
+
+function getAll(name) {
+  return store(name).then(s => new Promise((resolve, reject) => {
+    const req = s.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  }));
+}
+
+function getOne(name, key) {
+  return store(name).then(s => new Promise((resolve, reject) => {
+    const req = s.get(key);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  }));
+}
+
+async function addRecord(name, data) {
+  const s = await store(name, 'readwrite');
+  return new Promise((resolve, reject) => {
+    const req = s.add(data);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
   });
 }
-async function getCuentas(){ const s=await tx('cuentas'); return new Promise((res,rej)=>{ const r=s.getAll(); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
-async function getCuenta(id){ const s=await tx('cuentas'); return new Promise((res,rej)=>{ const r=s.get(id); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
-async function updateCuenta(id,patch){ const s=await tx('cuentas','readwrite'); return new Promise((res,rej)=>{ const g=s.get(id);
-  g.onsuccess=()=>{ if(!g.result) return rej('no existe'); const obj={...g.result,...patch,updatedAt:new Date().toISOString()}; const p=s.put(obj); p.onsuccess=()=>res(obj); p.onerror=()=>rej(p.error); };
-  g.onerror=()=>rej(g.error);
-});}
-async function delCuenta(id){ const s=await tx('cuentas','readwrite'); return new Promise((res,rej)=>{ const r=s.delete(id); r.onsuccess=()=>res(true); r.onerror=()=>rej(r.error); }); }
 
-async function addCategoria({nombre,parentId=null}){
-  const s=await tx('categorias','readwrite');
-  return new Promise((res,rej)=>{ const req=s.add({nombre,parentId: parentId? +parentId:null}); req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); });
-}
-async function getCategorias(){ const s=await tx('categorias'); return new Promise((res,rej)=>{ const r=s.getAll(); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
-async function updateCategoria(id,patch){ const s=await tx('categorias','readwrite'); return new Promise((res,rej)=>{ const g=s.get(id);
-  g.onsuccess=()=>{ if(!g.result) return rej('no existe'); const obj={...g.result,...patch}; const p=s.put(obj); p.onsuccess=()=>res(obj); p.onerror=()=>rej(p.error); };
-  g.onerror=()=>rej(g.error);
-});}
-async function delCategoria(id){ const s=await tx('categorias','readwrite'); return new Promise((res,rej)=>{ const r=s.delete(id); r.onsuccess=()=>res(true); r.onerror=()=>rej(r.error); }); }
-
-async function addGasto({fecha,cuentaId,moneda,catId,subcatId=null,importe,desc=''}){
-  const s=await tx('gastos','readwrite');
-  return new Promise(async (res,rej)=>{
-    const data={fecha,cuentaId:+cuentaId,moneda,catId:+catId,subcatId: subcatId? +subcatId:null,importe:+importe,desc,createdAt:new Date().toISOString()};
-    const req=s.add(data);
-    req.onsuccess= async ()=>{ try{ const c=await getCuenta(+cuentaId); await updateCuenta(c.id,{saldoActual:+(c.saldoActual-+importe).toFixed(2)});}catch(e){} res(req.result); };
-    req.onerror=()=>rej(req.error);
+async function putRecord(name, data) {
+  const s = await store(name, 'readwrite');
+  return new Promise((resolve, reject) => {
+    const req = s.put(data);
+    req.onsuccess = () => resolve(data);
+    req.onerror = () => reject(req.error);
   });
 }
-async function getGastos(){ const s=await tx('gastos'); return new Promise((res,rej)=>{ const r=s.getAll(); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
-async function updateGasto(id,patch){ const s=await tx('gastos','readwrite'); return new Promise((res,rej)=>{ const g=s.get(id);
-  g.onsuccess=()=>{ if(!g.result) return rej('no existe'); const obj={...g.result,...patch}; const p=s.put(obj); p.onsuccess=()=>res(obj); p.onerror=()=>rej(p.error); };
-  g.onerror=()=>rej(g.error);
-});}
-async function delGasto(id){ const s=await tx('gastos','readwrite'); return new Promise((res,rej)=>{ const r=s.delete(id); r.onsuccess=()=>res(true); r.onerror=()=>rej(r.error); }); }
 
-async function exportAll(){ const [cuentas,categorias,gastos]=await Promise.all([getCuentas(),getCategorias(),getGastos()]); return {version:1,generatedAt:new Date().toISOString(),cuentas,categorias,gastos}; }
-async function importAll(obj){
-  if(!obj||!obj.version) throw new Error('Archivo no válido');
-  const db=await openDB();
-  await new Promise(res=>{ const t=db.transaction(['cuentas','categorias','gastos'],'readwrite');
-    t.objectStore('cuentas').clear(); t.objectStore('categorias').clear(); t.objectStore('gastos').clear(); t.oncomplete=()=>res(true);
+async function updateRecord(name, key, patch) {
+  const s = await store(name, 'readwrite');
+  return new Promise((resolve, reject) => {
+    const req = s.get(key);
+    req.onsuccess = () => {
+      if (!req.result) return reject(new Error('No existe'));
+      const obj = { ...req.result, ...patch, updatedAt: new Date().toISOString() };
+      const put = s.put(obj);
+      put.onsuccess = () => resolve(obj);
+      put.onerror = () => reject(put.error);
+    };
+    req.onerror = () => reject(req.error);
   });
-  for(const c of obj.cuentas){ await addCuenta(c); }
-  for(const c of obj.categorias){ await addCategoria(c); }
-  for(const g of obj.gastos){ await addGasto(g); }
 }
 
+async function deleteRecord(name, key) {
+  const s = await store(name, 'readwrite');
+  return new Promise((resolve, reject) => {
+    const req = s.delete(key);
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => reject(req.error);
+  });
+}
 
+async function clearStores(names) {
+  const db = await openDB();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(names, 'readwrite');
+    names.forEach(name => tx.objectStore(name).clear());
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
 
-// Utilidades y estado
-const $ = s=>document.querySelector(s);
-const fmtCurrency = (n,cur='EUR')=> new Intl.NumberFormat('es-ES',{style:'currency',currency:cur}).format(+n||0);
-const fmtDate = iso=> new Date(iso).toLocaleDateString('es-ES',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
-const unique = a=> Array.from(new Set(a));
-const MONEDAS = ['EUR','USD','GBP','SEK','NOK','DKK','CHF','JPY'];
-let state={cuentas:[],categorias:[],gastos:[],activeTab:'gastos'};
+const $ = selector => document.querySelector(selector);
+const $$ = selector => Array.from(document.querySelectorAll(selector));
+const BASE_MONEDAS = ['EUR', 'USD', 'GBP', 'SEK', 'NOK', 'DKK', 'CHF', 'JPY'];
+const DEFAULT_CUENTAS = [
+  { nombre: 'Santander', moneda: 'EUR', saldoInicial: 0, presupuesto: 0 },
+  { nombre: 'Efectivo', moneda: 'EUR', saldoInicial: 0, presupuesto: 0 },
+  { nombre: 'Revolut', moneda: 'EUR', saldoInicial: 0, presupuesto: 0 }
+];
+const DEFAULT_CATEGORIAS = [
+  { nombre: 'Comida', subs: ['Desayuno', 'Almuerzo', 'Cena'] },
+  { nombre: 'Transporte', subs: ['Metro', 'Bus', 'Taxi'] },
+  { nombre: 'Alojamiento', subs: [] },
+  { nombre: 'Ocio', subs: [] }
+];
+const DEFAULT_MONEDAS = [
+  { codigo: 'EUR', nombre: 'Euro', eurPorUnidad: 1, unidadesPorEuro: 1 }
+];
+const state = {
+  activeTab: 'viajes',
+  selectedViajeId: null,
+  cuentas: [],
+  categorias: [],
+  gastos: [],
+  viajes: [],
+  monedas: []
+};
 
-function setTab(id){ state.activeTab=id; ['gastos','resumen','config'].forEach(t=>{ $('#tab-'+t).classList.toggle('active', t===id); $('#view-'+t).style.display=(t===id)?'block':'none'; }); if(id==='resumen') renderResumen(); }
-$('#tab-gastos').onclick=()=>setTab('gastos'); $('#tab-resumen').onclick=()=>setTab('resumen'); $('#tab-config').onclick=()=>setTab('config');
+const collator = new Intl.Collator('es', { sensitivity: 'base' });
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const numberValue = value => {
+  const n = parseFloat(String(value || '').replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+};
+const formatRate = value => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return Number(n.toFixed(6)).toString();
+};
+const fmtDate = iso => iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('es-ES', {
+  weekday: 'short',
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric'
+}) : '-';
+const fmtCurrency = (amount, currency = 'EUR') => {
+  try {
+    return new Intl.NumberFormat('es-ES', { style: 'currency', currency }).format(numberValue(amount));
+  } catch (_) {
+    return `${numberValue(amount).toFixed(2)} ${currency}`;
+  }
+};
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;'
+}[ch]));
 
-function renderMonedas(){ ['#g-moneda','#f-moneda','#r-moneda','#c-moneda'].forEach(sel=>{ const el=$(sel); el.innerHTML=''; MONEDAS.forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; el.appendChild(o); }); }); }
+function byName(a, b) {
+  return collator.compare(a.nombre || a.codigo || '', b.nombre || b.codigo || '');
+}
 
-async function loadAll(){
-  state.cuentas=await getCuentas();
-  state.categorias=await getCategorias();
-  state.gastos=await getGastos();
+function sortCategoriasHierarchical(categorias) {
+  const parents = categorias.filter(c => !c.parentId).sort(byName);
+  const children = categorias.filter(c => c.parentId);
+  const ordered = [];
+  parents.forEach(parent => {
+    ordered.push(parent);
+    children
+      .filter(child => child.parentId === parent.id)
+      .sort(byName)
+      .forEach(child => ordered.push(child));
+  });
+  children
+    .filter(child => !parents.some(parent => parent.id === child.parentId))
+    .sort(byName)
+    .forEach(child => ordered.push(child));
+  return ordered;
+}
+
+function foreignCurrencies() {
+  return state.monedas.filter(m => m.codigo !== 'EUR').sort(byName);
+}
+
+function allCurrencies() {
+  return ['EUR', ...foreignCurrencies().map(m => m.codigo)];
+}
+
+function getCurrencyConfig(code) {
+  if (code === 'EUR') return { codigo: 'EUR', eurPorUnidad: 1, unidadesPorEuro: 1 };
+  return state.monedas.find(m => m.codigo === code) || null;
+}
+
+function hasValidCurrency(code) {
+  const cfg = getCurrencyConfig(code);
+  return !!cfg && numberValue(cfg.eurPorUnidad) > 0 && numberValue(cfg.unidadesPorEuro) > 0;
+}
+
+function toEur(amount, currency) {
+  const cfg = getCurrencyConfig(currency);
+  return cfg ? numberValue(amount) * numberValue(cfg.eurPorUnidad || 1) : 0;
+}
+
+function fromEur(amount, currency) {
+  const cfg = getCurrencyConfig(currency);
+  return cfg ? numberValue(amount) * numberValue(cfg.unidadesPorEuro || 1) : 0;
+}
+
+function setMessage(selector, text, isError = false) {
+  const el = $(selector);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('error', isError);
+}
+
+function fillSelect(selector, options, placeholder) {
+  const el = $(selector);
+  const previous = el.value;
+  el.innerHTML = '';
+  if (placeholder !== null) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = placeholder;
+    el.appendChild(opt);
+  }
+  options.forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.value;
+    opt.textContent = item.label;
+    el.appendChild(opt);
+  });
+  if ([...el.options].some(o => o.value === previous)) el.value = previous;
+}
+
+async function addCuenta({ nombre, moneda, saldoInicial = 0, presupuesto = 0, nota = '' }) {
+  const now = new Date().toISOString();
+  return addRecord('cuentas', {
+    nombre,
+    moneda,
+    saldoInicial: numberValue(saldoInicial),
+    saldoActual: numberValue(saldoInicial),
+    presupuesto: numberValue(presupuesto),
+    nota,
+    createdAt: now,
+    updatedAt: now
+  });
+}
+
+async function updateCuenta(id, patch) {
+  return updateRecord('cuentas', Number(id), patch);
+}
+
+async function delCuenta(id) {
+  return deleteRecord('cuentas', Number(id));
+}
+
+async function addCategoria({ nombre, parentId = null }) {
+  return addRecord('categorias', { nombre, parentId: parentId ? Number(parentId) : null });
+}
+
+async function updateCategoria(id, patch) {
+  return updateRecord('categorias', Number(id), patch);
+}
+
+async function delCategoria(id) {
+  return deleteRecord('categorias', Number(id));
+}
+
+async function addViaje({ nombre, fechaInicio, fechaFin }) {
+  const now = new Date().toISOString();
+  return addRecord('viajes', { nombre, fechaInicio, fechaFin, createdAt: now, updatedAt: now });
+}
+
+async function updateViaje(id, patch) {
+  return updateRecord('viajes', Number(id), patch);
+}
+
+async function delViaje(id) {
+  return deleteRecord('viajes', Number(id));
+}
+
+async function upsertMoneda({ codigo, nombre = '', eurPorUnidad, unidadesPorEuro }) {
+  const code = String(codigo || '').trim().toUpperCase();
+  if (!code || code === 'EUR') throw new Error('Usa un codigo extranjero distinto de EUR');
+  const eur = numberValue(eurPorUnidad);
+  const back = numberValue(unidadesPorEuro);
+  if (eur <= 0 || back <= 0) throw new Error('Indica equivalencias mayores que cero');
+  const now = new Date().toISOString();
+  return putRecord('monedas', {
+    codigo: code,
+    nombre: nombre.trim(),
+    eurPorUnidad: eur,
+    unidadesPorEuro: back,
+    updatedAt: now
+  });
+}
+
+async function ensureBaseCurrency() {
+  await putRecord('monedas', { ...DEFAULT_MONEDAS[0], updatedAt: new Date().toISOString() });
+}
+
+async function seedDefaultAccounts() {
+  const existing = await getAll('cuentas');
+  for (const account of DEFAULT_CUENTAS) {
+    const found = existing.some(c => (c.nombre || '').trim().toLowerCase() === account.nombre.toLowerCase());
+    if (!found) await addCuenta(account);
+  }
+}
+
+async function seedDefaultCategories() {
+  const existing = await getAll('categorias');
+  for (const cat of DEFAULT_CATEGORIAS) {
+    let parent = existing.find(c => !c.parentId && (c.nombre || '').trim().toLowerCase() === cat.nombre.toLowerCase());
+    if (!parent) {
+      const parentId = await addCategoria({ nombre: cat.nombre });
+      parent = { id: parentId, nombre: cat.nombre, parentId: null };
+      existing.push(parent);
+    }
+    for (const sub of cat.subs) {
+      const found = existing.some(c => c.parentId === parent.id && (c.nombre || '').trim().toLowerCase() === sub.toLowerCase());
+      if (!found) {
+        const id = await addCategoria({ nombre: sub, parentId: parent.id });
+        existing.push({ id, nombre: sub, parentId: parent.id });
+      }
+    }
+  }
+}
+
+async function seedDefaults() {
+  await ensureBaseCurrency();
+  await seedDefaultAccounts();
+  await seedDefaultCategories();
+}
+
+async function delMoneda(codigo) {
+  return deleteRecord('monedas', String(codigo).toUpperCase());
+}
+
+async function addGasto({ fecha, viajeId, cuentaId, moneda, catId, subcatId = null, importe, desc = '' }) {
+  if (!hasValidCurrency(moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
+  const account = state.cuentas.find(c => c.id === Number(cuentaId));
+  if (account && account.moneda !== moneda) throw new Error('La moneda del gasto debe coincidir con la cuenta');
+  const amount = numberValue(importe);
+  const now = new Date().toISOString();
+  const id = await addRecord('gastos', {
+    fecha,
+    viajeId: viajeId ? Number(viajeId) : null,
+    cuentaId: Number(cuentaId),
+    moneda,
+    catId: Number(catId),
+    subcatId: subcatId ? Number(subcatId) : null,
+    importe: amount,
+    importeEur: toEur(amount, moneda),
+    desc,
+    createdAt: now,
+    updatedAt: now
+  });
+  if (account) {
+    await updateCuenta(account.id, { saldoActual: +(numberValue(account.saldoActual) - amount).toFixed(2) });
+  }
+  return id;
+}
+
+async function updateGasto(id, patch) {
+  const current = state.gastos.find(g => g.id === Number(id)) || await getOne('gastos', Number(id));
+  const next = { ...current, ...patch };
+  if (!hasValidCurrency(next.moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
+  next.importe = numberValue(next.importe);
+  next.importeEur = toEur(next.importe, next.moneda);
+  return updateRecord('gastos', Number(id), next);
+}
+
+async function delGasto(id) {
+  return deleteRecord('gastos', Number(id));
+}
+
+async function loadAll() {
+  const [cuentas, categorias, gastos, viajes, monedas] = await Promise.all([
+    getAll('cuentas'),
+    getAll('categorias'),
+    getAll('gastos'),
+    getAll('viajes'),
+    getAll('monedas')
+  ]);
+  state.cuentas = cuentas.sort(byName);
+  state.categorias = sortCategoriasHierarchical(categorias);
+  state.gastos = gastos.map(g => ({ ...g, importeEur: g.importeEur ?? toEur(g.importe, g.moneda) }));
+  state.viajes = viajes.sort((a, b) => (a.fechaInicio || '').localeCompare(b.fechaInicio || '') || byName(a, b));
+  state.monedas = monedas.sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
   renderAll();
-  if(state.activeTab==='resumen') renderResumen();
+  if (state.activeTab === 'resumen') renderResumen();
 }
 
-function renderAll(){
-  renderMonedas(); if($('#g-fecha').value==='') $('#g-fecha').valueAsDate=new Date();
-  // cuentas
-  ['#g-cuenta','#f-cuenta','#r-cuenta'].forEach(sel=>{ const el=$(sel); el.innerHTML=''; const o0=document.createElement('option'); o0.value=''; o0.textContent= sel==='#g-cuenta'?'(elige cuenta)':'(todas)'; el.appendChild(o0); state.cuentas.forEach(c=>{ const o=document.createElement('option'); o.value=c.id; o.textContent=c.nombre; el.appendChild(o); }); });
-  $('#g-cuenta').onchange=()=>{ const c=state.cuentas.find(x=>x.id===+$('#g-cuenta').value); $('#g-moneda').value = c? c.moneda : MONEDAS[0]; };
-  // categorías
-  const isSub=c=> c.parentId!==null && c.parentId!==undefined;
-  const principals=state.categorias.filter(c=>!isSub(c)), subs=state.categorias.filter(isSub);
-  ['#g-cat','#f-cat'].forEach(sel=>{ const el=$(sel); el.innerHTML=''; const o0=document.createElement('option'); o0.value=''; o0.textContent= sel==='#g-cat'?'(elige categoría)':'(todas)'; el.appendChild(o0); principals.forEach(c=>{ const o=document.createElement('option'); o.value=c.id; o.textContent=c.nombre; el.appendChild(o); }); });
-  $('#g-cat').onchange=()=>{ const catId=+$('#g-cat').value; const el=$('#g-subcat'); el.innerHTML='<option value="">(sin subcategoría)</option>'; subs.filter(s=> s.parentId===catId).forEach(s=>{ const o=document.createElement('option'); o.value=s.id; o.textContent=s.nombre; el.appendChild(o); }); };
-  // tabla cuentas
-  const tbC=$('#tabla-cuentas tbody'); tbC.innerHTML='';
-  state.cuentas.forEach(c=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${c.nombre}</td><td><span class='badge'>${c.moneda}</span></td><td>${fmtCurrency(c.saldoActual,c.moneda)}</td><td>${c.presupuesto? fmtCurrency(c.presupuesto,c.moneda):'–'}</td><td><button class='ghost' data-edit-cuenta='${c.id}'>Editar</button> <button class='ghost' data-del-cuenta='${c.id}'>Eliminar</button></td>`; tbC.appendChild(tr); });
-  tbC.querySelectorAll('button[data-del-cuenta]').forEach(b=> b.onclick= async ()=>{ await delCuenta(+b.dataset.delCuenta); await loadAll(); });
-  tbC.querySelectorAll('button[data-edit-cuenta]').forEach(b=> b.onclick= async ()=>{ const id=+b.dataset.editCuenta; const c=state.cuentas.find(x=>x.id===id); if(!c) return; const nombre=prompt('Nuevo nombre',c.nombre); if(nombre===null) return; const moneda=prompt('Moneda (EUR, USD, ...)', c.moneda)||c.moneda; const presu=parseFloat(prompt('Presupuesto', c.presupuesto||'')||c.presupuesto||0); const aj=prompt('Ajuste de saldo actual (+50, -20, ...)', ''); let saldo=c.saldoActual; if(aj && !isNaN(parseFloat(aj))) saldo = +(saldo + parseFloat(aj)); await updateCuenta(id,{nombre:nombre.trim()||c.nombre,moneda:moneda.trim()||c.moneda,presupuesto:presu,saldoActual:+saldo}); await loadAll(); });
-  // tabla categorias
-  const tbCat=$('#tabla-cats tbody'); tbCat.innerHTML='';
-  state.categorias.forEach(cat=>{ const padre=state.categorias.find(c=>c.id===cat.parentId); const tipo=cat.parentId?'Subcategoría':'Categoría'; const tr=document.createElement('tr'); tr.innerHTML=`<td>${cat.nombre}</td><td>${tipo}</td><td>${padre? padre.nombre:'–'}</td><td><button class='ghost' data-edit-cat='${cat.id}'>Editar</button> <button class='ghost' data-del-cat='${cat.id}'>Eliminar</button></td>`; tbCat.appendChild(tr); });
-  tbCat.querySelectorAll('button[data-del-cat]').forEach(b=> b.onclick= async ()=>{ await delCategoria(+b.dataset.delCat); await loadAll(); });
-  tbCat.querySelectorAll('button[data-edit-cat]').forEach(b=> b.onclick= async ()=>{ const id=+b.dataset.editCat; const c=state.categorias.find(x=>x.id===id); if(!c) return; const nombre=prompt('Nuevo nombre', c.nombre); if(nombre===null) return; const principals=state.categorias.filter(k=>!k.parentId); const lista=principals.map(k=>`${k.id}:${k.nombre}`).join(' | '); const entrada=prompt('ID de nuevo padre (vacío=principal). Opciones: '+lista, c.parentId||''); const parentId = entrada? parseInt(entrada):null; await updateCategoria(id,{nombre:nombre.trim()||c.nombre,parentId: parentId||null}); await loadAll(); });
-  // selector parent
-  const parentSel=$('#cat-parent'); parentSel.innerHTML='<option value="">(Ninguna, es principal)</option>'; principals.forEach(c=>{ const o=document.createElement('option'); o.value=c.id; o.textContent=c.nombre; parentSel.appendChild(o); });
+function renderAll() {
+  renderCurrencySelectors();
+  renderAccountSelectors();
+  renderTripSelectors();
+  renderCategorySelectors();
+  renderViajesHome();
+  renderCuentas();
+  renderViajes();
+  renderMonedasConfig();
+  renderCategorias();
   renderGastosTabla();
+  if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
 }
 
-$('#btn-add-cuenta').onclick = async ()=>{ const nombre=$('#c-nombre').value.trim(); const moneda=$('#c-moneda').value; const saldo=parseFloat($('#c-saldo').value||'0'); const presu=parseFloat($('#c-presu').value||'0'); if(!nombre){ $('#msg-cuenta').textContent='Pon un nombre'; return; } await addCuenta({nombre,moneda,saldoInicial:saldo,presupuesto:presu,nota:$('#c-nota').value.trim()}); $('#c-nombre').value=''; $('#c-saldo').value=''; $('#c-presu').value=''; $('#c-nota').value=''; $('#msg-cuenta').textContent='Añadida ✓'; await loadAll(); };
-$('#btn-add-cat').onclick = async ()=>{ const nombre=$('#cat-nombre').value.trim(); const parentId=$('#cat-parent').value||null; if(!nombre){ $('#msg-cat').textContent='Escribe un nombre'; return; } await addCategoria({nombre,parentId}); $('#cat-nombre').value=''; $('#cat-parent').value=''; $('#msg-cat').textContent='Guardada ✓'; await loadAll(); };
-$('#btn-add-gasto').onclick = async ()=>{ const fecha=$('#g-fecha').value || new Date().toISOString().slice(0,10); const cuentaId=$('#g-cuenta').value; const moneda=$('#g-moneda').value; const catId=$('#g-cat').value; const subcatId=$('#g-subcat').value||null; const importe=parseFloat($('#g-importe').value||'0'); if(!cuentaId || !catId || !importe){ $('#msg-gasto').textContent='Completa cuenta, categoría e importe'; return; } await addGasto({fecha,cuentaId,moneda,catId,subcatId,importe,desc:$('#g-desc').value.trim()}); $('#g-importe').value=''; $('#g-desc').value=''; $('#msg-gasto').textContent='Gasto añadido ✓'; await loadAll(); };
-$('#f-clear').onclick = ()=>{ ['#f-moneda','#f-cuenta','#f-cat','#f-desde','#f-hasta'].forEach(s=>{ const el=$(s); if(el.tagName==='SELECT') el.value=''; else el.value=''; }); renderGastosTabla(); };
+function renderCurrencySelectors() {
+  const currencies = allCurrencies().map(code => ({ value: code, label: code }));
+  ['#g-moneda', '#c-moneda'].forEach(sel => fillSelect(sel, currencies, null));
+  fillSelect('#f-moneda', currencies, '(todas)');
+  fillSelect('#r-moneda', currencies, '(todas)');
+}
 
-function renderGastosTabla(){
-  const tbody=$('#tabla-gastos tbody'); tbody.innerHTML='';
-  const fMon=$('#f-moneda').value; const fCta=$('#f-cuenta').value; const fCat=$('#f-cat').value; const fDesde=$('#f-desde').value; const fHasta=$('#f-hasta').value;
-  if($('#f-moneda').options.length<=1){ const sel=$('#f-moneda'); sel.innerHTML='<option value="">(todas)</option>'; unique(state.gastos.map(g=>g.moneda)).forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; sel.appendChild(o); }); }
-  let rows=state.gastos.filter(g=> !fMon || g.moneda===fMon).filter(g=> !fCta || g.cuentaId===+fCta).filter(g=> !fCat || g.catId===+fCat).filter(g=> !fDesde || g.fecha>=fDesde).filter(g=> !fHasta || g.fecha<=fHasta).sort((a,b)=> a.fecha.localeCompare(b.fecha));
-  let totalFiltro=0; const grupos={}; rows.forEach(g=>{ (grupos[g.fecha] = grupos[g.fecha] || []).push(g); });
-  Object.keys(grupos).sort().forEach(fecha=>{
-    let subtotal=0; const trh=document.createElement('tr'); trh.innerHTML=`<td colspan='8'><b>${fmtDate(fecha)}</b></td>`; tbody.appendChild(trh);
-    grupos[fecha].forEach(g=>{ const cat=state.categorias.find(c=>c.id===g.catId); const sub=state.categorias.find(c=>c.id===g.subcatId); const cta=state.cuentas.find(c=>c.id===g.cuentaId);
-      const tr=document.createElement('tr'); tr.innerHTML=`<td></td><td>${cat?cat.nombre:'?'}</td><td>${sub?sub.nombre:'–'}</td><td>${cta?cta.nombre:'?'}</td><td>${g.moneda}</td><td>${fmtCurrency(g.importe,g.moneda)}</td><td>${g.desc||''}</td><td><button class='ghost' data-edit-gasto='${g.id}'>Editar</button> <button class='ghost' data-del-gasto='${g.id}'>Eliminar</button></td>`; tbody.appendChild(tr); subtotal+=g.importe; totalFiltro+=g.importe; });
-    const trf=document.createElement('tr'); trf.innerHTML=`<td colspan='5' style='text-align:right'><i>Subtotal</i></td><td>${(fMon? fmtCurrency(subtotal, fMon) : subtotal.toFixed(2)+' (mixto)')}</td><td colspan='2'></td>`; tbody.appendChild(trf);
+function renderAccountSelectors() {
+  const accounts = state.cuentas.map(c => ({ value: String(c.id), label: c.nombre }));
+  fillSelect('#g-cuenta', accounts, '(elige cuenta)');
+  fillSelect('#f-cuenta', accounts, '(todas)');
+  fillSelect('#r-cuenta', accounts, '(todas)');
+}
+
+function renderTripSelectors() {
+  const trips = state.viajes.map(v => ({ value: String(v.id), label: v.nombre }));
+  fillSelect('#g-viaje', trips, '(sin viaje)');
+  fillSelect('#f-viaje', trips, '(todos)');
+  fillSelect('#r-viaje', trips, '(todos)');
+}
+
+function renderCategorySelectors() {
+  const principal = state.categorias.filter(c => !c.parentId);
+  const options = principal.map(c => ({ value: String(c.id), label: c.nombre }));
+  fillSelect('#g-cat', options, '(elige categoria)');
+  fillSelect('#f-cat', options, '(todas)');
+  fillSelect('#cat-parent', options, '(Ninguna, es principal)');
+  renderSubcategories();
+}
+
+function renderSubcategories() {
+  const catId = Number($('#g-cat').value);
+  const options = state.categorias
+    .filter(c => c.parentId === catId)
+    .map(c => ({ value: String(c.id), label: c.nombre }));
+  fillSelect('#g-subcat', options, '(sin subcategoria)');
+}
+
+function renderCuentas() {
+  const tbody = $('#tabla-cuentas tbody');
+  tbody.innerHTML = '';
+  state.cuentas.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrency(c.saldoActual, c.moneda)}</td><td>${c.presupuesto ? fmtCurrency(c.presupuesto, c.moneda) : '-'}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
+    tbody.appendChild(tr);
   });
-  $('#tg-total').textContent = (fMon? fmtCurrency(totalFiltro, fMon) : totalFiltro.toFixed(2)+' (mixto)');
-  tbody.querySelectorAll('button[data-del-gasto]').forEach(b=> b.onclick= async ()=>{ await delGasto(+b.dataset.delGasto); await loadAll(); });
-  tbody.querySelectorAll('button[data-edit-gasto]').forEach(b=> b.onclick= async ()=>{ const id=+b.dataset.editGasto; const g=state.gastos.find(x=>x.id===id); if(!g) return; const importe=parseFloat(prompt('Nuevo importe', g.importe)||g.importe); const __descPrompt = prompt('Descripción', g.desc || '');
-const desc = (__descPrompt !== null && __descPrompt !== undefined && __descPrompt !== '')
-  ? __descPrompt : (g.desc || ''); const principals=state.categorias.filter(k=>!k.parentId); const lista=principals.map(k=>`${k.id}:${k.nombre}`).join(' | '); const catEntrada=prompt('ID de categoría (opciones: '+lista+')', g.catId); let catId=g.catId; if(catEntrada && !isNaN(parseInt(catEntrada))) catId=parseInt(catEntrada); const subs=state.categorias.filter(s=> s.parentId===catId); const listaSub=subs.map(s=>`${s.id}:${s.nombre}`).join(' | '); const subEntrada=prompt('ID de subcategoría (opcional). Opciones: '+(listaSub||'—'), g.subcatId||''); const subcatId=subEntrada? parseInt(subEntrada):null; await updateGasto(id,{importe,desc,catId,subcatId}); await loadAll(); });
 }
-['#f-moneda','#f-cuenta','#f-cat','#f-desde','#f-hasta'].forEach(sel=>{ document.querySelector(sel).onchange=renderGastosTabla; });
 
-function drawPieChart(container,data){ const total=data.reduce((a,b)=>a+b.value,0); const W=320,H=260,R=90,cx=120,cy=130; let svg=`<svg class='chart' viewBox='0 0 ${W} ${H}' xmlns='http://www.w3.org/2000/svg'>`; let ang=-Math.PI/2; data.forEach((d,i)=>{ const slice=total? (d.value/total)*Math.PI*2:0; const x1=cx+R*Math.cos(ang), y1=cy+R*Math.sin(ang); const x2=cx+R*Math.cos(ang+slice), y2=cy+R*Math.sin(ang+slice); const large=slice>Math.PI?1:0; const color=`hsl(${i*57%360} 70% 50%)`; svg += `<path d='M ${cx} ${cy} L ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2} Z' fill='${color}' opacity='0.9'><title>${d.label}: ${d.value.toFixed(2)} (${total? (d.value*100/total).toFixed(1):0}%)</title></path>`; ang+=slice; }); let lx=230,ly=40; data.forEach((d,i)=>{ const color=`hsl(${i*57%360} 70% 50%)`; svg += `<rect x='${lx}' y='${ly+i*22}' width='12' height='12' fill='${color}'></rect><text x='${lx+18}' y='${ly+10+i*22}' font-size='12' fill='#374151'>${d.label}</text>`; }); svg += `</svg>`; container.innerHTML=svg; }
-function drawBarChart(container,data){ const W=360,H=260,pad=36; const max=Math.max(1,...data.map(d=>d.value)); const bw=(W-pad*2)/Math.max(1,data.length)*0.7; let svg=`<svg class='chart' viewBox='0 0 ${W} ${H}' xmlns='http://www.w3.org/2000/svg'><line x1='${pad}' y1='${H-pad}' x2='${W-pad}' y2='${H-pad}' stroke='#e5e7eb'/></svg>`; const parser=new DOMParser(); let doc=parser.parseFromString(svg,'image/svg+xml'); let root=doc.documentElement; data.forEach((d,i)=>{ const x=pad + i*((W-pad*2)/data.length) + ((W-pad*2)/data.length - bw)/2; const h=(d.value/max)*(H-pad*2); const y=(H-pad)-h; const color=`hsl(${i*57%360} 70% 50%)`; const rect=doc.createElementNS('http://www.w3.org/2000/svg','rect'); rect.setAttribute('x',x.toFixed(1)); rect.setAttribute('y',y.toFixed(1)); rect.setAttribute('width',bw.toFixed(1)); rect.setAttribute('height',h.toFixed(1)); rect.setAttribute('fill',color); const title=doc.createElementNS('http://www.w3.org/2000/svg','title'); title.textContent=`${d.label}: ${d.value.toFixed(2)}`; rect.appendChild(title); root.appendChild(rect); const tx=doc.createElementNS('http://www.w3.org/2000/svg','text'); tx.setAttribute('x',(x+bw/2)); tx.setAttribute('y',H-pad+14); tx.setAttribute('font-size','12'); tx.setAttribute('text-anchor','middle'); tx.setAttribute('fill','#374151'); tx.textContent=d.label; root.appendChild(tx); }); container.innerHTML=''; container.appendChild(root); }
-
-function renderResumen(){
-  if(state.gastos.length===0){ $('#kpi-total').textContent='0,00'; $('#kpi-media').textContent='0,00'; $('#kpi-presu').textContent='0%'; }
-  else{
-    const porMoneda={}; state.gastos.forEach(g=> porMoneda[g.moneda]=(porMoneda[g.moneda]||0)+g.importe);
-    $('#kpi-total').textContent = Object.entries(porMoneda).map(([m,v])=> fmtCurrency(v,m)).join(' + ');
-    const fechas=state.gastos.map(g=> new Date(g.fecha)); const minF=new Date(Math.min(...fechas)), maxF=new Date(Math.max(...fechas));
-    const days=Math.max(1, Math.ceil((maxF-minF)/86400000)+1); const base=porMoneda['EUR']||0; $('#kpi-media').textContent=(base/days).toFixed(2)+' EUR/día (ref.)';
-    const pcts = state.cuentas.map(c=>{ const gast=state.gastos.filter(g=> g.cuentaId===c.id && g.moneda===c.moneda).reduce((a,b)=>a+b.importe,0); return c.presupuesto? Math.min(100, (gast*100/c.presupuesto)) : 0; });
-    const avg = pcts.length? (pcts.reduce((a,b)=>a+b,0)/pcts.length) : 0; $('#kpi-presu').textContent = avg.toFixed(0)+'%';
-  }
-  const selMon=$('#r-moneda'); selMon.innerHTML='<option value="">(todas)</option>'; unique(state.gastos.map(g=>g.moneda)).forEach(m=>{ const o=document.createElement('option'); o.value=m; o.textContent=m; selMon.appendChild(o); });
-  const selCta=$('#r-cuenta'); selCta.innerHTML='<option value="">(todas)</option>'; state.cuentas.forEach(c=>{ const o=document.createElement('option'); o.value=c.id; o.textContent=c.nombre; selCta.appendChild(o); });
-  const mon=selMon.value; const cta=selCta.value; const gastos = state.gastos.filter(g=> !mon || g.moneda===mon).filter(g=> !cta || g.cuentaId===+cta);
-  const rows={}; gastos.forEach(g=>{ const cat=state.categorias.find(c=>c.id===g.catId); const sub=state.categorias.find(c=>c.id===g.subcatId); const key=(cat?cat.nombre:'?')+'||'+(sub?sub.nombre:'(sin subcat)'); rows[key]=(rows[key]||0)+g.importe; });
-  const arr=Object.entries(rows).map(([k,v])=>({cat:k.split('||')[0], sub:k.split('||')[1], total:v})).sort((a,b)=>b.total-a.total);
-  const tb=$('#tabla-cat tbody'); tb.innerHTML=''; arr.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.cat}</td><td>${r.sub}</td><td>${mon? fmtCurrency(r.total,mon): r.total.toFixed(2)}</td>`; tb.appendChild(tr); });
-  drawPieChart($('#chart-cat'), arr.slice(0,6).map(r=>({label:r.cat+(r.sub!=='(sin subcat)'?' · '+r.sub:''), value:r.total})));
-  const cuentasElegidas = !cta ? state.cuentas : state.cuentas.filter(c=> String(c.id)===String(cta));
-  const cuentasResumen = cuentasElegidas.length ? cuentasElegidas : state.cuentas;
-  const porCuenta = cuentasResumen.map(c=>{ const gx=gastos.filter(x=> x.cuentaId===c.id && (!mon || x.moneda===c.moneda)); const total=gx.reduce((a,b)=>a+b.importe,0); const pct=c.presupuesto? (total*100/c.presupuesto):0; return {label:c.nombre, moneda:c.moneda, total, presupuesto:c.presupuesto||0, pct:+pct.toFixed(1)}; }).sort((a,b)=> b.total-a.total);
-  drawBarChart($('#chart-cuenta'), porCuenta.map(x=>({label:x.label, value:x.total}))); const tbC=$('#tabla-cuenta tbody'); tbC.innerHTML=''; porCuenta.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.label}</td><td>${r.moneda}</td><td>${fmtCurrency(r.total,r.moneda)}</td><td>${r.presupuesto? fmtCurrency(r.presupuesto,r.moneda):'–'}</td><td>${r.pct||0}%</td>`; tbC.appendChild(tr); });
+function renderViajes() {
+  const tbody = $('#tabla-viajes tbody');
+  tbody.innerHTML = '';
+  state.viajes.forEach(v => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td><button class="ghost" data-edit-viaje="${v.id}">Editar</button> <button class="ghost" data-del-viaje="${v.id}">Eliminar</button></td>`;
+    tbody.appendChild(tr);
+  });
 }
-$('#r-moneda').onchange=renderResumen; $('#r-cuenta').onchange=renderResumen;
 
-async function seedIfEmpty(){
-  const cuentas=await getCuentas();
-  if(cuentas.length===0){
-    await addCuenta({nombre:'Efectivo',moneda:'EUR',saldoInicial:300,presupuesto:500});
-    await addCuenta({nombre:'Tarjeta ABC',moneda:'EUR',saldoInicial:1000,presupuesto:1200});
-  }
-  const cats=await getCategorias();
-  if(cats.length===0){
-    const comida=await addCategoria({nombre:'Comida'});
-    await addCategoria({nombre:'Desayuno',parentId:comida});
-    await addCategoria({nombre:'Almuerzo',parentId:comida});
-    await addCategoria({nombre:'Cena',parentId:comida});
-    const trans=await addCategoria({nombre:'Transporte'});
-    await addCategoria({nombre:'Metro',parentId:trans});
-    await addCategoria({nombre:'Bus',parentId:trans});
-    await addCategoria({nombre:'Taxi',parentId:trans});
-    await addCategoria({nombre:'Alojamiento'});
-    await addCategoria({nombre:'Ocio'});
-  }
+function renderMonedasConfig() {
+  const tbody = $('#tabla-monedas tbody');
+  tbody.innerHTML = '';
+  const rows = [
+    { codigo: 'EUR', nombre: 'Euro', eurPorUnidad: 1, unidadesPorEuro: 1, base: true },
+    ...foreignCurrencies()
+  ];
+  rows.forEach(m => {
+    const tr = document.createElement('tr');
+    const actions = m.base ? '-' : `<button class="ghost" data-edit-moneda="${escapeHtml(m.codigo)}">Editar</button> <button class="ghost" data-del-moneda="${escapeHtml(m.codigo)}">Eliminar</button>`;
+    tr.innerHTML = `<td><span class="badge">${escapeHtml(m.codigo)}</span></td><td>${escapeHtml(m.nombre || '-')}</td><td>${numberValue(m.eurPorUnidad).toFixed(6)} EUR</td><td>${numberValue(m.unidadesPorEuro).toFixed(6)} ${escapeHtml(m.codigo)}</td><td>${actions}</td>`;
+    tbody.appendChild(tr);
+  });
 }
-window.addEventListener('DOMContentLoaded', async ()=>{ renderMonedas(); await seedIfEmpty(); await loadAll(); });
 
+function renderViajesHome() {
+  const tbody = $('#tabla-viajes-home tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  const info = $('#selected-trip-info');
+  const selected = state.viajes.find(v => v.id === state.selectedViajeId);
+  info.textContent = selected ? `Viaje seleccionado: ${selected.nombre}` : 'Selecciona un viaje para consultar sus gastos o resumen.';
+  if (!state.viajes.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td colspan="6">Todavia no hay viajes. Puedes crearlos en Configuracion.</td>';
+    tbody.appendChild(tr);
+    return;
+  }
+  state.viajes.forEach(v => {
+    const expenses = state.gastos.filter(g => g.viajeId === v.id);
+    const total = expenses.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td><button class="ghost" data-trip-gastos="${v.id}">Gastos</button> <button class="ghost" data-trip-resumen="${v.id}">Resumen</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
 
-// v3.4: filtros robustos + export/import + resumen responsivo
-document.addEventListener('DOMContentLoaded', function(){
-  try{
-    // A) filtros por defecto vacíos
-    ['f-moneda','f-cuenta','f-cat','f-desde','f-hasta'].forEach(function(id){
-      var el=document.getElementById(id); if(el) el.value='';
+function renderCategorias() {
+  const tbody = $('#tabla-cats tbody');
+  tbody.innerHTML = '';
+  state.categorias.forEach(cat => {
+    const parent = state.categorias.find(c => c.id === cat.parentId);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(cat.nombre)}</td><td>${cat.parentId ? 'Subcategoria' : 'Categoria'}</td><td>${parent ? escapeHtml(parent.nombre) : '-'}</td><td><button class="ghost" data-edit-cat="${cat.id}">Editar</button> <button class="ghost" data-del-cat="${cat.id}">Eliminar</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function filteredGastos() {
+  const fMon = $('#f-moneda').value;
+  const fCta = $('#f-cuenta').value;
+  const fCat = $('#f-cat').value;
+  const fViaje = $('#f-viaje').value;
+  const fDesde = $('#f-desde').value;
+  const fHasta = $('#f-hasta').value;
+  return state.gastos
+    .filter(g => !fMon || g.moneda === fMon)
+    .filter(g => !fCta || g.cuentaId === Number(fCta))
+    .filter(g => !fCat || g.catId === Number(fCat))
+    .filter(g => !fViaje || g.viajeId === Number(fViaje))
+    .filter(g => !fDesde || g.fecha >= fDesde)
+    .filter(g => !fHasta || g.fecha <= fHasta)
+    .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+}
+
+function renderGastosTabla() {
+  const tbody = $('#tabla-gastos tbody');
+  tbody.innerHTML = '';
+  const rows = filteredGastos();
+  const byDate = {};
+  rows.forEach(g => {
+    (byDate[g.fecha] = byDate[g.fecha] || []).push(g);
+  });
+  let totalEur = 0;
+  Object.keys(byDate).sort().forEach(date => {
+    const header = document.createElement('tr');
+    header.innerHTML = `<td colspan="10"><b>${fmtDate(date)}</b></td>`;
+    tbody.appendChild(header);
+    let subtotalEur = 0;
+    byDate[date].forEach(g => {
+      const cat = state.categorias.find(c => c.id === g.catId);
+      const sub = state.categorias.find(c => c.id === g.subcatId);
+      const cta = state.cuentas.find(c => c.id === g.cuentaId);
+      const viaje = state.viajes.find(v => v.id === g.viajeId);
+      const eur = toEur(g.importe, g.moneda);
+      subtotalEur += eur;
+      totalEur += eur;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td></td><td>${escapeHtml(viaje ? viaje.nombre : '-')}</td><td>${escapeHtml(cat ? cat.nombre : '?')}</td><td>${escapeHtml(sub ? sub.nombre : '-')}</td><td>${escapeHtml(cta ? cta.nombre : '?')}</td><td>${escapeHtml(g.moneda)}</td><td>${fmtCurrency(g.importe, g.moneda)}</td><td>${fmtCurrency(eur, 'EUR')}</td><td>${escapeHtml(g.desc || '')}</td><td><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></td>`;
+      tbody.appendChild(tr);
     });
-    if (typeof renderGastosTabla==='function') renderGastosTabla();
-
-    // B) botón "Quitar filtros" (por id)
-    function clearAndRender(){
-      ['f-moneda','f-cuenta','f-cat','f-desde','f-hasta'].forEach(function(id){
-        var el=document.getElementById(id); if(el) el.value='';
-      });
-      if (typeof renderGastosTabla==='function') renderGastosTabla();
-    }
-    var b1=document.getElementById('f-clear');
-    var b2=document.getElementById('btn-clear-filtros');
-    if(b1){ b1.addEventListener('click', function(e){ e.preventDefault(); clearAndRender(); }); }
-    if(b2){ b2.addEventListener('click', function(e){ e.preventDefault(); clearAndRender(); }); }
-
-    // C) Exportar/Importar si existen
-    var be=document.getElementById('btn-export');
-    var bi=document.getElementById('btn-import');
-    var fi=document.getElementById('file-import');
-    if(be){
-      be.addEventListener('click', async function(){
-        try{
-          var data = await exportAll();
-          var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
-          var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-          a.download = 'gastos_backup.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1500);
-        }catch(err){ alert('No se pudo exportar: '+err); }
-      });
-    }
-    if(bi && fi){
-      bi.addEventListener('click', ()=> fi.click());
-      fi.addEventListener('change', async function(ev){
-        var f = ev.target.files && ev.target.files[0]; if(!f) return;
-        try{
-          var txt = await f.text(); var obj = JSON.parse(txt);
-          await importAll(obj); alert('Datos importados ✓');
-          await loadAll(); if (typeof renderGastosTabla==='function') renderGastosTabla();
-        }catch(err){ alert('Archivo no válido: '+err); }
-        finally{ ev.target.value=''; }
-      });
-    }
-  }catch(e){ console.warn('init v3.4', e); }
-});
-
-
-// v3.4-beta init: filtros, export/import
-document.addEventListener('DOMContentLoaded', function(){
-  try{
-    var ids = ['f-moneda','f-cuenta','f-cat','f-desde','f-hasta'];
-    for(var i=0;i<ids.length;i++){ var el=document.getElementById(ids[i]); if(el) el.value=''; }
-    if (typeof renderGastosTabla==='function') renderGastosTabla();
-
-    function clearAndRender(){
-      for(var i=0;i<ids.length;i++){ var el=document.getElementById(ids[i]); if(el) el.value=''; }
-      if (typeof renderGastosTabla==='function') renderGastosTabla();
-    }
-    var b1=document.getElementById('f-clear');
-    var b2=document.getElementById('btn-clear-filtros');
-    if(b1){ b1.addEventListener('click', function(e){ e.preventDefault(); clearAndRender(); }); }
-    if(b2){ b2.addEventListener('click', function(e){ e.preventDefault(); clearAndRender(); }); }
-
-    var be=document.getElementById('btn-export');
-    var bi=document.getElementById('btn-import');
-    var fi=document.getElementById('file-import');
-    if(be){
-      be.addEventListener('click', function(){
-        (async function(){
-          try{
-            var data = await exportAll();
-            var blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
-            var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-            a.download = 'gastos_backup.json'; a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1500);
-          }catch(err){ alert('No se pudo exportar: '+err); }
-        })();
-      });
-    }
-    if(bi && fi){
-      bi.addEventListener('click', function(){ fi.click(); });
-      fi.addEventListener('change', function(ev){
-        var f = ev.target.files && ev.target.files[0];
-        if(!f) return;
-        (async function(){
-          try{
-            var txt = await f.text();
-            var obj = JSON.parse(txt);
-            await importAll(obj);
-            alert('Datos importados ✓');
-            await loadAll();
-            if (typeof renderGastosTabla==='function') renderGastosTabla();
-          }catch(err){ alert('Archivo no válido: '+err); }
-          finally{ ev.target.value=''; }
-        })();
-      });
-    }
-  }catch(e){ console.warn('init v3.4-beta', e); }
-});
-
-
-// v3.4-beta: seed inicial si vacío
-(function(){
-  try{
-    if (window.DB && DB.getCuentas && DB.getCategorias){
-      Promise.all([DB.getCuentas(), DB.getCategorias()]).then(function(arr){
-        var cs=arr[0]||[], ks=arr[1]||[];
-        if(cs.length===0 && ks.length===0){
-          var now=new Date().toISOString();
-          (async function(){
-            try{
-              await DB.addCuenta({nombre:'Efectivo', moneda:'EUR', saldoInicial:300, saldoActual:300, presupuesto:500, nota:'', createdAt:now, updatedAt:now});
-              await DB.addCuenta({nombre:'Tarjeta ABC', moneda:'EUR', saldoInicial:1000, saldoActual:1000, presupuesto:1200, nota:'', createdAt:now, updatedAt:now});
-              var comida = await DB.addCategoria({nombre:'Comida', parentId:null});
-              await DB.addCategoria({nombre:'Desayuno', parentId:comida});
-              await DB.addCategoria({nombre:'Almuerzo', parentId:comida});
-              await DB.addCategoria({nombre:'Cena', parentId:comida});
-              var trans = await DB.addCategoria({nombre:'Transporte', parentId:null});
-              await DB.addCategoria({nombre:'Metro', parentId:trans});
-              await DB.addCategoria({nombre:'Bus', parentId:trans});
-              await DB.addCategoria({nombre:'Taxi', parentId:trans});
-              await DB.addCategoria({nombre:'Alojamiento', parentId:null});
-              await DB.addCategoria({nombre:'Ocio', parentId:null});
-              if (typeof loadAll==='function') await loadAll();
-              if (typeof renderGastosTabla==='function') renderGastosTabla();
-            }catch(e){ console.warn('seed v3.4-beta', e); }
-          })();
-        }
-      });
-    }
-  }catch(e){ console.warn('seed block error', e); }
-})();
-
-
-// v3.4.4 - orden jerárquico + deduplicación en importación
-(function(){
-  function norm(s){ return (s||'').toString().trim().toLowerCase(); }
-  function sortState(){
-    try{
-      if(window.state){
-        if(Array.isArray(state.categorias)){
-          // Padres primero, luego hijos; dentro A-Z (ignora acentos)
-          state.categorias.sort(function(a,b){
-            var pa=a.parentId||0, pb=b.parentId||0;
-            if(pa!==pb) return pa-pb;
-            return norm(a.nombre).localeCompare(norm(b.nombre),'es',{sensitivity:'base'});
-          });
-        }
-        if(Array.isArray(state.cuentas)){
-          state.cuentas.sort(function(a,b){
-            return norm(a.nombre).localeCompare(norm(b.nombre),'es',{sensitivity:'base'});
-          });
-        }
-        if(Array.isArray(state.monedas)){
-          state.monedas.sort(function(a,b){
-            return norm(a).localeCompare(norm(b),'es',{sensitivity:'base'});
-          });
-        }
-      }
-    }catch(e){ console.warn('sortState', e); }
-  }
-  // Hook post-load para ordenar siempre que cargamos datos
-  document.addEventListener('DOMContentLoaded', function(){
-    try{
-      var hooked=false;
-      function hook(){
-        if(hooked) return;
-        if(typeof window.loadAll==='function' && typeof window.renderAll==='function'){
-          hooked=true;
-          var _loadAll = window.loadAll;
-          window.loadAll = async function(){
-            var r = await _loadAll.apply(this, arguments);
-            sortState();
-            try{ renderAll(); }catch(_){}
-            return r;
-          };
-        }
-      }
-      hook(); setTimeout(hook,300); setTimeout(hook,1000);
-    }catch(e){ console.warn('hook loadAll', e); }
+    const subtotal = document.createElement('tr');
+    subtotal.innerHTML = `<td colspan="7" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="2"></td>`;
+    tbody.appendChild(subtotal);
   });
-  // Envolver importAll para fusionar sin duplicar
-  if(typeof window.importAll==='function' && !window.__importAllWrapped){
-    var _imp = window.importAll;
-    window.importAll = async function(data, opts){
-      try{
-        if(data){
-          // categorías: por (nombre, parentId) y remap de ids en gastos
-          if(Array.isArray(data.categorias)){
-            var seen=new Map(), fixId=new Map();
-            data.categorias.forEach(function(c){
-              var key = norm(c.nombre)+'|'+(c.parentId||0);
-              if(!seen.has(key)){ seen.set(key,c); fixId.set(c.id,c.id); }
-              else{ fixId.set(c.id, seen.get(key).id); }
-            });
-            if(Array.isArray(data.gastos)){
-              data.gastos.forEach(function(g){
-                if(g.catId!=null && fixId.has(g.catId)) g.catId = fixId.get(g.catId);
-                if(g.subcatId!=null && fixId.has(g.subcatId)) g.subcatId = fixId.get(g.subcatId);
-              });
-            }
-            data.categorias = Array.from(seen.values());
-          }
-          // cuentas: por (nombre, moneda)
-          if(Array.isArray(data.cuentas)){
-            var seenC=new Map();
-            data.cuentas = data.cuentas.filter(function(c){
-              var key = norm(c.nombre)+'|'+norm(c.moneda||'');
-              if(seenC.has(key)) return false;
-              seenC.set(key,1); return true;
-            });
-          }
-          // monedas: por nombre
-          if(Array.isArray(data.monedas)){
-            var seenM=new Set();
-            data.monedas = data.monedas.filter(function(m){
-              var v=norm(m); if(seenM.has(v)) return false; seenM.add(v); return true;
-            });
-          }
-        }
-      }catch(e){ console.warn('import dedupe', e); }
-      var res = await _imp(data, opts);
-      try{ sortState(); if(typeof renderAll==='function') renderAll(); }catch(_){}
-      return res;
-    };
-    window.__importAllWrapped = true;
+  $('#tg-total').textContent = fmtCurrency(totalEur, 'EUR');
+}
+
+function drawPieChart(container, data) {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const w = 320;
+  const h = 240;
+  const r = 78;
+  const cx = 105;
+  const cy = 118;
+  let angle = -Math.PI / 2;
+  let svg = `<svg class="chart" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`;
+  if (!total) {
+    svg += '<text x="20" y="120" fill="#6b7280">Sin datos</text>';
   }
+  data.forEach((item, i) => {
+    const slice = (item.value / total) * Math.PI * 2;
+    const x1 = cx + r * Math.cos(angle);
+    const y1 = cy + r * Math.sin(angle);
+    const x2 = cx + r * Math.cos(angle + slice);
+    const y2 = cy + r * Math.sin(angle + slice);
+    const large = slice > Math.PI ? 1 : 0;
+    const color = `hsl(${(i * 57) % 360} 70% 48%)`;
+    svg += `<path d="M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z" fill="${color}"><title>${escapeHtml(item.label)}: ${fmtCurrency(item.value, 'EUR')}</title></path>`;
+    angle += slice;
+  });
+  data.forEach((item, i) => {
+    const color = `hsl(${(i * 57) % 360} 70% 48%)`;
+    svg += `<rect x="205" y="${34 + i * 24}" width="12" height="12" fill="${color}"></rect><text x="224" y="${45 + i * 24}" font-size="12" fill="#374151">${escapeHtml(item.label.slice(0, 18))}</text>`;
+  });
+  svg += '</svg>';
+  container.innerHTML = svg;
+}
 
+function drawBarChart(container, data) {
+  const w = 360;
+  const h = 240;
+  const pad = 36;
+  const max = Math.max(1, ...data.map(item => item.value));
+  const slot = (w - pad * 2) / Math.max(1, data.length);
+  const bw = slot * 0.65;
+  let svg = `<svg class="chart" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg"><line x1="${pad}" y1="${h - pad}" x2="${w - pad}" y2="${h - pad}" stroke="#e5e7eb"/>`;
+  data.forEach((item, i) => {
+    const value = Math.max(0, item.value);
+    const x = pad + i * slot + (slot - bw) / 2;
+    const barH = (value / max) * (h - pad * 2);
+    const y = h - pad - barH;
+    const color = `hsl(${(i * 57) % 360} 70% 48%)`;
+    svg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${barH.toFixed(1)}" fill="${color}"><title>${escapeHtml(item.label)}: ${fmtCurrency(value, 'EUR')}</title></rect><text x="${(x + bw / 2).toFixed(1)}" y="${h - pad + 15}" font-size="11" text-anchor="middle" fill="#374151">${escapeHtml(item.label.slice(0, 10))}</text>`;
+  });
+  if (!data.length) svg += '<text x="20" y="120" fill="#6b7280">Sin datos</text>';
+  svg += '</svg>';
+  container.innerHTML = svg;
+}
 
+function renderResumen() {
+  const mon = $('#r-moneda').value;
+  const cta = $('#r-cuenta').value;
+  const viaje = $('#r-viaje').value;
+  const gastos = state.gastos
+    .filter(g => !mon || g.moneda === mon)
+    .filter(g => !cta || g.cuentaId === Number(cta))
+    .filter(g => !viaje || g.viajeId === Number(viaje));
+  const totalEur = gastos.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
+  $('#kpi-total').textContent = fmtCurrency(totalEur, 'EUR');
+  if (gastos.length) {
+    const dates = gastos.map(g => new Date(`${g.fecha}T00:00:00`));
+    const min = new Date(Math.min(...dates));
+    const max = new Date(Math.max(...dates));
+    const days = Math.max(1, Math.ceil((max - min) / 86400000) + 1);
+    $('#kpi-media').textContent = `${fmtCurrency(totalEur / days, 'EUR')}/dia`;
+  } else {
+    $('#kpi-media').textContent = fmtCurrency(0, 'EUR');
+  }
+  const pcts = state.cuentas.map(c => {
+    const spent = gastos
+      .filter(g => g.cuentaId === c.id)
+      .reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
+    return c.presupuesto ? Math.min(100, spent * 100 / c.presupuesto) : 0;
+  });
+  $('#kpi-presu').textContent = `${(pcts.reduce((a, b) => a + b, 0) / Math.max(1, pcts.length)).toFixed(0)}%`;
 
-// === [exports for patches stable] ===
-try{
-  if (typeof renderResumen === 'function') window.renderResumen = renderResumen;
-  if (typeof renderAll === 'function') window.renderAll = renderAll;
-  if (typeof drawPieChart === 'function') window.drawPieChart = drawPieChart;
-  if (typeof drawBarChart === 'function') window.drawBarChart = drawBarChart;
-  if (typeof loadAll === 'function') window.loadAll = loadAll;
-  if (typeof updateCuenta === 'function') window.updateCuenta = updateCuenta;
-  if (typeof addCuenta === 'function') window.addCuenta = addCuenta;
-  if (typeof delCuenta === 'function') window.delCuenta = delCuenta;
-  if (typeof addGasto === 'function') window.addGasto = addGasto;
-  if (typeof updateGasto === 'function') window.updateGasto = updateGasto;
-  if (typeof delGasto === 'function') window.delGasto = delGasto;
-  if (typeof state === 'object') window.state = state;
-} catch(e){}
+  const byCategory = {};
+  gastos.forEach(g => {
+    const cat = state.categorias.find(c => c.id === g.catId);
+    const sub = state.categorias.find(c => c.id === g.subcatId);
+    const key = `${cat ? cat.nombre : '?'}||${sub ? sub.nombre : '(sin subcat)'}`;
+    byCategory[key] = (byCategory[key] || 0) + toEur(g.importe, g.moneda);
+  });
+  const categoryRows = Object.entries(byCategory)
+    .map(([key, total]) => ({ cat: key.split('||')[0], sub: key.split('||')[1], total }))
+    .sort((a, b) => b.total - a.total);
+  $('#tabla-cat tbody').innerHTML = categoryRows.map(row => `<tr><td>${escapeHtml(row.cat)}</td><td>${escapeHtml(row.sub)}</td><td>${fmtCurrency(row.total, 'EUR')}</td></tr>`).join('');
+  drawPieChart($('#chart-cat'), categoryRows.slice(0, 6).map(row => ({ label: row.sub === '(sin subcat)' ? row.cat : `${row.cat} · ${row.sub}`, value: row.total })));
 
-})();
+  const accounts = cta ? state.cuentas.filter(c => c.id === Number(cta)) : state.cuentas;
+  const accountRows = accounts.map(c => {
+    const spentAccountCurrency = gastos
+      .filter(g => g.cuentaId === c.id)
+      .reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
+    const spentEur = gastos.filter(g => g.cuentaId === c.id).reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
+    const budget = numberValue(c.presupuesto);
+    const budgetEur = budget ? toEur(budget, c.moneda) : 0;
+    const remainingEur = budget ? budgetEur - spentEur : null;
+    return {
+      label: c.nombre,
+      moneda: c.moneda,
+      total: spentAccountCurrency,
+      totalEur: spentEur,
+      presupuesto: budget,
+      presupuestoEur: budgetEur,
+      restanteEur: remainingEur,
+      pct: budget ? spentEur * 100 / budgetEur : 0
+    };
+  }).sort((a, b) => b.totalEur - a.totalEur);
+  drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.label, value: row.totalEur })));
+  $('#tabla-cuenta tbody').innerHTML = accountRows.map(row => `<tr><td>${escapeHtml(row.label)}</td><td>${escapeHtml(row.moneda)}</td><td>${fmtCurrency(row.total, row.moneda)}</td><td>${fmtCurrency(row.totalEur, 'EUR')}</td><td>${row.presupuesto ? `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}` : '-'}</td><td>${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td>${row.pct.toFixed(1)}%</td></tr>`).join('');
+}
+
+async function exportAll() {
+  return {
+    version: APP_VERSION,
+    generatedAt: new Date().toISOString(),
+    cuentas: state.cuentas,
+    categorias: state.categorias,
+    gastos: state.gastos,
+    viajes: state.viajes,
+    monedas: state.monedas
+  };
+}
+
+async function importAll(data) {
+  if (!data || !Array.isArray(data.cuentas) || !Array.isArray(data.categorias) || !Array.isArray(data.gastos)) {
+    throw new Error('Archivo no valido');
+  }
+  await clearStores(['cuentas', 'categorias', 'gastos', 'viajes', 'monedas']);
+  await ensureBaseCurrency();
+  for (const m of data.monedas || []) {
+    const codigo = String(m.codigo || '').toUpperCase();
+    if (!codigo || codigo === 'EUR') continue;
+    await putRecord('monedas', {
+      codigo,
+      nombre: m.nombre || '',
+      eurPorUnidad: numberValue(m.eurPorUnidad),
+      unidadesPorEuro: numberValue(m.unidadesPorEuro),
+      updatedAt: m.updatedAt || new Date().toISOString()
+    });
+  }
+  for (const v of data.viajes || []) {
+    const obj = {
+      nombre: v.nombre,
+      fechaInicio: v.fechaInicio,
+      fechaFin: v.fechaFin,
+      createdAt: v.createdAt || new Date().toISOString(),
+      updatedAt: v.updatedAt || new Date().toISOString()
+    };
+    if (v.id != null) obj.id = v.id;
+    await addRecord('viajes', obj);
+  }
+  for (const c of data.cuentas || []) {
+    const obj = {
+      nombre: c.nombre,
+      moneda: c.moneda || 'EUR',
+      saldoInicial: numberValue(c.saldoInicial),
+      saldoActual: numberValue(c.saldoActual ?? c.saldoInicial),
+      presupuesto: numberValue(c.presupuesto),
+      nota: c.nota || '',
+      createdAt: c.createdAt || new Date().toISOString(),
+      updatedAt: c.updatedAt || new Date().toISOString()
+    };
+    if (c.id != null) obj.id = c.id;
+    await addRecord('cuentas', obj);
+  }
+  for (const c of data.categorias || []) {
+    const obj = {
+      nombre: c.nombre,
+      parentId: c.parentId ? Number(c.parentId) : null
+    };
+    if (c.id != null) obj.id = c.id;
+    await addRecord('categorias', obj);
+  }
+  for (const g of data.gastos || []) {
+    const obj = {
+      ...g,
+      viajeId: g.viajeId || null,
+      importe: numberValue(g.importe),
+      importeEur: toEur(g.importe, g.moneda)
+    };
+    if (g.id == null) delete obj.id;
+    await addRecord('gastos', obj);
+  }
+}
+
+async function seedIfEmpty() {
+  await seedDefaults();
+}
+
+function setTab(id) {
+  state.activeTab = id;
+  ['viajes', 'gastos', 'resumen', 'config'].forEach(tab => {
+    $(`#tab-${tab}`).classList.toggle('active', tab === id);
+    $(`#view-${tab}`).style.display = tab === id ? 'block' : 'none';
+  });
+  if (id === 'resumen') renderResumen();
+}
+
+function applySelectedTrip(id) {
+  state.selectedViajeId = id ? Number(id) : null;
+  const value = state.selectedViajeId ? String(state.selectedViajeId) : '';
+  if ($('#f-viaje')) $('#f-viaje').value = value;
+  if ($('#r-viaje')) $('#r-viaje').value = value;
+  renderViajesHome();
+  renderGastosTabla();
+  renderResumen();
+}
+
+async function resetDataPrompt() {
+  const option = prompt('Que quieres resetear? Escribe: todo, categorias, monedas, cuentas, viajes o gastos', 'todo');
+  if (option === null) return;
+  const value = option.trim().toLowerCase();
+  const map = {
+    todo: ['cuentas', 'categorias', 'gastos', 'viajes', 'monedas'],
+    categorias: ['categorias'],
+    monedas: ['monedas'],
+    cuentas: ['cuentas'],
+    viajes: ['viajes'],
+    gastos: ['gastos']
+  };
+  const stores = map[value];
+  if (!stores) {
+    alert('Opcion no reconocida. Usa: todo, categorias, monedas, cuentas, viajes o gastos.');
+    return;
+  }
+  if (!confirm(`Se borrara: ${value}. Continuar?`)) return;
+  try {
+    if (window.caches && value === 'todo') {
+      const keys = await caches.keys();
+      for (const key of keys) await caches.delete(key);
+    }
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations && value === 'todo') {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) await reg.unregister();
+    }
+    await clearStores(stores);
+    if (value === 'todo' || value === 'monedas') await ensureBaseCurrency();
+    if (value === 'todo' || value === 'cuentas') await seedDefaultAccounts();
+    if (value === 'todo' || value === 'categorias') await seedDefaultCategories();
+    state.selectedViajeId = null;
+    await loadAll();
+    alert('Reset completado');
+  } catch (err) {
+    alert(`No se pudo resetear: ${err.message || err}`);
+  }
+}
+
+function bindEvents() {
+  $('#tab-viajes').onclick = () => setTab('viajes');
+  $('#tab-gastos').onclick = () => setTab('gastos');
+  $('#tab-resumen').onclick = () => setTab('resumen');
+  $('#tab-config').onclick = () => setTab('config');
+  $('#btn-clear-trip').onclick = () => {
+    applySelectedTrip(null);
+    setTab('viajes');
+  };
+  $('#g-cat').onchange = renderSubcategories;
+  $('#g-cuenta').onchange = () => {
+    const account = state.cuentas.find(c => c.id === Number($('#g-cuenta').value));
+    if (account) $('#g-moneda').value = account.moneda;
+  };
+  $('#g-moneda').onchange = () => {
+    const account = state.cuentas.find(c => c.id === Number($('#g-cuenta').value));
+    if (account && account.moneda !== $('#g-moneda').value) {
+      setMessage('#msg-gasto', 'La moneda debe coincidir con la cuenta seleccionada', true);
+    } else if ($('#g-moneda').value !== 'EUR' && !hasValidCurrency($('#g-moneda').value)) {
+      setMessage('#msg-gasto', 'Configura primero esa moneda extranjera', true);
+    } else {
+      setMessage('#msg-gasto', '');
+    }
+  };
+  function syncCurrencyRate(source) {
+    const eurPerUnit = $('#m-eur');
+    const unitsPerEur = $('#m-back');
+    const value = source === 'eur' ? numberValue(eurPerUnit.value) : numberValue(unitsPerEur.value);
+    if (value <= 0) return;
+    if (source === 'eur') unitsPerEur.value = formatRate(1 / value);
+    else eurPerUnit.value = formatRate(1 / value);
+  }
+  $('#m-eur').oninput = () => syncCurrencyRate('eur');
+  $('#m-back').oninput = () => syncCurrencyRate('back');
+  ['#f-moneda', '#f-cuenta', '#f-cat', '#f-desde', '#f-hasta'].forEach(sel => $(sel).onchange = renderGastosTabla);
+  $('#f-viaje').onchange = () => {
+    state.selectedViajeId = $('#f-viaje').value ? Number($('#f-viaje').value) : null;
+    if ($('#r-viaje')) $('#r-viaje').value = $('#f-viaje').value;
+    renderViajesHome();
+    renderGastosTabla();
+  };
+  ['#r-moneda', '#r-cuenta'].forEach(sel => $(sel).onchange = renderResumen);
+  $('#r-viaje').onchange = () => {
+    state.selectedViajeId = $('#r-viaje').value ? Number($('#r-viaje').value) : null;
+    if ($('#f-viaje')) $('#f-viaje').value = $('#r-viaje').value;
+    renderViajesHome();
+    renderResumen();
+  };
+
+  $('#btn-add-gasto').onclick = async () => {
+    try {
+      const fecha = $('#g-fecha').value || todayIso();
+      const cuentaId = $('#g-cuenta').value;
+      const moneda = $('#g-moneda').value;
+      const catId = $('#g-cat').value;
+      const importe = numberValue($('#g-importe').value);
+      if (!cuentaId || !catId || importe <= 0) throw new Error('Completa cuenta, categoria e importe');
+      await addGasto({
+        fecha,
+        viajeId: $('#g-viaje').value || null,
+        cuentaId,
+        moneda,
+        catId,
+        subcatId: $('#g-subcat').value || null,
+        importe,
+        desc: $('#g-desc').value.trim()
+      });
+      $('#g-importe').value = '';
+      $('#g-desc').value = '';
+      setMessage('#msg-gasto', 'Gasto anadido');
+      await loadAll();
+    } catch (err) {
+      setMessage('#msg-gasto', err.message || String(err), true);
+    }
+  };
+
+  $('#btn-add-cuenta').onclick = async () => {
+    try {
+      const nombre = $('#c-nombre').value.trim();
+      if (!nombre) throw new Error('Pon un nombre');
+      const moneda = $('#c-moneda').value;
+      if (!hasValidCurrency(moneda)) throw new Error('Configura esa moneda antes de crear la cuenta');
+      await addCuenta({
+        nombre,
+        moneda,
+        saldoInicial: $('#c-saldo').value,
+        presupuesto: $('#c-presu').value,
+        nota: $('#c-nota').value.trim()
+      });
+      ['#c-nombre', '#c-saldo', '#c-presu', '#c-nota'].forEach(sel => $(sel).value = '');
+      setMessage('#msg-cuenta', 'Cuenta anadida');
+      await loadAll();
+    } catch (err) {
+      setMessage('#msg-cuenta', err.message || String(err), true);
+    }
+  };
+
+  $('#btn-add-viaje').onclick = async () => {
+    try {
+      const nombre = $('#v-nombre').value.trim();
+      const fechaInicio = $('#v-inicio').value;
+      const fechaFin = $('#v-fin').value;
+      if (!nombre || !fechaInicio || !fechaFin) throw new Error('Completa nombre, inicio y final');
+      if (fechaFin < fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
+      await addViaje({ nombre, fechaInicio, fechaFin });
+      ['#v-nombre', '#v-inicio', '#v-fin'].forEach(sel => $(sel).value = '');
+      setMessage('#msg-viaje', 'Viaje anadido');
+      await loadAll();
+    } catch (err) {
+      setMessage('#msg-viaje', err.message || String(err), true);
+    }
+  };
+
+  $('#btn-add-moneda').onclick = async () => {
+    try {
+      await upsertMoneda({
+        codigo: $('#m-codigo').value,
+        nombre: $('#m-nombre').value,
+        eurPorUnidad: $('#m-eur').value,
+        unidadesPorEuro: $('#m-back').value
+      });
+      ['#m-codigo', '#m-nombre', '#m-eur', '#m-back'].forEach(sel => $(sel).value = '');
+      setMessage('#msg-moneda', 'Moneda guardada');
+      await loadAll();
+    } catch (err) {
+      setMessage('#msg-moneda', err.message || String(err), true);
+    }
+  };
+
+  $('#btn-add-cat').onclick = async () => {
+    try {
+      const nombre = $('#cat-nombre').value.trim();
+      if (!nombre) throw new Error('Escribe un nombre');
+      await addCategoria({ nombre, parentId: $('#cat-parent').value || null });
+      $('#cat-nombre').value = '';
+      $('#cat-parent').value = '';
+      setMessage('#msg-cat', 'Categoria guardada');
+      await loadAll();
+    } catch (err) {
+      setMessage('#msg-cat', err.message || String(err), true);
+    }
+  };
+
+  $('#f-clear').onclick = () => {
+    ['#f-moneda', '#f-cuenta', '#f-cat', '#f-viaje', '#f-desde', '#f-hasta'].forEach(sel => $(sel).value = '');
+    state.selectedViajeId = null;
+    renderViajesHome();
+    renderGastosTabla();
+  };
+  $('#btn-reset').onclick = resetDataPrompt;
+
+  document.addEventListener('click', async event => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    try {
+      if (target.dataset.delCuenta) {
+        if (confirm('Eliminar esta cuenta?')) await delCuenta(target.dataset.delCuenta);
+      } else if (target.dataset.editCuenta) {
+        const c = state.cuentas.find(item => item.id === Number(target.dataset.editCuenta));
+        if (!c) return;
+        const nombre = prompt('Nuevo nombre', c.nombre);
+        if (nombre === null) return;
+        const presupuesto = numberValue(prompt('Presupuesto', c.presupuesto || '0'));
+        const ajuste = prompt('Ajuste de saldo actual (+50, -20, ...)', '');
+        const saldoActual = ajuste ? numberValue(c.saldoActual) + numberValue(ajuste) : numberValue(c.saldoActual);
+        await updateCuenta(c.id, { nombre: nombre.trim() || c.nombre, presupuesto, saldoActual });
+      } else if (target.dataset.delViaje) {
+        if (confirm('Eliminar este viaje? Los gastos se conservaran sin viaje.')) await delViaje(target.dataset.delViaje);
+      } else if (target.dataset.editViaje) {
+        const v = state.viajes.find(item => item.id === Number(target.dataset.editViaje));
+        if (!v) return;
+        const nombre = prompt('Nombre del viaje', v.nombre);
+        if (nombre === null) return;
+        const fechaInicio = prompt('Fecha de inicio (AAAA-MM-DD)', v.fechaInicio) || v.fechaInicio;
+        const fechaFin = prompt('Fecha final (AAAA-MM-DD)', v.fechaFin) || v.fechaFin;
+        if (fechaFin < fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
+        await updateViaje(v.id, { nombre: nombre.trim() || v.nombre, fechaInicio, fechaFin });
+      } else if (target.dataset.delMoneda) {
+        const code = target.dataset.delMoneda;
+        const inUse = state.cuentas.some(c => c.moneda === code) || state.gastos.some(g => g.moneda === code);
+        if (inUse) throw new Error('No se puede eliminar una moneda usada por cuentas o gastos');
+        if (confirm(`Eliminar ${code}?`)) await delMoneda(code);
+      } else if (target.dataset.editMoneda) {
+        const m = state.monedas.find(item => item.codigo === target.dataset.editMoneda);
+        if (!m) return;
+        const eur = prompt(`1 ${m.codigo} equivale a EUR`, m.eurPorUnidad);
+        if (eur === null) return;
+        const back = prompt(`1 EUR equivale a ${m.codigo}`, m.unidadesPorEuro);
+        if (back === null) return;
+        await upsertMoneda({ ...m, eurPorUnidad: eur, unidadesPorEuro: back });
+      } else if (target.dataset.delCat) {
+        if (confirm('Eliminar esta categoria?')) await delCategoria(target.dataset.delCat);
+      } else if (target.dataset.editCat) {
+        const c = state.categorias.find(item => item.id === Number(target.dataset.editCat));
+        if (!c) return;
+        const nombre = prompt('Nuevo nombre', c.nombre);
+        if (nombre === null) return;
+        await updateCategoria(c.id, { nombre: nombre.trim() || c.nombre });
+      } else if (target.dataset.delGasto) {
+        if (confirm('Eliminar este gasto?')) await delGasto(target.dataset.delGasto);
+      } else if (target.dataset.editGasto) {
+        const g = state.gastos.find(item => item.id === Number(target.dataset.editGasto));
+        if (!g) return;
+        const importe = prompt('Nuevo importe', g.importe);
+        if (importe === null) return;
+        const desc = prompt('Descripcion', g.desc || '');
+        await updateGasto(g.id, { importe: numberValue(importe), desc: desc ?? g.desc });
+      } else if (target.dataset.tripGastos) {
+        applySelectedTrip(target.dataset.tripGastos);
+        setTab('gastos');
+        return;
+      } else if (target.dataset.tripResumen) {
+        applySelectedTrip(target.dataset.tripResumen);
+        setTab('resumen');
+        return;
+      } else {
+        return;
+      }
+      await loadAll();
+    } catch (err) {
+      alert(err.message || String(err));
+    }
+  });
+
+  $('#btn-export').onclick = async () => {
+    try {
+      const data = await exportAll();
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const link = $('#export-link');
+      const openLink = $('#export-open-link');
+      if (link.dataset.objectUrl) URL.revokeObjectURL(link.dataset.objectUrl);
+      if (openLink.dataset.objectUrl) URL.revokeObjectURL(openLink.dataset.objectUrl);
+      const url = URL.createObjectURL(blob);
+      const openUrl = URL.createObjectURL(new Blob([json], { type: 'text/plain' }));
+      const filename = `gastos_backup_v${APP_VERSION}_${todayIso()}.json`;
+      link.href = url;
+      link.download = filename;
+      link.dataset.objectUrl = url;
+      link.style.display = 'inline-flex';
+      link.textContent = `Descargar ${filename}`;
+      openLink.href = openUrl;
+      openLink.dataset.objectUrl = openUrl;
+      openLink.style.display = 'inline-flex';
+      $('#export-json').value = json;
+      $('#export-panel').style.display = 'block';
+      setMessage('#msg-export', 'Backup generado. Usa Descargar, Abrir JSON o copia el texto.');
+    } catch (err) {
+      alert(`No se pudo exportar: ${err.message || err}`);
+    }
+  };
+  $('#btn-import').onclick = () => $('#file-import').click();
+  $('#file-import').onchange = async event => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    try {
+      const ok = confirm('Importar reemplazara todos los datos locales actuales. Si quieres conservarlos, cancela y exporta primero. Continuar?');
+      if (!ok) return;
+      await importAll(JSON.parse(await file.text()));
+      await loadAll();
+      alert('Datos importados');
+    } catch (err) {
+      alert(`Archivo no valido: ${err.message || err}`);
+    } finally {
+      event.target.value = '';
+    }
+  };
+}
+
+window.addEventListener('DOMContentLoaded', async () => {
+  bindEvents();
+  await seedIfEmpty();
+  await loadAll();
+});
+
+Object.assign(window, {
+  state,
+  loadAll,
+  renderAll,
+  renderResumen,
+  addCuenta,
+  updateCuenta,
+  delCuenta,
+  addGasto,
+  updateGasto,
+  delGasto,
+  addViaje,
+  updateViaje,
+  delViaje,
+  upsertMoneda,
+  exportAll,
+  importAll
+});
