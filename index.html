@@ -18,7 +18,7 @@
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuracion</button>
   </nav>
-  <div class="app-version">500v6</div>
+  <div class="app-version">500v7</div>
 </header>
 
 <main>
@@ -84,10 +84,11 @@
       <div class="box"><div class="small">Presupuestos usados</div><div id="kpi-presu" class="big">-</div></div>
     </div>
     <div class="card">
-      <div class="row3">
+      <div class="row4">
         <div><label>Moneda original</label><select id="r-moneda"></select></div>
         <div><label>Cuenta</label><select id="r-cuenta"></select></div>
         <div><label>Viaje</label><select id="r-viaje"></select></div>
+        <div><label>Desglose</label><select id="r-desglose"><option value="subcategorias">Subcategorias</option><option value="categorias">Categorias</option></select></div>
       </div>
       <div id="chart-cat"></div>
       <div class="table-wrap">
@@ -189,7 +190,7 @@
 
 <footer>App PWA offline - IndexedDB - Espanol</footer>
 
-<script src="app.bundle.js?v=500v6"></script>
+<script src="app.bundle.js?v=500v7"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

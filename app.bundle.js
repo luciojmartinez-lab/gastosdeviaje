@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 2;
-const APP_VERSION = '500v6';
+const APP_VERSION = '500v7';
 let dbPromise = null;
 
 function openDB() {
@@ -718,6 +718,32 @@ function renderResumen() {
   $('#tabla-cat tbody').innerHTML = categoryRows.map(row => `<tr><td>${escapeHtml(row.cat)}</td><td>${escapeHtml(row.sub)}</td><td>${fmtCurrency(row.total, 'EUR')}</td></tr>`).join('');
   drawPieChart($('#chart-cat'), categoryRows.slice(0, 6).map(row => ({ label: row.sub === '(sin subcat)' ? row.cat : `${row.cat} · ${row.sub}`, value: row.total })));
 
+  const categoryTotals = categoryRows
+    .reduce((items, row) => {
+      const found = items.find(item => item.cat === row.cat);
+      if (found) found.total += row.total;
+      else items.push({ cat: row.cat, total: row.total });
+      return items;
+    }, [])
+    .sort((a, b) => b.total - a.total);
+  const breakdownMode = $('#r-desglose') ? $('#r-desglose').value : 'subcategorias';
+  if (breakdownMode === 'categorias') {
+    $('#tabla-cat tbody').innerHTML = categoryTotals
+      .map(row => `<tr><td>${escapeHtml(row.cat)}</td><td>-</td><td>${fmtCurrency(row.total, 'EUR')}</td></tr>`)
+      .join('');
+    drawPieChart($('#chart-cat'), categoryTotals.slice(0, 6).map(row => ({ label: row.cat, value: row.total })));
+  } else {
+    const groupedRows = [];
+    categoryTotals.forEach(catRow => {
+      categoryRows
+        .filter(row => row.cat === catRow.cat)
+        .sort((a, b) => b.total - a.total)
+        .forEach(row => groupedRows.push(`<tr><td>${escapeHtml(row.cat)}</td><td>${escapeHtml(row.sub)}</td><td>${fmtCurrency(row.total, 'EUR')}</td></tr>`));
+      groupedRows.push(`<tr class="subtotal-row"><td>${escapeHtml(catRow.cat)}</td><td>Subtotal categoria</td><td>${fmtCurrency(catRow.total, 'EUR')}</td></tr>`);
+    });
+    $('#tabla-cat tbody').innerHTML = groupedRows.join('');
+  }
+
   const accounts = cta ? state.cuentas.filter(c => c.id === Number(cta)) : state.cuentas;
   const accountRows = accounts.map(c => {
     const spentAccountCurrency = gastos
@@ -919,7 +945,7 @@ function bindEvents() {
     renderViajesHome();
     renderGastosTabla();
   };
-  ['#r-moneda', '#r-cuenta'].forEach(sel => $(sel).onchange = renderResumen);
+  ['#r-moneda', '#r-cuenta', '#r-desglose'].forEach(sel => $(sel).onchange = renderResumen);
   $('#r-viaje').onchange = () => {
     state.selectedViajeId = $('#r-viaje').value ? Number($('#r-viaje').value) : null;
     if ($('#f-viaje')) $('#f-viaje').value = $('#r-viaje').value;

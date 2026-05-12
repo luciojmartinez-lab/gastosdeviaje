@@ -203,6 +203,11 @@ td {
 
 tfoot td { font-weight: 700; }
 
+.subtotal-row td {
+  background: #f8fafc;
+  font-weight: 700;
+}
+
 .badge {
   display: inline-block;
   padding: 2px 8px;
