@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v24';
+const APP_VERSION = '500v25';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 let dbPromise = null;
@@ -1240,19 +1240,55 @@ function closePrintDialog() {
   else dialog.removeAttribute('open');
 }
 
+function printableSectionHtml(id) {
+  const original = $(`#view-${id}`);
+  if (!original) return '';
+  const clone = original.cloneNode(true);
+  clone.removeAttribute('id');
+  clone.style.display = 'block';
+  clone.querySelectorAll('.section-head, .filters-card, .row4, .action-col, .desktop-actions, .mobile-action-select, button, input, select, label').forEach(el => el.remove());
+  clone.querySelectorAll('[style]').forEach(el => {
+    if (el instanceof HTMLElement) el.removeAttribute('style');
+  });
+  const title = id === 'gastos' ? 'Gastos' : 'Resumen';
+  return `<section class="print-section print-${id}"><h1>${title}</h1>${clone.innerHTML}</section>`;
+}
+
+function printableDocument(section) {
+  const sections = section === 'todo' ? ['gastos', 'resumen'] : [section];
+  const body = sections.map(printableSectionHtml).filter(Boolean).join('<div class="page-break"></div>');
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gastos de Viaje - ${APP_VERSION}</title><style>
+    @page { size: A4; margin: 10mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1f2937; background: #fff; }
+    h1 { margin: 0 0 8px; font-size: 18px; }
+    h2 { margin: 8px 0 6px; font-size: 14px; }
+    .card, .kpi .box { margin-bottom: 8px; padding: 8px; border: 1px solid #ddd; border-radius: 6px; box-shadow: none; }
+    .kpi { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+    .small { color: #6b7280; font-size: 10px; }
+    .big { font-weight: 700; font-size: 13px; }
+    .table-wrap { overflow: visible; }
+    table { width: 100%; min-width: 0; margin-top: 4px; border-collapse: collapse; }
+    th, td { padding: 3px 5px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: top; font-size: 10px; line-height: 1.18; }
+    .group-row td { padding: 5px 6px; background: #eef2ff; color: #1e40af; font-weight: 700; }
+    .subtotal-row td { padding: 4px 5px; background: #f8fafc; font-weight: 700; }
+    .expense-row { break-inside: avoid; page-break-inside: avoid; }
+    .chart { max-width: 100%; height: auto; }
+    .page-break { break-after: page; page-break-after: always; height: 0; }
+    @media screen { body { padding: 12px; } }
+  </style></head><body>${body}<script>setTimeout(function(){window.print();}, 150);</script></body></html>`;
+}
+
 function printSection(section) {
   closePrintDialog();
-  document.body.classList.toggle('print-resumen', section === 'resumen');
-  document.body.classList.toggle('print-gastos', section === 'gastos');
-  document.body.classList.toggle('print-todo', section === 'todo');
-  state.printReturnTab = state.activeTab;
-  if (section === 'todo') {
-    setTab('gastos');
-    $('#view-resumen').style.display = 'block';
-  } else {
-    setTab(section === 'gastos' ? 'gastos' : 'resumen');
+  const win = window.open('', '_blank');
+  if (!win) {
+    alert('El navegador ha bloqueado la ventana de impresion. Permite ventanas emergentes para imprimir.');
+    return;
   }
-  setTimeout(() => window.print(), 50);
+  win.document.open();
+  win.document.write(printableDocument(section));
+  win.document.close();
 }
 
 function openFormDialog({ title, fields, onSubmit }) {
@@ -1722,11 +1758,6 @@ function bindEvents() {
   $('#print-resumen').onclick = () => printSection('resumen');
   $('#print-gastos').onclick = () => printSection('gastos');
   $('#print-todo').onclick = () => printSection('todo');
-  window.addEventListener('afterprint', () => {
-    document.body.classList.remove('print-resumen', 'print-gastos', 'print-todo');
-    setTab(state.printReturnTab || state.activeTab || 'config');
-    state.printReturnTab = null;
-  });
   $('#file-import').onchange = async event => {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
