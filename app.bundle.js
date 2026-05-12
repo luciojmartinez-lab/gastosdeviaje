@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v13';
+const APP_VERSION = '500v14';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 let dbPromise = null;
 let activeFormDialogSubmit = null;
@@ -322,6 +322,33 @@ function exportCurrentCsv() {
     lines.push([month, monthly[month].toFixed(2)].map(csvCell).join(','));
   });
   downloadText(`gastos_resumen_${APP_VERSION}_${todayIso()}.csv`, lines.join('\r\n'), 'text/csv;charset=utf-8');
+}
+
+async function prepareJsonBackup({ autoDownload = false } = {}) {
+  const data = await exportAll();
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const link = $('#export-link');
+  const openLink = $('#export-open-link');
+  if (link.dataset.objectUrl) URL.revokeObjectURL(link.dataset.objectUrl);
+  if (openLink.dataset.objectUrl) URL.revokeObjectURL(openLink.dataset.objectUrl);
+  const url = URL.createObjectURL(blob);
+  const openUrl = URL.createObjectURL(new Blob([json], { type: 'text/plain' }));
+  const filename = `gastos_backup_v${APP_VERSION}_${todayIso()}.json`;
+  link.href = url;
+  link.download = filename;
+  link.dataset.objectUrl = url;
+  link.style.display = 'inline-flex';
+  link.textContent = `Descargar ${filename}`;
+  openLink.href = openUrl;
+  openLink.dataset.objectUrl = openUrl;
+  openLink.style.display = 'inline-flex';
+  $('#export-json').value = json;
+  $('#export-panel').style.display = 'block';
+  localStorage.setItem(BACKUP_KEY, new Date().toISOString());
+  renderBackupStatus();
+  if (autoDownload) link.click();
+  return filename;
 }
 
 function fillSelect(selector, options, placeholder) {
@@ -1534,37 +1561,21 @@ function bindEvents() {
 
   $('#btn-export').onclick = async () => {
     try {
-      const data = await exportAll();
-      const json = JSON.stringify(data, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const link = $('#export-link');
-      const openLink = $('#export-open-link');
-      if (link.dataset.objectUrl) URL.revokeObjectURL(link.dataset.objectUrl);
-      if (openLink.dataset.objectUrl) URL.revokeObjectURL(openLink.dataset.objectUrl);
-      const url = URL.createObjectURL(blob);
-      const openUrl = URL.createObjectURL(new Blob([json], { type: 'text/plain' }));
-      const filename = `gastos_backup_v${APP_VERSION}_${todayIso()}.json`;
-      link.href = url;
-      link.download = filename;
-      link.dataset.objectUrl = url;
-      link.style.display = 'inline-flex';
-      link.textContent = `Descargar ${filename}`;
-      openLink.href = openUrl;
-      openLink.dataset.objectUrl = openUrl;
-      openLink.style.display = 'inline-flex';
-      $('#export-json').value = json;
-      $('#export-panel').style.display = 'block';
-      localStorage.setItem(BACKUP_KEY, new Date().toISOString());
-      renderBackupStatus();
+      await prepareJsonBackup();
       setMessage('#msg-export', 'Backup generado. Usa Descargar, Abrir JSON o copia el texto.');
     } catch (err) {
       alert(`No se pudo exportar: ${err.message || err}`);
     }
   };
   $('#btn-import').onclick = () => $('#file-import').click();
-  $('#btn-export-home').onclick = () => {
-    setTab('config');
-    $('#btn-export').click();
+  $('#btn-export-home').onclick = async () => {
+    try {
+      setTab('config');
+      const filename = await prepareJsonBackup({ autoDownload: true });
+      setMessage('#msg-export', `Descarga iniciada: ${filename}. Si no aparece, usa el enlace Descargar.`);
+    } catch (err) {
+      alert(`No se pudo exportar: ${err.message || err}`);
+    }
   };
   $('#btn-export-csv').onclick = exportCurrentCsv;
   $('#btn-print-summary').onclick = () => {
