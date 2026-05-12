@@ -128,6 +128,28 @@ h2 {
   display: none;
 }
 
+body.print-preview-active {
+  background: #fff;
+}
+
+body.print-preview-active header,
+body.print-preview-active main,
+body.print-preview-active footer {
+  display: none !important;
+}
+
+body.print-preview-active #print-output {
+  display: block;
+  max-width: none;
+  padding: 8px;
+  background: #fff;
+}
+
+body.print-preview-active .print-page-break {
+  break-after: page;
+  page-break-after: always;
+}
+
 .desktop-actions {
   display: inline-flex;
   align-items: center;
