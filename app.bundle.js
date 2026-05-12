@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v15';
+const APP_VERSION = '500v16';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 let dbPromise = null;
@@ -1277,7 +1277,7 @@ function bindEvents() {
     event.preventDefault();
     $('#btn-add-gasto').click();
   };
-  $('#f-view').value = localStorage.getItem(EXPENSE_VIEW_KEY) || 'cards';
+  $('#f-view').value = localStorage.getItem(EXPENSE_VIEW_KEY) || 'table';
   $('#f-view').onchange = () => {
     localStorage.setItem(EXPENSE_VIEW_KEY, $('#f-view').value);
     applyExpenseViewMode();
