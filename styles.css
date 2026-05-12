@@ -104,6 +104,18 @@ h2 {
   margin-bottom: 0;
 }
 
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mobile-only,
+.filter-modal-head {
+  display: none;
+}
+
 label {
   display: block;
   margin: 10px 0 6px;
@@ -389,6 +401,51 @@ footer {
 
   .section-head {
     align-items: stretch;
+  }
+
+  .section-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
+  .mobile-only {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  body.filters-open {
+    overflow: hidden;
+  }
+
+  .filters-card {
+    display: none;
+  }
+
+  .filters-card.open {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: block;
+    margin: 0;
+    padding: 14px;
+    overflow: auto;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .filter-modal-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: -14px -14px 10px;
+    padding: 12px 14px;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
   }
 
   .backup-strip {

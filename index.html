@@ -18,7 +18,7 @@
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuracion</button>
   </nav>
-  <div class="app-version">500v16</div>
+  <div class="app-version">500v17</div>
 </header>
 
 <main>
@@ -43,11 +43,18 @@
     <div class="card">
       <div class="section-head">
         <h2>Gastos</h2>
-        <button class="btn" id="btn-open-add-gasto">Anadir gasto</button>
+        <div class="section-actions">
+          <button class="btn" id="btn-open-add-gasto">Añadir gasto</button>
+          <button class="btn ghost mobile-only" id="btn-open-filters">Filtros</button>
+        </div>
       </div>
     </div>
 
-    <div class="card">
+    <div class="card filters-card" id="filters-panel">
+      <div class="modal-head filter-modal-head">
+        <h2>Filtros</h2>
+        <button type="button" class="ghost icon-btn" id="filters-close" aria-label="Cerrar">x</button>
+      </div>
       <div class="filters">
         <div><label>Moneda</label><select id="f-moneda"></select></div>
         <div><label>Cuenta</label><select id="f-cuenta"></select></div>
@@ -228,7 +235,7 @@
     </div>
     <div><label>Foto / ticket</label><input type="file" accept="image/*,.pdf" id="g-ticket"></div>
     <div class="actions">
-      <button type="submit" class="btn" id="btn-add-gasto">Anadir gasto</button>
+      <button type="submit" class="btn" id="btn-add-gasto">Añadir gasto</button>
       <button type="button" class="ghost" id="add-gasto-cancel">Cancelar</button>
       <span id="msg-gasto" class="small"></span>
     </div>
@@ -283,7 +290,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=500v16"></script>
+<script src="app.bundle.js?v=500v17"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v16';
+const APP_VERSION = '500v17';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 let dbPromise = null;
@@ -1174,6 +1174,20 @@ function closeAddGasto() {
   else dialog.removeAttribute('open');
 }
 
+function openFiltersPanel() {
+  const panel = $('#filters-panel');
+  if (!panel) return;
+  panel.classList.add('open');
+  document.body.classList.add('filters-open');
+}
+
+function closeFiltersPanel() {
+  const panel = $('#filters-panel');
+  if (!panel) return;
+  panel.classList.remove('open');
+  document.body.classList.remove('filters-open');
+}
+
 function applyExpenseViewMode() {
   const table = $('#tabla-gastos');
   const selector = $('#f-view');
@@ -1271,6 +1285,8 @@ function bindEvents() {
     setTab('viajes');
   };
   $('#btn-open-add-gasto').onclick = openAddGasto;
+  $('#btn-open-filters').onclick = openFiltersPanel;
+  $('#filters-close').onclick = closeFiltersPanel;
   $('#add-gasto-close').onclick = closeAddGasto;
   $('#add-gasto-cancel').onclick = closeAddGasto;
   $('#add-gasto-form').onsubmit = event => {
@@ -1495,6 +1511,7 @@ function bindEvents() {
   $('#f-clear').onclick = () => {
     ['#f-moneda', '#f-cuenta', '#f-cat', '#f-viaje', '#f-desde', '#f-hasta', '#f-desc'].forEach(sel => $(sel).value = '');
     state.selectedViajeId = null;
+    closeFiltersPanel();
     renderViajesHome();
     renderGastosTabla();
   };
