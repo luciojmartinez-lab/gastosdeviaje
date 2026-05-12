@@ -138,7 +138,7 @@ input[type="checkbox"] {
 .row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .row4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.filters { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+.filters { grid-template-columns: repeat(9, minmax(0, 1fr)); }
 .filter-action { align-self: end; }
 
 .actions {
@@ -398,32 +398,32 @@ footer {
 
   .kpi .big { font-size: 14px; }
 
-  #tabla-gastos {
+  #tabla-gastos.cards-mode {
     min-width: 0;
     border-collapse: separate;
     border-spacing: 0 10px;
   }
 
-  #tabla-gastos thead,
-  #tabla-gastos tfoot {
+  #tabla-gastos.cards-mode thead,
+  #tabla-gastos.cards-mode tfoot {
     display: none;
   }
 
-  #tabla-gastos,
-  #tabla-gastos tbody,
-  #tabla-gastos tr,
-  #tabla-gastos td {
+  #tabla-gastos.cards-mode,
+  #tabla-gastos.cards-mode tbody,
+  #tabla-gastos.cards-mode tr,
+  #tabla-gastos.cards-mode td {
     display: block;
     width: 100%;
   }
 
-  #tabla-gastos .group-row td,
-  #tabla-gastos .subtotal-row td {
+  #tabla-gastos.cards-mode .group-row td,
+  #tabla-gastos.cards-mode .subtotal-row td {
     border-radius: 8px;
     padding: 8px 10px;
   }
 
-  #tabla-gastos .expense-row {
+  #tabla-gastos.cards-mode .expense-row {
     border: 1px solid var(--line);
     border-radius: 8px;
     background: #fff;
@@ -431,7 +431,7 @@ footer {
     overflow: hidden;
   }
 
-  #tabla-gastos .expense-row td {
+  #tabla-gastos.cards-mode .expense-row td {
     display: grid;
     grid-template-columns: 92px minmax(0, 1fr);
     gap: 8px;
@@ -440,17 +440,17 @@ footer {
     font-size: 13px;
   }
 
-  #tabla-gastos .expense-row td::before {
+  #tabla-gastos.cards-mode .expense-row td::before {
     content: attr(data-label);
     color: var(--muted);
     font-size: 12px;
   }
 
-  #tabla-gastos .expense-row td:last-child {
+  #tabla-gastos.cards-mode .expense-row td:last-child {
     border-bottom: 0;
   }
 
-  #tabla-gastos .mobile-hide {
+  #tabla-gastos.cards-mode .mobile-hide {
     display: none;
   }
 }

@@ -18,7 +18,7 @@
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuracion</button>
   </nav>
-  <div class="app-version">500v14</div>
+  <div class="app-version">500v15</div>
 </header>
 
 <main>
@@ -41,23 +41,10 @@
 
   <section id="view-gastos" style="display:none">
     <div class="card">
-      <h2>Nuevo gasto</h2>
-      <div class="row3">
-        <div><label>Fecha</label><input type="date" id="g-fecha"></div>
-        <div><label>Viaje</label><select id="g-viaje"></select></div>
-        <div><label>Cuenta / Forma de pago</label><select id="g-cuenta"></select></div>
+      <div class="section-head">
+        <h2>Gastos</h2>
+        <button class="btn" id="btn-open-add-gasto">Anadir gasto</button>
       </div>
-      <div class="row3">
-        <div><label>Moneda</label><select id="g-moneda"></select></div>
-        <div><label>Categoria</label><select id="g-cat"></select></div>
-        <div><label>Subcategoria</label><select id="g-subcat"></select></div>
-      </div>
-      <div class="row">
-        <div><label>Importe</label><input type="number" step="0.01" min="0" id="g-importe"></div>
-        <div><label>Descripcion (opcional)</label><input id="g-desc"></div>
-      </div>
-      <div><label>Foto / ticket</label><input type="file" accept="image/*,.pdf" id="g-ticket"></div>
-      <div class="actions"><button class="btn" id="btn-add-gasto">Anadir gasto</button><span id="msg-gasto" class="small"></span></div>
     </div>
 
     <div class="card">
@@ -69,6 +56,7 @@
         <div><label>Desde</label><input type="date" id="f-desde"></div>
         <div><label>Hasta</label><input type="date" id="f-hasta"></div>
         <div><label>Buscar descripcion</label><input id="f-desc" placeholder="ticket, hotel..."></div>
+        <div><label>Vista</label><select id="f-view"><option value="cards">Tarjetas</option><option value="table">Tabla</option></select></div>
         <div class="filter-action"><button class="btn" id="f-clear">Quitar filtros</button></div>
       </div>
       <div class="table-wrap">
@@ -218,6 +206,35 @@
 
 <footer>App PWA offline - IndexedDB - Espanol</footer>
 
+<dialog id="add-gasto-dialog" class="modal">
+  <form method="dialog" id="add-gasto-form">
+    <div class="modal-head">
+      <h2>Nuevo gasto</h2>
+      <button type="button" class="ghost icon-btn" id="add-gasto-close" aria-label="Cerrar">x</button>
+    </div>
+    <div class="row3">
+      <div><label>Fecha</label><input type="date" id="g-fecha"></div>
+      <div><label>Viaje</label><select id="g-viaje"></select></div>
+      <div><label>Cuenta / Forma de pago</label><select id="g-cuenta"></select></div>
+    </div>
+    <div class="row3">
+      <div><label>Moneda</label><select id="g-moneda"></select></div>
+      <div><label>Categoria</label><select id="g-cat"></select></div>
+      <div><label>Subcategoria</label><select id="g-subcat"></select></div>
+    </div>
+    <div class="row">
+      <div><label>Importe</label><input type="number" step="0.01" min="0" id="g-importe"></div>
+      <div><label>Descripcion (opcional)</label><input id="g-desc"></div>
+    </div>
+    <div><label>Foto / ticket</label><input type="file" accept="image/*,.pdf" id="g-ticket"></div>
+    <div class="actions">
+      <button type="submit" class="btn" id="btn-add-gasto">Anadir gasto</button>
+      <button type="button" class="ghost" id="add-gasto-cancel">Cancelar</button>
+      <span id="msg-gasto" class="small"></span>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="edit-gasto-dialog" class="modal">
   <form method="dialog" id="edit-gasto-form">
     <div class="modal-head">
@@ -266,7 +283,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=500v14"></script>
+<script src="app.bundle.js?v=500v15"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

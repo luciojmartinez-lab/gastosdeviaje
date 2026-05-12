@@ -1,7 +1,8 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v14';
+const APP_VERSION = '500v15';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
+const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 let dbPromise = null;
 let activeFormDialogSubmit = null;
 
@@ -790,6 +791,7 @@ function filteredGastos() {
 function renderGastosTabla() {
   const tbody = $('#tabla-gastos tbody');
   tbody.innerHTML = '';
+  applyExpenseViewMode();
   const rows = filteredGastos();
   const byGroup = {};
   rows.forEach(g => {
@@ -1155,6 +1157,31 @@ function closeEditGasto() {
   else dialog.removeAttribute('open');
 }
 
+function openAddGasto() {
+  const dialog = $('#add-gasto-dialog');
+  if (!dialog) return;
+  setMessage('#msg-gasto', '');
+  if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
+  if (state.selectedViajeId && $('#g-viaje')) $('#g-viaje').value = String(state.selectedViajeId);
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeAddGasto() {
+  const dialog = $('#add-gasto-dialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function applyExpenseViewMode() {
+  const table = $('#tabla-gastos');
+  const selector = $('#f-view');
+  if (!table || !selector) return;
+  table.classList.toggle('cards-mode', selector.value === 'cards');
+  table.classList.toggle('table-mode', selector.value === 'table');
+}
+
 function openFormDialog({ title, fields, onSubmit }) {
   const dialog = $('#form-dialog');
   const container = $('#form-dialog-fields');
@@ -1242,6 +1269,18 @@ function bindEvents() {
   $('#btn-clear-trip').onclick = () => {
     applySelectedTrip(null);
     setTab('viajes');
+  };
+  $('#btn-open-add-gasto').onclick = openAddGasto;
+  $('#add-gasto-close').onclick = closeAddGasto;
+  $('#add-gasto-cancel').onclick = closeAddGasto;
+  $('#add-gasto-form').onsubmit = event => {
+    event.preventDefault();
+    $('#btn-add-gasto').click();
+  };
+  $('#f-view').value = localStorage.getItem(EXPENSE_VIEW_KEY) || 'cards';
+  $('#f-view').onchange = () => {
+    localStorage.setItem(EXPENSE_VIEW_KEY, $('#f-view').value);
+    applyExpenseViewMode();
   };
   $('#g-cat').onchange = renderSubcategories;
   $('#edit-gasto-cat').onchange = renderEditSubcategories;
@@ -1361,6 +1400,7 @@ function bindEvents() {
       $('#g-desc').value = '';
       $('#g-ticket').value = '';
       setMessage('#msg-gasto', 'Gasto anadido');
+      closeAddGasto();
       await loadAll();
     } catch (err) {
       setMessage('#msg-gasto', err.message || String(err), true);
