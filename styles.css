@@ -549,7 +549,9 @@ footer {
   }
 
   body.print-resumen #view-resumen,
-  body.print-gastos #view-gastos {
+  body.print-gastos #view-gastos,
+  body.print-todo #view-resumen,
+  body.print-todo #view-gastos {
     display: block !important;
   }
 
@@ -559,8 +561,14 @@ footer {
   }
 
   body.print-gastos #view-gastos > .card:first-child,
-  body.print-gastos .filters-card {
+  body.print-gastos .filters-card,
+  body.print-todo #view-gastos > .card:first-child,
+  body.print-todo .filters-card {
     display: none !important;
+  }
+
+  body.print-todo #view-resumen {
+    page-break-after: always;
   }
 
   main {

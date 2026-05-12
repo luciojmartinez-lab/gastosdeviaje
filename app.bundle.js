@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v19';
+const APP_VERSION = '500v20';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 let dbPromise = null;
@@ -1244,6 +1244,7 @@ function printSection(section) {
   closePrintDialog();
   document.body.classList.toggle('print-resumen', section === 'resumen');
   document.body.classList.toggle('print-gastos', section === 'gastos');
+  document.body.classList.toggle('print-todo', section === 'todo');
   setTab(section === 'gastos' ? 'gastos' : 'resumen');
   window.print();
 }
@@ -1714,8 +1715,9 @@ function bindEvents() {
   $('#print-dialog-close').onclick = closePrintDialog;
   $('#print-resumen').onclick = () => printSection('resumen');
   $('#print-gastos').onclick = () => printSection('gastos');
+  $('#print-todo').onclick = () => printSection('todo');
   window.addEventListener('afterprint', () => {
-    document.body.classList.remove('print-resumen', 'print-gastos');
+    document.body.classList.remove('print-resumen', 'print-gastos', 'print-todo');
   });
   $('#file-import').onchange = async event => {
     const file = event.target.files && event.target.files[0];
