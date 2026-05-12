@@ -233,19 +233,19 @@ tfoot td { font-weight: 700; }
 
 .kpi .big {
   font-weight: 700;
-  font-size: 18px;
-  line-height: 1.25;
+  font-size: 15px;
+  line-height: 1.22;
 }
 
 .kpi .big div + div {
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
 .kpi .kpi-note {
-  margin-top: 6px;
+  margin-top: 5px;
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .small {
@@ -313,5 +313,5 @@ footer {
     align-items: stretch;
   }
 
-  .kpi .big { font-size: 16px; }
+  .kpi .big { font-size: 14px; }
 }

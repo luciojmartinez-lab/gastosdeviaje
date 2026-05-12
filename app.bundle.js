@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 2;
-const APP_VERSION = '500v8';
+const APP_VERSION = '500v9';
 let dbPromise = null;
 
 function openDB() {
