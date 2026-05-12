@@ -233,8 +233,19 @@ tfoot td { font-weight: 700; }
 
 .kpi .big {
   font-weight: 700;
-  font-size: 20px;
-  line-height: 1.2;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.kpi .big div + div {
+  margin-top: 3px;
+}
+
+.kpi .kpi-note {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .small {
@@ -249,6 +260,7 @@ tfoot td { font-weight: 700; }
 
 .chart {
   width: 100%;
+  max-width: 620px;
   max-height: 380px;
   display: block;
   margin: 8px auto;
@@ -301,5 +313,5 @@ footer {
     align-items: stretch;
   }
 
-  .kpi .big { font-size: 17px; }
+  .kpi .big { font-size: 16px; }
 }

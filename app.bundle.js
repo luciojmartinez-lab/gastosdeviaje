@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 2;
-const APP_VERSION = '500v7';
+const APP_VERSION = '500v8';
 let dbPromise = null;
 
 function openDB() {
@@ -163,6 +163,10 @@ const fmtCurrency = (amount, currency = 'EUR') => {
     return `${numberValue(amount).toFixed(2)} ${currency}`;
   }
 };
+const formatCurrencyLines = items => items
+  .filter(item => Math.abs(numberValue(item.amount)) > 0.000001 || item.always)
+  .map(item => `<div>${fmtCurrency(item.amount, item.currency)}</div>`)
+  .join('');
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
   '&': '&amp;',
   '<': '&lt;',
@@ -628,10 +632,10 @@ function renderGastosTabla() {
 
 function drawPieChart(container, data) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
-  const w = 320;
+  const w = 360;
   const h = 240;
-  const r = 78;
-  const cx = 105;
+  const r = 74;
+  const cx = 92;
   const cy = 118;
   let angle = -Math.PI / 2;
   let svg = `<svg class="chart" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`;
@@ -651,7 +655,7 @@ function drawPieChart(container, data) {
   });
   data.forEach((item, i) => {
     const color = `hsl(${(i * 57) % 360} 70% 48%)`;
-    svg += `<rect x="205" y="${34 + i * 24}" width="12" height="12" fill="${color}"></rect><text x="224" y="${45 + i * 24}" font-size="12" fill="#374151">${escapeHtml(item.label.slice(0, 18))}</text>`;
+    svg += `<rect x="190" y="${38 + i * 22}" width="10" height="10" fill="${color}"></rect><text x="208" y="${47 + i * 22}" font-size="8.5" fill="#374151">${escapeHtml(item.label.slice(0, 26))}</text>`;
   });
   svg += '</svg>';
   container.innerHTML = svg;
@@ -687,23 +691,53 @@ function renderResumen() {
     .filter(g => !cta || g.cuentaId === Number(cta))
     .filter(g => !viaje || g.viajeId === Number(viaje));
   const totalEur = gastos.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
-  $('#kpi-total').textContent = fmtCurrency(totalEur, 'EUR');
+  const totalsByCurrency = gastos.reduce((items, g) => {
+    items[g.moneda] = (items[g.moneda] || 0) + numberValue(g.importe);
+    return items;
+  }, {});
+  const totalLines = [{ currency: 'EUR', amount: totalEur, always: true }]
+    .concat(Object.entries(totalsByCurrency)
+      .filter(([currency]) => currency !== 'EUR')
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([currency, amount]) => ({ currency, amount })));
   if (gastos.length) {
     const dates = gastos.map(g => new Date(`${g.fecha}T00:00:00`));
     const min = new Date(Math.min(...dates));
     const max = new Date(Math.max(...dates));
     const days = Math.max(1, Math.ceil((max - min) / 86400000) + 1);
-    $('#kpi-media').textContent = `${fmtCurrency(totalEur / days, 'EUR')}/dia`;
+    $('#kpi-total').innerHTML = formatCurrencyLines(totalLines);
+    $('#kpi-media').innerHTML = totalLines.map(item => ({
+      currency: item.currency,
+      amount: item.amount / days,
+      always: item.always
+    }))
+      .filter(item => Math.abs(numberValue(item.amount)) > 0.000001 || item.always)
+      .map(item => `<div>${fmtCurrency(item.amount, item.currency)}/dia</div>`)
+      .join('');
   } else {
+    $('#kpi-total').innerHTML = formatCurrencyLines(totalLines);
     $('#kpi-media').textContent = fmtCurrency(0, 'EUR');
   }
+  const remainingByCurrency = {};
+  let remainingEur = 0;
   const pcts = state.cuentas.map(c => {
     const spent = gastos
       .filter(g => g.cuentaId === c.id)
       .reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
+    if (c.presupuesto) {
+      const remaining = numberValue(c.presupuesto) - spent;
+      remainingByCurrency[c.moneda] = (remainingByCurrency[c.moneda] || 0) + remaining;
+      remainingEur += toEur(remaining, c.moneda);
+    }
     return c.presupuesto ? Math.min(100, spent * 100 / c.presupuesto) : 0;
   });
-  $('#kpi-presu').textContent = `${(pcts.reduce((a, b) => a + b, 0) / Math.max(1, pcts.length)).toFixed(0)}%`;
+  const budgetPct = `${(pcts.reduce((a, b) => a + b, 0) / Math.max(1, pcts.length)).toFixed(0)}%`;
+  const remainingLines = [{ currency: 'EUR', amount: remainingEur, always: true }]
+    .concat(Object.entries(remainingByCurrency)
+      .filter(([currency]) => currency !== 'EUR')
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([currency, amount]) => ({ currency, amount })));
+  $('#kpi-presu').innerHTML = `<div>${budgetPct}</div><div class="kpi-note">Restante</div>${formatCurrencyLines(remainingLines)}`;
 
   const byCategory = {};
   gastos.forEach(g => {
@@ -734,14 +768,19 @@ function renderResumen() {
     drawPieChart($('#chart-cat'), categoryTotals.slice(0, 6).map(row => ({ label: row.cat, value: row.total })));
   } else {
     const groupedRows = [];
+    const pieRows = [];
     categoryTotals.forEach(catRow => {
       categoryRows
         .filter(row => row.cat === catRow.cat)
         .sort((a, b) => b.total - a.total)
-        .forEach(row => groupedRows.push(`<tr><td>${escapeHtml(row.cat)}</td><td>${escapeHtml(row.sub)}</td><td>${fmtCurrency(row.total, 'EUR')}</td></tr>`));
+        .forEach(row => {
+          groupedRows.push(`<tr><td>${escapeHtml(row.cat)}</td><td>${escapeHtml(row.sub)}</td><td>${fmtCurrency(row.total, 'EUR')}</td></tr>`);
+          pieRows.push(row);
+        });
       groupedRows.push(`<tr class="subtotal-row"><td>${escapeHtml(catRow.cat)}</td><td>Subtotal categoria</td><td>${fmtCurrency(catRow.total, 'EUR')}</td></tr>`);
     });
     $('#tabla-cat tbody').innerHTML = groupedRows.join('');
+    drawPieChart($('#chart-cat'), pieRows.slice(0, 6).map(row => ({ label: row.sub === '(sin subcat)' ? row.cat : `${row.cat} · ${row.sub}`, value: row.total })));
   }
 
   const accounts = cta ? state.cuentas.filter(c => c.id === Number(cta)) : state.cuentas;
