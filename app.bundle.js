@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v10';
+const APP_VERSION = '500v11';
 let dbPromise = null;
 let activeFormDialogSubmit = null;
 
@@ -606,12 +606,31 @@ function renderViajesHome() {
     tbody.appendChild(tr);
     return;
   }
+  const tripsByYear = {};
   state.viajes.forEach(v => {
-    const expenses = state.gastos.filter(g => g.viajeId === v.id);
-    const total = expenses.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td><button class="ghost" data-trip-gastos="${v.id}">Gastos</button> <button class="ghost" data-trip-resumen="${v.id}">Resumen</button></td>`;
-    tbody.appendChild(tr);
+    const year = (v.fechaInicio || 'Sin fecha').slice(0, 4);
+    (tripsByYear[year] = tripsByYear[year] || []).push(v);
+  });
+  Object.keys(tripsByYear).sort().forEach(year => {
+    const header = document.createElement('tr');
+    header.className = 'group-row';
+    header.innerHTML = `<td colspan="6">Ano ${escapeHtml(year)}</td>`;
+    tbody.appendChild(header);
+    let yearExpenses = 0;
+    let yearTotal = 0;
+    tripsByYear[year].forEach(v => {
+      const expenses = state.gastos.filter(g => g.viajeId === v.id);
+      const total = expenses.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
+      yearExpenses += expenses.length;
+      yearTotal += total;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td><button class="ghost" data-trip-gastos="${v.id}">Gastos</button> <button class="ghost" data-trip-resumen="${v.id}">Resumen</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button></td>`;
+      tbody.appendChild(tr);
+    });
+    const subtotal = document.createElement('tr');
+    subtotal.className = 'subtotal-row';
+    subtotal.innerHTML = `<td colspan="3">Subtotal ${escapeHtml(year)}</td><td>${yearExpenses}</td><td>${fmtCurrency(yearTotal, 'EUR')}</td><td></td>`;
+    tbody.appendChild(subtotal);
   });
 }
 

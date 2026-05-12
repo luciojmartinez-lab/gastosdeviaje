@@ -244,6 +244,12 @@ tfoot td { font-weight: 700; }
   font-weight: 700;
 }
 
+.group-row td {
+  background: #eef2ff;
+  color: var(--soft-text);
+  font-weight: 700;
+}
+
 .badge {
   display: inline-block;
   padding: 2px 8px;

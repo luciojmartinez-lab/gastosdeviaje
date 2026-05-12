@@ -18,7 +18,7 @@
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuracion</button>
   </nav>
-  <div class="app-version">500v10</div>
+  <div class="app-version">500v11</div>
 </header>
 
 <main>
@@ -26,11 +26,11 @@
     <div class="card">
       <div class="section-head">
         <h2>Viajes realizados</h2>
-        <button class="btn ghost" id="btn-clear-trip">Ver todos</button>
+        <button class="btn ghost" id="btn-clear-trip">Quitar seleccion</button>
       </div>
       <p id="selected-trip-info" class="small"></p>
       <div class="table-wrap">
-        <table id="tabla-viajes-home"><thead><tr><th>Viaje</th><th>Inicio</th><th>Final</th><th>Gastos</th><th>Total EUR</th><th>Consultar</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-viajes-home"><thead><tr><th>Viaje</th><th>Inicio</th><th>Final</th><th>Gastos</th><th>Total EUR</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
   </section>
@@ -252,7 +252,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=500v10a"></script>
+<script src="app.bundle.js?v=500v11"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
