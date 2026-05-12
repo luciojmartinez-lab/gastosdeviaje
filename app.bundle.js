@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v18';
+const APP_VERSION = '500v19';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 let dbPromise = null;
@@ -788,10 +788,30 @@ function filteredGastos() {
     .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
 }
 
+function hasActiveGastoFilters() {
+  return ['#f-moneda', '#f-cuenta', '#f-cat', '#f-viaje', '#f-desde', '#f-hasta', '#f-desc']
+    .some(sel => $(sel) && $(sel).value);
+}
+
+function updateMobileClearFilters() {
+  const button = $('#f-clear-mobile');
+  if (!button) return;
+  button.style.display = hasActiveGastoFilters() ? '' : 'none';
+}
+
+function clearExpenseFilters() {
+  ['#f-moneda', '#f-cuenta', '#f-cat', '#f-viaje', '#f-desde', '#f-hasta', '#f-desc'].forEach(sel => $(sel).value = '');
+  state.selectedViajeId = null;
+  closeFiltersPanel();
+  renderViajesHome();
+  renderGastosTabla();
+}
+
 function renderGastosTabla() {
   const tbody = $('#tabla-gastos tbody');
   tbody.innerHTML = '';
   applyExpenseViewMode();
+  updateMobileClearFilters();
   const rows = filteredGastos();
   const byGroup = {};
   rows.forEach(g => {
@@ -824,7 +844,7 @@ function renderGastosTabla() {
       totalEur += eur;
       const tr = document.createElement('tr');
       tr.className = 'expense-row';
-      tr.innerHTML = `<td class="mobile-hide"></td><td data-label="Categoria">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripcion">${escapeHtml(g.desc || '')}</td><td data-label="Ticket">${ticketLink(g)}</td><td data-label="Acciones"><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-dup-gasto="${g.id}">Duplicar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></td>`;
+      tr.innerHTML = `<td class="mobile-hide"></td><td data-label="Categoria">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripcion">${escapeHtml(g.desc || '')}</td><td data-label="Ticket">${ticketLink(g)}</td><td data-label="Acciones"><span class="desktop-actions"><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-dup-gasto="${g.id}">Duplicar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></span><select class="mobile-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Opciones</option><option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
@@ -1191,9 +1211,41 @@ function closeFiltersPanel() {
 function applyExpenseViewMode() {
   const table = $('#tabla-gastos');
   const selector = $('#f-view');
+  const mobileSelector = $('#f-view-mobile');
   if (!table || !selector) return;
+  if (mobileSelector && mobileSelector.value !== selector.value) mobileSelector.value = selector.value;
   table.classList.toggle('cards-mode', selector.value === 'cards');
   table.classList.toggle('table-mode', selector.value === 'table');
+}
+
+function setExpenseViewMode(value) {
+  const view = value === 'cards' ? 'cards' : 'table';
+  if ($('#f-view')) $('#f-view').value = view;
+  if ($('#f-view-mobile')) $('#f-view-mobile').value = view;
+  localStorage.setItem(EXPENSE_VIEW_KEY, view);
+  applyExpenseViewMode();
+}
+
+function openPrintDialog() {
+  const dialog = $('#print-dialog');
+  if (!dialog) return;
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closePrintDialog() {
+  const dialog = $('#print-dialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function printSection(section) {
+  closePrintDialog();
+  document.body.classList.toggle('print-resumen', section === 'resumen');
+  document.body.classList.toggle('print-gastos', section === 'gastos');
+  setTab(section === 'gastos' ? 'gastos' : 'resumen');
+  window.print();
 }
 
 function openFormDialog({ title, fields, onSubmit }) {
@@ -1275,6 +1327,20 @@ async function resetDataPrompt() {
   });
 }
 
+async function handleGastoAction(id, action) {
+  const gasto = state.gastos.find(item => item.id === Number(id));
+  if (!gasto) return;
+  if (action === 'edit') {
+    openEditGasto(gasto);
+  } else if (action === 'dup') {
+    await addGasto({ ...gasto, id: undefined, desc: `${gasto.desc || ''}`.trim(), fecha: gasto.fecha || todayIso() });
+    await loadAll();
+  } else if (action === 'del' && confirm('Eliminar este gasto?')) {
+    await delGasto(gasto.id);
+    await loadAll();
+  }
+}
+
 function bindEvents() {
   $('#tab-viajes').onclick = () => setTab('viajes');
   $('#tab-gastos').onclick = () => setTab('gastos');
@@ -1293,10 +1359,14 @@ function bindEvents() {
     event.preventDefault();
     $('#btn-add-gasto').click();
   };
-  $('#f-view').value = localStorage.getItem(EXPENSE_VIEW_KEY) || 'table';
+  const savedExpenseView = localStorage.getItem(EXPENSE_VIEW_KEY) || 'table';
+  $('#f-view').value = savedExpenseView;
+  $('#f-view-mobile').value = savedExpenseView;
   $('#f-view').onchange = () => {
-    localStorage.setItem(EXPENSE_VIEW_KEY, $('#f-view').value);
-    applyExpenseViewMode();
+    setExpenseViewMode($('#f-view').value);
+  };
+  $('#f-view-mobile').onchange = () => {
+    setExpenseViewMode($('#f-view-mobile').value);
   };
   $('#g-cat').onchange = renderSubcategories;
   $('#edit-gasto-cat').onchange = renderEditSubcategories;
@@ -1508,14 +1578,21 @@ function bindEvents() {
     }
   };
 
-  $('#f-clear').onclick = () => {
-    ['#f-moneda', '#f-cuenta', '#f-cat', '#f-viaje', '#f-desde', '#f-hasta', '#f-desc'].forEach(sel => $(sel).value = '');
-    state.selectedViajeId = null;
-    closeFiltersPanel();
-    renderViajesHome();
-    renderGastosTabla();
-  };
+  $('#f-clear').onclick = clearExpenseFilters;
+  $('#f-clear-mobile').onclick = clearExpenseFilters;
   $('#btn-reset').onclick = resetDataPrompt;
+
+  document.addEventListener('change', async event => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement) || !target.dataset.gastoAction || !target.value) return;
+    try {
+      const action = target.value;
+      target.value = '';
+      await handleGastoAction(target.dataset.gastoAction, action);
+    } catch (err) {
+      alert(err.message || String(err));
+    }
+  });
 
   document.addEventListener('click', async event => {
     const target = event.target;
@@ -1587,16 +1664,14 @@ function bindEvents() {
         });
         return;
       } else if (target.dataset.delGasto) {
-        if (confirm('Eliminar este gasto?')) await delGasto(target.dataset.delGasto);
+        await handleGastoAction(target.dataset.delGasto, 'del');
+        return;
       } else if (target.dataset.editGasto) {
-        const g = state.gastos.find(item => item.id === Number(target.dataset.editGasto));
-        if (!g) return;
-        openEditGasto(g);
+        await handleGastoAction(target.dataset.editGasto, 'edit');
         return;
       } else if (target.dataset.dupGasto) {
-        const g = state.gastos.find(item => item.id === Number(target.dataset.dupGasto));
-        if (!g) return;
-        await addGasto({ ...g, id: undefined, desc: `${g.desc || ''}`.trim(), fecha: g.fecha || todayIso() });
+        await handleGastoAction(target.dataset.dupGasto, 'dup');
+        return;
       } else if (target.dataset.delTransfer) {
         if (confirm('Eliminar esta transferencia y deshacer el movimiento de saldo?')) await delTransferencia(target.dataset.delTransfer);
       } else if (target.dataset.tripGastos) {
@@ -1635,10 +1710,13 @@ function bindEvents() {
     }
   };
   $('#btn-export-csv').onclick = exportCurrentCsv;
-  $('#btn-print-summary').onclick = () => {
-    setTab('resumen');
-    window.print();
-  };
+  $('#btn-print-summary').onclick = openPrintDialog;
+  $('#print-dialog-close').onclick = closePrintDialog;
+  $('#print-resumen').onclick = () => printSection('resumen');
+  $('#print-gastos').onclick = () => printSection('gastos');
+  window.addEventListener('afterprint', () => {
+    document.body.classList.remove('print-resumen', 'print-gastos');
+  });
   $('#file-import').onchange = async event => {
     const file = event.target.files && event.target.files[0];
     if (!file) return;

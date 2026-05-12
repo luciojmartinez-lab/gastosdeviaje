@@ -18,7 +18,7 @@
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuracion</button>
   </nav>
-  <div class="app-version">500v18</div>
+  <div class="app-version">500v19</div>
 </header>
 
 <main>
@@ -44,8 +44,10 @@
       <div class="section-head">
         <h2>Gastos</h2>
         <div class="section-actions">
-          <button class="btn" id="btn-open-add-gasto">Añadir gasto</button>
+          <button class="btn" id="btn-open-add-gasto">Añadir gastos</button>
           <button class="btn ghost mobile-only" id="btn-open-filters">Filtros</button>
+          <select class="mobile-only compact-select" id="f-view-mobile" aria-label="Vista de gastos"><option value="table">Tabla</option><option value="cards">Tarjetas</option></select>
+          <button class="btn ghost mobile-only" id="f-clear-mobile" style="display:none">Quitar filtros</button>
         </div>
       </div>
     </div>
@@ -293,7 +295,20 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=500v18"></script>
+<dialog id="print-dialog" class="modal">
+  <form method="dialog" id="print-dialog-form">
+    <div class="modal-head">
+      <h2>Imprimir / PDF</h2>
+      <button type="button" class="ghost icon-btn" id="print-dialog-close" aria-label="Cerrar">x</button>
+    </div>
+    <div class="print-options">
+      <button type="button" class="btn" id="print-resumen">1. Resumen</button>
+      <button type="button" class="btn ghost" id="print-gastos">2. Gastos</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.bundle.js?v=500v19"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

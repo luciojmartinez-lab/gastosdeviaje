@@ -116,6 +116,14 @@ h2 {
   display: none;
 }
 
+.compact-select {
+  margin: 0;
+}
+
+.mobile-action-select {
+  display: none;
+}
+
 label {
   display: block;
   margin: 10px 0 6px;
@@ -159,6 +167,11 @@ input[type="checkbox"] {
   align-items: center;
   gap: 8px;
   margin-top: 10px;
+}
+
+.print-options {
+  display: grid;
+  gap: 10px;
 }
 
 button.btn {
@@ -415,6 +428,11 @@ footer {
     align-items: center;
   }
 
+  .compact-select {
+    display: block;
+    min-height: 41px;
+  }
+
   body.filters-open {
     overflow: hidden;
   }
@@ -510,20 +528,39 @@ footer {
   #tabla-gastos.cards-mode .mobile-hide {
     display: none;
   }
+
+  .desktop-actions {
+    display: none;
+  }
+
+  .mobile-action-select {
+    display: block;
+  }
 }
 
 @media print {
   header,
   nav,
   #view-viajes,
-  #view-gastos,
   #view-config,
+  #print-dialog,
   footer {
     display: none !important;
   }
 
-  #view-resumen {
+  body.print-resumen #view-resumen,
+  body.print-gastos #view-gastos {
     display: block !important;
+  }
+
+  body.print-resumen #view-gastos,
+  body.print-gastos #view-resumen {
+    display: none !important;
+  }
+
+  body.print-gastos #view-gastos > .card:first-child,
+  body.print-gastos .filters-card {
+    display: none !important;
   }
 
   main {
