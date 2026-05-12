@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v20';
+const APP_VERSION = '500v21';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 let dbPromise = null;
@@ -844,7 +844,7 @@ function renderGastosTabla() {
       totalEur += eur;
       const tr = document.createElement('tr');
       tr.className = 'expense-row';
-      tr.innerHTML = `<td class="mobile-hide"></td><td data-label="Categoria">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripcion">${escapeHtml(g.desc || '')}</td><td data-label="Ticket">${ticketLink(g)}</td><td data-label="Acciones"><span class="desktop-actions"><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-dup-gasto="${g.id}">Duplicar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></span><select class="mobile-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Opciones</option><option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
+      tr.innerHTML = `<td class="mobile-hide"></td><td data-label="Categoria">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripcion">${escapeHtml(g.desc || '')}</td><td data-label="Ticket">${ticketLink(g)}</td><td class="action-col" data-label="Acciones"><span class="desktop-actions"><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-dup-gasto="${g.id}">Duplicar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></span><select class="mobile-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Acciones</option><option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
@@ -1245,8 +1245,13 @@ function printSection(section) {
   document.body.classList.toggle('print-resumen', section === 'resumen');
   document.body.classList.toggle('print-gastos', section === 'gastos');
   document.body.classList.toggle('print-todo', section === 'todo');
-  setTab(section === 'gastos' ? 'gastos' : 'resumen');
-  window.print();
+  if (section === 'todo') {
+    $('#view-gastos').style.display = 'block';
+    $('#view-resumen').style.display = 'block';
+  } else {
+    setTab(section === 'gastos' ? 'gastos' : 'resumen');
+  }
+  setTimeout(() => window.print(), 50);
 }
 
 function openFormDialog({ title, fields, onSubmit }) {
@@ -1718,6 +1723,7 @@ function bindEvents() {
   $('#print-todo').onclick = () => printSection('todo');
   window.addEventListener('afterprint', () => {
     document.body.classList.remove('print-resumen', 'print-gastos', 'print-todo');
+    setTab(state.activeTab || 'viajes');
   });
   $('#file-import').onchange = async event => {
     const file = event.target.files && event.target.files[0];

@@ -124,6 +124,18 @@ h2 {
   display: none;
 }
 
+.desktop-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.desktop-actions button.ghost {
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
 label {
   display: block;
   margin: 10px 0 6px;
@@ -535,6 +547,8 @@ footer {
 
   .mobile-action-select {
     display: block;
+    min-width: 112px;
+    padding: 8px 10px;
   }
 }
 
@@ -545,6 +559,14 @@ footer {
   #view-config,
   #print-dialog,
   footer {
+    display: none !important;
+  }
+
+  #view-gastos > .card:first-child,
+  .filters-card,
+  .action-col,
+  .desktop-actions,
+  .mobile-action-select {
     display: none !important;
   }
 
@@ -560,14 +582,8 @@ footer {
     display: none !important;
   }
 
-  body.print-gastos #view-gastos > .card:first-child,
-  body.print-gastos .filters-card,
-  body.print-todo #view-gastos > .card:first-child,
-  body.print-todo .filters-card {
-    display: none !important;
-  }
-
-  body.print-todo #view-resumen {
+  body.print-todo #view-gastos {
+    break-after: page;
     page-break-after: always;
   }
 
@@ -580,5 +596,35 @@ footer {
   .kpi .box {
     box-shadow: none;
     border: 1px solid #ddd;
+  }
+
+  .card {
+    margin-bottom: 8px;
+    padding: 8px;
+  }
+
+  table {
+    min-width: 0;
+    margin-top: 4px;
+  }
+
+  th,
+  td {
+    padding: 3px 5px;
+    font-size: 10px;
+    line-height: 1.18;
+  }
+
+  .group-row td {
+    padding: 5px 6px;
+  }
+
+  .subtotal-row td {
+    padding: 4px 5px;
+  }
+
+  .expense-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
