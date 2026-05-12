@@ -32,6 +32,12 @@ header {
 
 header img { border-radius: 8px; }
 header h1 { flex: 1; margin: 0; font-size: 18px; }
+header h1 span {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.85;
+}
 nav { display: flex; gap: 8px; }
 
 .app-version {
@@ -116,6 +122,11 @@ select {
   color: var(--text);
 }
 
+input[type="checkbox"] {
+  width: auto;
+  margin-right: 6px;
+}
+
 .row,
 .row3,
 .row4,
@@ -127,7 +138,7 @@ select {
 .row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .row4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.filters { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.filters { grid-template-columns: repeat(8, minmax(0, 1fr)); }
 .filter-action { align-self: end; }
 
 .actions {
@@ -186,6 +197,18 @@ button.ghost {
 .backup-warning {
   color: #9a3412;
   font-weight: 600;
+}
+
+.backup-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
 }
 
 .export-panel textarea {
@@ -257,6 +280,10 @@ tfoot td { font-weight: 700; }
   background: #eef2ff;
   color: var(--soft-text);
   font-weight: 700;
+}
+
+.warning-row td {
+  background: #fff7ed;
 }
 
 .badge {
@@ -364,6 +391,11 @@ footer {
     align-items: stretch;
   }
 
+  .backup-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .kpi .big { font-size: 14px; }
 
   #tabla-gastos {
@@ -420,5 +452,31 @@ footer {
 
   #tabla-gastos .mobile-hide {
     display: none;
+  }
+}
+
+@media print {
+  header,
+  nav,
+  #view-viajes,
+  #view-gastos,
+  #view-config,
+  footer {
+    display: none !important;
+  }
+
+  #view-resumen {
+    display: block !important;
+  }
+
+  main {
+    max-width: none;
+    padding: 0;
+  }
+
+  .card,
+  .kpi .box {
+    box-shadow: none;
+    border: 1px solid #ddd;
   }
 }

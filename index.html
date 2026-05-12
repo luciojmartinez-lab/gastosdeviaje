@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Gastos de Viaje</title>
+  <title>Gastos de Viaje por Lucio J Martinez</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
   <meta name="theme-color" content="#1976d2">
@@ -11,14 +11,14 @@
 </head>
 <body>
 <header>
-  <h1>Gastos de Viaje</h1>
+  <h1>Gastos de Viaje <span>por Lucio J Martinez</span></h1>
   <nav>
     <button id="tab-viajes" class="active">Viajes</button>
     <button id="tab-gastos">Gastos</button>
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuracion</button>
   </nav>
-  <div class="app-version">500v12</div>
+  <div class="app-version">500v13</div>
 </header>
 
 <main>
@@ -29,8 +29,12 @@
         <button class="btn ghost" id="btn-clear-trip">Quitar seleccion</button>
       </div>
       <p id="selected-trip-info" class="small"></p>
+      <div class="backup-strip">
+        <span class="backup-status small"></span>
+        <button class="btn ghost" id="btn-export-home">Exportar backup</button>
+      </div>
       <div class="table-wrap">
-        <table id="tabla-viajes-home"><thead><tr><th>Viaje</th><th>Inicio</th><th>Final</th><th>Gastos</th><th>Total EUR</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-viajes-home"><thead><tr><th>Viaje</th><th>Inicio</th><th>Final</th><th>Gastos</th><th>Total EUR</th><th>Presupuesto</th><th>Restante</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
   </section>
@@ -52,6 +56,7 @@
         <div><label>Importe</label><input type="number" step="0.01" min="0" id="g-importe"></div>
         <div><label>Descripcion (opcional)</label><input id="g-desc"></div>
       </div>
+      <div><label>Foto / ticket</label><input type="file" accept="image/*,.pdf" id="g-ticket"></div>
       <div class="actions"><button class="btn" id="btn-add-gasto">Anadir gasto</button><span id="msg-gasto" class="small"></span></div>
     </div>
 
@@ -63,15 +68,16 @@
         <div><label>Categoria</label><select id="f-cat"></select></div>
         <div><label>Desde</label><input type="date" id="f-desde"></div>
         <div><label>Hasta</label><input type="date" id="f-hasta"></div>
+        <div><label>Buscar descripcion</label><input id="f-desc" placeholder="ticket, hotel..."></div>
         <div class="filter-action"><button class="btn" id="f-clear">Quitar filtros</button></div>
       </div>
       <div class="table-wrap">
         <table id="tabla-gastos">
           <thead>
-            <tr><th>Fecha</th><th>Categoria</th><th>Subcat.</th><th>Cuenta</th><th>Moneda</th><th>Importe</th><th>EUR</th><th>Descripcion</th><th>Acciones</th></tr>
+            <tr><th>Fecha</th><th>Categoria</th><th>Subcat.</th><th>Cuenta</th><th>Moneda</th><th>Importe</th><th>EUR</th><th>Descripcion</th><th>Ticket</th><th>Acciones</th></tr>
           </thead>
           <tbody></tbody>
-          <tfoot><tr><td colspan="6">Total (filtro)</td><td id="tg-total"></td><td colspan="2"></td></tr></tfoot>
+          <tfoot><tr><td colspan="6">Total (filtro)</td><td id="tg-total"></td><td colspan="3"></td></tr></tfoot>
         </table>
       </div>
     </div>
@@ -112,9 +118,10 @@
         <div><label>Fecha de inicio</label><input type="date" id="v-inicio"></div>
         <div><label>Fecha final</label><input type="date" id="v-fin"></div>
       </div>
+      <div><label>Presupuesto del viaje (EUR)</label><input type="number" step="0.01" min="0" id="v-presu"></div>
       <div class="actions"><button class="btn" id="btn-add-viaje">Anadir viaje</button><span id="msg-viaje" class="small"></span></div>
       <div class="table-wrap">
-        <table id="tabla-viajes"><thead><tr><th>Viaje</th><th>Inicio</th><th>Final</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-viajes"><thead><tr><th>Viaje</th><th>Inicio</th><th>Final</th><th>Presupuesto</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
 
@@ -184,13 +191,15 @@
       <h2>Exportar / Importar</h2>
       <div class="actions">
         <button class="btn ghost" id="btn-export">Exportar JSON</button>
+        <button class="btn ghost" id="btn-export-csv">Exportar CSV</button>
+        <button class="btn ghost" id="btn-print-summary">Imprimir / PDF</button>
         <input type="file" id="file-import" accept="application/json" style="display:none">
         <button class="btn" id="btn-import">Importar JSON</button>
         <a id="export-link" class="download-link" href="#" download style="display:none">Descargar backup JSON</a>
         <a id="export-open-link" class="download-link alt" href="#" target="_blank" rel="noopener" style="display:none">Abrir JSON</a>
         <span id="msg-export" class="small"></span>
       </div>
-      <p id="backup-status" class="backup-status small"></p>
+      <p class="backup-status small"></p>
       <div id="export-panel" class="export-panel" style="display:none">
         <label>Contenido del backup JSON</label>
         <textarea id="export-json" readonly></textarea>
@@ -230,6 +239,10 @@
       <div><label>Importe</label><input type="number" step="0.01" min="0" id="edit-gasto-importe"></div>
       <div><label>Descripcion</label><input id="edit-gasto-desc"></div>
     </div>
+    <div class="row">
+      <div><label>Nuevo ticket</label><input type="file" accept="image/*,.pdf" id="edit-gasto-ticket"></div>
+      <div><label><input type="checkbox" id="edit-gasto-ticket-remove"> Quitar ticket actual</label><p id="edit-gasto-ticket-current" class="small"></p></div>
+    </div>
     <div class="actions">
       <button type="submit" class="btn">Guardar cambios</button>
       <button type="button" class="ghost" id="edit-gasto-cancel">Cancelar</button>
@@ -253,7 +266,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=500v12"></script>
+<script src="app.bundle.js?v=500v13"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

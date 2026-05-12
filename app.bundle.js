@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v12';
+const APP_VERSION = '500v13';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 let dbPromise = null;
 let activeFormDialogSubmit = null;
@@ -240,18 +240,88 @@ function setMessage(selector, text, isError = false) {
 }
 
 function renderBackupStatus() {
-  const el = $('#backup-status');
-  if (!el) return;
+  const items = $$('.backup-status');
+  if (!items.length) return;
   const saved = localStorage.getItem(BACKUP_KEY);
   if (!saved) {
-    el.textContent = 'Aun no consta ningun backup en este dispositivo.';
-    el.classList.add('backup-warning');
+    items.forEach(el => {
+      el.textContent = 'Aun no consta ningun backup en este dispositivo.';
+      el.classList.add('backup-warning');
+    });
     return;
   }
   const date = new Date(saved);
   const ageDays = Math.floor((Date.now() - date.getTime()) / 86400000);
-  el.textContent = `Ultimo backup generado: ${date.toLocaleString('es-ES')}${ageDays >= 7 ? ` (hace ${ageDays} dias)` : ''}.`;
-  el.classList.toggle('backup-warning', ageDays >= 7);
+  items.forEach(el => {
+    el.textContent = `Ultimo backup generado: ${date.toLocaleString('es-ES')}${ageDays >= 7 ? ` (hace ${ageDays} dias)` : ''}.`;
+    el.classList.toggle('backup-warning', ageDays >= 7);
+  });
+}
+
+function readFileData(input) {
+  const file = input && input.files && input.files[0];
+  if (!file) return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ name: file.name, type: file.type || 'application/octet-stream', data: reader.result });
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function ticketLink(gasto) {
+  if (!gasto.ticketData) return '-';
+  return `<a href="${escapeHtml(gasto.ticketData)}" target="_blank" rel="noopener">${escapeHtml(gasto.ticketName || 'Ver ticket')}</a>`;
+}
+
+function downloadText(filename, text, type = 'text/plain') {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function csvCell(value) {
+  return `"${String(value ?? '').replace(/"/g, '""')}"`;
+}
+
+function exportCurrentCsv() {
+  const rows = filteredGastos();
+  const header = ['Fecha', 'Viaje', 'Categoria', 'Subcategoria', 'Cuenta', 'Moneda', 'Importe', 'EUR', 'Descripcion', 'Ticket'];
+  const lines = [header.map(csvCell).join(',')];
+  const monthly = {};
+  rows.forEach(g => {
+    const trip = state.viajes.find(v => v.id === g.viajeId);
+    const cat = state.categorias.find(c => c.id === g.catId);
+    const sub = state.categorias.find(c => c.id === g.subcatId);
+    const account = state.cuentas.find(c => c.id === g.cuentaId);
+    const eur = toEur(g.importe, g.moneda);
+    const month = (g.fecha || '').slice(0, 7) || 'sin fecha';
+    monthly[month] = (monthly[month] || 0) + eur;
+    lines.push([
+      g.fecha,
+      trip ? trip.nombre : '',
+      cat ? cat.nombre : '',
+      sub ? sub.nombre : '',
+      account ? account.nombre : '',
+      g.moneda,
+      numberValue(g.importe).toFixed(2),
+      eur.toFixed(2),
+      g.desc || '',
+      g.ticketName || ''
+    ].map(csvCell).join(','));
+  });
+  lines.push('');
+  lines.push(['Mes', 'Total EUR'].map(csvCell).join(','));
+  Object.keys(monthly).sort().forEach(month => {
+    lines.push([month, monthly[month].toFixed(2)].map(csvCell).join(','));
+  });
+  downloadText(`gastos_resumen_${APP_VERSION}_${todayIso()}.csv`, lines.join('\r\n'), 'text/csv;charset=utf-8');
 }
 
 function fillSelect(selector, options, placeholder) {
@@ -307,9 +377,9 @@ async function delCategoria(id) {
   return deleteRecord('categorias', Number(id));
 }
 
-async function addViaje({ nombre, fechaInicio, fechaFin }) {
+async function addViaje({ nombre, fechaInicio, fechaFin, presupuesto = 0 }) {
   const now = new Date().toISOString();
-  return addRecord('viajes', { nombre, fechaInicio, fechaFin, createdAt: now, updatedAt: now });
+  return addRecord('viajes', { nombre, fechaInicio, fechaFin, presupuesto: numberValue(presupuesto), createdAt: now, updatedAt: now });
 }
 
 async function updateViaje(id, patch) {
@@ -377,7 +447,7 @@ async function delMoneda(codigo) {
   return deleteRecord('monedas', String(codigo).toUpperCase());
 }
 
-async function addGasto({ fecha, viajeId, cuentaId, moneda, catId, subcatId = null, importe, desc = '' }) {
+async function addGasto({ fecha, viajeId, cuentaId, moneda, catId, subcatId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '' }) {
   if (!hasValidCurrency(moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   const account = state.cuentas.find(c => c.id === Number(cuentaId));
   if (account && account.moneda !== moneda) throw new Error('La moneda del gasto debe coincidir con la cuenta');
@@ -393,6 +463,9 @@ async function addGasto({ fecha, viajeId, cuentaId, moneda, catId, subcatId = nu
     importe: amount,
     importeEur: toEur(amount, moneda),
     desc,
+    ticketName,
+    ticketType,
+    ticketData,
     createdAt: now,
     updatedAt: now
   });
@@ -566,7 +639,10 @@ function renderCuentas() {
   const tbody = $('#tabla-cuentas tbody');
   tbody.innerHTML = '';
   state.cuentas.forEach(c => {
+    const spent = state.gastos.filter(g => g.cuentaId === c.id).reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
+    const overBudget = numberValue(c.presupuesto) > 0 && spent > numberValue(c.presupuesto);
     const tr = document.createElement('tr');
+    if (overBudget || numberValue(c.saldoActual) < 0) tr.className = 'warning-row';
     tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrency(c.saldoActual, c.moneda)}</td><td>${c.presupuesto ? fmtCurrency(c.presupuesto, c.moneda) : '-'}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
   });
@@ -590,7 +666,7 @@ function renderViajes() {
   tbody.innerHTML = '';
   state.viajes.forEach(v => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td><button class="ghost" data-edit-viaje="${v.id}">Editar</button> <button class="ghost" data-del-viaje="${v.id}">Eliminar</button></td>`;
+    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${numberValue(v.presupuesto) ? fmtCurrency(v.presupuesto, 'EUR') : '-'}</td><td><button class="ghost" data-edit-viaje="${v.id}">Editar</button> <button class="ghost" data-del-viaje="${v.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -631,22 +707,25 @@ function renderViajesHome() {
   Object.keys(tripsByYear).sort().forEach(year => {
     const header = document.createElement('tr');
     header.className = 'group-row';
-    header.innerHTML = `<td colspan="6">Ano ${escapeHtml(year)}</td>`;
+    header.innerHTML = `<td colspan="8">Ano ${escapeHtml(year)}</td>`;
     tbody.appendChild(header);
     let yearExpenses = 0;
     let yearTotal = 0;
     tripsByYear[year].forEach(v => {
       const expenses = state.gastos.filter(g => g.viajeId === v.id);
       const total = expenses.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
+      const budget = numberValue(v.presupuesto);
+      const remaining = budget ? budget - total : null;
       yearExpenses += expenses.length;
       yearTotal += total;
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td><button class="ghost" data-trip-gastos="${v.id}">Gastos</button> <button class="ghost" data-trip-resumen="${v.id}">Resumen</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button></td>`;
+      if (remaining !== null && remaining < 0) tr.className = 'warning-row';
+      tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td><button class="ghost" data-trip-gastos="${v.id}">Gastos</button> <button class="ghost" data-trip-resumen="${v.id}">Resumen</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
     subtotal.className = 'subtotal-row';
-    subtotal.innerHTML = `<td colspan="3">Subtotal ${escapeHtml(year)}</td><td>${yearExpenses}</td><td>${fmtCurrency(yearTotal, 'EUR')}</td><td></td>`;
+    subtotal.innerHTML = `<td colspan="3">Subtotal ${escapeHtml(year)}</td><td>${yearExpenses}</td><td>${fmtCurrency(yearTotal, 'EUR')}</td><td colspan="3"></td>`;
     tbody.appendChild(subtotal);
   });
 }
@@ -669,6 +748,7 @@ function filteredGastos() {
   const fViaje = $('#f-viaje').value;
   const fDesde = $('#f-desde').value;
   const fHasta = $('#f-hasta').value;
+  const fDesc = ($('#f-desc').value || '').trim().toLowerCase();
   return state.gastos
     .filter(g => !fMon || g.moneda === fMon)
     .filter(g => !fCta || g.cuentaId === Number(fCta))
@@ -676,6 +756,7 @@ function filteredGastos() {
     .filter(g => !fViaje || g.viajeId === Number(fViaje))
     .filter(g => !fDesde || g.fecha >= fDesde)
     .filter(g => !fHasta || g.fecha <= fHasta)
+    .filter(g => !fDesc || (g.desc || '').toLowerCase().includes(fDesc))
     .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
 }
 
@@ -702,7 +783,7 @@ function renderGastosTabla() {
     const title = `${fmtDate(date)}${groupTrip ? ` - ${escapeHtml(groupTrip.nombre)}` : ''}`;
     const header = document.createElement('tr');
     header.className = 'group-row';
-    header.innerHTML = `<td colspan="9"><b>${title}</b></td>`;
+    header.innerHTML = `<td colspan="10"><b>${title}</b></td>`;
     tbody.appendChild(header);
     let subtotalEur = 0;
     byGroup[key].forEach(g => {
@@ -714,12 +795,12 @@ function renderGastosTabla() {
       totalEur += eur;
       const tr = document.createElement('tr');
       tr.className = 'expense-row';
-      tr.innerHTML = `<td class="mobile-hide"></td><td data-label="Categoria">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripcion">${escapeHtml(g.desc || '')}</td><td data-label="Acciones"><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></td>`;
+      tr.innerHTML = `<td class="mobile-hide"></td><td data-label="Categoria">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripcion">${escapeHtml(g.desc || '')}</td><td data-label="Ticket">${ticketLink(g)}</td><td data-label="Acciones"><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-dup-gasto="${g.id}">Duplicar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
     subtotal.className = 'subtotal-row';
-    subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="2"></td>`;
+    subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="3"></td>`;
     tbody.appendChild(subtotal);
   });
   $('#tg-total').textContent = fmtCurrency(totalEur, 'EUR');
@@ -899,7 +980,7 @@ function renderResumen() {
     };
   }).sort((a, b) => b.totalEur - a.totalEur);
   drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.label, value: row.totalEur })));
-  $('#tabla-cuenta tbody').innerHTML = accountRows.map(row => `<tr><td>${escapeHtml(row.label)}</td><td>${escapeHtml(row.moneda)}</td><td>${fmtCurrency(row.total, row.moneda)}</td><td>${fmtCurrency(row.totalEur, 'EUR')}</td><td>${row.presupuesto ? `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}` : '-'}</td><td>${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td>${row.pct.toFixed(1)}%</td></tr>`).join('');
+  $('#tabla-cuenta tbody').innerHTML = accountRows.map(row => `<tr class="${row.restanteEur !== null && row.restanteEur < 0 ? 'warning-row' : ''}"><td>${escapeHtml(row.label)}</td><td>${escapeHtml(row.moneda)}</td><td>${fmtCurrency(row.total, row.moneda)}</td><td>${fmtCurrency(row.totalEur, 'EUR')}</td><td>${row.presupuesto ? `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}` : '-'}</td><td>${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td>${row.pct.toFixed(1)}%</td></tr>`).join('');
 }
 
 async function exportAll() {
@@ -937,6 +1018,7 @@ async function importAll(data) {
       nombre: v.nombre,
       fechaInicio: v.fechaInicio,
       fechaFin: v.fechaFin,
+      presupuesto: numberValue(v.presupuesto),
       createdAt: v.createdAt || new Date().toISOString(),
       updatedAt: v.updatedAt || new Date().toISOString()
     };
@@ -1031,6 +1113,9 @@ function openEditGasto(gasto) {
   $('#edit-gasto-subcat').value = gasto.subcatId ? String(gasto.subcatId) : '';
   $('#edit-gasto-importe').value = numberValue(gasto.importe);
   $('#edit-gasto-desc').value = gasto.desc || '';
+  $('#edit-gasto-ticket').value = '';
+  $('#edit-gasto-ticket-remove').checked = false;
+  $('#edit-gasto-ticket-current').innerHTML = gasto.ticketData ? `Ticket actual: ${ticketLink(gasto)}` : 'Sin ticket asociado.';
   setMessage('#msg-edit-gasto', '');
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute('open', 'open');
@@ -1160,6 +1245,13 @@ function bindEvents() {
       const catId = $('#edit-gasto-cat').value;
       const importe = numberValue($('#edit-gasto-importe').value);
       if (!cuentaId || !catId || importe <= 0) throw new Error('Completa cuenta, categoria e importe');
+      const current = state.gastos.find(g => g.id === id);
+      const ticket = await readFileData($('#edit-gasto-ticket'));
+      const ticketPatch = $('#edit-gasto-ticket-remove').checked
+        ? { ticketName: '', ticketType: '', ticketData: '' }
+        : ticket
+          ? { ticketName: ticket.name, ticketType: ticket.type, ticketData: ticket.data }
+          : { ticketName: current ? current.ticketName : '', ticketType: current ? current.ticketType : '', ticketData: current ? current.ticketData : '' };
       await updateGasto(id, {
         fecha: $('#edit-gasto-fecha').value || todayIso(),
         viajeId: $('#edit-gasto-viaje').value || null,
@@ -1167,7 +1259,8 @@ function bindEvents() {
         catId,
         subcatId: $('#edit-gasto-subcat').value || null,
         importe,
-        desc: $('#edit-gasto-desc').value.trim()
+        desc: $('#edit-gasto-desc').value.trim(),
+        ...ticketPatch
       });
       closeEditGasto();
       await loadAll();
@@ -1200,6 +1293,7 @@ function bindEvents() {
   $('#m-eur').oninput = () => syncCurrencyRate('eur');
   $('#m-back').oninput = () => syncCurrencyRate('back');
   ['#f-moneda', '#f-cuenta', '#f-cat', '#f-desde', '#f-hasta'].forEach(sel => $(sel).onchange = renderGastosTabla);
+  $('#f-desc').oninput = renderGastosTabla;
   $('#f-viaje').onchange = () => {
     state.selectedViajeId = $('#f-viaje').value ? Number($('#f-viaje').value) : null;
     if ($('#r-viaje')) $('#r-viaje').value = $('#f-viaje').value;
@@ -1222,6 +1316,7 @@ function bindEvents() {
       const catId = $('#g-cat').value;
       const importe = numberValue($('#g-importe').value);
       if (!cuentaId || !catId || importe <= 0) throw new Error('Completa cuenta, categoria e importe');
+      const ticket = await readFileData($('#g-ticket'));
       await addGasto({
         fecha,
         viajeId: $('#g-viaje').value || null,
@@ -1230,10 +1325,14 @@ function bindEvents() {
         catId,
         subcatId: $('#g-subcat').value || null,
         importe,
-        desc: $('#g-desc').value.trim()
+        desc: $('#g-desc').value.trim(),
+        ticketName: ticket ? ticket.name : '',
+        ticketType: ticket ? ticket.type : '',
+        ticketData: ticket ? ticket.data : ''
       });
       $('#g-importe').value = '';
       $('#g-desc').value = '';
+      $('#g-ticket').value = '';
       setMessage('#msg-gasto', 'Gasto anadido');
       await loadAll();
     } catch (err) {
@@ -1287,8 +1386,8 @@ function bindEvents() {
       const fechaFin = $('#v-fin').value;
       if (!nombre || !fechaInicio || !fechaFin) throw new Error('Completa nombre, inicio y final');
       if (fechaFin < fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
-      await addViaje({ nombre, fechaInicio, fechaFin });
-      ['#v-nombre', '#v-inicio', '#v-fin'].forEach(sel => $(sel).value = '');
+      await addViaje({ nombre, fechaInicio, fechaFin, presupuesto: $('#v-presu').value });
+      ['#v-nombre', '#v-inicio', '#v-fin', '#v-presu'].forEach(sel => $(sel).value = '');
       setMessage('#msg-viaje', 'Viaje anadido');
       await loadAll();
     } catch (err) {
@@ -1327,7 +1426,7 @@ function bindEvents() {
   };
 
   $('#f-clear').onclick = () => {
-    ['#f-moneda', '#f-cuenta', '#f-cat', '#f-viaje', '#f-desde', '#f-hasta'].forEach(sel => $(sel).value = '');
+    ['#f-moneda', '#f-cuenta', '#f-cat', '#f-viaje', '#f-desde', '#f-hasta', '#f-desc'].forEach(sel => $(sel).value = '');
     state.selectedViajeId = null;
     renderViajesHome();
     renderGastosTabla();
@@ -1366,11 +1465,12 @@ function bindEvents() {
           fields: [
             { name: 'nombre', label: 'Nombre', value: v.nombre },
             { name: 'fechaInicio', label: 'Fecha de inicio', type: 'date', value: v.fechaInicio },
-            { name: 'fechaFin', label: 'Fecha final', type: 'date', value: v.fechaFin }
+            { name: 'fechaFin', label: 'Fecha final', type: 'date', value: v.fechaFin },
+            { name: 'presupuesto', label: 'Presupuesto del viaje (EUR)', type: 'number', step: '0.01', min: '0', value: v.presupuesto || 0 }
           ],
           onSubmit: values => {
             if (values.fechaFin < values.fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
-            return updateViaje(v.id, { nombre: values.nombre.trim() || v.nombre, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin });
+            return updateViaje(v.id, { nombre: values.nombre.trim() || v.nombre, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin, presupuesto: numberValue(values.presupuesto) });
           }
         });
         return;
@@ -1409,6 +1509,10 @@ function bindEvents() {
         if (!g) return;
         openEditGasto(g);
         return;
+      } else if (target.dataset.dupGasto) {
+        const g = state.gastos.find(item => item.id === Number(target.dataset.dupGasto));
+        if (!g) return;
+        await addGasto({ ...g, id: undefined, desc: `${g.desc || ''}`.trim(), fecha: g.fecha || todayIso() });
       } else if (target.dataset.delTransfer) {
         if (confirm('Eliminar esta transferencia y deshacer el movimiento de saldo?')) await delTransferencia(target.dataset.delTransfer);
       } else if (target.dataset.tripGastos) {
@@ -1458,6 +1562,15 @@ function bindEvents() {
     }
   };
   $('#btn-import').onclick = () => $('#file-import').click();
+  $('#btn-export-home').onclick = () => {
+    setTab('config');
+    $('#btn-export').click();
+  };
+  $('#btn-export-csv').onclick = exportCurrentCsv;
+  $('#btn-print-summary').onclick = () => {
+    setTab('resumen');
+    window.print();
+  };
   $('#file-import').onchange = async event => {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
