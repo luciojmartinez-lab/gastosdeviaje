@@ -179,6 +179,15 @@ button.ghost {
   margin-top: 12px;
 }
 
+.backup-status {
+  margin: 10px 0 0;
+}
+
+.backup-warning {
+  color: #9a3412;
+  font-weight: 600;
+}
+
 .export-panel textarea {
   width: 100%;
   min-height: 180px;
@@ -356,4 +365,60 @@ footer {
   }
 
   .kpi .big { font-size: 14px; }
+
+  #tabla-gastos {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0 10px;
+  }
+
+  #tabla-gastos thead,
+  #tabla-gastos tfoot {
+    display: none;
+  }
+
+  #tabla-gastos,
+  #tabla-gastos tbody,
+  #tabla-gastos tr,
+  #tabla-gastos td {
+    display: block;
+    width: 100%;
+  }
+
+  #tabla-gastos .group-row td,
+  #tabla-gastos .subtotal-row td {
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+
+  #tabla-gastos .expense-row {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 3px 12px #0000000a;
+    overflow: hidden;
+  }
+
+  #tabla-gastos .expense-row td {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 8px;
+    padding: 7px 10px;
+    border-bottom: 1px solid #eef2f7;
+    font-size: 13px;
+  }
+
+  #tabla-gastos .expense-row td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  #tabla-gastos .expense-row td:last-child {
+    border-bottom: 0;
+  }
+
+  #tabla-gastos .mobile-hide {
+    display: none;
+  }
 }

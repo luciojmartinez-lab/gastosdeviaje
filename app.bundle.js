@@ -1,6 +1,7 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v11';
+const APP_VERSION = '500v12';
+const BACKUP_KEY = 'gastos_viaje_last_backup';
 let dbPromise = null;
 let activeFormDialogSubmit = null;
 
@@ -236,6 +237,21 @@ function setMessage(selector, text, isError = false) {
   if (!el) return;
   el.textContent = text;
   el.classList.toggle('error', isError);
+}
+
+function renderBackupStatus() {
+  const el = $('#backup-status');
+  if (!el) return;
+  const saved = localStorage.getItem(BACKUP_KEY);
+  if (!saved) {
+    el.textContent = 'Aun no consta ningun backup en este dispositivo.';
+    el.classList.add('backup-warning');
+    return;
+  }
+  const date = new Date(saved);
+  const ageDays = Math.floor((Date.now() - date.getTime()) / 86400000);
+  el.textContent = `Ultimo backup generado: ${date.toLocaleString('es-ES')}${ageDays >= 7 ? ` (hace ${ageDays} dias)` : ''}.`;
+  el.classList.toggle('backup-warning', ageDays >= 7);
 }
 
 function fillSelect(selector, options, placeholder) {
@@ -489,6 +505,7 @@ function renderAll() {
   renderMonedasConfig();
   renderCategorias();
   renderGastosTabla();
+  renderBackupStatus();
   if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
   if ($('#t-fecha') && !$('#t-fecha').value) $('#t-fecha').value = todayIso();
 }
@@ -684,6 +701,7 @@ function renderGastosTabla() {
     const groupTrip = state.viajes.find(v => v.id === Number(tripId));
     const title = `${fmtDate(date)}${groupTrip ? ` - ${escapeHtml(groupTrip.nombre)}` : ''}`;
     const header = document.createElement('tr');
+    header.className = 'group-row';
     header.innerHTML = `<td colspan="9"><b>${title}</b></td>`;
     tbody.appendChild(header);
     let subtotalEur = 0;
@@ -695,10 +713,12 @@ function renderGastosTabla() {
       subtotalEur += eur;
       totalEur += eur;
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td></td><td>${escapeHtml(cat ? cat.nombre : '?')}</td><td>${escapeHtml(sub ? sub.nombre : '-')}</td><td>${escapeHtml(cta ? cta.nombre : '?')}</td><td>${escapeHtml(g.moneda)}</td><td>${fmtCurrency(g.importe, g.moneda)}</td><td>${fmtCurrency(eur, 'EUR')}</td><td>${escapeHtml(g.desc || '')}</td><td><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></td>`;
+      tr.className = 'expense-row';
+      tr.innerHTML = `<td class="mobile-hide"></td><td data-label="Categoria">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripcion">${escapeHtml(g.desc || '')}</td><td data-label="Acciones"><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
+    subtotal.className = 'subtotal-row';
     subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="2"></td>`;
     tbody.appendChild(subtotal);
   });
@@ -1430,6 +1450,8 @@ function bindEvents() {
       openLink.style.display = 'inline-flex';
       $('#export-json').value = json;
       $('#export-panel').style.display = 'block';
+      localStorage.setItem(BACKUP_KEY, new Date().toISOString());
+      renderBackupStatus();
       setMessage('#msg-export', 'Backup generado. Usa Descargar, Abrir JSON o copia el texto.');
     } catch (err) {
       alert(`No se pudo exportar: ${err.message || err}`);

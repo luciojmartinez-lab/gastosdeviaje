@@ -18,7 +18,7 @@
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuracion</button>
   </nav>
-  <div class="app-version">500v11</div>
+  <div class="app-version">500v12</div>
 </header>
 
 <main>
@@ -190,6 +190,7 @@
         <a id="export-open-link" class="download-link alt" href="#" target="_blank" rel="noopener" style="display:none">Abrir JSON</a>
         <span id="msg-export" class="small"></span>
       </div>
+      <p id="backup-status" class="backup-status small"></p>
       <div id="export-panel" class="export-panel" style="display:none">
         <label>Contenido del backup JSON</label>
         <textarea id="export-json" readonly></textarea>
@@ -252,7 +253,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=500v11"></script>
+<script src="app.bundle.js?v=500v12"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
