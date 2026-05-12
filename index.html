@@ -18,7 +18,7 @@
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuracion</button>
   </nav>
-  <div class="app-version">500v9</div>
+  <div class="app-version">500v10</div>
 </header>
 
 <main>
@@ -151,6 +151,24 @@
     </div>
 
     <div class="card">
+      <h2>Transferencias entre cuentas</h2>
+      <div class="row4">
+        <div><label>Fecha</label><input type="date" id="t-fecha"></div>
+        <div><label>Desde</label><select id="t-from"></select></div>
+        <div><label>Hacia</label><select id="t-to"></select></div>
+        <div><label>Importe en origen</label><input type="number" step="0.01" min="0" id="t-importe"></div>
+      </div>
+      <div class="row">
+        <div><label>Nota</label><input id="t-nota" placeholder="Retirada efectivo, recarga Revolut..."></div>
+        <div class="filter-action"><button class="btn" id="btn-add-transfer">Anadir transferencia</button></div>
+      </div>
+      <div class="actions"><span id="msg-transfer" class="small"></span></div>
+      <div class="table-wrap">
+        <table id="tabla-transferencias"><thead><tr><th>Fecha</th><th>Desde</th><th>Hacia</th><th>Sale</th><th>Entra</th><th>Nota</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Categorias</h2>
       <div class="row">
         <div><label>Nombre</label><input id="cat-nombre"></div>
@@ -190,7 +208,51 @@
 
 <footer>App PWA offline - IndexedDB - Espanol</footer>
 
-<script src="app.bundle.js?v=500v9"></script>
+<dialog id="edit-gasto-dialog" class="modal">
+  <form method="dialog" id="edit-gasto-form">
+    <div class="modal-head">
+      <h2>Editar gasto</h2>
+      <button type="button" class="ghost icon-btn" id="edit-gasto-close" aria-label="Cerrar">x</button>
+    </div>
+    <input type="hidden" id="edit-gasto-id">
+    <div class="row3">
+      <div><label>Fecha</label><input type="date" id="edit-gasto-fecha"></div>
+      <div><label>Viaje</label><select id="edit-gasto-viaje"></select></div>
+      <div><label>Cuenta</label><select id="edit-gasto-cuenta"></select></div>
+    </div>
+    <div class="row3">
+      <div><label>Moneda</label><input id="edit-gasto-moneda" readonly></div>
+      <div><label>Categoria</label><select id="edit-gasto-cat"></select></div>
+      <div><label>Subcategoria</label><select id="edit-gasto-subcat"></select></div>
+    </div>
+    <div class="row">
+      <div><label>Importe</label><input type="number" step="0.01" min="0" id="edit-gasto-importe"></div>
+      <div><label>Descripcion</label><input id="edit-gasto-desc"></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn">Guardar cambios</button>
+      <button type="button" class="ghost" id="edit-gasto-cancel">Cancelar</button>
+      <span id="msg-edit-gasto" class="small"></span>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="form-dialog" class="modal">
+  <form method="dialog" id="form-dialog-form">
+    <div class="modal-head">
+      <h2 id="form-dialog-title">Editar</h2>
+      <button type="button" class="ghost icon-btn" id="form-dialog-close" aria-label="Cerrar">x</button>
+    </div>
+    <div id="form-dialog-fields"></div>
+    <div class="actions">
+      <button type="submit" class="btn">Guardar</button>
+      <button type="button" class="ghost" id="form-dialog-cancel">Cancelar</button>
+      <span id="msg-form-dialog" class="small"></span>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.bundle.js?v=500v10a"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

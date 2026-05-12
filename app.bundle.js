@@ -1,7 +1,8 @@
 const DB_NAME = 'gastos_viaje_db';
-const DB_VERSION = 2;
-const APP_VERSION = '500v9';
+const DB_VERSION = 3;
+const APP_VERSION = '500v10';
 let dbPromise = null;
+let activeFormDialogSubmit = null;
 
 function openDB() {
   if (dbPromise) return dbPromise;
@@ -31,6 +32,10 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains('monedas')) {
         db.createObjectStore('monedas', { keyPath: 'codigo' });
+      }
+      if (!db.objectStoreNames.contains('transferencias')) {
+        const s = db.createObjectStore('transferencias', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('byFecha', 'fecha');
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -136,7 +141,8 @@ const state = {
   categorias: [],
   gastos: [],
   viajes: [],
-  monedas: []
+  monedas: [],
+  transferencias: []
 };
 
 const collator = new Intl.Collator('es', { sensitivity: 'base' });
@@ -230,28 +236,6 @@ function setMessage(selector, text, isError = false) {
   if (!el) return;
   el.textContent = text;
   el.classList.toggle('error', isError);
-}
-
-function parseOptionalId(value) {
-  const text = String(value ?? '').trim();
-  if (!text) return null;
-  const id = Number(text);
-  return Number.isFinite(id) ? id : NaN;
-}
-
-function promptId(title, options, currentValue, allowEmpty = false) {
-  const list = options.length
-    ? options.map(item => `${item.id}: ${item.nombre}`).join(' | ')
-    : 'sin opciones';
-  const value = prompt(`${title}\n${list}${allowEmpty ? '\nDeja vacio para ninguno.' : ''}`, currentValue ?? '');
-  if (value === null) return { cancelled: true };
-  const id = allowEmpty ? parseOptionalId(value) : Number(value);
-  if (Number.isNaN(id) || (!allowEmpty && !Number.isFinite(id))) {
-    throw new Error(`Seleccion no valida en ${title}`);
-  }
-  if (id === null) return { value: null };
-  if (!options.some(item => item.id === id)) throw new Error(`No existe el ID indicado en ${title}`);
-  return { value: id };
 }
 
 function fillSelect(selector, options, placeholder) {
@@ -433,19 +417,62 @@ async function delGasto(id) {
   return deleteRecord('gastos', Number(id));
 }
 
+async function addTransferencia({ fecha, fromId, toId, importe, nota = '' }) {
+  const source = state.cuentas.find(c => c.id === Number(fromId)) || await getOne('cuentas', Number(fromId));
+  const target = state.cuentas.find(c => c.id === Number(toId)) || await getOne('cuentas', Number(toId));
+  if (!source || !target) throw new Error('Selecciona cuenta de origen y destino');
+  if (source.id === target.id) throw new Error('La cuenta de origen y destino no pueden ser la misma');
+  if (!hasValidCurrency(source.moneda) || !hasValidCurrency(target.moneda)) throw new Error('Configura las monedas de las cuentas antes de transferir');
+  const amountFrom = numberValue(importe);
+  if (amountFrom <= 0) throw new Error('El importe debe ser mayor que cero');
+  const eur = toEur(amountFrom, source.moneda);
+  const amountTo = fromEur(eur, target.moneda);
+  const now = new Date().toISOString();
+  const id = await addRecord('transferencias', {
+    fecha: fecha || todayIso(),
+    fromId: source.id,
+    toId: target.id,
+    monedaFrom: source.moneda,
+    monedaTo: target.moneda,
+    importeFrom: amountFrom,
+    importeTo: amountTo,
+    importeEur: eur,
+    nota: nota.trim(),
+    createdAt: now,
+    updatedAt: now
+  });
+  const freshSource = await getOne('cuentas', source.id);
+  const freshTarget = await getOne('cuentas', target.id);
+  await updateCuenta(source.id, { saldoActual: +(numberValue(freshSource.saldoActual) - amountFrom).toFixed(2) });
+  await updateCuenta(target.id, { saldoActual: +(numberValue(freshTarget.saldoActual) + amountTo).toFixed(2) });
+  return id;
+}
+
+async function delTransferencia(id) {
+  const t = state.transferencias.find(item => item.id === Number(id)) || await getOne('transferencias', Number(id));
+  if (!t) return false;
+  const source = await getOne('cuentas', Number(t.fromId));
+  const target = await getOne('cuentas', Number(t.toId));
+  if (source) await updateCuenta(source.id, { saldoActual: +(numberValue(source.saldoActual) + numberValue(t.importeFrom)).toFixed(2) });
+  if (target) await updateCuenta(target.id, { saldoActual: +(numberValue(target.saldoActual) - numberValue(t.importeTo)).toFixed(2) });
+  return deleteRecord('transferencias', Number(id));
+}
+
 async function loadAll() {
-  const [cuentas, categorias, gastos, viajes, monedas] = await Promise.all([
+  const [cuentas, categorias, gastos, viajes, monedas, transferencias] = await Promise.all([
     getAll('cuentas'),
     getAll('categorias'),
     getAll('gastos'),
     getAll('viajes'),
-    getAll('monedas')
+    getAll('monedas'),
+    getAll('transferencias')
   ]);
   state.cuentas = cuentas.sort(byName);
   state.categorias = sortCategoriasHierarchical(categorias);
   state.gastos = gastos.map(g => ({ ...g, importeEur: g.importeEur ?? toEur(g.importe, g.moneda) }));
   state.viajes = viajes.sort((a, b) => (a.fechaInicio || '').localeCompare(b.fechaInicio || '') || byName(a, b));
   state.monedas = monedas.sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
+  state.transferencias = transferencias.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
   renderAll();
   if (state.activeTab === 'resumen') renderResumen();
 }
@@ -457,11 +484,13 @@ function renderAll() {
   renderCategorySelectors();
   renderViajesHome();
   renderCuentas();
+  renderTransferencias();
   renderViajes();
   renderMonedasConfig();
   renderCategorias();
   renderGastosTabla();
   if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
+  if ($('#t-fecha') && !$('#t-fecha').value) $('#t-fecha').value = todayIso();
 }
 
 function renderCurrencySelectors() {
@@ -476,6 +505,9 @@ function renderAccountSelectors() {
   fillSelect('#g-cuenta', accounts, '(elige cuenta)');
   fillSelect('#f-cuenta', accounts, '(todas)');
   fillSelect('#r-cuenta', accounts, '(todas)');
+  if ($('#t-from')) fillSelect('#t-from', accounts, '(origen)');
+  if ($('#t-to')) fillSelect('#t-to', accounts, '(destino)');
+  if ($('#edit-gasto-cuenta')) fillSelect('#edit-gasto-cuenta', accounts, '(elige cuenta)');
 }
 
 function renderTripSelectors() {
@@ -483,6 +515,7 @@ function renderTripSelectors() {
   fillSelect('#g-viaje', trips, '(sin viaje)');
   fillSelect('#f-viaje', trips, '(todos)');
   fillSelect('#r-viaje', trips, '(todos)');
+  if ($('#edit-gasto-viaje')) fillSelect('#edit-gasto-viaje', trips, '(sin viaje)');
 }
 
 function renderCategorySelectors() {
@@ -491,7 +524,9 @@ function renderCategorySelectors() {
   fillSelect('#g-cat', options, '(elige categoria)');
   fillSelect('#f-cat', options, '(todas)');
   fillSelect('#cat-parent', options, '(Ninguna, es principal)');
+  if ($('#edit-gasto-cat')) fillSelect('#edit-gasto-cat', options, '(elige categoria)');
   renderSubcategories();
+  if ($('#edit-gasto-subcat')) renderEditSubcategories();
 }
 
 function renderSubcategories() {
@@ -502,12 +537,33 @@ function renderSubcategories() {
   fillSelect('#g-subcat', options, '(sin subcategoria)');
 }
 
+function renderEditSubcategories() {
+  const catId = Number($('#edit-gasto-cat').value);
+  const options = state.categorias
+    .filter(c => c.parentId === catId)
+    .map(c => ({ value: String(c.id), label: c.nombre }));
+  fillSelect('#edit-gasto-subcat', options, '(sin subcategoria)');
+}
+
 function renderCuentas() {
   const tbody = $('#tabla-cuentas tbody');
   tbody.innerHTML = '';
   state.cuentas.forEach(c => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrency(c.saldoActual, c.moneda)}</td><td>${c.presupuesto ? fmtCurrency(c.presupuesto, c.moneda) : '-'}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderTransferencias() {
+  const tbody = $('#tabla-transferencias tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  state.transferencias.forEach(t => {
+    const source = state.cuentas.find(c => c.id === t.fromId);
+    const target = state.cuentas.find(c => c.id === t.toId);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fmtDate(t.fecha)}</td><td>${escapeHtml(source ? source.nombre : '?')}</td><td>${escapeHtml(target ? target.nombre : '?')}</td><td>${fmtCurrency(t.importeFrom, t.monedaFrom)}</td><td>${fmtCurrency(t.importeTo, t.monedaTo)}</td><td>${escapeHtml(t.nota || '')}</td><td><button class="ghost" data-del-transfer="${t.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -815,7 +871,8 @@ async function exportAll() {
     categorias: state.categorias,
     gastos: state.gastos,
     viajes: state.viajes,
-    monedas: state.monedas
+    monedas: state.monedas,
+    transferencias: state.transferencias
   };
 }
 
@@ -823,7 +880,7 @@ async function importAll(data) {
   if (!data || !Array.isArray(data.cuentas) || !Array.isArray(data.categorias) || !Array.isArray(data.gastos)) {
     throw new Error('Archivo no valido');
   }
-  await clearStores(['cuentas', 'categorias', 'gastos', 'viajes', 'monedas']);
+  await clearStores(['cuentas', 'categorias', 'gastos', 'viajes', 'monedas', 'transferencias']);
   await ensureBaseCurrency();
   for (const m of data.monedas || []) {
     const codigo = String(m.codigo || '').toUpperCase();
@@ -860,6 +917,23 @@ async function importAll(data) {
     };
     if (c.id != null) obj.id = c.id;
     await addRecord('cuentas', obj);
+  }
+  for (const t of data.transferencias || []) {
+    const obj = {
+      fecha: t.fecha || todayIso(),
+      fromId: Number(t.fromId),
+      toId: Number(t.toId),
+      monedaFrom: t.monedaFrom || 'EUR',
+      monedaTo: t.monedaTo || 'EUR',
+      importeFrom: numberValue(t.importeFrom),
+      importeTo: numberValue(t.importeTo),
+      importeEur: numberValue(t.importeEur),
+      nota: t.nota || '',
+      createdAt: t.createdAt || new Date().toISOString(),
+      updatedAt: t.updatedAt || new Date().toISOString()
+    };
+    if (t.id != null) obj.id = t.id;
+    await addRecord('transferencias', obj);
   }
   for (const c of data.categorias || []) {
     const obj = {
@@ -904,21 +978,79 @@ function applySelectedTrip(id) {
   renderResumen();
 }
 
-async function resetDataPrompt() {
-  const option = prompt('Que quieres resetear? Escribe: todo, categorias, monedas, cuentas, viajes o gastos', 'todo');
-  if (option === null) return;
-  const value = option.trim().toLowerCase();
+function openEditGasto(gasto) {
+  const dialog = $('#edit-gasto-dialog');
+  if (!dialog || !gasto) return;
+  $('#edit-gasto-id').value = gasto.id;
+  $('#edit-gasto-fecha').value = gasto.fecha || todayIso();
+  $('#edit-gasto-viaje').value = gasto.viajeId ? String(gasto.viajeId) : '';
+  $('#edit-gasto-cuenta').value = String(gasto.cuentaId || '');
+  const account = state.cuentas.find(c => c.id === Number(gasto.cuentaId));
+  $('#edit-gasto-moneda').value = account ? account.moneda : gasto.moneda;
+  $('#edit-gasto-cat').value = String(gasto.catId || '');
+  renderEditSubcategories();
+  $('#edit-gasto-subcat').value = gasto.subcatId ? String(gasto.subcatId) : '';
+  $('#edit-gasto-importe').value = numberValue(gasto.importe);
+  $('#edit-gasto-desc').value = gasto.desc || '';
+  setMessage('#msg-edit-gasto', '');
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeEditGasto() {
+  const dialog = $('#edit-gasto-dialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function openFormDialog({ title, fields, onSubmit }) {
+  const dialog = $('#form-dialog');
+  const container = $('#form-dialog-fields');
+  if (!dialog || !container) return;
+  $('#form-dialog-title').textContent = title;
+  container.innerHTML = fields.map(field => {
+    const value = escapeHtml(field.value ?? '');
+    const step = field.step ? ` step="${escapeHtml(field.step)}"` : '';
+    const min = field.min != null ? ` min="${escapeHtml(field.min)}"` : '';
+    return `<div><label>${escapeHtml(field.label)}</label><input id="form-field-${escapeHtml(field.name)}" type="${field.type || 'text'}"${step}${min} value="${value}"></div>`;
+  }).join('');
+  setMessage('#msg-form-dialog', '');
+  activeFormDialogSubmit = onSubmit;
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeFormDialog() {
+  const dialog = $('#form-dialog');
+  activeFormDialogSubmit = null;
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function formDialogValues() {
+  const values = {};
+  $$('#form-dialog-fields input').forEach(input => {
+    values[input.id.replace('form-field-', '')] = input.value;
+  });
+  return values;
+}
+
+async function resetDataValue(option) {
+  const value = String(option || '').trim().toLowerCase();
   const map = {
-    todo: ['cuentas', 'categorias', 'gastos', 'viajes', 'monedas'],
+    todo: ['cuentas', 'categorias', 'gastos', 'viajes', 'monedas', 'transferencias'],
     categorias: ['categorias'],
     monedas: ['monedas'],
     cuentas: ['cuentas'],
     viajes: ['viajes'],
-    gastos: ['gastos']
+    gastos: ['gastos'],
+    transferencias: ['transferencias']
   };
   const stores = map[value];
   if (!stores) {
-    alert('Opcion no reconocida. Usa: todo, categorias, monedas, cuentas, viajes o gastos.');
+    alert('Opcion no reconocida. Usa: todo, categorias, monedas, cuentas, viajes, gastos o transferencias.');
     return;
   }
   if (!confirm(`Se borrara: ${value}. Continuar?`)) return;
@@ -943,6 +1075,14 @@ async function resetDataPrompt() {
   }
 }
 
+async function resetDataPrompt() {
+  openFormDialog({
+    title: 'Resetear datos',
+    fields: [{ name: 'opcion', label: 'Escribe: todo, categorias, monedas, cuentas, viajes, gastos o transferencias', value: 'todo' }],
+    onSubmit: values => resetDataValue(values.opcion)
+  });
+}
+
 function bindEvents() {
   $('#tab-viajes').onclick = () => setTab('viajes');
   $('#tab-gastos').onclick = () => setTab('gastos');
@@ -953,6 +1093,49 @@ function bindEvents() {
     setTab('viajes');
   };
   $('#g-cat').onchange = renderSubcategories;
+  $('#edit-gasto-cat').onchange = renderEditSubcategories;
+  $('#edit-gasto-cuenta').onchange = () => {
+    const account = state.cuentas.find(c => c.id === Number($('#edit-gasto-cuenta').value));
+    if (account) $('#edit-gasto-moneda').value = account.moneda;
+  };
+  $('#edit-gasto-close').onclick = closeEditGasto;
+  $('#edit-gasto-cancel').onclick = closeEditGasto;
+  $('#form-dialog-close').onclick = closeFormDialog;
+  $('#form-dialog-cancel').onclick = closeFormDialog;
+  $('#form-dialog-form').onsubmit = async event => {
+    event.preventDefault();
+    if (!activeFormDialogSubmit) return;
+    try {
+      await activeFormDialogSubmit(formDialogValues());
+      closeFormDialog();
+      await loadAll();
+    } catch (err) {
+      setMessage('#msg-form-dialog', err.message || String(err), true);
+    }
+  };
+  $('#edit-gasto-form').onsubmit = async event => {
+    event.preventDefault();
+    try {
+      const id = Number($('#edit-gasto-id').value);
+      const cuentaId = $('#edit-gasto-cuenta').value;
+      const catId = $('#edit-gasto-cat').value;
+      const importe = numberValue($('#edit-gasto-importe').value);
+      if (!cuentaId || !catId || importe <= 0) throw new Error('Completa cuenta, categoria e importe');
+      await updateGasto(id, {
+        fecha: $('#edit-gasto-fecha').value || todayIso(),
+        viajeId: $('#edit-gasto-viaje').value || null,
+        cuentaId,
+        catId,
+        subcatId: $('#edit-gasto-subcat').value || null,
+        importe,
+        desc: $('#edit-gasto-desc').value.trim()
+      });
+      closeEditGasto();
+      await loadAll();
+    } catch (err) {
+      setMessage('#msg-edit-gasto', err.message || String(err), true);
+    }
+  };
   $('#g-cuenta').onchange = () => {
     const account = state.cuentas.find(c => c.id === Number($('#g-cuenta').value));
     if (account) $('#g-moneda').value = account.moneda;
@@ -1040,6 +1223,24 @@ function bindEvents() {
     }
   };
 
+  $('#btn-add-transfer').onclick = async () => {
+    try {
+      await addTransferencia({
+        fecha: $('#t-fecha').value || todayIso(),
+        fromId: $('#t-from').value,
+        toId: $('#t-to').value,
+        importe: $('#t-importe').value,
+        nota: $('#t-nota').value
+      });
+      ['#t-importe', '#t-nota'].forEach(sel => $(sel).value = '');
+      if (!$('#t-fecha').value) $('#t-fecha').value = todayIso();
+      setMessage('#msg-transfer', 'Transferencia anadida');
+      await loadAll();
+    } catch (err) {
+      setMessage('#msg-transfer', err.message || String(err), true);
+    }
+  };
+
   $('#btn-add-viaje').onclick = async () => {
     try {
       const nombre = $('#v-nombre').value.trim();
@@ -1103,23 +1304,37 @@ function bindEvents() {
       } else if (target.dataset.editCuenta) {
         const c = state.cuentas.find(item => item.id === Number(target.dataset.editCuenta));
         if (!c) return;
-        const nombre = prompt('Nuevo nombre', c.nombre);
-        if (nombre === null) return;
-        const presupuesto = numberValue(prompt('Presupuesto', c.presupuesto || '0'));
-        const ajuste = prompt('Ajuste de saldo actual (+50, -20, ...)', '');
-        const saldoActual = ajuste ? numberValue(c.saldoActual) + numberValue(ajuste) : numberValue(c.saldoActual);
-        await updateCuenta(c.id, { nombre: nombre.trim() || c.nombre, presupuesto, saldoActual });
+        openFormDialog({
+          title: 'Editar cuenta',
+          fields: [
+            { name: 'nombre', label: 'Nombre', value: c.nombre },
+            { name: 'presupuesto', label: 'Presupuesto', type: 'number', step: '0.01', value: c.presupuesto || 0 },
+            { name: 'ajuste', label: 'Ajuste de saldo actual (+50, -20, ...)', type: 'number', step: '0.01', value: '' }
+          ],
+          onSubmit: values => {
+            const saldoActual = values.ajuste ? numberValue(c.saldoActual) + numberValue(values.ajuste) : numberValue(c.saldoActual);
+            return updateCuenta(c.id, { nombre: values.nombre.trim() || c.nombre, presupuesto: numberValue(values.presupuesto), saldoActual });
+          }
+        });
+        return;
       } else if (target.dataset.delViaje) {
         if (confirm('Eliminar este viaje? Los gastos se conservaran sin viaje.')) await delViaje(target.dataset.delViaje);
       } else if (target.dataset.editViaje) {
         const v = state.viajes.find(item => item.id === Number(target.dataset.editViaje));
         if (!v) return;
-        const nombre = prompt('Nombre del viaje', v.nombre);
-        if (nombre === null) return;
-        const fechaInicio = prompt('Fecha de inicio (AAAA-MM-DD)', v.fechaInicio) || v.fechaInicio;
-        const fechaFin = prompt('Fecha final (AAAA-MM-DD)', v.fechaFin) || v.fechaFin;
-        if (fechaFin < fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
-        await updateViaje(v.id, { nombre: nombre.trim() || v.nombre, fechaInicio, fechaFin });
+        openFormDialog({
+          title: 'Editar viaje',
+          fields: [
+            { name: 'nombre', label: 'Nombre', value: v.nombre },
+            { name: 'fechaInicio', label: 'Fecha de inicio', type: 'date', value: v.fechaInicio },
+            { name: 'fechaFin', label: 'Fecha final', type: 'date', value: v.fechaFin }
+          ],
+          onSubmit: values => {
+            if (values.fechaFin < values.fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
+            return updateViaje(v.id, { nombre: values.nombre.trim() || v.nombre, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin });
+          }
+        });
+        return;
       } else if (target.dataset.delMoneda) {
         const code = target.dataset.delMoneda;
         const inUse = state.cuentas.some(c => c.moneda === code) || state.gastos.some(g => g.moneda === code);
@@ -1128,50 +1343,35 @@ function bindEvents() {
       } else if (target.dataset.editMoneda) {
         const m = state.monedas.find(item => item.codigo === target.dataset.editMoneda);
         if (!m) return;
-        const eur = prompt(`1 ${m.codigo} equivale a EUR`, m.eurPorUnidad);
-        if (eur === null) return;
-        const back = prompt(`1 EUR equivale a ${m.codigo}`, m.unidadesPorEuro);
-        if (back === null) return;
-        await upsertMoneda({ ...m, eurPorUnidad: eur, unidadesPorEuro: back });
+        openFormDialog({
+          title: `Editar ${m.codigo}`,
+          fields: [
+            { name: 'eurPorUnidad', label: `1 ${m.codigo} equivale a EUR`, type: 'number', step: '0.000001', min: '0', value: m.eurPorUnidad },
+            { name: 'unidadesPorEuro', label: `1 EUR equivale a ${m.codigo}`, type: 'number', step: '0.000001', min: '0', value: m.unidadesPorEuro }
+          ],
+          onSubmit: values => upsertMoneda({ ...m, eurPorUnidad: values.eurPorUnidad, unidadesPorEuro: values.unidadesPorEuro })
+        });
+        return;
       } else if (target.dataset.delCat) {
         if (confirm('Eliminar esta categoria?')) await delCategoria(target.dataset.delCat);
       } else if (target.dataset.editCat) {
         const c = state.categorias.find(item => item.id === Number(target.dataset.editCat));
         if (!c) return;
-        const nombre = prompt('Nuevo nombre', c.nombre);
-        if (nombre === null) return;
-        await updateCategoria(c.id, { nombre: nombre.trim() || c.nombre });
+        openFormDialog({
+          title: 'Editar categoria',
+          fields: [{ name: 'nombre', label: 'Nombre', value: c.nombre }],
+          onSubmit: values => updateCategoria(c.id, { nombre: values.nombre.trim() || c.nombre })
+        });
+        return;
       } else if (target.dataset.delGasto) {
         if (confirm('Eliminar este gasto?')) await delGasto(target.dataset.delGasto);
       } else if (target.dataset.editGasto) {
         const g = state.gastos.find(item => item.id === Number(target.dataset.editGasto));
         if (!g) return;
-        const fecha = prompt('Fecha (AAAA-MM-DD)', g.fecha || todayIso());
-        if (fecha === null) return;
-        const viaje = promptId('ID de viaje', state.viajes, g.viajeId || '', true);
-        if (viaje.cancelled) return;
-        const cuenta = promptId('ID de cuenta', state.cuentas, g.cuentaId || '');
-        if (cuenta.cancelled) return;
-        const categorias = state.categorias.filter(c => !c.parentId);
-        const categoria = promptId('ID de categoria', categorias, g.catId || '');
-        if (categoria.cancelled) return;
-        const subcategorias = state.categorias.filter(c => c.parentId === categoria.value);
-        const currentSub = subcategorias.some(c => c.id === g.subcatId) ? g.subcatId : '';
-        const subcategoria = promptId('ID de subcategoria', subcategorias, currentSub, true);
-        if (subcategoria.cancelled) return;
-        const importe = prompt('Importe', g.importe);
-        if (importe === null) return;
-        const desc = prompt('Descripcion', g.desc || '');
-        if (desc === null) return;
-        await updateGasto(g.id, {
-          fecha: fecha.trim() || g.fecha,
-          viajeId: viaje.value,
-          cuentaId: cuenta.value,
-          catId: categoria.value,
-          subcatId: subcategoria.value,
-          importe: numberValue(importe),
-          desc
-        });
+        openEditGasto(g);
+        return;
+      } else if (target.dataset.delTransfer) {
+        if (confirm('Eliminar esta transferencia y deshacer el movimiento de saldo?')) await delTransferencia(target.dataset.delTransfer);
       } else if (target.dataset.tripGastos) {
         applySelectedTrip(target.dataset.tripGastos);
         setTab('gastos');

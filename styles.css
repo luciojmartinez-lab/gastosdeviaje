@@ -150,6 +150,14 @@ button.ghost {
   color: var(--soft-text);
 }
 
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
 .download-link {
   display: inline-flex;
   align-items: center;
@@ -178,6 +186,34 @@ button.ghost {
   font-family: ui-monospace, SFMono-Regular, Consolas, Liberation Mono, monospace;
   font-size: 12px;
   line-height: 1.45;
+}
+
+.modal {
+  width: min(920px, calc(100vw - 24px));
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  box-shadow: 0 20px 60px #00000035;
+}
+
+.modal::backdrop {
+  background: #0f172a66;
+}
+
+.modal form {
+  padding: 16px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.modal-head h2 {
+  margin: 0;
 }
 
 .table-wrap {
