@@ -124,6 +124,10 @@ h2 {
   display: none;
 }
 
+#print-output {
+  display: none;
+}
+
 .desktop-actions {
   display: inline-flex;
   align-items: center;
@@ -553,43 +557,37 @@ footer {
 }
 
 @media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
   header,
   nav,
-  #view-viajes,
-  #view-config,
+  main,
   #print-dialog,
   footer {
     display: none !important;
   }
 
-  #view-gastos > .card:first-child,
-  .filters-card,
-  .action-col,
-  .desktop-actions,
-  .mobile-action-select {
-    display: none !important;
-  }
-
-  body.print-resumen #view-resumen,
-  body.print-gastos #view-gastos,
-  body.print-todo #view-resumen,
-  body.print-todo #view-gastos {
+  #print-output {
     display: block !important;
+    max-width: none;
+    padding: 0;
   }
 
-  body.print-resumen #view-gastos,
-  body.print-gastos #view-resumen {
-    display: none !important;
+  .print-section {
+    display: block;
   }
 
-  body.print-todo #view-gastos {
+  .print-page-break {
     break-after: page;
     page-break-after: always;
   }
 
-  main {
-    max-width: none;
-    padding: 0;
+  .print-section h2 {
+    margin: 0 0 8px;
+    font-size: 16px;
   }
 
   .card,
@@ -603,8 +601,14 @@ footer {
     padding: 8px;
   }
 
+  .kpi {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
   table {
     min-width: 0;
+    width: 100%;
     margin-top: 4px;
   }
 
