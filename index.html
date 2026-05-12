@@ -18,7 +18,7 @@
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuracion</button>
   </nav>
-  <div class="app-version">500v17</div>
+  <div class="app-version">500v18</div>
 </header>
 
 <main>
@@ -66,6 +66,9 @@
         <div><label>Vista</label><select id="f-view"><option value="table">Tabla</option><option value="cards">Tarjetas</option></select></div>
         <div class="filter-action"><button class="btn" id="f-clear">Quitar filtros</button></div>
       </div>
+    </div>
+
+    <div class="card expenses-list-card">
       <div class="table-wrap">
         <table id="tabla-gastos">
           <thead>
@@ -290,7 +293,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=500v17"></script>
+<script src="app.bundle.js?v=500v18"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
