@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v23';
+const APP_VERSION = '500v24';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 let dbPromise = null;
@@ -1240,47 +1240,18 @@ function closePrintDialog() {
   else dialog.removeAttribute('open');
 }
 
-function clonePrintSection(id) {
-  const original = $(`#view-${id}`);
-  if (!original) return null;
-  const clone = original.cloneNode(true);
-  clone.removeAttribute('id');
-  clone.style.display = 'block';
-  clone.querySelectorAll('.filters-card, .section-head, .row4, .action-col, .desktop-actions, .mobile-action-select, button, select, input, label').forEach(el => {
-    el.remove();
-  });
-  clone.querySelectorAll('[style]').forEach(el => {
-    if (el instanceof HTMLElement) el.removeAttribute('style');
-  });
-  return clone;
-}
-
-function buildPrintOutput(section) {
-  const output = $('#print-output');
-  if (!output) return;
-  output.innerHTML = '';
-  const sections = section === 'todo' ? ['gastos', 'resumen'] : [section];
-  sections.forEach((id, index) => {
-    const clone = clonePrintSection(id);
-    if (!clone) return;
-    const wrap = document.createElement('section');
-    wrap.className = `print-section print-${id}`;
-    if (index < sections.length - 1) wrap.classList.add('print-page-break');
-    const title = document.createElement('h2');
-    title.textContent = id === 'gastos' ? 'Gastos' : 'Resumen';
-    wrap.appendChild(title);
-    wrap.appendChild(clone);
-    output.appendChild(wrap);
-  });
-}
-
 function printSection(section) {
   closePrintDialog();
   document.body.classList.toggle('print-resumen', section === 'resumen');
   document.body.classList.toggle('print-gastos', section === 'gastos');
   document.body.classList.toggle('print-todo', section === 'todo');
-  document.body.classList.add('print-preview-active');
-  buildPrintOutput(section);
+  state.printReturnTab = state.activeTab;
+  if (section === 'todo') {
+    setTab('gastos');
+    $('#view-resumen').style.display = 'block';
+  } else {
+    setTab(section === 'gastos' ? 'gastos' : 'resumen');
+  }
   setTimeout(() => window.print(), 50);
 }
 
@@ -1752,8 +1723,9 @@ function bindEvents() {
   $('#print-gastos').onclick = () => printSection('gastos');
   $('#print-todo').onclick = () => printSection('todo');
   window.addEventListener('afterprint', () => {
-    document.body.classList.remove('print-resumen', 'print-gastos', 'print-todo', 'print-preview-active');
-    if ($('#print-output')) $('#print-output').innerHTML = '';
+    document.body.classList.remove('print-resumen', 'print-gastos', 'print-todo');
+    setTab(state.printReturnTab || state.activeTab || 'config');
+    state.printReturnTab = null;
   });
   $('#file-import').onchange = async event => {
     const file = event.target.files && event.target.files[0];
