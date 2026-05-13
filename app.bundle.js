@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v28';
+const APP_VERSION = '600v1';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 let dbPromise = null;
@@ -1275,7 +1275,7 @@ function printableDocument(section) {
     .subtotal-row td { padding: 4px 5px; background: #f8fafc; font-weight: 700; }
     .expense-row { break-inside: avoid; page-break-inside: avoid; }
     .chart { max-width: 100%; height: auto; }
-    body.desktop-print .chart { width: 42%; max-width: 430px; max-height: 255px; display: block; margin: 4px auto 6px; }
+    body.desktop-print .chart { width: 50%; max-width: 520px; max-height: 300px; display: block; margin: 4px auto 6px; }
     body.desktop-print .card:has(.chart) { padding: 6px 8px; }
     body.mobile-print .chart { width: 100%; }
     .page-break { break-after: page; page-break-after: always; height: 0; }
