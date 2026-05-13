@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v26';
+const APP_VERSION = '500v27';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 let dbPromise = null;
@@ -1257,6 +1257,7 @@ function printableSectionHtml(id) {
 function printableDocument(section) {
   const sections = section === 'todo' ? ['gastos', 'resumen'] : [section];
   const body = sections.map(printableSectionHtml).filter(Boolean).join('<div class="page-break"></div>');
+  const printClass = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'mobile-print' : 'desktop-print';
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gastos de Viaje - ${APP_VERSION}</title><style>
     @page { size: A4; margin: 10mm; }
     * { box-sizing: border-box; }
@@ -1274,9 +1275,11 @@ function printableDocument(section) {
     .subtotal-row td { padding: 4px 5px; background: #f8fafc; font-weight: 700; }
     .expense-row { break-inside: avoid; page-break-inside: avoid; }
     .chart { max-width: 100%; height: auto; }
+    body.desktop-print .chart { width: 60%; max-width: 620px; display: block; margin: 8px auto; }
+    body.mobile-print .chart { width: 100%; }
     .page-break { break-after: page; page-break-after: always; height: 0; }
     @media screen { body { padding: 12px; } }
-  </style></head><body>${body}<script>setTimeout(function(){window.print();}, 150);</script></body></html>`;
+  </style></head><body class="${printClass}">${body}<script>setTimeout(function(){window.print();}, 150);</script></body></html>`;
 }
 
 function printSection(section) {
