@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 3;
-const APP_VERSION = '500v25';
+const APP_VERSION = '500v26';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 let dbPromise = null;
@@ -1281,6 +1281,8 @@ function printableDocument(section) {
 
 function printSection(section) {
   closePrintDialog();
+  if (section === 'gastos' || section === 'todo') renderGastosTabla();
+  if (section === 'resumen' || section === 'todo') renderResumen();
   const win = window.open('', '_blank');
   if (!win) {
     alert('El navegador ha bloqueado la ventana de impresion. Permite ventanas emergentes para imprimir.');
