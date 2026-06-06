@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v59';
+const APP_VERSION = '700v60';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -2243,16 +2243,31 @@ function mapRouteCities(gastos, paisId) {
       item.count += 1;
       item.totalEur += toEur(g.importe, g.moneda);
     });
-  if (tripMapState.showPlanned && scopedTrips.length === 1) {
+  if (scopedTrips.length === 1) {
     const plannedIds = tripCityIds(scopedTrips[0]).map(Number).filter(Boolean);
+    if (!plannedIds.length) {
+      return [...byCity.values()].sort((a, b) => {
+        const aOrdered = Number.isFinite(a.routeOrder);
+        const bOrdered = Number.isFinite(b.routeOrder);
+        if (aOrdered || bOrdered) {
+          return (aOrdered ? a.routeOrder : Number.POSITIVE_INFINITY) - (bOrdered ? b.routeOrder : Number.POSITIVE_INFINITY) ||
+            Number(a.firstOrder || 0) - Number(b.firstOrder || 0) ||
+            byName(a.ciudad, b.ciudad);
+        }
+        return (a.firstDate || '9999-99-99').localeCompare(b.firstDate || '9999-99-99') ||
+          Number(a.firstOrder || 0) - Number(b.firstOrder || 0) ||
+          byName(a.ciudad, b.ciudad);
+      });
+    }
     const seenPlanned = new Set();
     const plannedItems = plannedIds.map((id, index) => {
       const ciudad = state.lugares.find(l => Number(l.id) === Number(id));
       if (!ciudad || isTransitPlaceName(ciudad.nombre)) return null;
       const pais = state.lugares.find(l => Number(l.id) === Number(ciudad.parentId));
       if (paisId && Number(pais && pais.id) !== Number(paisId)) return null;
-      seenPlanned.add(id);
       const expenseItem = byCity.get(id);
+      if (!tripMapState.showPlanned && !expenseItem) return null;
+      seenPlanned.add(id);
       return {
         ciudad,
         pais,
@@ -2261,7 +2276,7 @@ function mapRouteCities(gastos, paisId) {
         routeOrder: index,
         count: expenseItem ? expenseItem.count : 0,
         totalEur: expenseItem ? expenseItem.totalEur : 0,
-        plannedOnly: !expenseItem,
+        plannedOnly: tripMapState.showPlanned && !expenseItem,
         repeatedStop: plannedIds.indexOf(id) !== index
       };
     }).filter(Boolean);
