@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v61';
+const APP_VERSION = '700v62';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1061,6 +1061,23 @@ function unselectSelectedMultiOptions(selector) {
   if (!el) return;
   [...el.selectedOptions].forEach(option => {
     option.selected = false;
+  });
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function removeSelectedMultiOptions(selector) {
+  const el = $(selector);
+  if (!el) return;
+  [...el.selectedOptions].forEach(option => option.remove());
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function resetPlannedCitySelector(countrySelector, citySelector) {
+  syncPlannedCitySelector(countrySelector, citySelector, true);
+  const el = $(citySelector);
+  if (!el) return;
+  [...el.options].forEach(option => {
+    option.selected = true;
   });
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
@@ -3830,17 +3847,17 @@ function openFormDialog({ title, fields, onSubmit }) {
       const selected = new Set((field.value || []).map(String));
       const options = (field.options || []).map(option => `<option value="${escapeHtml(option.value)}"${selected.has(String(option.value)) ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
       const controls = field.reorder
-        ? `<div class="multi-select-order-actions"><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="-1">Subir</button><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="1">Bajar</button><button class="btn ghost" type="button" data-form-remove="${escapeHtml(field.name)}" title="Quitar de este viaje">X</button></div>`
+        ? `<div class="multi-select-order-actions"><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="-1">Subir</button><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="1">Bajar</button><button class="btn ghost" type="button" data-form-remove="${escapeHtml(field.name)}" title="Quitar de este viaje">X</button><button class="btn ghost" type="button" data-form-reset="${escapeHtml(field.name)}">Restablecer</button></div>`
         : '';
-      return `<div class="form-field form-field-multiselect"><label>${escapeHtml(field.label)}</label><select id="form-field-${escapeHtml(field.name)}" multiple size="${field.size || 4}">${options}</select>${controls}</div>`;
+      return `<div class="form-field form-field-${escapeHtml(field.name)} form-field-multiselect"><label>${escapeHtml(field.label)}</label><select id="form-field-${escapeHtml(field.name)}" multiple size="${field.size || 4}">${options}</select>${controls}</div>`;
     }
     if (field.type === 'select') {
       const selected = String(field.value ?? '');
       const placeholder = field.placeholder ? `<option value="">${escapeHtml(field.placeholder)}</option>` : '';
       const options = (field.options || []).map(option => `<option value="${escapeHtml(option.value)}"${selected === String(option.value) ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
-      return `<div class="form-field form-field-select"><label>${escapeHtml(field.label)}</label><select id="form-field-${escapeHtml(field.name)}">${placeholder}${options}</select></div>`;
+      return `<div class="form-field form-field-${escapeHtml(field.name)} form-field-select"><label>${escapeHtml(field.label)}</label><select id="form-field-${escapeHtml(field.name)}">${placeholder}${options}</select></div>`;
     }
-    return `<div class="form-field form-field-input"><label>${escapeHtml(field.label)}</label><input id="form-field-${escapeHtml(field.name)}" type="${field.type || 'text'}"${step}${min} value="${value}"></div>`;
+    return `<div class="form-field form-field-${escapeHtml(field.name)} form-field-input"><label>${escapeHtml(field.label)}</label><input id="form-field-${escapeHtml(field.name)}" type="${field.type || 'text'}"${step}${min} value="${value}"></div>`;
   }).join('');
   $$('#form-dialog-fields [data-form-move]').forEach(button => {
     button.onclick = event => {
@@ -3851,7 +3868,13 @@ function openFormDialog({ title, fields, onSubmit }) {
   $$('#form-dialog-fields [data-form-remove]').forEach(button => {
     button.onclick = event => {
       event.preventDefault();
-      unselectSelectedMultiOptions(`#form-field-${button.dataset.formRemove}`);
+      removeSelectedMultiOptions(`#form-field-${button.dataset.formRemove}`);
+    };
+  });
+  $$('#form-dialog-fields [data-form-reset]').forEach(button => {
+    button.onclick = event => {
+      event.preventDefault();
+      if (button.dataset.formReset === 'ciudadIds') resetPlannedCitySelector('#form-field-paisIds', '#form-field-ciudadIds');
     };
   });
   const formPaisSelect = $('#form-field-paisIds');
@@ -4260,7 +4283,11 @@ function bindEvents() {
   };
   if ($('#v-ciudades-remove')) $('#v-ciudades-remove').onclick = event => {
     event.preventDefault();
-    unselectSelectedMultiOptions('#v-ciudades');
+    removeSelectedMultiOptions('#v-ciudades');
+  };
+  if ($('#v-ciudades-reset')) $('#v-ciudades-reset').onclick = event => {
+    event.preventDefault();
+    resetPlannedCitySelector('#v-paises', '#v-ciudades');
   };
 
   $('#m-iso-entry').oninput = () => {

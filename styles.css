@@ -1164,6 +1164,22 @@ footer {
     margin-top: 8px;
   }
 
+  #config-viajes .row3 {
+    grid-template-columns: minmax(0, 1.35fr) minmax(112px, 0.85fr) minmax(112px, 0.85fr);
+  }
+
+  #config-viajes .compact-single-field {
+    max-width: 190px;
+  }
+
+  #v-paises {
+    min-height: 142px;
+  }
+
+  #v-ciudades {
+    min-height: 190px;
+  }
+
   .compact-config-form .compact-list {
     margin-top: 8px;
   }
@@ -1312,6 +1328,15 @@ footer {
     gap: 6px 8px;
   }
 
+  #form-dialog-fields .form-field-paisIds,
+  #form-dialog-fields .form-field-ciudadIds {
+    grid-column: 1 / -1;
+  }
+
+  #form-dialog-fields .form-field-presupuesto {
+    max-width: 190px;
+  }
+
   #form-dialog-fields label {
     margin: 5px 0 2px;
     font-size: 11px;
@@ -1328,6 +1353,14 @@ footer {
 
   #form-dialog-fields .form-field-multiselect select {
     min-height: 108px;
+  }
+
+  #form-dialog-fields .form-field-paisIds select {
+    min-height: 124px;
+  }
+
+  #form-dialog-fields .form-field-ciudadIds select {
+    min-height: 168px;
   }
 
   #form-dialog-fields .multi-select-order-actions {
