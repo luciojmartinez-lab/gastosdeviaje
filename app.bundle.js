@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v63';
+const APP_VERSION = '700v64';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -614,15 +614,28 @@ function setSelectedTrips(ids) {
   syncTripSelectsFromSelection();
 }
 
-function latestTripId() {
-  const trips = state.viajes
-    .slice()
+function defaultTripId() {
+  const today = todayIso();
+  const trips = state.viajes.slice();
+  const active = trips
+    .filter(v => (v.fechaInicio || '') <= today && today <= (v.fechaFin || v.fechaInicio || ''))
+    .sort((a, b) => (a.fechaFin || '').localeCompare(b.fechaFin || '') || Number(b.id || 0) - Number(a.id || 0));
+  if (active.length) return Number(active[0].id);
+  const upcoming = trips
+    .filter(v => (v.fechaInicio || v.fechaFin || '') >= today)
+    .sort((a, b) => {
+      const dateA = a.fechaInicio || a.fechaFin || '';
+      const dateB = b.fechaInicio || b.fechaFin || '';
+      return dateA.localeCompare(dateB) || Number(b.id || 0) - Number(a.id || 0);
+    });
+  if (upcoming.length) return Number(upcoming[0].id);
+  const past = trips
     .sort((a, b) => {
       const dateA = a.fechaInicio || a.fechaFin || '';
       const dateB = b.fechaInicio || b.fechaFin || '';
       return dateB.localeCompare(dateA) || Number(b.id || 0) - Number(a.id || 0);
     });
-  return trips.length ? Number(trips[0].id) : null;
+  return past.length ? Number(past[0].id) : null;
 }
 
 function toggleSelectedTrip(id, checked) {
@@ -1466,8 +1479,8 @@ async function loadAll() {
   state.viajes = viajes.sort((a, b) => (a.fechaInicio || '').localeCompare(b.fechaInicio || '') || byName(a, b));
   const validSelectedTripIds = selectedTripIds().filter(id => state.viajes.some(v => v.id === id));
   if (!validSelectedTripIds.length && !hasAppliedDefaultTripSelection && state.viajes.length) {
-    const defaultTripId = latestTripId();
-    setSelectedTrips(defaultTripId ? [defaultTripId] : []);
+    const defaultTripIdValue = defaultTripId();
+    setSelectedTrips(defaultTripIdValue ? [defaultTripIdValue] : []);
     hasAppliedDefaultTripSelection = true;
   } else {
     setSelectedTrips(validSelectedTripIds);
