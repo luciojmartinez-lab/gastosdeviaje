@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v55';
+const APP_VERSION = '700v56';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -2172,7 +2172,12 @@ function mapScopedTrips(gastos = []) {
 function mapCityOrderForScope(gastos = []) {
   const trips = mapScopedTrips(gastos);
   if (trips.length !== 1) return new Map();
-  return new Map(tripCityIds(trips[0]).map((id, index) => [Number(id), index]));
+  const order = new Map();
+  tripCityIds(trips[0]).forEach((id, index) => {
+    const key = Number(id);
+    if (key && !order.has(key)) order.set(key, index);
+  });
+  return order;
 }
 
 function mapPaisOptionsForScope(gastos = []) {
@@ -2205,6 +2210,8 @@ function compareGastosRouteOrder(a, b) {
 function mapRouteCities(gastos, paisId) {
   const byCity = new Map();
   const routeOrder = mapCityOrderForScope(gastos);
+  const scopedTrips = mapScopedTrips(gastos);
+  const scopedTripIds = mapScopedTripIds(gastos);
   gastos
     .filter(g => gastoMatchesLugarFilters(g, paisId, ''))
     .slice()
@@ -2231,8 +2238,44 @@ function mapRouteCities(gastos, paisId) {
       item.count += 1;
       item.totalEur += toEur(g.importe, g.moneda);
     });
+  if (tripMapState.showPlanned && scopedTrips.length === 1) {
+    const plannedIds = tripCityIds(scopedTrips[0]).map(Number).filter(Boolean);
+    const seenPlanned = new Set();
+    const plannedItems = plannedIds.map((id, index) => {
+      const ciudad = state.lugares.find(l => Number(l.id) === Number(id));
+      if (!ciudad || isTransitPlaceName(ciudad.nombre)) return null;
+      const pais = state.lugares.find(l => Number(l.id) === Number(ciudad.parentId));
+      if (paisId && Number(pais && pais.id) !== Number(paisId)) return null;
+      seenPlanned.add(id);
+      const expenseItem = byCity.get(id);
+      return {
+        ciudad,
+        pais,
+        firstDate: expenseItem ? expenseItem.firstDate : '',
+        firstOrder: expenseItem ? expenseItem.firstOrder : index,
+        routeOrder: index,
+        count: expenseItem ? expenseItem.count : 0,
+        totalEur: expenseItem ? expenseItem.totalEur : 0,
+        plannedOnly: !expenseItem,
+        repeatedStop: plannedIds.indexOf(id) !== index
+      };
+    }).filter(Boolean);
+    const extraExpenseItems = [...byCity.values()]
+      .filter(item => !seenPlanned.has(Number(item.ciudad.id)));
+    return plannedItems.concat(extraExpenseItems).sort((a, b) => {
+      const aOrdered = Number.isFinite(a.routeOrder);
+      const bOrdered = Number.isFinite(b.routeOrder);
+      if (aOrdered || bOrdered) {
+        return (aOrdered ? a.routeOrder : Number.POSITIVE_INFINITY) - (bOrdered ? b.routeOrder : Number.POSITIVE_INFINITY) ||
+          Number(a.firstOrder || 0) - Number(b.firstOrder || 0) ||
+          byName(a.ciudad, b.ciudad);
+      }
+      return (a.firstDate || '9999-99-99').localeCompare(b.firstDate || '9999-99-99') ||
+        Number(a.firstOrder || 0) - Number(b.firstOrder || 0) ||
+        byName(a.ciudad, b.ciudad);
+    });
+  }
   if (tripMapState.showPlanned) {
-    const scopedTripIds = mapScopedTripIds(gastos);
     const plannedCityIds = new Set(
       state.viajes
         .filter(v => scopedTripIds.has(Number(v.id)))
@@ -2444,9 +2487,7 @@ async function addMapStopToTrip() {
     alert('Selecciona un país del mapa para añadir la parada.');
     return;
   }
-  const plannedIds = new Set(tripCityIds(trip).map(Number));
-  const options = plannedCityOptionsForCountries([paisId])
-    .filter(option => !plannedIds.has(Number(option.value)));
+  const options = plannedCityOptionsForCountries([paisId]);
   openFormDialog({
     title: `Añadir parada a ${trip.nombre}`,
     fields: [
@@ -2478,7 +2519,7 @@ async function addMapStopToTrip() {
           // Se queda como parada, aunque no se pueda localizar automaticamente.
         }
       }
-      const cityIds = [...new Set([...tripCityIds(trip), cityId].map(Number).filter(Boolean))];
+      const cityIds = [...tripCityIds(trip), cityId].map(Number).filter(Boolean);
       const paisIds = new Set(tripCountryIds(trip).map(Number).filter(Boolean));
       paisIds.add(Number(paisId));
       await updateViaje(trip.id, {
@@ -2643,6 +2684,8 @@ function renderTripMap() {
     const markerText = item.configuredOnly ? '+' : index + 1;
     const title = item.configuredOnly
       ? `${item.ciudad.nombre} · sin gastos en este viaje`
+      : item.plannedOnly
+        ? `${item.ciudad.nombre} · parada planificada sin gastos`
       : `${item.ciudad.nombre} · ${item.count} gastos · ${fmtCurrency(item.totalEur, 'EUR')}`;
     return `<g class="map-marker${item.configuredOnly ? ' map-marker-config' : ''}"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="7"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text><text x="${labelX.toFixed(1)}" y="${(p.y - 10).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(item.ciudad.nombre)}</text><title>${escapeHtml(title)}</title></g>`;
   }).join('');
