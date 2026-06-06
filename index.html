@@ -18,7 +18,7 @@
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuración</button>
   </nav>
-  <div class="app-version">700v58</div>
+  <div class="app-version">700v59</div>
 </header>
 
 <main>
@@ -464,10 +464,15 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v58"></script>
+<script src="app.bundle.js?v=700v59"></script>
 <script>
   if ('serviceWorker' in navigator) {
     let refreshing = false;
+    const activateWaitingWorker = registration => {
+      if (registration && registration.waiting) {
+        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+    };
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshing) return;
       refreshing = true;
@@ -476,7 +481,10 @@
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js')
         .then(registration => {
-          registration.update().catch(() => {});
+          activateWaitingWorker(registration);
+          registration.update()
+            .then(() => activateWaitingWorker(registration))
+            .catch(() => {});
           registration.addEventListener('updatefound', () => {
             const worker = registration.installing;
             if (!worker) return;
@@ -485,6 +493,9 @@
                 worker.postMessage({ type: 'SKIP_WAITING' });
               }
             });
+          });
+          document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) registration.update().then(() => activateWaitingWorker(registration)).catch(() => {});
           });
         })
         .catch(() => {});

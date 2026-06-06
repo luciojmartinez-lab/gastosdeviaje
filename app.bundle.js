@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v58';
+const APP_VERSION = '700v59';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -2490,8 +2490,14 @@ async function addMapStopToTrip() {
 }
 
 function routeCityOptionsForTrip(trip) {
+  const routeIds = routeEditorState.cityIds.map(Number).filter(Boolean);
+  const expenseIds = state.gastos
+    .filter(g => Number(g.viajeId) === Number(trip.id))
+    .map(g => Number(g.ciudadId))
+    .filter(Boolean);
+  const allowedCityIds = new Set([...routeIds, ...expenseIds]);
   const source = state.lugares
-    .filter(l => l.parentId)
+    .filter(l => l.parentId && allowedCityIds.has(Number(l.id)))
     .sort((a, b) => {
       const paisA = lugarName(a.parentId);
       const paisB = lugarName(b.parentId);
@@ -2734,29 +2740,26 @@ function renderTripMap() {
     if (!pointGroups.has(key)) pointGroups.set(key, []);
     pointGroups.get(key).push(item);
   });
-  pointGroups.forEach(group => {
-    if (group.length <= 1) return;
-    group.forEach((item, index) => {
-      const angle = (-Math.PI / 2) + (index * 2 * Math.PI / group.length);
-      item.point = {
-        x: Math.max(16, Math.min(width - 16, item.point.x + Math.cos(angle) * 18)),
-        y: Math.max(16, Math.min(height - 16, item.point.y + Math.sin(angle) * 18))
-      };
-    });
-  });
   const routeItems = projectedItems.filter(item => !item.configuredOnly);
   const routePoints = routeItems.map(item => item.point).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const markers = projectedItems.map((item, index) => {
+  const markers = [...pointGroups.values()].map(group => {
+    const item = group[0];
     const p = item.point;
     const labelX = p.x + 12 > width - 120 ? p.x - 12 : p.x + 12;
     const anchor = p.x + 12 > width - 120 ? 'end' : 'start';
-    const markerText = item.configuredOnly ? '+' : index + 1;
-    const markerLabel = item.configuredOnly ? item.ciudad.nombre : `${markerText}. ${item.ciudad.nombre}`;
-    const title = item.configuredOnly
-      ? `${item.ciudad.nombre} · sin gastos en este viaje`
-      : item.plannedOnly
-        ? `${item.ciudad.nombre} · parada planificada sin gastos`
-      : `${item.ciudad.nombre} · ${item.count} gastos · ${fmtCurrency(item.totalEur, 'EUR')}`;
+    const routeStops = group.filter(stop => !stop.configuredOnly);
+    const markerText = routeStops.length
+      ? routeStops.map(stop => stop.index + 1).join('/')
+      : '+';
+    const cityNames = [...new Set(group.map(stop => stop.ciudad.nombre))];
+    const markerLabel = routeStops.length
+      ? `${markerText}. ${cityNames.join(' / ')}`
+      : cityNames.join(' / ');
+    const title = routeStops.length
+      ? routeStops.map(stop => stop.plannedOnly
+        ? `${stop.index + 1}. ${stop.ciudad.nombre} · parada planificada sin gastos`
+        : `${stop.index + 1}. ${stop.ciudad.nombre} · ${stop.count} gastos · ${fmtCurrency(stop.totalEur, 'EUR')}`).join('\n')
+      : `${cityNames.join(' / ')} · sin gastos en este viaje`;
     return `<g class="map-marker${item.configuredOnly ? ' map-marker-config' : ''}"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="8"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text><text x="${labelX.toFixed(1)}" y="${(p.y - 10).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(markerLabel)}</text><title>${escapeHtml(title)}</title></g>`;
   }).join('');
   const zoomLabel = tripMapState.zoomDelta === 0 ? 'auto' : `${tripMapState.zoomDelta > 0 ? '+' : ''}${tripMapState.zoomDelta}`;
