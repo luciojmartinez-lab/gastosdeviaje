@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v60';
+const APP_VERSION = '700v61';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -268,6 +268,13 @@ const formatRate = value => {
   if (!Number.isFinite(n) || n <= 0) return '';
   return Number(n.toFixed(6)).toString();
 };
+const formatCoordinate = value => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '';
+  return Number(n.toFixed(6)).toString();
+};
+const geocodeLatValue = result => optionalNumberValue(result && (result.lat ?? result.latitude));
+const geocodeLngValue = result => optionalNumberValue(result && (result.lon ?? result.lng ?? result.longitude));
 const fmtDate = iso => iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('es-ES', {
   weekday: 'short',
   year: 'numeric',
@@ -1029,6 +1036,11 @@ function selectedMultiValues(selector) {
   return el ? [...el.selectedOptions].map(o => Number(o.value)).filter(Boolean) : [];
 }
 
+function allMultiValues(selector) {
+  const el = $(selector);
+  return el ? [...el.options].map(o => Number(o.value)).filter(Boolean) : [];
+}
+
 function moveSelectedMultiOption(selector, direction) {
   const el = $(selector);
   if (!el) return;
@@ -1040,6 +1052,15 @@ function moveSelectedMultiOption(selector, direction) {
     if (!sibling) return;
     if (direction < 0) el.insertBefore(option, sibling);
     else el.insertBefore(sibling, option);
+  });
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function unselectSelectedMultiOptions(selector) {
+  const el = $(selector);
+  if (!el) return;
+  [...el.selectedOptions].forEach(option => {
+    option.selected = false;
   });
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
@@ -1707,11 +1728,22 @@ function plannedCityOptionsForCountries(paisIds = [], preferredOrder = []) {
     });
 }
 
-function renderTripPlannedCitySelector() {
-  const paisIds = selectedMultiValues('#v-paises');
-  const currentOrder = selectedMultiValues('#v-ciudades');
+function syncPlannedCitySelector(countrySelector, citySelector, selectAllMissing = false) {
+  const paisIds = selectedMultiValues(countrySelector);
+  const currentOrder = selectedMultiValues(citySelector);
+  const previousOptions = allMultiValues(citySelector);
   const options = paisIds.length ? plannedCityOptionsForCountries(paisIds, currentOrder) : [];
-  fillMultiSelect('#v-ciudades', options, currentOrder);
+  const optionIds = options.map(option => Number(option.value)).filter(Boolean);
+  const optionSet = new Set(optionIds);
+  const selected = [
+    ...currentOrder.filter(id => optionSet.has(Number(id))),
+    ...optionIds.filter(id => !currentOrder.includes(id) && (selectAllMissing || !previousOptions.includes(id)))
+  ];
+  fillMultiSelect(citySelector, options, selected);
+}
+
+function renderTripPlannedCitySelector() {
+  syncPlannedCitySelector('#v-paises', '#v-ciudades');
   updateTripPlanningCounters();
 }
 
@@ -1733,7 +1765,7 @@ function updateTripPlanningCounters() {
   if (ciudadHelp) {
     ciudadHelp.textContent = !selectedPaises.length
       ? 'Selecciona antes al menos un país.'
-      : (totalCiudades ? 'Selecciona las ciudades ya creadas para esos países.' : 'No hay ciudades creadas para los países seleccionados.');
+      : (totalCiudades ? 'Se añaden todas las ciudades creadas para esos países; quita las que no quieras.' : 'No hay ciudades creadas para los países seleccionados.');
   }
 }
 
@@ -2400,8 +2432,8 @@ async function locateLugarById(id) {
   const result = await fetchFirstGeocodeResultForPlace(lugar.nombre, parent ? parent.nombre : '');
   if (!result) throw new Error(`No he encontrado coordenadas para ${lugar.nombre}`);
   await updateLugar(lugar.id, {
-    lat: optionalNumberValue(result.lat),
-    lng: optionalNumberValue(result.lon)
+    lat: geocodeLatValue(result),
+    lng: geocodeLngValue(result)
   });
   await loadAll();
   return result;
@@ -2414,8 +2446,8 @@ async function locateLugarForm() {
   const parent = state.lugares.find(item => item.id === Number($('#lugar-parent').value));
   const result = await fetchFirstGeocodeResultForPlace(name, parent ? parent.nombre : '');
   if (!result) throw new Error(`No he encontrado coordenadas para ${name}`);
-  $('#lugar-lat').value = formatRate(result.lat);
-  $('#lugar-lng').value = formatRate(result.lon);
+  $('#lugar-lat').value = formatCoordinate(geocodeLatValue(result));
+  $('#lugar-lng').value = formatCoordinate(geocodeLngValue(result));
 }
 
 async function geocodeTripMapCities() {
@@ -2440,8 +2472,8 @@ async function geocodeTripMapCities() {
       const result = await fetchFirstGeocodeResult(item);
       if (!result) throw new Error('sin resultado');
       await updateLugar(item.ciudad.id, {
-        lat: optionalNumberValue(result.lat),
-        lng: optionalNumberValue(result.lon)
+        lat: geocodeLatValue(result),
+        lng: geocodeLngValue(result)
       });
       updated += 1;
     } catch (err) {
@@ -3798,7 +3830,7 @@ function openFormDialog({ title, fields, onSubmit }) {
       const selected = new Set((field.value || []).map(String));
       const options = (field.options || []).map(option => `<option value="${escapeHtml(option.value)}"${selected.has(String(option.value)) ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
       const controls = field.reorder
-        ? `<div class="multi-select-order-actions"><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="-1">Subir</button><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="1">Bajar</button></div>`
+        ? `<div class="multi-select-order-actions"><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="-1">Subir</button><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="1">Bajar</button><button class="btn ghost" type="button" data-form-remove="${escapeHtml(field.name)}" title="Quitar de este viaje">X</button></div>`
         : '';
       return `<div class="form-field form-field-multiselect"><label>${escapeHtml(field.label)}</label><select id="form-field-${escapeHtml(field.name)}" multiple size="${field.size || 4}">${options}</select>${controls}</div>`;
     }
@@ -3816,6 +3848,18 @@ function openFormDialog({ title, fields, onSubmit }) {
       moveSelectedMultiOption(`#form-field-${button.dataset.formMove}`, Number(button.dataset.formDir));
     };
   });
+  $$('#form-dialog-fields [data-form-remove]').forEach(button => {
+    button.onclick = event => {
+      event.preventDefault();
+      unselectSelectedMultiOptions(`#form-field-${button.dataset.formRemove}`);
+    };
+  });
+  const formPaisSelect = $('#form-field-paisIds');
+  const formCiudadSelect = $('#form-field-ciudadIds');
+  if (formPaisSelect && formCiudadSelect) {
+    formPaisSelect.onchange = () => syncPlannedCitySelector('#form-field-paisIds', '#form-field-ciudadIds');
+    syncPlannedCitySelector('#form-field-paisIds', '#form-field-ciudadIds', true);
+  }
   setMessage('#msg-form-dialog', '');
   activeFormDialogSubmit = onSubmit;
   if (dialog.showModal) dialog.showModal();
@@ -4187,7 +4231,9 @@ function bindEvents() {
       const fechaFin = $('#v-fin').value;
       if (!nombre || !fechaInicio || !fechaFin) throw new Error('Completa nombre, inicio y final');
       if (fechaFin < fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
-      await addViaje({ nombre, fechaInicio, fechaFin, presupuesto: $('#v-presu').value, paisIds: selectedMultiValues('#v-paises'), ciudadIds: selectedMultiValues('#v-ciudades') });
+      const paisIds = selectedMultiValues('#v-paises');
+      if (!paisIds.length) throw new Error('Selecciona al menos un país');
+      await addViaje({ nombre, fechaInicio, fechaFin, presupuesto: $('#v-presu').value, paisIds, ciudadIds: selectedMultiValues('#v-ciudades') });
       ['#v-nombre', '#v-inicio', '#v-fin', '#v-presu'].forEach(sel => $(sel).value = '');
       if ($('#v-paises')) [...$('#v-paises').options].forEach(opt => { opt.selected = false; });
       if ($('#v-ciudades')) [...$('#v-ciudades').options].forEach(opt => { opt.selected = false; });
@@ -4211,6 +4257,10 @@ function bindEvents() {
   if ($('#v-ciudades-down')) $('#v-ciudades-down').onclick = event => {
     event.preventDefault();
     moveSelectedMultiOption('#v-ciudades', 1);
+  };
+  if ($('#v-ciudades-remove')) $('#v-ciudades-remove').onclick = event => {
+    event.preventDefault();
+    unselectSelectedMultiOptions('#v-ciudades');
   };
 
   $('#m-iso-entry').oninput = () => {
@@ -4540,6 +4590,7 @@ function bindEvents() {
           ],
           onSubmit: values => {
             if (values.fechaFin < values.fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
+            if (!(values.paisIds || []).length) throw new Error('Selecciona al menos un país');
             return updateViaje(v.id, { nombre: values.nombre.trim() || v.nombre, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin, paisIds: values.paisIds || [], ciudadIds: values.ciudadIds || [], presupuesto: numberValue(values.presupuesto) });
           }
         });
