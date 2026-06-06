@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v62';
+const APP_VERSION = '700v63';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1041,6 +1041,19 @@ function allMultiValues(selector) {
   return el ? [...el.options].map(o => Number(o.value)).filter(Boolean) : [];
 }
 
+function fillOptionList(selector, options) {
+  const el = $(selector);
+  if (!el) return;
+  el.innerHTML = '';
+  options.forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.value;
+    opt.textContent = item.label;
+    if (item.parentId != null) opt.dataset.parentId = String(item.parentId);
+    el.appendChild(opt);
+  });
+}
+
 function moveSelectedMultiOption(selector, direction) {
   const el = $(selector);
   if (!el) return;
@@ -1076,9 +1089,7 @@ function resetPlannedCitySelector(countrySelector, citySelector) {
   syncPlannedCitySelector(countrySelector, citySelector, true);
   const el = $(citySelector);
   if (!el) return;
-  [...el.options].forEach(option => {
-    option.selected = true;
-  });
+  [...el.options].forEach(option => { option.selected = false; });
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
@@ -1735,7 +1746,8 @@ function plannedCityOptionsForCountries(paisIds = [], preferredOrder = []) {
       const pais = state.lugares.find(item => Number(item.id) === Number(l.parentId));
       return {
         value: String(l.id),
-        label: `${l.nombre}${pais ? ` (${pais.nombre})` : ''}`
+        label: `${l.nombre}${pais ? ` (${pais.nombre})` : ''}`,
+        parentId: Number(l.parentId)
       };
     })
     .sort((a, b) => {
@@ -1747,16 +1759,24 @@ function plannedCityOptionsForCountries(paisIds = [], preferredOrder = []) {
 
 function syncPlannedCitySelector(countrySelector, citySelector, selectAllMissing = false) {
   const paisIds = selectedMultiValues(countrySelector);
-  const currentOrder = selectedMultiValues(citySelector);
-  const previousOptions = allMultiValues(citySelector);
+  const cityEl = $(citySelector);
+  const currentOrder = allMultiValues(citySelector);
+  const previousCountryIds = new Set(String(cityEl && cityEl.dataset.countryIds || '').split(',').map(Number).filter(Boolean));
+  const newCountryIds = new Set(paisIds.filter(id => !previousCountryIds.has(Number(id))));
   const options = paisIds.length ? plannedCityOptionsForCountries(paisIds, currentOrder) : [];
   const optionIds = options.map(option => Number(option.value)).filter(Boolean);
   const optionSet = new Set(optionIds);
-  const selected = [
+  const included = [
     ...currentOrder.filter(id => optionSet.has(Number(id))),
-    ...optionIds.filter(id => !currentOrder.includes(id) && (selectAllMissing || !previousOptions.includes(id)))
+    ...optionIds.filter(id => {
+      if (currentOrder.includes(id)) return false;
+      const option = options.find(item => Number(item.value) === Number(id));
+      return selectAllMissing || !currentOrder.length || newCountryIds.has(Number(option && option.parentId));
+    })
   ];
-  fillMultiSelect(citySelector, options, selected);
+  const byValue = new Map(options.map(item => [Number(item.value), item]));
+  fillOptionList(citySelector, included.map(id => byValue.get(Number(id))).filter(Boolean));
+  if (cityEl) cityEl.dataset.countryIds = paisIds.join(',');
 }
 
 function renderTripPlannedCitySelector() {
@@ -1772,7 +1792,7 @@ function updateTripPlanningCounters() {
   const ciudadPanel = $('#v-ciudades-panel');
   const ciudadHelp = $('#v-ciudades-help');
   const selectedPaises = selectedMultiValues('#v-paises');
-  const selectedCiudades = selectedMultiValues('#v-ciudades');
+  const selectedCiudades = allMultiValues('#v-ciudades');
   const totalPaises = paisSelect ? paisSelect.options.length : 0;
   const totalCiudades = ciudadSelect ? ciudadSelect.options.length : 0;
   if (paisCount) paisCount.textContent = `(${selectedPaises.length}/${totalPaises})`;
@@ -3845,7 +3865,12 @@ function openFormDialog({ title, fields, onSubmit }) {
     const min = field.min != null ? ` min="${escapeHtml(field.min)}"` : '';
     if (field.type === 'multiselect') {
       const selected = new Set((field.value || []).map(String));
-      const options = (field.options || []).map(option => `<option value="${escapeHtml(option.value)}"${selected.has(String(option.value)) ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
+      const fieldOptions = field.routeList
+        ? (field.value || [])
+          .map(value => (field.options || []).find(option => String(option.value) === String(value)))
+          .filter(Boolean)
+        : (field.options || []);
+      const options = fieldOptions.map(option => `<option value="${escapeHtml(option.value)}"${field.routeList ? '' : (selected.has(String(option.value)) ? ' selected' : '')}${option.parentId != null ? ` data-parent-id="${escapeHtml(option.parentId)}"` : ''}>${escapeHtml(option.label)}</option>`).join('');
       const controls = field.reorder
         ? `<div class="multi-select-order-actions"><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="-1">Subir</button><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="1">Bajar</button><button class="btn ghost" type="button" data-form-remove="${escapeHtml(field.name)}" title="Quitar de este viaje">X</button><button class="btn ghost" type="button" data-form-reset="${escapeHtml(field.name)}">Restablecer</button></div>`
         : '';
@@ -3880,8 +3905,8 @@ function openFormDialog({ title, fields, onSubmit }) {
   const formPaisSelect = $('#form-field-paisIds');
   const formCiudadSelect = $('#form-field-ciudadIds');
   if (formPaisSelect && formCiudadSelect) {
+    formCiudadSelect.dataset.countryIds = selectedMultiValues('#form-field-paisIds').join(',');
     formPaisSelect.onchange = () => syncPlannedCitySelector('#form-field-paisIds', '#form-field-ciudadIds');
-    syncPlannedCitySelector('#form-field-paisIds', '#form-field-ciudadIds', true);
   }
   setMessage('#msg-form-dialog', '');
   activeFormDialogSubmit = onSubmit;
@@ -3904,7 +3929,9 @@ function formDialogValues() {
   });
   $$('#form-dialog-fields select').forEach(select => {
     values[select.id.replace('form-field-', '')] = select.multiple
-      ? [...select.selectedOptions].map(option => Number(option.value)).filter(Boolean)
+      ? (select.id === 'form-field-ciudadIds'
+        ? [...select.options].map(option => Number(option.value)).filter(Boolean)
+        : [...select.selectedOptions].map(option => Number(option.value)).filter(Boolean))
       : select.value;
   });
   return values;
@@ -4256,7 +4283,7 @@ function bindEvents() {
       if (fechaFin < fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
       const paisIds = selectedMultiValues('#v-paises');
       if (!paisIds.length) throw new Error('Selecciona al menos un país');
-      await addViaje({ nombre, fechaInicio, fechaFin, presupuesto: $('#v-presu').value, paisIds, ciudadIds: selectedMultiValues('#v-ciudades') });
+      await addViaje({ nombre, fechaInicio, fechaFin, presupuesto: $('#v-presu').value, paisIds, ciudadIds: allMultiValues('#v-ciudades') });
       ['#v-nombre', '#v-inicio', '#v-fin', '#v-presu'].forEach(sel => $(sel).value = '');
       if ($('#v-paises')) [...$('#v-paises').options].forEach(opt => { opt.selected = false; });
       if ($('#v-ciudades')) [...$('#v-ciudades').options].forEach(opt => { opt.selected = false; });
@@ -4612,7 +4639,7 @@ function bindEvents() {
             { name: 'fechaInicio', label: 'Fecha de inicio', type: 'date', value: v.fechaInicio },
             { name: 'fechaFin', label: 'Fecha final', type: 'date', value: v.fechaFin },
             { name: 'paisIds', label: 'Países creados', type: 'multiselect', value: tripCountryIds(v), options: state.lugares.filter(l => !l.parentId).map(l => ({ value: String(l.id), label: l.nombre })) },
-            { name: 'ciudadIds', label: 'Ciudades planificadas', type: 'multiselect', size: 6, value: tripCityIds(v), options: plannedCityOptionsForCountries(tripCountryIds(v), tripCityIds(v)), reorder: true },
+            { name: 'ciudadIds', label: 'Ciudades planificadas', type: 'multiselect', size: 6, value: tripCityIds(v), options: plannedCityOptionsForCountries(tripCountryIds(v), tripCityIds(v)), reorder: true, routeList: true },
             { name: 'presupuesto', label: 'Presupuesto del viaje (EUR)', type: 'number', step: '0.01', min: '0', value: v.presupuesto || 0 }
           ],
           onSubmit: values => {
