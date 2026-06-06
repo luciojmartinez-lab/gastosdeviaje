@@ -1093,11 +1093,11 @@ footer {
 
   .header-help {
     display: inline-flex;
-    order: 0;
+    order: 1;
   }
 
   header h1 {
-    order: 1;
+    order: 0;
     min-width: 0;
   }
 
@@ -1112,7 +1112,7 @@ footer {
 
   .app-version {
     order: 2;
-    margin-left: auto;
+    margin-left: 0;
   }
 
   .config-menu,
