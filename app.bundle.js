@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v54';
+const APP_VERSION = '700v55';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -278,7 +278,7 @@ const fmtNumberEs = (amount, decimals = 2) => {
 const fmtCurrency = (amount, currency = 'EUR') => {
   const code = String(currency || 'EUR').toUpperCase();
   const value = fmtNumberEs(amount);
-  return code === 'EUR' ? `${value} €` : `${value} ${code}`;
+  return code === 'EUR' ? `${value}\u00a0€` : `${value}\u00a0${code}`;
 };
 const fmtCurrencyWithEur = (amount, currency = 'EUR') => {
   const primary = fmtCurrency(amount, currency);
@@ -768,7 +768,7 @@ function transferRateLabel(transfer) {
     ? numberValue(transfer.importeTo) / numberValue(transfer.importeFrom)
     : 0);
   if (rate <= 0) return '-';
-  return `1 ${transfer.monedaFrom} = ${rate.toLocaleString('es-ES', { maximumFractionDigits: 6 })} ${transfer.monedaTo}`;
+  return `1\u00a0${transfer.monedaFrom} = ${rate.toLocaleString('es-ES', { maximumFractionDigits: 6 })}\u00a0${transfer.monedaTo}`;
 }
 
 function renderBackupStatus() {

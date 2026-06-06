@@ -1422,6 +1422,62 @@ footer {
 
   .kpi .big { font-size: 14px; }
 
+  #tabla-viajes-home,
+  #tabla-gastos,
+  #tabla-cuenta,
+  #tabla-transferencias {
+    font-size: 13px;
+  }
+
+  #tabla-viajes-home th,
+  #tabla-viajes-home td,
+  #tabla-gastos th,
+  #tabla-gastos td,
+  #tabla-cuenta th,
+  #tabla-cuenta td,
+  #tabla-transferencias th,
+  #tabla-transferencias td {
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+
+  #tabla-viajes-home th:nth-child(4),
+  #tabla-viajes-home td:nth-child(4),
+  #tabla-viajes-home th:nth-child(5),
+  #tabla-viajes-home td:nth-child(5),
+  #tabla-viajes-home th:nth-child(6),
+  #tabla-viajes-home td:nth-child(6),
+  #tabla-viajes-home th:nth-child(7),
+  #tabla-viajes-home td:nth-child(7),
+  #tabla-gastos th:nth-child(6),
+  #tabla-gastos td:nth-child(6),
+  #tabla-gastos th:nth-child(7),
+  #tabla-gastos td:nth-child(7),
+  #tabla-cuenta th:nth-child(3),
+  #tabla-cuenta td:nth-child(3),
+  #tabla-cuenta th:nth-child(4),
+  #tabla-cuenta td:nth-child(4),
+  #tabla-cuenta th:nth-child(5),
+  #tabla-cuenta td:nth-child(5),
+  #tabla-cuenta th:nth-child(6),
+  #tabla-cuenta td:nth-child(6),
+  #tabla-cuenta th:nth-child(7),
+  #tabla-cuenta td:nth-child(7),
+  #tabla-transferencias th:nth-child(4),
+  #tabla-transferencias td:nth-child(4),
+  #tabla-transferencias th:nth-child(5),
+  #tabla-transferencias td:nth-child(5),
+  #tabla-transferencias th:nth-child(6),
+  #tabla-transferencias td:nth-child(6) {
+    white-space: nowrap;
+    word-break: keep-all;
+  }
+
+  #tabla-cuenta th:nth-child(7),
+  #tabla-cuenta td:nth-child(7) {
+    text-align: right;
+  }
+
   #tabla-cat {
     min-width: 0;
     table-layout: fixed;
