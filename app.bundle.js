@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v56';
+const APP_VERSION = '700v57';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -9,6 +9,11 @@ const TRIP_MAP_HEIGHT = 460;
 let dbPromise = null;
 let activeFormDialogSubmit = null;
 let hasAppliedDefaultTripSelection = false;
+const routeEditorState = {
+  tripId: null,
+  cityIds: [],
+  dragIndex: null
+};
 const tripMapState = {
   key: '',
   countryScopeKey: '',
@@ -2478,63 +2483,128 @@ function renderMapAfterTripChange() {
 async function addMapStopToTrip() {
   const trip = currentMapTrip();
   if (!trip) {
-    alert('Selecciona un único viaje para añadir una parada.');
+    alert('Selecciona un único viaje para editar sus paradas.');
     return;
   }
-  const paisId = currentMapCountryId(trip);
-  const pais = state.lugares.find(l => Number(l.id) === Number(paisId));
-  if (!pais) {
-    alert('Selecciona un país del mapa para añadir la parada.');
-    return;
-  }
-  const options = plannedCityOptionsForCountries([paisId]);
-  openFormDialog({
-    title: `Añadir parada a ${trip.nombre}`,
-    fields: [
-      { name: 'ciudadId', label: 'Ciudad existente', type: 'select', value: '', placeholder: options.length ? '(elige ciudad)' : '(sin ciudades disponibles)', options },
-      { name: 'nuevaCiudad', label: 'O escribe una ciudad nueva', value: '' }
-    ],
-    onSubmit: async values => {
-      let cityId = Number(values.ciudadId);
-      const newName = String(values.nuevaCiudad || '').trim();
-      if (newName) {
-        const existing = state.lugares.find(l => Number(l.parentId) === Number(paisId) && normalizePlaceName(l.nombre) === normalizePlaceName(newName));
-        cityId = existing ? Number(existing.id) : await addLugar({ nombre: newName, parentId: paisId });
-        if (!existing && !isTransitPlaceName(newName)) {
-          try {
-            const result = await fetchFirstGeocodeResultForPlace(newName, pais.nombre);
-            if (result) await updateLugar(cityId, { lat: optionalNumberValue(result.lat), lng: optionalNumberValue(result.lon) });
-          } catch {
-            // Se queda como parada, aunque no se pueda localizar automaticamente.
-          }
-        }
-      }
-      if (!cityId) throw new Error('Elige una ciudad o escribe una nueva');
-      const selectedCity = state.lugares.find(l => Number(l.id) === Number(cityId));
-      if (selectedCity && !lugarHasCoords(selectedCity) && !isTransitPlaceName(selectedCity.nombre)) {
-        try {
-          const result = await fetchFirstGeocodeResultForPlace(selectedCity.nombre, pais.nombre);
-          if (result) await updateLugar(cityId, { lat: optionalNumberValue(result.lat), lng: optionalNumberValue(result.lon) });
-        } catch {
-          // Se queda como parada, aunque no se pueda localizar automaticamente.
-        }
-      }
-      const cityIds = [...tripCityIds(trip), cityId].map(Number).filter(Boolean);
-      const paisIds = new Set(tripCountryIds(trip).map(Number).filter(Boolean));
-      paisIds.add(Number(paisId));
-      await updateViaje(trip.id, {
-        ciudadIds: cityIds,
-        paisIds: [...paisIds],
-        updatedAt: new Date().toISOString()
-      });
-      tripMapState.showPlanned = true;
-      resetTripMapView();
-      await loadAll();
-      setSelectedTrips([trip.id]);
-      renderLugarSelectors();
-      renderMapAfterTripChange();
-    }
+  openRouteDialog(trip);
+}
+
+function routeCityOptionsForTrip(trip) {
+  const currentCityCountries = tripCityIds(trip)
+    .map(id => state.lugares.find(l => Number(l.id) === Number(id)))
+    .map(city => Number(city && city.parentId))
+    .filter(Boolean);
+  const countryIds = [...tripCountryIds(trip), ...currentCityCountries];
+  const allowed = new Set(countryIds.map(Number).filter(Boolean));
+  const source = state.lugares
+    .filter(l => l.parentId && (!allowed.size || allowed.has(Number(l.parentId))))
+    .sort((a, b) => {
+      const paisA = lugarName(a.parentId);
+      const paisB = lugarName(b.parentId);
+      return collator.compare(paisA, paisB) || collator.compare(a.nombre, b.nombre);
+    });
+  return source.map(ciudad => ({
+    value: String(ciudad.id),
+    label: `${ciudad.nombre} (${lugarName(ciudad.parentId) || 'sin país'})`
+  }));
+}
+
+function routeCityOptionsHtml(options, selectedId = '') {
+  const selected = String(selectedId || '');
+  return `<option value="">(elige ciudad)</option>${options
+    .map(option => `<option value="${escapeHtml(option.value)}"${selected === String(option.value) ? ' selected' : ''}>${escapeHtml(option.label)}</option>`)
+    .join('')}`;
+}
+
+function moveRouteStop(fromIndex, toIndex) {
+  const from = Number(fromIndex);
+  const to = Math.max(0, Math.min(routeEditorState.cityIds.length - 1, Number(toIndex)));
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from === to) return;
+  const ids = routeEditorState.cityIds.slice();
+  const [item] = ids.splice(from, 1);
+  ids.splice(to, 0, item);
+  routeEditorState.cityIds = ids;
+}
+
+function renderRouteDialog() {
+  const body = $('#route-dialog-body');
+  const trip = state.viajes.find(v => Number(v.id) === Number(routeEditorState.tripId));
+  if (!body || !trip) return;
+  const options = routeCityOptionsForTrip(trip);
+  const optionHtml = id => routeCityOptionsHtml(options, id);
+  const rows = routeEditorState.cityIds.map((id, index) => `
+    <tr class="route-stop-row" draggable="true" data-route-row="${index}">
+      <td><input type="number" min="1" max="${Math.max(1, routeEditorState.cityIds.length)}" value="${index + 1}" data-route-position="${index}" aria-label="Número de parada"></td>
+      <td><select data-route-city="${index}" aria-label="Ciudad de la parada ${index + 1}">${optionHtml(id)}</select></td>
+      <td class="route-stop-actions">
+        <button type="button" class="ghost icon-btn" data-route-up="${index}" title="Subir parada">↑</button>
+        <button type="button" class="ghost icon-btn" data-route-down="${index}" title="Bajar parada">↓</button>
+        <button type="button" class="ghost icon-btn" data-route-delete="${index}" title="Borrar parada">×</button>
+      </td>
+    </tr>
+  `).join('');
+  body.innerHTML = `
+    <p class="small route-help">Edita el orden de la ruta. Puedes arrastrar filas en PC, cambiar el número de parada o usar subir/bajar.</p>
+    <div class="table-wrap route-table-wrap">
+      <table class="route-stops-table">
+        <thead><tr><th>Nº</th><th>Ciudad</th><th>Acciones</th></tr></thead>
+        <tbody>
+          ${rows || '<tr><td colspan="3" class="small">Todavía no hay paradas planificadas.</td></tr>'}
+          <tr class="route-add-row">
+            <td>${routeEditorState.cityIds.length + 1}</td>
+            <td><select id="route-add-city" aria-label="Añadir ciudad">${optionHtml('')}</select></td>
+            <td><button type="button" class="btn ghost icon-btn" data-route-add="1" title="Añadir parada">+</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openRouteDialog(trip) {
+  const dialog = $('#route-dialog');
+  if (!dialog) return;
+  routeEditorState.tripId = Number(trip.id);
+  routeEditorState.cityIds = tripCityIds(trip).map(Number).filter(Boolean);
+  routeEditorState.dragIndex = null;
+  $('#route-dialog-title').textContent = `Añadir / modificar paradas de ${trip.nombre}`;
+  setMessage('#msg-route-dialog', '');
+  renderRouteDialog();
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeRouteDialog() {
+  const dialog = $('#route-dialog');
+  routeEditorState.tripId = null;
+  routeEditorState.cityIds = [];
+  routeEditorState.dragIndex = null;
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+async function saveRouteDialog() {
+  const trip = state.viajes.find(v => Number(v.id) === Number(routeEditorState.tripId));
+  if (!trip) throw new Error('No se encontró el viaje');
+  const cityIds = routeEditorState.cityIds.map(Number).filter(Boolean);
+  const paisIds = new Set(tripCountryIds(trip).map(Number).filter(Boolean));
+  cityIds.forEach(id => {
+    const city = state.lugares.find(l => Number(l.id) === Number(id));
+    if (city && city.parentId) paisIds.add(Number(city.parentId));
   });
+  await updateViaje(trip.id, {
+    ciudadIds: cityIds,
+    paisIds: [...paisIds],
+    updatedAt: new Date().toISOString()
+  });
+  tripMapState.showPlanned = true;
+  resetTripMapView();
+  closeRouteDialog();
+  await loadAll();
+  setSelectedTrips([trip.id]);
+  renderLugarSelectors();
+  renderMapAfterTripChange();
 }
 
 function tripMapItemsForCurrentScope() {
@@ -2695,7 +2765,7 @@ function renderTripMap() {
       <div class="map-controls-actions">
         <button type="button" data-map-zoom="reset" title="Volver al encuadre automático">Centrar</button>
         <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
-        <button type="button" data-map-add-stop="1" title="Añadir una ciudad planificada al viaje">Añadir parada</button>
+        <button type="button" data-map-add-stop="1" title="Añadir, borrar o reordenar paradas del viaje">Añadir / modificar parada</button>
         <button type="button" data-map-refresh="1" title="Actualizar con las coordenadas guardadas en Configuración">Actualizar</button>
         <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
       </div>
@@ -3871,6 +3941,16 @@ function bindEvents() {
       setMessage('#msg-form-dialog', err.message || String(err), true);
     }
   };
+  $('#route-dialog-close').onclick = closeRouteDialog;
+  $('#route-dialog-cancel').onclick = closeRouteDialog;
+  $('#route-dialog-form').onsubmit = async event => {
+    event.preventDefault();
+    try {
+      await saveRouteDialog();
+    } catch (err) {
+      setMessage('#msg-route-dialog', err.message || String(err), true);
+    }
+  };
   $('#edit-gasto-form').onsubmit = async event => {
     event.preventDefault();
     try {
@@ -4266,6 +4346,91 @@ function bindEvents() {
       return;
     }
     if (!target.closest('.currency-code-field')) hideCurrencySuggestions();
+  });
+
+  document.addEventListener('change', event => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target instanceof HTMLSelectElement && target.dataset.routeCity) {
+      const index = Number(target.dataset.routeCity);
+      routeEditorState.cityIds[index] = Number(target.value);
+      return;
+    }
+    if (target instanceof HTMLInputElement && target.dataset.routePosition) {
+      const index = Number(target.dataset.routePosition);
+      const next = Math.max(1, Math.min(routeEditorState.cityIds.length, Number(target.value || 1))) - 1;
+      moveRouteStop(index, next);
+      renderRouteDialog();
+    }
+  });
+
+  document.addEventListener('click', event => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const deleteButton = target.closest('[data-route-delete]');
+    if (deleteButton) {
+      routeEditorState.cityIds.splice(Number(deleteButton.dataset.routeDelete), 1);
+      renderRouteDialog();
+      return;
+    }
+    const addButton = target.closest('[data-route-add]');
+    if (addButton) {
+      const select = $('#route-add-city');
+      const cityId = Number(select ? select.value : 0);
+      if (!cityId) {
+        setMessage('#msg-route-dialog', 'Elige una ciudad para añadirla a la ruta', true);
+        return;
+      }
+      routeEditorState.cityIds.push(cityId);
+      setMessage('#msg-route-dialog', '');
+      renderRouteDialog();
+      return;
+    }
+    const upButton = target.closest('[data-route-up]');
+    if (upButton) {
+      const index = Number(upButton.dataset.routeUp);
+      moveRouteStop(index, index - 1);
+      renderRouteDialog();
+      return;
+    }
+    const downButton = target.closest('[data-route-down]');
+    if (downButton) {
+      const index = Number(downButton.dataset.routeDown);
+      moveRouteStop(index, index + 1);
+      renderRouteDialog();
+    }
+  });
+
+  document.addEventListener('dragstart', event => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const row = target.closest('[data-route-row]');
+    if (!row) return;
+    routeEditorState.dragIndex = Number(row.dataset.routeRow);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(routeEditorState.dragIndex));
+    }
+  });
+
+  document.addEventListener('dragover', event => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.closest('[data-route-row]')) event.preventDefault();
+  });
+
+  document.addEventListener('drop', event => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const row = target.closest('[data-route-row]');
+    if (!row) return;
+    event.preventDefault();
+    const from = routeEditorState.dragIndex;
+    const to = Number(row.dataset.routeRow);
+    if (from == null) return;
+    moveRouteStop(from, to);
+    routeEditorState.dragIndex = null;
+    renderRouteDialog();
   });
 
   document.addEventListener('pointerdown', startTripMapDrag);

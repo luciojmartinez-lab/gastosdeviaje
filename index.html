@@ -18,7 +18,7 @@
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuración</button>
   </nav>
-  <div class="app-version">700v56</div>
+  <div class="app-version">700v57</div>
 </header>
 
 <main>
@@ -390,6 +390,21 @@
   </form>
 </dialog>
 
+<dialog id="route-dialog" class="modal">
+  <form method="dialog" id="route-dialog-form">
+    <div class="modal-head">
+      <h2 id="route-dialog-title">Añadir / modificar paradas</h2>
+      <button type="button" class="ghost icon-btn" id="route-dialog-close" aria-label="Cerrar">x</button>
+    </div>
+    <div id="route-dialog-body"></div>
+    <div class="actions">
+      <button type="submit" class="btn">Guardar ruta</button>
+      <button type="button" class="ghost" id="route-dialog-cancel">Cancelar</button>
+      <span id="msg-route-dialog" class="small"></span>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="print-dialog" class="modal">
   <form method="dialog" id="print-dialog-form">
     <div class="modal-head">
@@ -449,7 +464,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v56"></script>
+<script src="app.bundle.js?v=700v57"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
