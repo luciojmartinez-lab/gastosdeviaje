@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ayuda - Gastos de Viaje</title>
+  <meta name="theme-color" content="#1976d2">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      --primary: #1976d2;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --soft: #eef2ff;
+      --panel: #fff;
+      --bg: #f6f8fb;
+      --good: #16a34a;
+      --warn: #d97706;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .topbar h1 {
+      flex: 1;
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.1;
+    }
+
+    .topbar h1 span {
+      display: block;
+      margin-top: 3px;
+      font-size: 12px;
+      font-weight: 500;
+      opacity: 0.85;
+    }
+
+    .topbar a,
+    .help-nav a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: #ffffff22;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .topbar a:hover,
+    .topbar a:focus-visible {
+      background: #fff;
+      color: var(--primary);
+    }
+
+    main {
+      width: min(1120px, calc(100vw - 24px));
+      margin: 0 auto;
+      padding: 18px 0 36px;
+    }
+
+    .hero,
+    .section,
+    .screen,
+    .mini-card {
+      background: var(--panel);
+      border-radius: 8px;
+      box-shadow: 0 6px 20px #0000000d;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+      gap: 18px;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .hero h2,
+    .section h2 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.05;
+    }
+
+    .hero p {
+      max-width: 64ch;
+      margin: 0 0 12px;
+      color: var(--muted);
+    }
+
+    .help-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .help-nav a {
+      background: var(--soft);
+      color: #1e40af;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .flow-step {
+      min-height: 98px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .flow-step b {
+      display: block;
+      margin-bottom: 4px;
+      color: #1e40af;
+    }
+
+    .section {
+      margin-top: 18px;
+      padding: 18px;
+    }
+
+    .section h2 {
+      font-size: clamp(24px, 3vw, 34px);
+    }
+
+    .section h3 {
+      margin: 18px 0 8px;
+      font-size: 20px;
+    }
+
+    .grid-2,
+    .grid-3 {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .mini-card {
+      padding: 14px;
+      border: 1px solid var(--line);
+      box-shadow: none;
+    }
+
+    .mini-card h3 {
+      margin-top: 0;
+    }
+
+    .mini-card p,
+    li {
+      color: var(--muted);
+    }
+
+    .screen {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      box-shadow: none;
+    }
+
+    .screen-top {
+      padding: 12px;
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .screen-title {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .tab {
+      min-height: 34px;
+      padding: 8px 6px;
+      border-radius: 8px;
+      background: #ffffff2b;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    .tab.active {
+      background: #fff;
+      color: var(--primary);
+      font-weight: 800;
+    }
+
+    .screen-body {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .mock-card,
+    .mock-row,
+    .mock-table,
+    .mock-map {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .mock-card { padding: 12px; }
+
+    .mock-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 48px;
+      padding: 10px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: #1e40af;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .metric {
+      padding: 10px;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric b {
+      display: block;
+      font-size: 18px;
+    }
+
+    .mock-table {
+      overflow: hidden;
+    }
+
+    .mock-table div {
+      display: grid;
+      grid-template-columns: 1fr 0.8fr 0.8fr 0.7fr;
+      gap: 8px;
+      padding: 9px 10px;
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+    }
+
+    .mock-table div:first-child {
+      border-top: 0;
+      background: #f8fafc;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .mock-map {
+      position: relative;
+      min-height: 230px;
+      overflow: hidden;
+      background:
+        linear-gradient(145deg, #cfe8f3 0 48%, #e6f0de 49% 100%);
+    }
+
+    .route-line {
+      position: absolute;
+      left: 15%;
+      top: 70%;
+      width: 68%;
+      height: 4px;
+      background: #2563eb;
+      transform: rotate(-28deg);
+      transform-origin: left center;
+    }
+
+    .route-line.second {
+      left: 56%;
+      top: 40%;
+      width: 24%;
+      transform: rotate(64deg);
+    }
+
+    .pin {
+      position: absolute;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border: 3px solid #fff;
+      border-radius: 50%;
+      background: #dc2626;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 900;
+      box-shadow: 0 2px 6px #0003;
+    }
+
+    .pin.p1 { left: 13%; top: 66%; }
+    .pin.p2 { left: 48%; top: 44%; }
+    .pin.p3 { left: 66%; top: 28%; }
+    .pin.p4 { left: 76%; top: 47%; }
+
+    .caption {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .callout {
+      margin-top: 12px;
+      padding: 12px;
+      border-left: 4px solid var(--primary);
+      border-radius: 8px;
+      background: #eef7ff;
+    }
+
+    .tag {
+      display: inline-flex;
+      margin: 2px 4px 2px 0;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (max-width: 820px) {
+      .topbar {
+        align-items: flex-start;
+      }
+
+      .topbar h1 {
+        font-size: 18px;
+      }
+
+      .hero,
+      .grid-2,
+      .grid-3,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .mock-table {
+        overflow-x: auto;
+      }
+
+      .mock-table div {
+        min-width: 520px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a href="index.html">Volver</a>
+    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v65</span></h1>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <h2>Una app para entender el viaje mientras lo estás viviendo</h2>
+        <p>
+          Gastos de Viaje está pensada para viajes reales: varias ciudades, monedas extranjeras,
+          cuentas diferentes, transferencias, presupuesto manual y revisiones posteriores. La idea
+          no es solo guardar tickets, sino poder contestar rápido: cuánto llevo gastado, dónde, con
+          qué cuenta, en qué moneda y cómo encaja eso con el recorrido.
+        </p>
+        <p>
+          La app se organiza en cuatro áreas: Viajes, Gastos, Resumen y Configuración. La ayuda
+          se irá actualizando cuando se añadan funciones importantes.
+        </p>
+        <nav class="help-nav" aria-label="Índice de ayuda">
+          <a href="#filosofia">Filosofía</a>
+          <a href="#flujo">Flujo recomendado</a>
+          <a href="#pantallas">Pantallas</a>
+          <a href="#funciones">Funciones</a>
+          <a href="#copias">Copias</a>
+        </nav>
+      </div>
+
+      <div class="screen" aria-label="Infografía de estructura de la app">
+        <div class="screen-top">
+          <p class="screen-title">Gastos de Viaje</p>
+          <div class="tabs">
+            <span class="tab active">Viajes</span>
+            <span class="tab">Gastos</span>
+            <span class="tab">Resumen</span>
+            <span class="tab">Config.</span>
+          </div>
+        </div>
+        <div class="screen-body">
+          <div class="metric-grid">
+            <div class="metric"><span>Filtro</span><b>Próximo viaje</b></div>
+            <div class="metric"><span>Gasto</span><b>EUR + divisa</b></div>
+            <div class="metric"><span>Ruta</span><b>Planificada</b></div>
+          </div>
+          <div class="mock-row">
+            <b>2026 A Coruña</b>
+            <span class="pill">Gastos</span>
+            <span class="pill">Resumen</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="filosofia">
+      <h2>Filosofía de la aplicación</h2>
+      <div class="grid-3">
+        <article class="mini-card">
+          <h3>Cada viaje es independiente</h3>
+          <p>Los gastos, cuentas específicas, presupuestos y ciudades planificadas se leen en el contexto del viaje seleccionado.</p>
+        </article>
+        <article class="mini-card">
+          <h3>El euro es la referencia</h3>
+          <p>Puedes pagar en PLN, USD u otra moneda, pero la app conserva el equivalente en EUR para comparar presupuestos y totales.</p>
+        </article>
+        <article class="mini-card">
+          <h3>La ruta importa</h3>
+          <p>El mapa no es decorativo: ayuda a revisar el recorrido, ciudades cumplidas, paradas repetidas y tramos por país.</p>
+        </article>
+      </div>
+      <div class="callout">
+        <b>Regla mental:</b> configura primero el viaje y sus cuentas; durante el viaje añade gastos; al revisar usa Resumen, Mapa y Backups.
+      </div>
+    </section>
+
+    <section class="section" id="flujo">
+      <h2>Flujo recomendado</h2>
+      <div class="flow">
+        <div class="flow-step"><b>1. Preparar</b>Crear países, ciudades, monedas, viaje, cuentas y presupuesto.</div>
+        <div class="flow-step"><b>2. Registrar</b>Añadir gastos, ingresos/devoluciones, tickets y transferencias.</div>
+        <div class="flow-step"><b>3. Revisar</b>Consultar totales, cuentas, porcentajes, mapa y presupuesto restante.</div>
+        <div class="flow-step"><b>4. Proteger</b>Crear backup, exportar CSV o imprimir informes PDF.</div>
+      </div>
+    </section>
+
+    <section class="section" id="pantallas">
+      <h2>Pantallas principales</h2>
+
+      <div class="grid-2">
+        <article class="screen">
+          <div class="screen-top">
+            <p class="screen-title">Viajes</p>
+            <div class="tabs"><span class="tab active">Viajes</span><span class="tab">Gastos</span><span class="tab">Resumen</span><span class="tab">Config.</span></div>
+          </div>
+          <div class="screen-body">
+            <div class="mock-row"><b>Filtro activo</b><span class="pill">Quitar selección</span><span class="pill">Backups</span></div>
+            <div class="mock-table">
+              <div><span>Viaje</span><span>Final</span><span>Total</span><span>Acciones</span></div>
+              <div><span>A Coruña</span><span>20/07</span><span>1.000 €</span><span>Resumen</span></div>
+              <div><span>Torun</span><span>08/04</span><span>2.060 €</span><span>Gastos</span></div>
+            </div>
+            <p class="caption">Al abrir, la app selecciona el viaje en curso o el próximo viaje futuro.</p>
+          </div>
+        </article>
+
+        <article class="screen">
+          <div class="screen-top">
+            <p class="screen-title">Gastos</p>
+            <div class="tabs"><span class="tab">Viajes</span><span class="tab active">Gastos</span><span class="tab">Resumen</span><span class="tab">Config.</span></div>
+          </div>
+          <div class="screen-body">
+            <div class="mock-row"><b>Nuevo gasto</b><span class="pill">Gasto</span><span class="pill">Ingreso</span></div>
+            <div class="mock-table">
+              <div><span>Ciudad</span><span>Cuenta</span><span>Importe</span><span>Ticket</span></div>
+              <div><span>Madrid</span><span>Santander</span><span>38,00 €</span><span>Ver</span></div>
+              <div><span>Varsovia</span><span>Revolut PLN</span><span>61,69 PLN</span><span>-</span></div>
+            </div>
+            <p class="caption">Los ingresos o devoluciones se guardan como importes negativos y restan del gasto.</p>
+          </div>
+        </article>
+
+        <article class="screen">
+          <div class="screen-top">
+            <p class="screen-title">Resumen</p>
+            <div class="tabs"><span class="tab">Viajes</span><span class="tab">Gastos</span><span class="tab active">Resumen</span><span class="tab">Config.</span></div>
+          </div>
+          <div class="screen-body">
+            <div class="metric-grid">
+              <div class="metric"><span>Días</span><b>49</b></div>
+              <div class="metric"><span>Media</span><b>82,36 €/día</b></div>
+              <div class="metric"><span>Presupuesto</span><b>79%</b></div>
+            </div>
+            <div class="mock-table">
+              <div><span>Cuenta</span><span>Gastado</span><span>Restante</span><span>%</span></div>
+              <div><span>Santander</span><span>1.298 €</span><span>-498 €</span><span>162%</span></div>
+              <div><span>Revolut PLN</span><span>3.059 PLN</span><span>284 €</span><span>72%</span></div>
+            </div>
+            <p class="caption">El resumen compara gasto real, equivalente EUR, presupuesto y porcentaje usado.</p>
+          </div>
+        </article>
+
+        <article class="screen">
+          <div class="screen-top">
+            <p class="screen-title">Mapa</p>
+            <div class="tabs"><span class="tab">Totales</span><span class="tab">Desglose</span><span class="tab">Cuentas</span><span class="tab active">Mapa</span></div>
+          </div>
+          <div class="screen-body">
+            <div class="mock-map">
+              <span class="route-line"></span>
+              <span class="route-line second"></span>
+              <span class="pin p1">1</span>
+              <span class="pin p2">2</span>
+              <span class="pin p3">3</span>
+              <span class="pin p4">4</span>
+            </div>
+            <p class="caption">Puedes alternar Planificadas/Solo gastos, filtrar por país, centrar, localizar coordenadas y modificar paradas.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="funciones">
+      <h2>Funciones por área</h2>
+
+      <h3>Viajes</h3>
+      <ul>
+        <li>Filtro global por viaje o año, con multiselección desde la tabla principal.</li>
+        <li>Selección automática del viaje en curso o del próximo viaje futuro al abrir.</li>
+        <li>Presupuesto manual del viaje, separado del presupuesto de las cuentas.</li>
+        <li>Ciudades planificadas por país, con orden, eliminación, restablecimiento y repetición de paradas cuando el viaje vuelve por una ciudad.</li>
+      </ul>
+
+      <h3>Gastos</h3>
+      <ul>
+        <li>Alta rápida de gastos con fecha, viaje, cuenta, moneda, categoría, subcategoría, país, ciudad, importe, tipo y descripción.</li>
+        <li>Tipo de movimiento: gasto o ingreso/devolución. Las devoluciones se guardan como importes negativos.</li>
+        <li>Tickets y fotos asociados cuando el navegador lo permite.</li>
+        <li>Filtros por moneda, cuenta, viaje, país, ciudad, categoría, fechas y texto.</li>
+        <li>Vista de tabla o tarjetas para mejorar la lectura en móvil.</li>
+      </ul>
+
+      <h3>Resumen</h3>
+      <ul>
+        <li>Totales en EUR y, cuando hay divisas, totales en moneda extranjera con equivalencia.</li>
+        <li>Media diaria, presupuesto usado, restante y porcentaje de gasto.</li>
+        <li>Desglose por categoría y subcategoría.</li>
+        <li>Resumen por cuentas, con presupuesto de cuenta y presupuesto del viaje.</li>
+        <li>Mapa del viaje con paradas planificadas, puntos con gasto, rutas y filtro por país.</li>
+      </ul>
+
+      <h3>Configuración</h3>
+      <div>
+        <span class="tag">Países y ciudades</span>
+        <span class="tag">Viajes</span>
+        <span class="tag">Monedas</span>
+        <span class="tag">Cuentas</span>
+        <span class="tag">Transferencias</span>
+        <span class="tag">Categorías</span>
+        <span class="tag">Backups</span>
+        <span class="tag">Avanzado</span>
+      </div>
+      <ul>
+        <li>Países y ciudades pueden guardarse con coordenadas para el mapa.</li>
+        <li>Las monedas extranjeras guardan cambio en ambos sentidos: 1 moneda = EUR y 1 EUR = moneda.</li>
+        <li>Las cuentas globales funcionan como plantillas; las cuentas de viaje son específicas del viaje.</li>
+        <li>Las transferencias mueven dinero entre cuentas y permiten cambio cuando las monedas son distintas.</li>
+        <li>Las categorías y subcategorías organizan el gasto y alimentan los informes.</li>
+      </ul>
+    </section>
+
+    <section class="section" id="copias">
+      <h2>Backups, exportación e informes</h2>
+      <div class="grid-2">
+        <article class="mini-card">
+          <h3>Backups</h3>
+          <p>La pestaña Viajes incluye accesos rápidos a importación y backups. La app conserva un registro de las últimas copias generadas para ayudarte a saber cuándo protegiste los datos.</p>
+        </article>
+        <article class="mini-card">
+          <h3>Exportación</h3>
+          <p>El CSV se exporta en UTF-8 con BOM para abrirlo correctamente en Excel. Los informes PDF incluyen tablas, gráficos y el mapa cuando corresponde.</p>
+        </article>
+      </div>
+      <div class="callout">
+        <b>Consejo:</b> antes de importar datos o hacer cambios grandes de configuración, crea una copia de seguridad.
+      </div>
+    </section>
+
+    <p class="footer-note">Gastos de Viaje 700v65. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
+  </main>
+</body>
+</html>

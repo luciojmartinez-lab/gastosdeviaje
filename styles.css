@@ -45,6 +45,29 @@ header h1 span {
 }
 nav { display: flex; gap: 8px; }
 
+.help-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #ffffff22;
+  color: #fff;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.help-link:hover,
+.help-link:focus-visible {
+  background: #fff;
+  color: var(--primary);
+}
+
+.header-help {
+  display: none;
+}
+
 .app-version {
   align-self: flex-start;
   padding: 2px 7px;
@@ -1068,11 +1091,27 @@ footer {
     flex-wrap: wrap;
   }
 
+  .header-help {
+    display: inline-flex;
+    order: 0;
+  }
+
+  header h1 {
+    order: 1;
+    min-width: 0;
+  }
+
   nav {
+    order: 3;
     width: 100%;
   }
 
+  .nav-help {
+    display: none;
+  }
+
   .app-version {
+    order: 2;
     margin-left: auto;
   }
 

@@ -11,14 +11,16 @@
 </head>
 <body>
 <header>
+  <a class="help-link header-help" href="ayuda.html">Ayuda</a>
   <h1>Gastos de Viaje <span>por Lucio J Martínez</span></h1>
   <nav>
     <button id="tab-viajes" class="active">Viajes</button>
     <button id="tab-gastos">Gastos</button>
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuración</button>
+    <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v64</div>
+  <div class="app-version">700v65</div>
 </header>
 
 <main>
@@ -466,7 +468,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v64"></script>
+<script src="app.bundle.js?v=700v65"></script>
 <script>
   if ('serviceWorker' in navigator) {
     let refreshing = false;
