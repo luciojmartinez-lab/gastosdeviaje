@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Gastos de Viaje por Lucio J Martinez</title>
+  <title>Gastos de Viaje por Lucio J Martínez</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="styles.css">
   <meta name="theme-color" content="#1976d2">
@@ -11,14 +11,14 @@
 </head>
 <body>
 <header>
-  <h1>Gastos de Viaje <span>por Lucio J Martinez</span></h1>
+  <h1>Gastos de Viaje <span>por Lucio J Martínez</span></h1>
   <nav>
     <button id="tab-viajes" class="active">Viajes</button>
     <button id="tab-gastos">Gastos</button>
     <button id="tab-resumen">Resumen</button>
-    <button id="tab-config">Configuracion</button>
+    <button id="tab-config">Configuración</button>
   </nav>
-  <div class="app-version">600v2</div>
+  <div class="app-version">700v54</div>
 </header>
 
 <main>
@@ -26,15 +26,15 @@
     <div class="card">
       <div class="section-head">
         <h2>Viajes realizados</h2>
-        <button class="btn ghost" id="btn-clear-trip">Quitar seleccion</button>
+        <button class="btn ghost" id="btn-clear-trip">Quitar selección</button>
       </div>
       <p id="selected-trip-info" class="small"></p>
       <div class="backup-strip">
         <span class="backup-status small"></span>
-        <button class="btn ghost" id="btn-export-home">Exportar backup</button>
+        <span class="backup-actions"><button class="btn ghost" id="btn-import-home" onclick="openBackupDialogSafe('import')" type="button">Importación</button><button class="btn ghost" id="btn-backup-home" onclick="openBackupDialogSafe('backup')" type="button">Backups</button></span>
       </div>
       <div class="table-wrap">
-        <table id="tabla-viajes-home"><thead><tr><th>Viaje</th><th>Inicio</th><th>Final</th><th>Gastos</th><th>Total EUR</th><th>Presupuesto</th><th>Restante</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-viajes-home"><thead><tr><th>Viaje / filtro</th><th>Inicio</th><th>Final</th><th>Gastos</th><th>Total EUR</th><th>Presupuesto</th><th>Restante</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
   </section>
@@ -46,7 +46,7 @@
         <div class="section-actions">
           <button class="btn" id="btn-open-add-gasto">Añadir gastos</button>
           <button class="btn ghost mobile-only" id="btn-open-filters">Filtros</button>
-          <select class="mobile-only compact-select" id="f-view-mobile" aria-label="Vista de gastos"><option value="table">Tabla</option><option value="cards">Tarjetas</option></select>
+          <select class="mobile-only compact-select view-mode-control" id="f-view-mobile" aria-label="Vista de gastos"><option value="table">Tabla</option><option value="cards">Tarjetas</option></select>
           <button class="btn ghost mobile-only" id="f-clear-mobile" style="display:none">Quitar filtros</button>
         </div>
       </div>
@@ -61,11 +61,14 @@
         <div><label>Moneda</label><select id="f-moneda"></select></div>
         <div><label>Cuenta</label><select id="f-cuenta"></select></div>
         <div><label>Viaje</label><select id="f-viaje"></select></div>
-        <div><label>Categoria</label><select id="f-cat"></select></div>
+        <div><label>País</label><select id="f-pais"></select></div>
+        <div><label>Ciudad</label><select id="f-ciudad"></select></div>
+        <div><label>Categoría</label><select id="f-cat"></select></div>
+        <div><label>Subcategoría</label><select id="f-subcat"></select></div>
         <div><label>Desde</label><input type="date" id="f-desde"></div>
         <div><label>Hasta</label><input type="date" id="f-hasta"></div>
-        <div><label>Buscar descripcion</label><input id="f-desc" placeholder="ticket, hotel..."></div>
-        <div><label>Vista</label><select id="f-view"><option value="table">Tabla</option><option value="cards">Tarjetas</option></select></div>
+        <div><label>Buscar descripción</label><input id="f-desc" placeholder="ticket, hotel..."></div>
+        <div class="view-mode-field"><label>Vista</label><select id="f-view"><option value="table">Tabla</option><option value="cards">Tarjetas</option></select></div>
         <div class="filter-action"><button class="btn" id="f-clear">Quitar filtros</button></div>
       </div>
     </div>
@@ -74,173 +77,258 @@
       <div class="table-wrap">
         <table id="tabla-gastos">
           <thead>
-            <tr><th>Categoria</th><th>Subcat.</th><th>Cuenta</th><th>Moneda</th><th>Importe</th><th>EUR</th><th>Descripcion</th><th>Ticket</th><th class="action-col">Acciones</th></tr>
+            <tr><th>Ciudad</th><th>Categoría</th><th>Subcat.</th><th>Cuenta</th><th>Moneda</th><th>Importe</th><th>EUR</th><th>Descripción</th><th>Ticket</th><th class="action-col">Acciones</th></tr>
           </thead>
           <tbody></tbody>
-          <tfoot><tr><td colspan="5">Total (filtro)</td><td id="tg-total"></td><td colspan="3"></td></tr></tfoot>
+          <tfoot><tr><td colspan="6">Total (filtro)</td><td id="tg-total"></td><td colspan="3"></td></tr></tfoot>
         </table>
+      </div>
+      <div class="actions expenses-bottom-actions">
+        <button class="btn" id="btn-open-add-gasto-bottom">Añadir gastos</button>
       </div>
     </div>
   </section>
 
   <section id="view-resumen" style="display:none">
-    <div class="kpi">
-      <div class="box"><div class="small">Total en euros</div><div id="kpi-total" class="big">-</div></div>
+    <div class="card summary-menu">
+      <h2>Resumen</h2>
+      <div class="summary-links">
+        <a class="btn ghost" href="#resumen-totales">Totales</a>
+        <a class="btn ghost" href="#resumen-desglose">Desglose</a>
+        <a class="btn ghost" href="#resumen-cuentas">Cuentas</a>
+        <a class="btn ghost" href="#resumen-mapa">Mapa</a>
+      </div>
+    </div>
+    <div class="kpi" id="resumen-totales">
+      <div class="box"><div class="small">Días de viaje</div><div id="kpi-total" class="big">-</div></div>
       <div class="box"><div class="small">Media diaria</div><div id="kpi-media" class="big">-</div></div>
       <div class="box"><div class="small">Presupuestos usados</div><div id="kpi-presu" class="big">-</div></div>
     </div>
-    <div class="card">
+    <div class="card" id="resumen-desglose">
       <div class="row4">
         <div><label>Moneda original</label><select id="r-moneda"></select></div>
         <div><label>Cuenta</label><select id="r-cuenta"></select></div>
         <div><label>Viaje</label><select id="r-viaje"></select></div>
-        <div><label>Desglose</label><select id="r-desglose"><option value="subcategorias">Subcategorias</option><option value="categorias">Categorias</option></select></div>
+        <div><label>País</label><select id="r-pais"></select></div>
+        <div><label>Ciudad</label><select id="r-ciudad"></select></div>
+        <div><label>Desglose</label><select id="r-desglose"><option value="subcategorias">Subcategorías</option><option value="categorias">Categorías</option><option value="ciudades">Ciudades</option></select></div>
       </div>
       <div id="chart-cat"></div>
       <div class="table-wrap">
-        <table id="tabla-cat"><thead><tr><th>Categoria</th><th>Subcategoria</th><th>Total EUR</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-cat"><thead><tr><th>Categoría</th><th>Subcategoría</th><th>Total EUR</th><th>% gasto</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
-    <div class="card">
+    <div class="card" id="resumen-cuentas">
       <h2>Desglose por cuenta / forma de pago</h2>
       <div id="chart-cuenta"></div>
       <div class="table-wrap">
         <table id="tabla-cuenta"><thead><tr><th>Cuenta</th><th>Moneda</th><th>Gastado</th><th>EUR</th><th>Presupuesto</th><th>Restante</th><th>%</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
+    <div class="card" id="resumen-mapa">
+      <div class="section-head">
+        <h2>Mapa del viaje</h2>
+      </div>
+      <div class="row">
+        <div><label>País</label><select id="map-pais"></select></div>
+      </div>
+      <div id="trip-map" class="trip-map"></div>
+      <p id="trip-map-info" class="small"></p>
+    </div>
   </section>
 
   <section id="view-config" style="display:none">
-    <div class="card">
-      <h2>Viajes</h2>
+    <div class="card config-menu">
+      <h2>Configuración</h2>
+      <div class="config-links">
+        <a class="btn ghost" href="#config-paises">Países / ciudades</a>
+        <a class="btn ghost" href="#config-viajes">Viajes</a>
+        <a class="btn ghost" href="#config-monedas">Monedas</a>
+        <a class="btn ghost" href="#config-cuentas">Cuentas</a>
+        <a class="btn ghost" href="#config-transferencias">Transferencias</a>
+        <a class="btn ghost" href="#config-categorias">Categorías</a>
+        <a class="btn ghost" href="#config-backups">Backups</a>
+        <a class="btn ghost" href="#config-avanzado">Avanzado</a>
+      </div>
+    </div>
+    <div class="card compact-config-form" id="config-paises">
+      <h2>Crear Países / ciudades</h2>
+      <div class="row4">
+        <div><label>Nombre</label><input id="lugar-nombre"></div>
+        <div><label>Ciudad de</label><select id="lugar-parent"></select></div>
+        <div><label>Latitud</label><input type="number" step="0.000001" id="lugar-lat"></div>
+        <div><label>Longitud</label><input type="number" step="0.000001" id="lugar-lng"></div>
+      </div>
+      <div class="actions"><button class="btn" id="btn-add-lugar">Añadir</button><button class="ghost" id="btn-locate-lugar" type="button">Localizar</button><span id="msg-lugar" class="small"></span></div>
+      <details class="compact-list" id="lugares-list-panel">
+        <summary>Ver listado <span id="lugares-count" class="small"></span></summary>
+        <div id="lugares-tree" class="country-tree"></div>
+      </details>
+    </div>
+    <div class="card compact-config-form" id="config-viajes">
+      <h2>Crear Viaje</h2>
       <div class="row3">
         <div><label>Nombre</label><input id="v-nombre"></div>
         <div><label>Fecha de inicio</label><input type="date" id="v-inicio"></div>
         <div><label>Fecha final</label><input type="date" id="v-fin"></div>
       </div>
-      <div><label>Presupuesto del viaje (EUR)</label><input type="number" step="0.01" min="0" id="v-presu"></div>
-      <div class="actions"><button class="btn" id="btn-add-viaje">Anadir viaje</button><span id="msg-viaje" class="small"></span></div>
+      <div class="compact-single-field"><label>Presupuesto del viaje (EUR)</label><input type="number" step="0.01" min="0" id="v-presu"></div>
+      <details class="compact-list trip-picker" id="v-paises-panel">
+        <summary>Países creados <span id="v-paises-count" class="small"></span></summary>
+        <div class="multi-select-panel">
+          <select id="v-paises" multiple size="4"></select>
+        </div>
+      </details>
+      <details class="compact-list trip-picker disabled" id="v-ciudades-panel">
+        <summary>Ciudades planificadas <span id="v-ciudades-count" class="small"></span></summary>
+        <div class="multi-select-panel">
+          <p id="v-ciudades-help" class="small">Selecciona antes al menos un país.</p>
+          <select id="v-ciudades" multiple size="5" disabled></select>
+          <div class="multi-select-order-actions">
+            <button type="button" class="btn ghost" id="v-ciudades-up">Subir</button>
+            <button type="button" class="btn ghost" id="v-ciudades-down">Bajar</button>
+          </div>
+        </div>
+      </details>
+      <div class="actions"><button class="btn" id="btn-add-viaje">Añadir viaje</button><span id="msg-viaje" class="small"></span></div>
+      <h3 class="subsection-title">Viajes creados</h3>
       <div class="table-wrap">
-        <table id="tabla-viajes"><thead><tr><th>Viaje</th><th>Inicio</th><th>Final</th><th>Presupuesto</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-viajes"><thead><tr><th>Viaje</th><th>Países</th><th>Inicio</th><th>Final</th><th>Presupuesto</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Monedas extranjeras</h2>
+    <div class="card compact-config-form" id="config-monedas">
+      <h2>Crear monedas extranjeras</h2>
       <div class="row4">
-        <div><label>Codigo</label><input id="m-codigo" maxlength="3" placeholder="USD"></div>
-        <div><label>Nombre</label><input id="m-nombre" placeholder="Dolar"></div>
+        <div class="currency-code-field"><label>ISO moneda</label><input id="m-iso-entry" name="currency-iso-picker" maxlength="3" placeholder="USD" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="done" aria-label="ISO moneda" aria-autocomplete="list" aria-expanded="false"><div id="currency-iso-options" class="currency-suggestions" role="listbox" hidden></div></div>
+        <div><label>Nombre</label><input id="m-nombre" placeholder="Dólar"></div>
         <div><label>1 moneda = EUR</label><input type="number" step="0.000001" min="0" id="m-eur"></div>
         <div><label>1 EUR = moneda</label><input type="number" step="0.000001" min="0" id="m-back"></div>
+      </div>
+      <div class="actions currency-rate-actions">
+        <button class="ghost" id="btn-check-moneda" type="button">Consultar cambio actual</button>
+        <button class="ghost" id="btn-use-moneda-rate" type="button" hidden>Usar este cambio</button>
+        <span id="msg-moneda-rate" class="small rate-message"></span>
       </div>
       <div class="actions"><button class="btn" id="btn-add-moneda">Guardar moneda</button><span id="msg-moneda" class="small"></span></div>
       <p class="small">Las monedas extranjeras solo se pueden usar en gastos y cuentas si tienen ambas equivalencias configuradas.</p>
       <div class="table-wrap">
-        <table id="tabla-monedas"><thead><tr><th>Codigo</th><th>Nombre</th><th>1 moneda</th><th>1 EUR</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-monedas"><thead><tr><th>Código</th><th>Nombre</th><th>1 moneda</th><th>1 EUR</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Cuentas (formas de pago)</h2>
-      <div class="row3">
+    <div class="card compact-config-form" id="config-cuentas">
+      <h2>Crear Cuentas / formas de pago</h2>
+      <div class="row4">
         <div><label>Nombre</label><input id="c-nombre"></div>
+        <div><label>Desde plantilla</label><select id="c-template"></select></div>
         <div><label>Moneda</label><select id="c-moneda"></select></div>
+        <div><label>Viaje</label><select id="c-viaje"></select></div>
         <div><label>Saldo inicial</label><input type="number" step="0.01" id="c-saldo"></div>
       </div>
       <div class="row">
         <div><label>Presupuesto</label><input type="number" step="0.01" id="c-presu"></div>
         <div><label>Nota</label><input id="c-nota"></div>
       </div>
-      <div class="actions"><button class="btn" id="btn-add-cuenta">Anadir cuenta</button><span id="msg-cuenta" class="small"></span></div>
+      <div class="actions"><button class="btn" id="btn-add-cuenta">Añadir cuenta</button><span id="msg-cuenta" class="small"></span></div>
       <div class="table-wrap">
-        <table id="tabla-cuentas"><thead><tr><th>Cuenta</th><th>Moneda</th><th>Saldo</th><th>Presupuesto</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-cuentas"><thead><tr><th>Cuenta</th><th>Viaje</th><th>Moneda</th><th>Saldo</th><th>Presupuesto</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="config-transferencias">
       <h2>Transferencias entre cuentas</h2>
+      <p class="small">Usa transferencias cuando muevas dinero entre formas de pago. La cuenta origen es de donde sale el dinero y la cuenta destino es donde entra; si cambias de moneda, indica lo que sale y lo que recibes.</p>
       <div class="row4">
         <div><label>Fecha</label><input type="date" id="t-fecha"></div>
-        <div><label>Desde</label><select id="t-from"></select></div>
-        <div><label>Hacia</label><select id="t-to"></select></div>
-        <div><label>Importe en origen</label><input type="number" step="0.01" min="0" id="t-importe"></div>
+        <div><label>Cuenta origen (sale)</label><select id="t-from"></select></div>
+        <div><label>Cuenta destino (entra)</label><select id="t-to"></select></div>
+        <div><label>Cantidad que sale</label><input type="number" step="0.01" min="0" id="t-importe"></div>
       </div>
       <div class="row">
+        <div><label>Cantidad que entra (opcional)</label><input type="number" step="0.01" min="0" id="t-importe-to"></div>
+        <div><label>Cambio</label><input id="t-cambio" readonly></div>
         <div><label>Nota</label><input id="t-nota" placeholder="Retirada efectivo, recarga Revolut..."></div>
-        <div class="filter-action"><button class="btn" id="btn-add-transfer">Anadir transferencia</button></div>
+        <div class="filter-action"><button class="btn" id="btn-add-transfer">Añadir transferencia</button></div>
       </div>
       <div class="actions"><span id="msg-transfer" class="small"></span></div>
       <div class="table-wrap">
-        <table id="tabla-transferencias"><thead><tr><th>Fecha</th><th>Desde</th><th>Hacia</th><th>Sale</th><th>Entra</th><th>Nota</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-transferencias"><thead><tr><th>Fecha</th><th>Cuenta origen</th><th>Cuenta destino</th><th>Sale</th><th>Entra</th><th>Cambio</th><th>Nota</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Categorias</h2>
+    <div class="card" id="config-categorias">
+      <h2>Crear Categorías / Subcategorías</h2>
       <div class="row">
         <div><label>Nombre</label><input id="cat-nombre"></div>
-        <div><label>Subcategoria de?</label><select id="cat-parent"></select></div>
+        <div><label>¿Subcategoría de?</label><select id="cat-parent"></select></div>
       </div>
-      <div class="actions"><button class="btn" id="btn-add-cat">Anadir</button><span id="msg-cat" class="small"></span></div>
-      <div class="table-wrap">
-        <table id="tabla-cats"><thead><tr><th>Nombre</th><th>Tipo</th><th>Padre</th><th>Acciones</th></tr></thead><tbody></tbody></table>
-      </div>
+      <div class="actions"><button class="btn" id="btn-add-cat">Añadir</button><span id="msg-cat" class="small"></span></div>
+      <div id="categorias-tree" class="category-tree"></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="config-backups">
       <h2>Exportar / Importar</h2>
       <div class="actions">
-        <button class="btn ghost" id="btn-export">Exportar JSON</button>
+        <button class="btn ghost" id="btn-export" onclick="openBackupDialogSafe()" type="button">Exportar / backup</button>
         <button class="btn ghost" id="btn-export-csv">Exportar CSV</button>
         <button class="btn ghost" id="btn-print-summary">Imprimir / PDF</button>
         <input type="file" id="file-import" accept="application/json" style="display:none">
-        <button class="btn" id="btn-import">Importar JSON</button>
+        <button class="btn" id="btn-import" onclick="openBackupDialogSafe('import')" type="button">Importar JSON</button>
         <a id="export-link" class="download-link" href="#" download style="display:none">Descargar backup JSON</a>
         <a id="export-open-link" class="download-link alt" href="#" target="_blank" rel="noopener" style="display:none">Abrir JSON</a>
         <span id="msg-export" class="small"></span>
       </div>
       <p class="backup-status small"></p>
-      <div id="export-panel" class="export-panel" style="display:none">
-        <label>Contenido del backup JSON</label>
-        <textarea id="export-json" readonly></textarea>
-        <p class="small">Si el navegador no descarga ni abre una pestana, selecciona este texto y guardalo como archivo .json.</p>
+      <div class="backup-history-box">
+        <h3>Últimas copias</h3>
+        <div class="backup-history"></div>
+        <p class="small">Se guardan las últimas 5 copias registradas en este dispositivo.</p>
       </div>
       <p class="small">Datos locales guardados en IndexedDB.</p>
     </div>
 
-    <div class="card">
+    <div class="card" id="config-avanzado">
       <h2>Avanzado</h2>
-      <p class="small">Si algo no responde, este boton borra cache, service worker y base de datos local.</p>
+      <p class="small">Si algo no responde, este botón borra caché, service worker y base de datos local.</p>
       <div class="actions"><button class="btn" id="btn-reset">Reparar / Resetear datos</button></div>
     </div>
   </section>
 </main>
 
-<footer>App PWA offline - IndexedDB - Espanol</footer>
+<footer>App PWA offline - IndexedDB - Español</footer>
 
 <dialog id="add-gasto-dialog" class="modal">
-  <form method="dialog" id="add-gasto-form">
+  <form method="dialog" id="add-gasto-form" class="expense-dialog-form">
     <div class="modal-head">
       <h2>Nuevo gasto</h2>
       <button type="button" class="ghost icon-btn" id="add-gasto-close" aria-label="Cerrar">x</button>
     </div>
-    <div class="row3">
+    <div class="row add-top-fields">
       <div><label>Fecha</label><input type="date" id="g-fecha"></div>
       <div><label>Viaje</label><select id="g-viaje"></select></div>
+    </div>
+    <div class="row add-account-fields">
       <div><label>Cuenta / Forma de pago</label><select id="g-cuenta"></select></div>
-    </div>
-    <div class="row3">
       <div><label>Moneda</label><select id="g-moneda"></select></div>
-      <div><label>Categoria</label><select id="g-cat"></select></div>
-      <div><label>Subcategoria</label><select id="g-subcat"></select></div>
     </div>
-    <div class="row">
-      <div><label>Importe</label><input type="number" step="0.01" min="0" id="g-importe"></div>
-      <div><label>Descripcion (opcional)</label><input id="g-desc"></div>
+    <div class="row add-class-fields">
+      <div><label>Categoría</label><select id="g-cat"></select></div>
+      <div><label>Subcategoría</label><select id="g-subcat"></select></div>
+    </div>
+    <div class="row add-location-fields">
+      <div><label>País</label><select id="g-pais"></select></div>
+      <div><label>Ciudad</label><select id="g-ciudad"></select></div>
+    </div>
+    <div class="row add-amount-fields">
+      <div><label>Importe</label><input type="number" step="0.01" id="g-importe"></div>
+      <div><label>Tipo</label><select id="g-tipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso / devolución</option></select></div>
+      <div><label>Descripción (opcional)</label><input id="g-desc"></div>
     </div>
     <div><label>Foto / ticket</label><input type="file" accept="image/*,.pdf" id="g-ticket"></div>
     <div class="actions">
-      <button type="submit" class="btn" id="btn-add-gasto">Añadir gasto</button>
+      <button type="button" class="btn" id="btn-add-gasto">Añadir y salir</button>
+      <button type="button" class="ghost" id="btn-add-gasto-continue">Añadir y seguir</button>
       <button type="button" class="ghost" id="add-gasto-cancel">Cancelar</button>
       <span id="msg-gasto" class="small"></span>
     </div>
@@ -248,25 +336,32 @@
 </dialog>
 
 <dialog id="edit-gasto-dialog" class="modal">
-  <form method="dialog" id="edit-gasto-form">
+  <form method="dialog" id="edit-gasto-form" class="expense-dialog-form">
     <div class="modal-head">
       <h2>Editar gasto</h2>
       <button type="button" class="ghost icon-btn" id="edit-gasto-close" aria-label="Cerrar">x</button>
     </div>
     <input type="hidden" id="edit-gasto-id">
-    <div class="row3">
+    <div class="row edit-top-fields">
       <div><label>Fecha</label><input type="date" id="edit-gasto-fecha"></div>
       <div><label>Viaje</label><select id="edit-gasto-viaje"></select></div>
+    </div>
+    <div class="row edit-account-fields">
       <div><label>Cuenta</label><select id="edit-gasto-cuenta"></select></div>
-    </div>
-    <div class="row3">
       <div><label>Moneda</label><input id="edit-gasto-moneda" readonly></div>
-      <div><label>Categoria</label><select id="edit-gasto-cat"></select></div>
-      <div><label>Subcategoria</label><select id="edit-gasto-subcat"></select></div>
     </div>
-    <div class="row">
-      <div><label>Importe</label><input type="number" step="0.01" min="0" id="edit-gasto-importe"></div>
-      <div><label>Descripcion</label><input id="edit-gasto-desc"></div>
+    <div class="row edit-class-fields">
+      <div><label>Categoría</label><select id="edit-gasto-cat"></select></div>
+      <div><label>Subcategoría</label><select id="edit-gasto-subcat"></select></div>
+    </div>
+    <div class="row edit-location-fields">
+      <div><label>País</label><select id="edit-gasto-pais"></select></div>
+      <div><label>Ciudad</label><select id="edit-gasto-ciudad"></select></div>
+    </div>
+    <div class="row edit-amount-fields">
+      <div><label>Importe</label><input type="number" step="0.01" id="edit-gasto-importe"></div>
+      <div><label>Tipo</label><select id="edit-gasto-tipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso / devolución</option></select></div>
+      <div><label>Descripción</label><input id="edit-gasto-desc"></div>
     </div>
     <div class="row">
       <div><label>Nuevo ticket</label><input type="file" accept="image/*,.pdf" id="edit-gasto-ticket"></div>
@@ -309,7 +404,52 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=600v2"></script>
+<dialog id="backup-dialog" class="modal">
+  <form method="dialog" id="backup-form">
+    <div class="modal-head">
+      <h2>Copias de seguridad</h2>
+      <button type="button" class="ghost icon-btn" id="backup-close" aria-label="Cerrar">x</button>
+    </div>
+    <div id="backup-export-section">
+    <div class="row3">
+      <div><label>Exportar</label><select id="backup-export-scope"><option value="all">Todos los viajes</option><option value="trip">Un viaje</option></select></div>
+      <div id="backup-export-trip-field"><label>Viaje</label><select id="backup-export-trip"></select></div>
+      <div><label>Destino</label><select id="backup-export-dest"><option value="download">Descargas</option><option value="share">Compartir (solo móvil)</option></select></div>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" id="backup-download" onclick="handleBackupDownload()">Crear copia</button>
+      <button type="button" class="ghost" id="backup-share" onclick="handleBackupShare()">Compartir (solo móvil)</button>
+    </div>
+    <div class="compat-hidden">
+      <select id="backup-auto"><option value="off">No programar</option></select>
+      <input type="time" id="backup-auto-time" value="20:00">
+    </div>
+    <div class="backup-history-box">
+      <h3>Últimas copias</h3>
+      <div id="backup-history"></div>
+      <p class="small">Se guardan las últimas 5 copias registradas en este dispositivo.</p>
+    </div>
+    </div>
+    <div id="backup-import-section" class="row3">
+      <div><label>Importar</label><select id="backup-import-mode"><option value="all">Importar todos los viajes</option><option value="trip">Importar un viaje</option></select></div>
+      <div><label>Viaje destino</label><select id="backup-import-trip"></select></div>
+      <div class="filter-action"><button type="button" class="btn" id="backup-import" onclick="handleBackupImportClick()">Importar JSON</button></div>
+    </div>
+    <div class="actions"><span id="msg-backup" class="small"></span></div>
+  </form>
+</dialog>
+
+<dialog id="backup-result-dialog" class="modal result-modal">
+  <form method="dialog">
+    <div class="backup-result">
+      <strong id="backup-result-title"></strong>
+      <p id="backup-result-detail" class="small"></p>
+      <button type="button" class="btn" id="backup-exit">Salir</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.bundle.js?v=700v54"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

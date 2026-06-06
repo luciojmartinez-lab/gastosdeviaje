@@ -1,10 +1,59 @@
-const DB_NAME = 'gastos_viaje_db';
-const DB_VERSION = 3;
-const APP_VERSION = '600v2';
+﻿const DB_NAME = 'gastos_viaje_db';
+const DB_VERSION = 5;
+const APP_VERSION = '700v54';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
+const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
+const TRIP_MAP_WIDTH = 920;
+const TRIP_MAP_HEIGHT = 460;
 let dbPromise = null;
 let activeFormDialogSubmit = null;
+let hasAppliedDefaultTripSelection = false;
+const tripMapState = {
+  key: '',
+  countryScopeKey: '',
+  zoomDelta: 0,
+  panX: 0,
+  panY: 0,
+  showPlanned: true,
+  printMode: false
+};
+const tripMapDrag = {
+  active: false,
+  frame: null,
+  startX: 0,
+  startY: 0,
+  lastDx: 0,
+  lastDy: 0
+};
+const tripMapGesture = {
+  pointers: new Map(),
+  frame: null,
+  pinch: false,
+  distance: 0,
+  lastZoomAt: 0
+};
+
+function resetTripMapView() {
+  tripMapState.key = '';
+  tripMapState.zoomDelta = 0;
+  tripMapState.panX = 0;
+  tripMapState.panY = 0;
+}
+
+function tripMapSize() {
+  if (tripMapState.printMode) {
+    return {
+      width: TRIP_MAP_WIDTH,
+      height: TRIP_MAP_HEIGHT
+    };
+  }
+  const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches;
+  return {
+    width: TRIP_MAP_WIDTH,
+    height: isMobile ? TRIP_MAP_WIDTH : TRIP_MAP_HEIGHT
+  };
+}
 
 function openDB() {
   if (dbPromise) return dbPromise;
@@ -15,9 +64,17 @@ function openDB() {
       if (!db.objectStoreNames.contains('cuentas')) {
         const s = db.createObjectStore('cuentas', { keyPath: 'id', autoIncrement: true });
         s.createIndex('byMoneda', 'moneda');
+        s.createIndex('byViaje', 'viajeId');
+      } else {
+        const s = req.transaction.objectStore('cuentas');
+        if (!s.indexNames.contains('byViaje')) s.createIndex('byViaje', 'viajeId');
       }
       if (!db.objectStoreNames.contains('categorias')) {
         const s = db.createObjectStore('categorias', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('byParent', 'parentId');
+      }
+      if (!db.objectStoreNames.contains('lugares')) {
+        const s = db.createObjectStore('lugares', { keyPath: 'id', autoIncrement: true });
         s.createIndex('byParent', 'parentId');
       }
       if (!db.objectStoreNames.contains('gastos')) {
@@ -127,31 +184,79 @@ const DEFAULT_CUENTAS = [
   { nombre: 'Efectivo', moneda: 'EUR', saldoInicial: 0, presupuesto: 0 },
   { nombre: 'Revolut', moneda: 'EUR', saldoInicial: 0, presupuesto: 0 }
 ];
+const CATEGORY_SEED_KEY = 'gastos_viaje_categories_seeded';
 const DEFAULT_CATEGORIAS = [
-  { nombre: 'Comida', subs: ['Desayuno', 'Almuerzo', 'Cena'] },
-  { nombre: 'Transporte', subs: ['Metro', 'Bus', 'Taxi'] },
+  { nombre: 'Comida', subs: [] },
+  { nombre: 'Transporte', subs: [] },
   { nombre: 'Alojamiento', subs: [] },
   { nombre: 'Ocio', subs: [] }
 ];
 const DEFAULT_MONEDAS = [
   { codigo: 'EUR', nombre: 'Euro', eurPorUnidad: 1, unidadesPorEuro: 1 }
 ];
+const COMMON_CURRENCIES = [
+  { codigo: 'PLN', nombre: 'Zloty polaco' },
+  { codigo: 'USD', nombre: 'Dólar estadounidense' },
+  { codigo: 'GBP', nombre: 'Libra esterlina' },
+  { codigo: 'JPY', nombre: 'Yen japonés' },
+  { codigo: 'CHF', nombre: 'Franco suizo' },
+  { codigo: 'NOK', nombre: 'Corona noruega' },
+  { codigo: 'SEK', nombre: 'Corona sueca' },
+  { codigo: 'DKK', nombre: 'Corona danesa' },
+  { codigo: 'CZK', nombre: 'Corona checa' },
+  { codigo: 'HUF', nombre: 'Florín húngaro' },
+  { codigo: 'RON', nombre: 'Leu rumano' },
+  { codigo: 'BGN', nombre: 'Lev búlgaro' },
+  { codigo: 'ISK', nombre: 'Corona islandesa' },
+  { codigo: 'TRY', nombre: 'Lira turca' },
+  { codigo: 'CAD', nombre: 'Dólar canadiense' },
+  { codigo: 'AUD', nombre: 'Dólar australiano' },
+  { codigo: 'NZD', nombre: 'Dólar neozelandés' },
+  { codigo: 'CNY', nombre: 'Yuan chino' },
+  { codigo: 'HKD', nombre: 'Dólar de Hong Kong' },
+  { codigo: 'SGD', nombre: 'Dólar de Singapur' },
+  { codigo: 'KRW', nombre: 'Won surcoreano' },
+  { codigo: 'THB', nombre: 'Baht tailandés' },
+  { codigo: 'INR', nombre: 'Rupia india' },
+  { codigo: 'MXN', nombre: 'Peso mexicano' },
+  { codigo: 'BRL', nombre: 'Real brasileño' },
+  { codigo: 'ARS', nombre: 'Peso argentino' },
+  { codigo: 'CLP', nombre: 'Peso chileno' },
+  { codigo: 'COP', nombre: 'Peso colombiano' },
+  { codigo: 'PEN', nombre: 'Sol peruano' },
+  { codigo: 'MAD', nombre: 'Dirham marroquí' },
+  { codigo: 'EGP', nombre: 'Libra egipcia' },
+  { codigo: 'ZAR', nombre: 'Rand sudafricano' },
+  { codigo: 'AED', nombre: 'Dírham de Emiratos' },
+  { codigo: 'ILS', nombre: 'Nuevo séquel israelí' }
+];
 const state = {
   activeTab: 'viajes',
   selectedViajeId: null,
+  selectedViajeIds: [],
   cuentas: [],
   categorias: [],
+  lugares: [],
   gastos: [],
   viajes: [],
   monedas: [],
   transferencias: []
 };
 
+let latestCurrencyQuote = null;
+
 const collator = new Intl.Collator('es', { sensitivity: 'base' });
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const numberValue = value => {
   const n = parseFloat(String(value || '').replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
+};
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+const optionalNumberValue = value => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const n = parseFloat(raw.replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
 };
 const formatRate = value => {
   const n = Number(value);
@@ -164,16 +269,38 @@ const fmtDate = iso => iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('es-
   month: 'short',
   day: 'numeric'
 }) : '-';
+const fmtNumberEs = (amount, decimals = 2) => {
+  const value = numberValue(amount);
+  const sign = value < 0 ? '-' : '';
+  const [integer, fraction] = Math.abs(value).toFixed(decimals).split('.');
+  return `${sign}${integer.replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${fraction}`;
+};
 const fmtCurrency = (amount, currency = 'EUR') => {
-  try {
-    return new Intl.NumberFormat('es-ES', { style: 'currency', currency }).format(numberValue(amount));
-  } catch (_) {
-    return `${numberValue(amount).toFixed(2)} ${currency}`;
-  }
+  const code = String(currency || 'EUR').toUpperCase();
+  const value = fmtNumberEs(amount);
+  return code === 'EUR' ? `${value} €` : `${value} ${code}`;
+};
+const fmtCurrencyWithEur = (amount, currency = 'EUR') => {
+  const primary = fmtCurrency(amount, currency);
+  if (currency === 'EUR') return primary;
+  return `${primary}<div class="currency-eur">≈ ${fmtCurrency(toEur(amount, currency), 'EUR')}</div>`;
+};
+const fmtBudgetWithEur = (amount, currency = 'EUR') => (
+  numberValue(amount) ? fmtCurrencyWithEur(amount, currency) : '-'
+);
+const fmtCurrencyWithEurInline = (amount, currency = 'EUR') => {
+  const primary = fmtCurrency(amount, currency);
+  if (currency === 'EUR') return primary;
+  return `${primary} <span class="currency-eur-inline">(≈ ${fmtCurrency(toEur(amount, currency), 'EUR')})</span>`;
+};
+const fmtDailyCurrencyWithEur = (amount, currency = 'EUR') => {
+  const primary = `${fmtCurrency(amount, currency)}/día`;
+  if (currency === 'EUR') return primary;
+  return `${primary} <span class="currency-eur-inline">(≈ ${fmtCurrency(toEur(amount, currency), 'EUR')}/día)</span>`;
 };
 const formatCurrencyLines = items => items
   .filter(item => Math.abs(numberValue(item.amount)) > 0.000001 || item.always)
-  .map(item => `<div>${fmtCurrency(item.amount, item.currency)}</div>`)
+  .map(item => `<div>${fmtCurrencyWithEurInline(item.amount, item.currency)}</div>`)
   .join('');
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
   '&': '&amp;',
@@ -205,6 +332,92 @@ function sortCategoriasHierarchical(categorias) {
   return ordered;
 }
 
+function sortLugaresHierarchical(lugares) {
+  return sortCategoriasHierarchical(lugares);
+}
+
+function lugarName(id) {
+  const lugar = state.lugares.find(l => l.id === Number(id));
+  return lugar ? lugar.nombre : '';
+}
+
+function tripCountryIds(viaje) {
+  if (!viaje) return [];
+  if (Array.isArray(viaje.paisIds)) return viaje.paisIds.map(Number).filter(Boolean);
+  if (viaje.paisId) return [Number(viaje.paisId)].filter(Boolean);
+  return [];
+}
+
+function tripCityIds(viaje) {
+  if (!viaje) return [];
+  if (Array.isArray(viaje.ciudadIds)) return viaje.ciudadIds.map(Number).filter(Boolean);
+  return [];
+}
+
+function tripCountryLabel(viaje) {
+  const names = tripCountryIds(viaje).map(lugarName).filter(Boolean);
+  return names.length ? names.join(' / ') : '-';
+}
+
+function gastoLugarLabel(gasto) {
+  const pais = state.lugares.find(l => l.id === Number(gasto.paisId));
+  const ciudad = state.lugares.find(l => l.id === Number(gasto.ciudadId));
+  if (pais && ciudad) return `${pais.nombre} / ${ciudad.nombre}`;
+  if (ciudad) return ciudad.nombre;
+  if (pais) return pais.nombre;
+  return '-';
+}
+
+function gastoCiudadLabel(gasto) {
+  const ciudad = state.lugares.find(l => l.id === Number(gasto.ciudadId));
+  return ciudad ? ciudad.nombre : '-';
+}
+
+function gastosPaisLabel(gastos) {
+  const names = [];
+  gastos.forEach(g => {
+    const ciudad = state.lugares.find(l => l.id === Number(g.ciudadId));
+    const pais = state.lugares.find(l => l.id === Number(g.paisId || (ciudad && ciudad.parentId)));
+    if (pais && !names.includes(pais.nombre)) names.push(pais.nombre);
+  });
+  return names.join(' / ');
+}
+
+function gastosPaisNames(gastos) {
+  const names = [];
+  gastos.forEach(g => {
+    const ciudad = state.lugares.find(l => l.id === Number(g.ciudadId));
+    const pais = state.lugares.find(l => l.id === Number(g.paisId || (ciudad && ciudad.parentId)));
+    if (pais && !names.includes(pais.nombre)) names.push(pais.nombre);
+  });
+  return names;
+}
+
+function gastoMatchesLugarFilters(g, paisId, ciudadId) {
+  if (ciudadId && Number(g.ciudadId) !== Number(ciudadId)) return false;
+  if (!paisId) return true;
+  const ciudad = state.lugares.find(l => l.id === Number(g.ciudadId));
+  return Number(g.paisId) === Number(paisId) || Number(ciudad && ciudad.parentId) === Number(paisId);
+}
+
+function lugarHasCoords(lugar) {
+  return lugar && Number.isFinite(Number(lugar.lat)) && Number.isFinite(Number(lugar.lng));
+}
+
+function normalizePlaceName(name) {
+  return String(name || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function isTransitPlaceName(name) {
+  const normalized = normalizePlaceName(name);
+  return normalized === 'transito' || normalized === 'en transito' || normalized === 'transit';
+}
+
+function lugarCoordsLabel(lugar) {
+  if (!lugarHasCoords(lugar)) return '-';
+  return `${Number(lugar.lat).toFixed(5)}, ${Number(lugar.lng).toFixed(5)}`;
+}
+
 function foreignCurrencies() {
   return state.monedas.filter(m => m.codigo !== 'EUR').sort(byName);
 }
@@ -223,6 +436,110 @@ function hasValidCurrency(code) {
   return !!cfg && numberValue(cfg.eurPorUnidad) > 0 && numberValue(cfg.unidadesPorEuro) > 0;
 }
 
+function currentCurrencyCodeInput() {
+  return String($('#m-iso-entry')?.value || '').trim().toUpperCase();
+}
+
+function commonCurrencyByCode(code) {
+  const normalized = String(code || '').trim().toUpperCase();
+  return COMMON_CURRENCIES.find(item => item.codigo === normalized) || null;
+}
+
+function maybeFillCurrencyName(code, force = false) {
+  const item = commonCurrencyByCode(code);
+  const input = $('#m-nombre');
+  if (!item || !input) return;
+  const current = input.value.trim();
+  const commonNames = COMMON_CURRENCIES.map(currency => currency.nombre.toLowerCase());
+  if (force || !current || commonNames.includes(current.toLowerCase())) input.value = item.nombre;
+}
+
+function currencySuggestionMatches(currency, query) {
+  const needle = String(query || '').trim().toLowerCase();
+  if (!needle) return true;
+  return currency.codigo.toLowerCase().includes(needle) || currency.nombre.toLowerCase().includes(needle);
+}
+
+function currencySuggestionItems() {
+  const query = $('#m-iso-entry') ? $('#m-iso-entry').value : '';
+  const matches = COMMON_CURRENCIES.filter(currency => currencySuggestionMatches(currency, query));
+  return matches.length ? matches : COMMON_CURRENCIES;
+}
+
+function hideCurrencySuggestions() {
+  const panel = $('#currency-iso-options');
+  const input = $('#m-iso-entry');
+  if (panel) panel.hidden = true;
+  if (input) input.setAttribute('aria-expanded', 'false');
+}
+
+function renderCurrencyCodeSuggestions(open = true) {
+  const panel = $('#currency-iso-options');
+  const input = $('#m-iso-entry');
+  if (!panel || !input) return;
+  const items = currencySuggestionItems();
+  panel.innerHTML = items.map(currency => `
+    <button type="button" class="currency-suggestion" data-currency-code="${escapeHtml(currency.codigo)}" role="option">
+      <strong>${escapeHtml(currency.codigo)}</strong>
+      <span>${escapeHtml(currency.nombre)}</span>
+    </button>
+  `).join('');
+  panel.hidden = !open || !items.length;
+  input.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+}
+
+function selectCurrencySuggestion(code) {
+  const normalized = String(code || '').trim().toUpperCase();
+  const input = $('#m-iso-entry');
+  if (!normalized || !input) return;
+  input.value = normalized;
+  maybeFillCurrencyName(normalized, true);
+  clearCurrencyQuote();
+  hideCurrencySuggestions();
+  input.blur();
+}
+
+function clearCurrencyQuote() {
+  latestCurrencyQuote = null;
+  const useButton = $('#btn-use-moneda-rate');
+  if (useButton) useButton.hidden = true;
+  setMessage('#msg-moneda-rate', '');
+}
+
+async function fetchCurrentCurrencyQuote(code) {
+  const currency = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) throw new Error('Escribe un código ISO de 3 letras, por ejemplo USD o JPY');
+  if (currency === 'EUR') throw new Error('EUR ya es la moneda base');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(`https://api.frankfurter.dev/v2/rate/EUR/${encodeURIComponent(currency)}`, {
+      signal: controller.signal,
+      cache: 'no-store'
+    });
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (_) {
+      data = null;
+    }
+    if (!response.ok) throw new Error(data && data.message ? data.message : 'No se pudo consultar ese cambio');
+    const rate = numberValue(data && data.rate);
+    if (rate <= 0) throw new Error('No se encontró cambio para esa moneda');
+    return {
+      codigo: currency,
+      unidadesPorEuro: rate,
+      eurPorUnidad: 1 / rate,
+      fecha: data.date || todayIso()
+    };
+  } catch (err) {
+    if (err && err.name === 'AbortError') throw new Error('La consulta ha tardado demasiado. Revisa la conexión');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function toEur(amount, currency) {
   const cfg = getCurrencyConfig(currency);
   return cfg ? numberValue(amount) * numberValue(cfg.eurPorUnidad || 1) : 0;
@@ -233,11 +550,225 @@ function fromEur(amount, currency) {
   return cfg ? numberValue(amount) * numberValue(cfg.unidadesPorEuro || 1) : 0;
 }
 
+function getTripYear(viaje) {
+  return (viaje && viaje.fechaInicio ? viaje.fechaInicio.slice(0, 4) : '') || 'Sin fecha';
+}
+
+function selectedTripIds() {
+  return (state.selectedViajeIds || []).map(Number).filter(Boolean);
+}
+
+function selectedTripSet() {
+  return new Set(selectedTripIds());
+}
+
+function hasTripSelection() {
+  return selectedTripIds().length > 0;
+}
+
+function gastoMatchesTripSelection(gasto) {
+  const ids = selectedTripSet();
+  return !ids.size || ids.has(Number(gasto.viajeId));
+}
+
+function selectedTripsLabel() {
+  const ids = selectedTripSet();
+  if (!ids.size) return 'Sin filtro global: se muestran todos los viajes.';
+  const selected = state.viajes.filter(v => ids.has(v.id));
+  const years = [...new Set(selected.map(getTripYear))].sort();
+  if (years.length === 1) {
+    const tripsInYear = state.viajes.filter(v => getTripYear(v) === years[0]);
+    if (tripsInYear.length && tripsInYear.every(v => ids.has(v.id))) {
+      return `Filtro activo: año ${years[0]} (${selected.length} viajes).`;
+    }
+  }
+  if (selected.length === 1) return `Filtro activo: ${selected[0].nombre}.`;
+  return `Filtro activo: ${selected.length} viajes seleccionados.`;
+}
+
+function syncTripSelectsFromSelection() {
+  const ids = selectedTripIds();
+  const value = ids.length === 1 ? String(ids[0]) : '';
+  if ($('#f-viaje')) $('#f-viaje').value = value;
+  if ($('#r-viaje')) $('#r-viaje').value = value;
+  if ($('#c-viaje')) $('#c-viaje').value = value;
+  state.selectedViajeId = ids.length === 1 ? ids[0] : null;
+}
+
+function setSelectedTrips(ids) {
+  state.selectedViajeIds = [...new Set((ids || []).map(Number).filter(Boolean))];
+  tripMapState.showPlanned = true;
+  resetTripMapView();
+  syncTripSelectsFromSelection();
+}
+
+function latestTripId() {
+  const trips = state.viajes
+    .slice()
+    .sort((a, b) => {
+      const dateA = a.fechaInicio || a.fechaFin || '';
+      const dateB = b.fechaInicio || b.fechaFin || '';
+      return dateB.localeCompare(dateA) || Number(b.id || 0) - Number(a.id || 0);
+    });
+  return trips.length ? Number(trips[0].id) : null;
+}
+
+function toggleSelectedTrip(id, checked) {
+  const current = selectedTripSet();
+  const tripId = Number(id);
+  if (!tripId) return;
+  if (checked) current.add(tripId);
+  else current.delete(tripId);
+  setSelectedTrips([...current]);
+}
+
+function setSelectedYear(year, checked) {
+  const current = selectedTripSet();
+  state.viajes
+    .filter(v => getTripYear(v) === year)
+    .forEach(v => {
+      if (checked) current.add(v.id);
+      else current.delete(v.id);
+    });
+  setSelectedTrips([...current]);
+}
+
+function tripName(id) {
+  const trip = state.viajes.find(v => v.id === Number(id));
+  return trip ? trip.nombre : '';
+}
+
+function accountLabel(account) {
+  const suffix = account.viajeId ? ` (${tripName(account.viajeId) || 'viaje'})` : ' (global)';
+  return `${account.nombre}${suffix}`;
+}
+
+function accountKey(account) {
+  return `${(account.nombre || '').trim().toLowerCase()}|${account.moneda || ''}`;
+}
+
+function accountBudgetForTrip(viajeId) {
+  const tripId = Number(viajeId);
+  const tripAccounts = state.cuentas.filter(c => Number(c.viajeId) === tripId && numberValue(c.presupuesto) > 0);
+  return tripAccounts.reduce((sum, c) => sum + toEur(c.presupuesto, c.moneda), 0);
+}
+
+function globalAccountBudget() {
+  return state.cuentas
+    .filter(c => !c.viajeId && numberValue(c.presupuesto) > 0)
+    .reduce((sum, c) => sum + toEur(c.presupuesto, c.moneda), 0);
+}
+
+function effectiveTripBudget(viaje) {
+  const explicit = numberValue(viaje && viaje.presupuesto);
+  if (explicit > 0) return explicit;
+  const accountBudget = accountBudgetForTrip(viaje && viaje.id);
+  if (accountBudget > 0) return accountBudget;
+  return globalAccountBudget();
+}
+
+function accountsForBudgetScope(gastos) {
+  const ids = selectedTripSet();
+  if (!ids.size) return state.cuentas;
+  const tripAccounts = state.cuentas.filter(c => c.viajeId && ids.has(Number(c.viajeId)));
+  if (tripAccounts.some(c => numberValue(c.presupuesto) > 0)) return tripAccounts;
+  const usedAccountIds = new Set(gastos.map(g => Number(g.cuentaId)));
+  return state.cuentas.filter(c => !c.viajeId || usedAccountIds.has(Number(c.id)));
+}
+
+function selectedTrips() {
+  const ids = selectedTripSet();
+  return ids.size ? state.viajes.filter(v => ids.has(Number(v.id))) : [];
+}
+
+function inclusiveDateDays(start, end) {
+  if (!start || !end) return 0;
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0;
+  return Math.max(1, Math.ceil((endDate - startDate) / 86400000) + 1);
+}
+
+function summaryDays(gastos) {
+  const selected = selectedTrips();
+  const trips = selected.length ? selected : state.viajes;
+  const tripDays = trips.reduce((sum, trip) => sum + inclusiveDateDays(trip.fechaInicio, trip.fechaFin), 0);
+  if (tripDays > 0) return tripDays;
+  if (!gastos.length) return 1;
+  const dates = gastos.map(g => new Date(`${g.fecha}T00:00:00`));
+  const min = new Date(Math.min(...dates));
+  const max = new Date(Math.max(...dates));
+  return Math.max(1, Math.ceil((max - min) / 86400000) + 1);
+}
+
+function tripBudgetSummary(gastos) {
+  const selected = selectedTrips();
+  const trips = selected.length ? selected : state.viajes;
+  if (!trips.length) return null;
+  const budgetEur = trips.reduce((sum, trip) => sum + effectiveTripBudget(trip), 0);
+  if (budgetEur <= 0) return null;
+  const spentEur = gastos.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
+  return {
+    budgetEur,
+    remainingEur: budgetEur - spentEur,
+    pct: spentEur * 100 / budgetEur
+  };
+}
+
 function setMessage(selector, text, isError = false) {
   const el = $(selector);
   if (!el) return;
   el.textContent = text;
   el.classList.toggle('error', isError);
+}
+
+function backupHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(BACKUP_HISTORY_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function recordBackup(filename, scope = 'all') {
+  const entry = { filename, scope, date: new Date().toISOString() };
+  const history = [entry].concat(backupHistory()).slice(0, 5);
+  localStorage.setItem(BACKUP_HISTORY_KEY, JSON.stringify(history));
+  localStorage.setItem(BACKUP_KEY, entry.date);
+  renderBackupStatus();
+  renderBackupHistory();
+}
+
+function currentTripInProgress() {
+  const ids = selectedTripSet();
+  const today = todayIso();
+  const trips = ids.size ? state.viajes.filter(v => ids.has(Number(v.id))) : state.viajes;
+  return trips.some(v => v.fechaInicio && v.fechaFin && v.fechaInicio <= today && today <= v.fechaFin);
+}
+
+function renderBackupHistory() {
+  const targets = $$('#backup-history, .backup-history');
+  if (!targets.length) return;
+  const history = backupHistory();
+  if (!history.length) {
+    targets.forEach(el => { el.innerHTML = '<p class="small">Todavia no hay copias registradas en este dispositivo.</p>'; });
+    return;
+  }
+  const html = `<ul class="backup-history-list">${history.map(item => {
+    const date = new Date(item.date);
+    const type = item.scope === 'trip' ? 'Un viaje' : 'Todos los viajes';
+    return `<li><strong>${escapeHtml(item.filename || 'copia JSON')}</strong><span><b>${type}</b> · ${date.toLocaleString('es-ES')}</span></li>`;
+  }).join('')}</ul>`;
+  targets.forEach(el => { el.innerHTML = html; });
+}
+
+function transferRateLabel(transfer) {
+  if (!transfer || transfer.monedaFrom === transfer.monedaTo) return '-';
+  const rate = numberValue(transfer.tipoCambio) || (numberValue(transfer.importeFrom) > 0
+    ? numberValue(transfer.importeTo) / numberValue(transfer.importeFrom)
+    : 0);
+  if (rate <= 0) return '-';
+  return `1 ${transfer.monedaFrom} = ${rate.toLocaleString('es-ES', { maximumFractionDigits: 6 })} ${transfer.monedaTo}`;
 }
 
 function renderBackupStatus() {
@@ -246,17 +777,21 @@ function renderBackupStatus() {
   const saved = localStorage.getItem(BACKUP_KEY);
   if (!saved) {
     items.forEach(el => {
-      el.textContent = 'Aun no consta ningun backup en este dispositivo.';
+      el.textContent = 'Aún no consta ningún backup en este dispositivo.';
       el.classList.add('backup-warning');
     });
+    renderBackupHistory();
     return;
   }
   const date = new Date(saved);
   const ageDays = Math.floor((Date.now() - date.getTime()) / 86400000);
   items.forEach(el => {
-    el.textContent = `Ultimo backup generado: ${date.toLocaleString('es-ES')}${ageDays >= 7 ? ` (hace ${ageDays} dias)` : ''}.`;
-    el.classList.toggle('backup-warning', ageDays >= 7);
+    el.textContent = `Último backup generado: ${date.toLocaleString('es-ES')}${ageDays >= 7 ? ` (hace ${ageDays} días)` : ''}.`;
+    const needsReminder = currentTripInProgress() && ageDays >= 2;
+    if (needsReminder) el.textContent = `Recuerda hacer backup: estas en viaje y la ultima copia es de hace ${ageDays} dias.`;
+    el.classList.toggle('backup-warning', needsReminder || ageDays >= 7);
   });
+  renderBackupHistory();
 }
 
 function readFileData(input) {
@@ -272,7 +807,26 @@ function readFileData(input) {
 
 function ticketLink(gasto) {
   if (!gasto.ticketData) return '-';
-  return `<a href="${escapeHtml(gasto.ticketData)}" target="_blank" rel="noopener">${escapeHtml(gasto.ticketName || 'Ver ticket')}</a>`;
+  return `<button class="ghost" data-open-ticket="${gasto.id}" type="button">${escapeHtml(gasto.ticketName || 'Ver ticket')}</button>`;
+}
+
+function dataUrlToBlob(dataUrl, fallbackType = 'application/octet-stream') {
+  const [meta, payload] = String(dataUrl || '').split(',');
+  if (!meta || !payload) throw new Error('El ticket guardado no tiene datos validos');
+  const mime = (meta.match(/^data:([^;]+)/) || [])[1] || fallbackType;
+  const binary = atob(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+function openTicket(gastoId) {
+  const gasto = state.gastos.find(g => Number(g.id) === Number(gastoId));
+  if (!gasto || !gasto.ticketData) throw new Error('No se encuentra el ticket');
+  const blob = dataUrlToBlob(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function downloadText(filename, text, type = 'text/plain') {
@@ -287,13 +841,52 @@ function downloadText(filename, text, type = 'text/plain') {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function downloadUtf8Csv(filename, text) {
+  downloadText(filename, `\ufeff${text}`, 'text/csv;charset=utf-8');
+}
+
+function slugFilePart(text) {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || 'sin-nombre';
+}
+
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.matchMedia('(max-width: 720px)').matches;
+}
+
+function canShareFile(file) {
+  if (!navigator.share || typeof File === 'undefined') return false;
+  if (!navigator.canShare) return true;
+  try {
+    return navigator.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
+
+function backupShareFiles(json, filename) {
+  return [
+    new File([json], filename, { type: 'text/plain' }),
+    new File([json], filename.replace(/\.json$/i, '.txt'), { type: 'text/plain' }),
+    new File([json], filename, { type: 'application/json' })
+  ];
+}
+
+function canShareBackupFiles() {
+  return backupShareFiles('{}', 'gastos-backup.json').some(canShareFile);
+}
+
 function csvCell(value) {
   return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
 
 function exportCurrentCsv() {
   const rows = filteredGastos();
-  const header = ['Fecha', 'Viaje', 'Categoria', 'Subcategoria', 'Cuenta', 'Moneda', 'Importe', 'EUR', 'Descripcion', 'Ticket'];
+  const header = ['Fecha', 'Viaje', 'Categoría', 'Subcategoría', 'Cuenta', 'Moneda', 'Importe', 'EUR', 'Descripción', 'Ticket'];
   const lines = [header.map(csvCell).join(',')];
   const monthly = {};
   rows.forEach(g => {
@@ -322,20 +915,29 @@ function exportCurrentCsv() {
   Object.keys(monthly).sort().forEach(month => {
     lines.push([month, monthly[month].toFixed(2)].map(csvCell).join(','));
   });
-  downloadText(`gastos_resumen_${APP_VERSION}_${todayIso()}.csv`, lines.join('\r\n'), 'text/csv;charset=utf-8');
+  downloadUtf8Csv(`gastos_resumen_${APP_VERSION}_${todayIso()}.csv`, lines.join('\r\n'));
 }
 
-async function prepareJsonBackup({ autoDownload = false } = {}) {
-  const data = await exportAll();
+function backupFilename(data) {
+  const date = todayIso();
+  if (data.backupScope === 'trip' && data.viajes && data.viajes[0]) {
+    return `gastos_${slugFilePart(data.viajes[0].nombre)}_${date}.json`;
+  }
+  return `gastos_todos-los-viajes_${date}.json`;
+}
+
+async function prepareJsonBackup({ autoDownload = false, scope = 'all', tripId = null, share = false } = {}) {
+  if (share) return shareJsonBackup(scope, tripId);
+  const data = buildBackupData(scope, tripId);
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
+  const filename = backupFilename(data);
   const link = $('#export-link');
   const openLink = $('#export-open-link');
   if (link.dataset.objectUrl) URL.revokeObjectURL(link.dataset.objectUrl);
   if (openLink.dataset.objectUrl) URL.revokeObjectURL(openLink.dataset.objectUrl);
   const url = URL.createObjectURL(blob);
   const openUrl = URL.createObjectURL(new Blob([json], { type: 'text/plain' }));
-  const filename = `gastos_backup_v${APP_VERSION}_${todayIso()}.json`;
   link.href = url;
   link.download = filename;
   link.dataset.objectUrl = url;
@@ -344,16 +946,42 @@ async function prepareJsonBackup({ autoDownload = false } = {}) {
   openLink.href = openUrl;
   openLink.dataset.objectUrl = openUrl;
   openLink.style.display = 'inline-flex';
-  $('#export-json').value = json;
-  $('#export-panel').style.display = 'block';
-  localStorage.setItem(BACKUP_KEY, new Date().toISOString());
-  renderBackupStatus();
+  if ($('#export-json')) $('#export-json').value = json;
+  if ($('#export-panel')) $('#export-panel').style.display = 'none';
+  recordBackup(filename, scope);
   if (autoDownload) link.click();
   return filename;
 }
 
+async function shareJsonBackup(scope = 'all', tripId = null) {
+  const data = buildBackupData(scope, tripId);
+  const json = JSON.stringify(data, null, 2);
+  const filename = backupFilename(data);
+  const files = backupShareFiles(json, filename).filter(canShareFile);
+  if (!navigator.share || !files.length) {
+    throw new Error('Este navegador no permite compartir archivos de backup. Usa Crear copia.');
+  }
+  let lastError = null;
+  for (const file of files) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: 'Backup Gastos de Viaje',
+        text: filename
+      });
+      recordBackup(filename, scope);
+      return filename;
+    } catch (err) {
+      if (/abort|cancel/i.test(err.name || err.message || '')) throw err;
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('Este navegador no permite compartir este archivo. Usa Crear copia.');
+}
+
 function fillSelect(selector, options, placeholder) {
   const el = $(selector);
+  if (!el) return;
   const previous = el.value;
   el.innerHTML = '';
   if (placeholder !== null) {
@@ -371,11 +999,52 @@ function fillSelect(selector, options, placeholder) {
   if ([...el.options].some(o => o.value === previous)) el.value = previous;
 }
 
-async function addCuenta({ nombre, moneda, saldoInicial = 0, presupuesto = 0, nota = '' }) {
+function fillMultiSelect(selector, options, selectedValues = []) {
+  const el = $(selector);
+  if (!el) return;
+  const selectedOrder = (selectedValues.length ? selectedValues : [...el.selectedOptions].map(o => o.value)).map(String);
+  const selected = new Set(selectedOrder);
+  const byValue = new Map(options.map(item => [String(item.value), item]));
+  const orderedOptions = [
+    ...selectedOrder.map(value => byValue.get(value)).filter(Boolean),
+    ...options.filter(item => !selected.has(String(item.value)))
+  ];
+  el.innerHTML = '';
+  orderedOptions.forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.value;
+    opt.textContent = item.label;
+    opt.selected = selected.has(String(item.value));
+    el.appendChild(opt);
+  });
+}
+
+function selectedMultiValues(selector) {
+  const el = $(selector);
+  return el ? [...el.selectedOptions].map(o => Number(o.value)).filter(Boolean) : [];
+}
+
+function moveSelectedMultiOption(selector, direction) {
+  const el = $(selector);
+  if (!el) return;
+  const selected = [...el.selectedOptions];
+  if (!selected.length) return;
+  const ordered = direction < 0 ? selected : selected.reverse();
+  ordered.forEach(option => {
+    const sibling = direction < 0 ? option.previousElementSibling : option.nextElementSibling;
+    if (!sibling) return;
+    if (direction < 0) el.insertBefore(option, sibling);
+    else el.insertBefore(sibling, option);
+  });
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+async function addCuenta({ nombre, moneda, saldoInicial = 0, presupuesto = 0, nota = '', viajeId = null }) {
   const now = new Date().toISOString();
   return addRecord('cuentas', {
     nombre,
     moneda,
+    viajeId: viajeId ? Number(viajeId) : null,
     saldoInicial: numberValue(saldoInicial),
     saldoActual: numberValue(saldoInicial),
     presupuesto: numberValue(presupuesto),
@@ -383,6 +1052,53 @@ async function addCuenta({ nombre, moneda, saldoInicial = 0, presupuesto = 0, no
     createdAt: now,
     updatedAt: now
   });
+}
+
+async function cloneGlobalAccountsForTrip(viajeId) {
+  const tripId = Number(viajeId);
+  if (!tripId) return;
+  const globalAccounts = state.cuentas.filter(c => !c.viajeId);
+  const existingTripAccounts = state.cuentas.filter(c => Number(c.viajeId) === tripId);
+  for (const account of globalAccounts) {
+    const exists = existingTripAccounts.some(c =>
+      (c.nombre || '').trim().toLowerCase() === (account.nombre || '').trim().toLowerCase()
+      && c.moneda === account.moneda
+    );
+    if (exists) continue;
+    await addCuenta({
+      nombre: account.nombre,
+      moneda: account.moneda,
+      saldoInicial: 0,
+      presupuesto: 0,
+      nota: 'Copiada desde plantilla global',
+      viajeId: tripId
+    });
+  }
+}
+
+async function migrateGlobalAccountToTrip(accountId, viajeId) {
+  const tripId = Number(viajeId);
+  const source = state.cuentas.find(c => c.id === Number(accountId));
+  const trip = state.viajes.find(v => v.id === tripId);
+  if (!source || source.viajeId || !trip) throw new Error('Selecciona una cuenta global y un viaje');
+  const existing = state.cuentas.find(c =>
+    Number(c.viajeId) === tripId
+    && (c.nombre || '').trim().toLowerCase() === (source.nombre || '').trim().toLowerCase()
+    && c.moneda === source.moneda
+  );
+  const targetId = existing ? existing.id : await addCuenta({
+    nombre: source.nombre,
+    moneda: source.moneda,
+    saldoInicial: numberValue(source.saldoActual),
+    presupuesto: 0,
+    nota: `Migrada desde cuenta global para ${trip.nombre}`,
+    viajeId: tripId
+  });
+  const expenses = state.gastos.filter(g => Number(g.viajeId) === tripId && Number(g.cuentaId) === Number(source.id));
+  for (const gasto of expenses) {
+    await updateRecord('gastos', Number(gasto.id), { cuentaId: Number(targetId) });
+  }
+  return targetId;
 }
 
 async function updateCuenta(id, patch) {
@@ -405,9 +1121,37 @@ async function delCategoria(id) {
   return deleteRecord('categorias', Number(id));
 }
 
-async function addViaje({ nombre, fechaInicio, fechaFin, presupuesto = 0 }) {
+async function addLugar({ nombre, parentId = null, lat = null, lng = null }) {
+  return addRecord('lugares', {
+    nombre,
+    parentId: parentId ? Number(parentId) : null,
+    lat: optionalNumberValue(lat),
+    lng: optionalNumberValue(lng)
+  });
+}
+
+async function updateLugar(id, patch) {
+  return updateRecord('lugares', Number(id), patch);
+}
+
+async function delLugar(id) {
+  return deleteRecord('lugares', Number(id));
+}
+
+async function addViaje({ nombre, fechaInicio, fechaFin, presupuesto = 0, paisIds = [], ciudadIds = [] }) {
   const now = new Date().toISOString();
-  return addRecord('viajes', { nombre, fechaInicio, fechaFin, presupuesto: numberValue(presupuesto), createdAt: now, updatedAt: now });
+  const id = await addRecord('viajes', {
+    nombre,
+    fechaInicio,
+    fechaFin,
+    presupuesto: numberValue(presupuesto),
+    paisIds: (paisIds || []).map(Number).filter(Boolean),
+    ciudadIds: (ciudadIds || []).map(Number).filter(Boolean),
+    createdAt: now,
+    updatedAt: now
+  });
+  await cloneGlobalAccountsForTrip(id);
+  return id;
 }
 
 async function updateViaje(id, patch) {
@@ -418,20 +1162,75 @@ async function delViaje(id) {
   return deleteRecord('viajes', Number(id));
 }
 
-async function upsertMoneda({ codigo, nombre = '', eurPorUnidad, unidadesPorEuro }) {
+function normalizeCurrencyCode(codigo) {
   const code = String(codigo || '').trim().toUpperCase();
-  if (!code || code === 'EUR') throw new Error('Usa un codigo extranjero distinto de EUR');
+  if (!/^[A-Z]{3}$/.test(code)) throw new Error('Escribe un código ISO de 3 letras, por ejemplo PLN, USD o JPY');
+  if (code === 'EUR') throw new Error('EUR ya es la moneda base');
+  return code;
+}
+
+function normalizeCurrencyValues({ codigo, nombre = '', eurPorUnidad, unidadesPorEuro }) {
+  const code = normalizeCurrencyCode(codigo);
   const eur = numberValue(eurPorUnidad);
   const back = numberValue(unidadesPorEuro);
   if (eur <= 0 || back <= 0) throw new Error('Indica equivalencias mayores que cero');
+  return {
+    codigo: code,
+    nombre: String(nombre || '').trim(),
+    eurPorUnidad: eur,
+    unidadesPorEuro: back
+  };
+}
+
+async function upsertMoneda(data) {
+  const values = normalizeCurrencyValues(data);
   const now = new Date().toISOString();
   return putRecord('monedas', {
-    codigo: code,
-    nombre: nombre.trim(),
-    eurPorUnidad: eur,
-    unidadesPorEuro: back,
+    ...values,
     updatedAt: now
   });
+}
+
+async function updateMonedaWithCode(oldCodigo, data) {
+  const oldCode = normalizeCurrencyCode(oldCodigo);
+  const values = normalizeCurrencyValues(data);
+  const newCode = values.codigo;
+  const now = new Date().toISOString();
+  if (newCode !== oldCode && (await getOne('monedas', newCode))) throw new Error(`Ya existe la moneda ${newCode}`);
+  await putRecord('monedas', { ...values, updatedAt: now });
+  if (newCode === oldCode) return true;
+
+  const cuentas = await getAll('cuentas');
+  for (const cuenta of cuentas) {
+    if (cuenta.moneda === oldCode) await putRecord('cuentas', { ...cuenta, moneda: newCode, updatedAt: now });
+  }
+
+  const gastos = await getAll('gastos');
+  for (const gasto of gastos) {
+    if (gasto.moneda === oldCode) {
+      await putRecord('gastos', {
+        ...gasto,
+        moneda: newCode,
+        importeEur: numberValue(gasto.importe) * values.eurPorUnidad,
+        updatedAt: now
+      });
+    }
+  }
+
+  const transferencias = await getAll('transferencias');
+  for (const transfer of transferencias) {
+    if (transfer.monedaFrom === oldCode || transfer.monedaTo === oldCode) {
+      await putRecord('transferencias', {
+        ...transfer,
+        monedaFrom: transfer.monedaFrom === oldCode ? newCode : transfer.monedaFrom,
+        monedaTo: transfer.monedaTo === oldCode ? newCode : transfer.monedaTo,
+        updatedAt: now
+      });
+    }
+  }
+
+  await deleteRecord('monedas', oldCode);
+  return true;
 }
 
 async function ensureBaseCurrency() {
@@ -448,6 +1247,7 @@ async function seedDefaultAccounts() {
 
 async function seedDefaultCategories() {
   const existing = await getAll('categorias');
+  const shouldSeedDefaultChildren = existing.length === 0;
   for (const cat of DEFAULT_CATEGORIAS) {
     let parent = existing.find(c => !c.parentId && (c.nombre || '').trim().toLowerCase() === cat.nombre.toLowerCase());
     if (!parent) {
@@ -455,6 +1255,7 @@ async function seedDefaultCategories() {
       parent = { id: parentId, nombre: cat.nombre, parentId: null };
       existing.push(parent);
     }
+    if (!shouldSeedDefaultChildren) continue;
     for (const sub of cat.subs) {
       const found = existing.some(c => c.parentId === parent.id && (c.nombre || '').trim().toLowerCase() === sub.toLowerCase());
       if (!found) {
@@ -475,11 +1276,13 @@ async function delMoneda(codigo) {
   return deleteRecord('monedas', String(codigo).toUpperCase());
 }
 
-async function addGasto({ fecha, viajeId, cuentaId, moneda, catId, subcatId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '' }) {
+async function addGasto({ fecha, viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '' }) {
   if (!hasValidCurrency(moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   const account = state.cuentas.find(c => c.id === Number(cuentaId));
   if (account && account.moneda !== moneda) throw new Error('La moneda del gasto debe coincidir con la cuenta');
+  if (account && account.viajeId && Number(viajeId) !== Number(account.viajeId)) throw new Error('Esa cuenta pertenece a otro viaje');
   const amount = numberValue(importe);
+  if (amount === 0) throw new Error('El importe no puede ser cero');
   const now = new Date().toISOString();
   const id = await addRecord('gastos', {
     fecha,
@@ -488,6 +1291,8 @@ async function addGasto({ fecha, viajeId, cuentaId, moneda, catId, subcatId = nu
     moneda,
     catId: Number(catId),
     subcatId: subcatId ? Number(subcatId) : null,
+    paisId: paisId ? Number(paisId) : null,
+    ciudadId: ciudadId ? Number(ciudadId) : null,
     importe: amount,
     importeEur: toEur(amount, moneda),
     desc,
@@ -511,12 +1316,15 @@ async function updateGasto(id, patch) {
   next.cuentaId = Number(next.cuentaId);
   next.catId = Number(next.catId);
   next.subcatId = next.subcatId ? Number(next.subcatId) : null;
+  next.paisId = next.paisId ? Number(next.paisId) : null;
+  next.ciudadId = next.ciudadId ? Number(next.ciudadId) : null;
   const account = state.cuentas.find(c => c.id === next.cuentaId) || await getOne('cuentas', next.cuentaId);
   if (!account) throw new Error('La cuenta seleccionada no existe');
+  if (account.viajeId && Number(next.viajeId) !== Number(account.viajeId)) throw new Error('Esa cuenta pertenece a otro viaje');
   next.moneda = account.moneda;
   if (!hasValidCurrency(next.moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   next.importe = numberValue(next.importe);
-  if (next.importe <= 0) throw new Error('El importe debe ser mayor que cero');
+  if (next.importe === 0) throw new Error('El importe no puede ser cero');
   next.importeEur = toEur(next.importe, next.moneda);
   const saved = await updateRecord('gastos', Number(id), next);
   const oldAccount = await getOne('cuentas', Number(current.cuentaId));
@@ -531,10 +1339,18 @@ async function updateGasto(id, patch) {
 }
 
 async function delGasto(id) {
-  return deleteRecord('gastos', Number(id));
+  const gastoId = Number(id);
+  const current = state.gastos.find(g => g.id === gastoId) || await getOne('gastos', gastoId);
+  if (current) {
+    const account = await getOne('cuentas', Number(current.cuentaId));
+    if (account) {
+      await updateCuenta(account.id, { saldoActual: +(numberValue(account.saldoActual) + numberValue(current.importe)).toFixed(2) });
+    }
+  }
+  return deleteRecord('gastos', gastoId);
 }
 
-async function addTransferencia({ fecha, fromId, toId, importe, nota = '' }) {
+async function addTransferencia({ fecha, fromId, toId, importe, importeTo = null, nota = '' }) {
   const source = state.cuentas.find(c => c.id === Number(fromId)) || await getOne('cuentas', Number(fromId));
   const target = state.cuentas.find(c => c.id === Number(toId)) || await getOne('cuentas', Number(toId));
   if (!source || !target) throw new Error('Selecciona cuenta de origen y destino');
@@ -542,8 +1358,10 @@ async function addTransferencia({ fecha, fromId, toId, importe, nota = '' }) {
   if (!hasValidCurrency(source.moneda) || !hasValidCurrency(target.moneda)) throw new Error('Configura las monedas de las cuentas antes de transferir');
   const amountFrom = numberValue(importe);
   if (amountFrom <= 0) throw new Error('El importe debe ser mayor que cero');
+  const explicitAmountTo = numberValue(importeTo);
   const eur = toEur(amountFrom, source.moneda);
-  const amountTo = fromEur(eur, target.moneda);
+  const amountTo = explicitAmountTo > 0 ? explicitAmountTo : fromEur(eur, target.moneda);
+  if (source.moneda !== target.moneda && amountTo <= 0) throw new Error('Indica el importe que entra en destino o configura el cambio de la moneda');
   const now = new Date().toISOString();
   const id = await addRecord('transferencias', {
     fecha: fecha || todayIso(),
@@ -554,6 +1372,8 @@ async function addTransferencia({ fecha, fromId, toId, importe, nota = '' }) {
     importeFrom: amountFrom,
     importeTo: amountTo,
     importeEur: eur,
+    tipoCambio: amountTo / amountFrom,
+    importeToManual: explicitAmountTo > 0,
     nota: nota.trim(),
     createdAt: now,
     updatedAt: now
@@ -576,9 +1396,10 @@ async function delTransferencia(id) {
 }
 
 async function loadAll() {
-  const [cuentas, categorias, gastos, viajes, monedas, transferencias] = await Promise.all([
+  const [cuentas, categorias, lugares, gastos, viajes, monedas, transferencias] = await Promise.all([
     getAll('cuentas'),
     getAll('categorias'),
+    getAll('lugares'),
     getAll('gastos'),
     getAll('viajes'),
     getAll('monedas'),
@@ -586,8 +1407,17 @@ async function loadAll() {
   ]);
   state.cuentas = cuentas.sort(byName);
   state.categorias = sortCategoriasHierarchical(categorias);
+  state.lugares = sortLugaresHierarchical(lugares);
   state.gastos = gastos.map(g => ({ ...g, importeEur: g.importeEur ?? toEur(g.importe, g.moneda) }));
   state.viajes = viajes.sort((a, b) => (a.fechaInicio || '').localeCompare(b.fechaInicio || '') || byName(a, b));
+  const validSelectedTripIds = selectedTripIds().filter(id => state.viajes.some(v => v.id === id));
+  if (!validSelectedTripIds.length && !hasAppliedDefaultTripSelection && state.viajes.length) {
+    const defaultTripId = latestTripId();
+    setSelectedTrips(defaultTripId ? [defaultTripId] : []);
+    hasAppliedDefaultTripSelection = true;
+  } else {
+    setSelectedTrips(validSelectedTripIds);
+  }
   state.monedas = monedas.sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
   state.transferencias = transferencias.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
   renderAll();
@@ -599,12 +1429,14 @@ function renderAll() {
   renderAccountSelectors();
   renderTripSelectors();
   renderCategorySelectors();
+  renderLugarSelectors();
   renderViajesHome();
   renderCuentas();
   renderTransferencias();
   renderViajes();
   renderMonedasConfig();
   renderCategorias();
+  renderLugares();
   renderGastosTabla();
   renderBackupStatus();
   if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
@@ -619,13 +1451,162 @@ function renderCurrencySelectors() {
 }
 
 function renderAccountSelectors() {
-  const accounts = state.cuentas.map(c => ({ value: String(c.id), label: c.nombre }));
+  const accounts = state.cuentas.map(c => ({ value: String(c.id), label: accountLabel(c) }));
+  renderGastoAccountSelector();
+  renderFilterAccountSelector();
+  renderResumenAccountSelector();
+  renderTransferAccountSelectors();
+  renderEditGastoAccountSelector();
+}
+
+function accountsForGastoTrip(viajeId) {
+  const tripId = Number(viajeId);
+  return state.cuentas.filter(c => tripId ? Number(c.viajeId) === tripId : !c.viajeId);
+}
+
+function renderGastoAccountSelector() {
+  const tripId = Number($('#g-viaje') ? $('#g-viaje').value : 0);
+  const accounts = accountsForGastoTrip(tripId).map(c => ({ value: String(c.id), label: accountLabel(c) }));
   fillSelect('#g-cuenta', accounts, '(elige cuenta)');
+  const selected = state.cuentas.find(c => Number(c.id) === Number($('#g-cuenta') ? $('#g-cuenta').value : 0));
+  if (selected && $('#g-moneda')) $('#g-moneda').value = selected.moneda;
+}
+
+function applyDefaultTripCountryToExpense() {
+  if (!$('#g-viaje') || !$('#g-pais')) return;
+  const trip = state.viajes.find(v => Number(v.id) === Number($('#g-viaje').value));
+  const paisIds = tripCountryIds(trip);
+  if (paisIds.length === 1) {
+    $('#g-pais').value = String(paisIds[0]);
+    renderCiudades();
+  } else if (!paisIds.length) {
+    $('#g-pais').value = '';
+    renderCiudades();
+  }
+}
+
+function tripCountryScopeForSelector(selector) {
+  const tripId = Number($(selector) ? $(selector).value : 0);
+  const trip = state.viajes.find(v => Number(v.id) === tripId);
+  return tripCountryIds(trip);
+}
+
+function cityOptionsForScope(paisSelector, tripSelector) {
+  const selectedPais = Number($(paisSelector) ? $(paisSelector).value : 0);
+  const tripPaisIds = tripCountryScopeForSelector(tripSelector);
+  const allowedPaisIds = selectedPais ? [selectedPais] : tripPaisIds;
+  return state.lugares
+    .filter(l => l.parentId && (!allowedPaisIds.length || allowedPaisIds.includes(Number(l.parentId))))
+    .map(l => ({ value: String(l.id), label: l.nombre }));
+}
+
+function gastosForSelectorTripScope(tripSelector) {
+  const tripId = Number($(tripSelector) ? $(tripSelector).value : 0);
+  return state.gastos.filter(g => tripId ? Number(g.viajeId) === tripId : gastoMatchesTripSelection(g));
+}
+
+function usedPaisOptionsForGastos(gastos) {
+  const map = new Map();
+  gastos.forEach(g => {
+    const ciudad = state.lugares.find(l => l.id === Number(g.ciudadId));
+    const pais = state.lugares.find(l => l.id === Number(g.paisId || (ciudad && ciudad.parentId)));
+    if (pais) map.set(String(pais.id), pais.nombre);
+  });
+  return [...map.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1], 'es'))
+    .map(([value, label]) => ({ value, label }));
+}
+
+function usedCiudadOptionsForGastos(gastos, paisId = 0) {
+  const map = new Map();
+  gastos.forEach(g => {
+    const ciudad = state.lugares.find(l => l.id === Number(g.ciudadId));
+    if (!ciudad) return;
+    if (paisId && Number(ciudad.parentId) !== Number(paisId) && Number(g.paisId) !== Number(paisId)) return;
+    map.set(String(ciudad.id), ciudad.nombre);
+  });
+  return [...map.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1], 'es'))
+    .map(([value, label]) => ({ value, label }));
+}
+
+function renderFilterAccountSelector() {
+  const tripId = Number($('#f-viaje') ? $('#f-viaje').value : 0);
+  const source = tripId
+    ? state.cuentas.filter(c => Number(c.viajeId) === tripId)
+    : state.cuentas;
+  const accounts = source.map(c => ({ value: String(c.id), label: accountLabel(c) }));
   fillSelect('#f-cuenta', accounts, '(todas)');
+}
+
+function renderResumenAccountSelector() {
+  const tripId = Number($('#r-viaje') ? $('#r-viaje').value : 0);
+  const source = tripId
+    ? state.cuentas.filter(c => Number(c.viajeId) === tripId)
+    : state.cuentas;
+  const accounts = source.map(c => ({ value: String(c.id), label: accountLabel(c) }));
   fillSelect('#r-cuenta', accounts, '(todas)');
+}
+
+function renderEditGastoAccountSelector() {
+  if (!$('#edit-gasto-cuenta')) return;
+  const tripId = Number($('#edit-gasto-viaje') ? $('#edit-gasto-viaje').value : 0);
+  const accounts = accountsForGastoTrip(tripId).map(c => ({ value: String(c.id), label: accountLabel(c) }));
+  fillSelect('#edit-gasto-cuenta', accounts, '(elige cuenta)');
+  const selected = state.cuentas.find(c => Number(c.id) === Number($('#edit-gasto-cuenta').value));
+  if (selected && $('#edit-gasto-moneda')) $('#edit-gasto-moneda').value = selected.moneda;
+}
+
+function renderTransferAccountSelectors() {
+  const ids = selectedTripSet();
+  const source = ids.size
+    ? state.cuentas.filter(c => c.viajeId && ids.has(Number(c.viajeId)))
+    : state.cuentas;
+  const accounts = source.map(c => ({ value: String(c.id), label: accountLabel(c) }));
   if ($('#t-from')) fillSelect('#t-from', accounts, '(origen)');
   if ($('#t-to')) fillSelect('#t-to', accounts, '(destino)');
-  if ($('#edit-gasto-cuenta')) fillSelect('#edit-gasto-cuenta', accounts, '(elige cuenta)');
+  updateTransferRatePreview();
+}
+
+function updateTransferRatePreview() {
+  const el = $('#t-cambio');
+  if (!el) return;
+  const source = state.cuentas.find(c => c.id === Number($('#t-from') ? $('#t-from').value : 0));
+  const target = state.cuentas.find(c => c.id === Number($('#t-to') ? $('#t-to').value : 0));
+  const amountFrom = numberValue($('#t-importe') ? $('#t-importe').value : 0);
+  const amountTo = numberValue($('#t-importe-to') ? $('#t-importe-to').value : 0);
+  if (!source || !target || source.moneda === target.moneda || amountFrom <= 0 || amountTo <= 0) {
+    el.value = '';
+    return;
+  }
+  el.value = `1 ${source.moneda} = ${(amountTo / amountFrom).toLocaleString('es-ES', { maximumFractionDigits: 6 })} ${target.moneda}`;
+}
+
+function renderAccountTemplateSelector() {
+  const selector = $('#c-template');
+  if (!selector) return;
+  const selectedTripId = Number($('#c-viaje') ? $('#c-viaje').value : 0);
+  const globals = state.cuentas
+    .filter(c => !c.viajeId)
+    .slice()
+    .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+  const existingKeys = new Set(state.cuentas
+    .filter(c => selectedTripId && Number(c.viajeId) === selectedTripId)
+    .map(accountKey));
+  const available = selectedTripId ? globals.filter(c => !existingKeys.has(accountKey(c))) : [];
+  const placeholder = selectedTripId
+    ? (available.length ? '(cuenta nueva)' : '(todas las plantillas ya añadidas)')
+    : '(elige un viaje para usar plantilla)';
+  fillSelect('#c-template', available.map(c => ({ value: String(c.id), label: `${c.nombre} (${c.moneda})` })), placeholder);
+  selector.disabled = !selectedTripId;
+}
+
+function applyAccountTemplate() {
+  const templateId = Number($('#c-template') ? $('#c-template').value : 0);
+  const template = state.cuentas.find(c => Number(c.id) === templateId && !c.viajeId);
+  if (!template) return;
+  $('#c-nombre').value = template.nombre || '';
+  $('#c-moneda').value = template.moneda || $('#c-moneda').value;
 }
 
 function renderTripSelectors() {
@@ -633,17 +1614,28 @@ function renderTripSelectors() {
   fillSelect('#g-viaje', trips, '(sin viaje)');
   fillSelect('#f-viaje', trips, '(todos)');
   fillSelect('#r-viaje', trips, '(todos)');
+  fillSelect('#c-viaje', trips, '(plantilla global)');
   if ($('#edit-gasto-viaje')) fillSelect('#edit-gasto-viaje', trips, '(sin viaje)');
+  fillSelect('#backup-export-trip', trips, '(elige viaje)');
+  fillSelect('#backup-import-trip', trips, '');
+  syncTripSelectsFromSelection();
+  renderGastoAccountSelector();
+  renderFilterAccountSelector();
+  renderResumenAccountSelector();
+  renderEditGastoAccountSelector();
+  renderTransferAccountSelectors();
+  renderAccountTemplateSelector();
 }
 
 function renderCategorySelectors() {
   const principal = state.categorias.filter(c => !c.parentId);
   const options = principal.map(c => ({ value: String(c.id), label: c.nombre }));
-  fillSelect('#g-cat', options, '(elige categoria)');
+  fillSelect('#g-cat', options, '(elige categoría)');
   fillSelect('#f-cat', options, '(todas)');
   fillSelect('#cat-parent', options, '(Ninguna, es principal)');
-  if ($('#edit-gasto-cat')) fillSelect('#edit-gasto-cat', options, '(elige categoria)');
+  if ($('#edit-gasto-cat')) fillSelect('#edit-gasto-cat', options, '(elige categoría)');
   renderSubcategories();
+  renderFilterSubcategories();
   if ($('#edit-gasto-subcat')) renderEditSubcategories();
 }
 
@@ -652,7 +1644,19 @@ function renderSubcategories() {
   const options = state.categorias
     .filter(c => c.parentId === catId)
     .map(c => ({ value: String(c.id), label: c.nombre }));
-  fillSelect('#g-subcat', options, '(sin subcategoria)');
+  fillSelect('#g-subcat', options, '(sin subcategoría)');
+}
+
+function renderFilterSubcategories() {
+  const catId = Number($('#f-cat') ? $('#f-cat').value : 0);
+  const parents = new Map(state.categorias.filter(c => !c.parentId).map(c => [Number(c.id), c.nombre]));
+  const options = state.categorias
+    .filter(c => c.parentId && (!catId || Number(c.parentId) === catId))
+    .map(c => ({
+      value: String(c.id),
+      label: catId ? c.nombre : `${parents.get(Number(c.parentId)) || 'Categoría'} · ${c.nombre}`
+    }));
+  fillSelect('#f-subcat', options, '(todas)');
 }
 
 function renderEditSubcategories() {
@@ -660,18 +1664,187 @@ function renderEditSubcategories() {
   const options = state.categorias
     .filter(c => c.parentId === catId)
     .map(c => ({ value: String(c.id), label: c.nombre }));
-  fillSelect('#edit-gasto-subcat', options, '(sin subcategoria)');
+  fillSelect('#edit-gasto-subcat', options, '(sin subcategoría)');
+}
+
+function renderLugarSelectors() {
+  const paises = state.lugares.filter(l => !l.parentId).map(l => ({ value: String(l.id), label: l.nombre }));
+  fillSelect('#g-pais', paises, '(sin país)');
+  fillSelect('#edit-gasto-pais', paises, '(sin país)');
+  fillSelect('#lugar-parent', paises, '(Ninguno, es país)');
+  fillMultiSelect('#v-paises', paises);
+  renderTripPlannedCitySelector();
+  renderCiudades();
+  renderEditCiudades();
+  renderFilterPaises();
+  renderResumenPaises();
+  renderMapPaises();
+}
+
+function plannedCityOptionsForCountries(paisIds = [], preferredOrder = []) {
+  const allowedCountries = new Set((paisIds || []).map(Number).filter(Boolean));
+  const order = new Map((preferredOrder || []).map((id, index) => [Number(id), index]));
+  return state.lugares
+    .filter(l => l.parentId)
+    .filter(l => !isTransitPlaceName(l.nombre))
+    .filter(l => !allowedCountries.size || allowedCountries.has(Number(l.parentId)))
+    .map(l => {
+      const pais = state.lugares.find(item => Number(item.id) === Number(l.parentId));
+      return {
+        value: String(l.id),
+        label: `${l.nombre}${pais ? ` (${pais.nombre})` : ''}`
+      };
+    })
+    .sort((a, b) => {
+      const ai = order.has(Number(a.value)) ? order.get(Number(a.value)) : Number.POSITIVE_INFINITY;
+      const bi = order.has(Number(b.value)) ? order.get(Number(b.value)) : Number.POSITIVE_INFINITY;
+      return ai - bi || a.label.localeCompare(b.label, 'es');
+    });
+}
+
+function renderTripPlannedCitySelector() {
+  const paisIds = selectedMultiValues('#v-paises');
+  const currentOrder = selectedMultiValues('#v-ciudades');
+  const options = paisIds.length ? plannedCityOptionsForCountries(paisIds, currentOrder) : [];
+  fillMultiSelect('#v-ciudades', options, currentOrder);
+  updateTripPlanningCounters();
+}
+
+function updateTripPlanningCounters() {
+  const paisSelect = $('#v-paises');
+  const ciudadSelect = $('#v-ciudades');
+  const paisCount = $('#v-paises-count');
+  const ciudadCount = $('#v-ciudades-count');
+  const ciudadPanel = $('#v-ciudades-panel');
+  const ciudadHelp = $('#v-ciudades-help');
+  const selectedPaises = selectedMultiValues('#v-paises');
+  const selectedCiudades = selectedMultiValues('#v-ciudades');
+  const totalPaises = paisSelect ? paisSelect.options.length : 0;
+  const totalCiudades = ciudadSelect ? ciudadSelect.options.length : 0;
+  if (paisCount) paisCount.textContent = `(${selectedPaises.length}/${totalPaises})`;
+  if (ciudadCount) ciudadCount.textContent = selectedPaises.length ? `(${selectedCiudades.length}/${totalCiudades})` : '(elige país)';
+  if (ciudadSelect) ciudadSelect.disabled = !selectedPaises.length;
+  if (ciudadPanel) ciudadPanel.classList.toggle('disabled', !selectedPaises.length);
+  if (ciudadHelp) {
+    ciudadHelp.textContent = !selectedPaises.length
+      ? 'Selecciona antes al menos un país.'
+      : (totalCiudades ? 'Selecciona las ciudades ya creadas para esos países.' : 'No hay ciudades creadas para los países seleccionados.');
+  }
+}
+
+function renderCiudades() {
+  const options = cityOptionsForScope('#g-pais', '#g-viaje');
+  fillSelect('#g-ciudad', options, '(sin ciudad)');
+}
+
+function renderEditCiudades() {
+  const options = cityOptionsForScope('#edit-gasto-pais', '#edit-gasto-viaje');
+  fillSelect('#edit-gasto-ciudad', options, '(sin ciudad)');
+}
+
+function renderFilterPaises() {
+  const options = usedPaisOptionsForGastos(gastosForSelectorTripScope('#f-viaje'));
+  fillSelect('#f-pais', options, '(todos)');
+  renderFilterCiudades();
+}
+
+function renderFilterCiudades() {
+  const paisId = Number($('#f-pais') ? $('#f-pais').value : 0);
+  const base = gastosForSelectorTripScope('#f-viaje').filter(g => gastoMatchesLugarFilters(g, paisId, ''));
+  const options = usedCiudadOptionsForGastos(base, paisId);
+  fillSelect('#f-ciudad', options, '(todas)');
+}
+
+function renderResumenPaises() {
+  const options = usedPaisOptionsForGastos(gastosForSelectorTripScope('#r-viaje'));
+  fillSelect('#r-pais', options, '(todos)');
+  renderResumenCiudades();
+}
+
+function renderMapPaises() {
+  const select = $('#map-pais');
+  if (!select) return;
+  const gastos = gastosForSelectorTripScope('#r-viaje');
+  const options = mapPaisOptionsForScope(gastos);
+  const scopeKey = `${[...mapScopedTripIds(gastos)].sort((a, b) => a - b).join(',')}|${options.map(option => option.value).join(',')}`;
+  const scopeChanged = tripMapState.countryScopeKey !== scopeKey;
+  tripMapState.countryScopeKey = scopeKey;
+  fillSelect('#map-pais', options, options.length ? '(todos)' : '(sin países)');
+  if (options.length === 1) {
+    select.value = options[0].value;
+  } else if (scopeChanged) {
+    select.value = '';
+  }
+  renderTripMap();
+}
+
+function renderResumenCiudades() {
+  const paisId = Number($('#r-pais') ? $('#r-pais').value : 0);
+  const base = gastosForSelectorTripScope('#r-viaje').filter(g => gastoMatchesLugarFilters(g, paisId, ''));
+  const options = usedCiudadOptionsForGastos(base, paisId);
+  fillSelect('#r-ciudad', options, '(todas)');
 }
 
 function renderCuentas() {
   const tbody = $('#tabla-cuentas tbody');
   tbody.innerHTML = '';
-  state.cuentas.forEach(c => {
+  const selectedTripId = Number($('#c-viaje') ? $('#c-viaje').value : 0);
+  if (selectedTripId) {
+    const trip = state.viajes.find(v => v.id === selectedTripId);
+    const tripExpenses = state.gastos.filter(g => Number(g.viajeId) === selectedTripId);
+    const usedAccountIds = new Set(tripExpenses.map(g => Number(g.cuentaId)));
+    const tripAccounts = state.cuentas.filter(c => Number(c.viajeId) === selectedTripId);
+    const usedAccounts = state.cuentas.filter(c => usedAccountIds.has(Number(c.id)));
+    const accounts = [...usedAccounts, ...tripAccounts.filter(c => !usedAccountIds.has(Number(c.id)))];
+    const tripAccountBudget = tripAccounts.reduce((sum, c) => sum + toEur(c.presupuesto, c.moneda), 0);
+    const tripBudget = trip ? effectiveTripBudget(trip) : 0;
+    const tripSpentEur = tripExpenses.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
+    const totalSaldoEur = accounts.reduce((sum, c) => sum + toEur(c.saldoActual, c.moneda), 0);
+    if (!accounts.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="6">No hay cuentas ni gastos asociados a ${escapeHtml(trip ? trip.nombre : 'este viaje')}.</td>`;
+      tbody.appendChild(tr);
+      return;
+    }
+    accounts.forEach(c => {
+      const spentEur = tripExpenses.filter(g => Number(g.cuentaId) === Number(c.id)).reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
+      const isTripAccount = Number(c.viajeId) === selectedTripId;
+      let budget = isTripAccount ? numberValue(c.presupuesto) : 0;
+      let saldo = numberValue(c.saldoActual);
+      if (!isTripAccount && accounts.length === 1 && tripBudget > 0) {
+        budget = fromEur(tripBudget, c.moneda);
+        saldo = fromEur(tripBudget - spentEur, c.moneda);
+      }
+      const tr = document.createElement('tr');
+      if (budget > 0 && spentEur > toEur(budget, c.moneda)) tr.className = 'warning-row';
+      const migrate = !isTripAccount && usedAccountIds.has(Number(c.id))
+        ? ` <button class="ghost" data-migrate-cuenta="${c.id}" data-migrate-viaje="${selectedTripId}">Pasar a viaje</button>`
+        : '';
+      const tripCell = isTripAccount ? escapeHtml(trip ? trip.nombre : 'Viaje') : `${escapeHtml(trip ? trip.nombre : 'Viaje')} <span class="badge">Global usada</span>`;
+      tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${tripCell}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(saldo, c.moneda)}</td><td>${fmtBudgetWithEur(budget, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button>${migrate}</td>`;
+      tbody.appendChild(tr);
+    });
+    if (tripAccountBudget > 0) {
+      const tr = document.createElement('tr');
+      tr.className = 'subtotal-row';
+      tr.innerHTML = `<td>Total cuentas del viaje</td><td>${escapeHtml(trip ? trip.nombre : 'Viaje')}</td><td><span class="badge">EUR</span></td><td>${fmtCurrency(totalSaldoEur, 'EUR')}</td><td>${fmtCurrency(tripAccountBudget, 'EUR')}</td><td>-</td>`;
+      tbody.appendChild(tr);
+    }
+    if (tripBudget > 0 && (tripAccountBudget <= 0 || Math.abs(tripBudget - tripAccountBudget) > 0.01)) {
+      const remaining = tripBudget - tripSpentEur;
+      const tr = document.createElement('tr');
+      tr.className = remaining < 0 ? 'warning-row' : 'subtotal-row';
+      tr.innerHTML = `<td>Presupuesto del viaje</td><td>${escapeHtml(trip ? trip.nombre : 'Viaje')}</td><td><span class="badge">EUR</span></td><td>${fmtCurrency(remaining, 'EUR')}</td><td>${fmtCurrency(tripBudget, 'EUR')}</td><td>-</td>`;
+      tbody.appendChild(tr);
+    }
+    return;
+  }
+  state.cuentas.filter(c => !c.viajeId).forEach(c => {
     const spent = state.gastos.filter(g => g.cuentaId === c.id).reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
     const overBudget = numberValue(c.presupuesto) > 0 && spent > numberValue(c.presupuesto);
     const tr = document.createElement('tr');
     if (overBudget || numberValue(c.saldoActual) < 0) tr.className = 'warning-row';
-    tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrency(c.saldoActual, c.moneda)}</td><td>${c.presupuesto ? fmtCurrency(c.presupuesto, c.moneda) : '-'}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
+    tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td><span class="badge">Global</span></td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(c.saldoActual, c.moneda)}</td><td>${fmtBudgetWithEur(c.presupuesto, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -684,7 +1857,7 @@ function renderTransferencias() {
     const source = state.cuentas.find(c => c.id === t.fromId);
     const target = state.cuentas.find(c => c.id === t.toId);
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${fmtDate(t.fecha)}</td><td>${escapeHtml(source ? source.nombre : '?')}</td><td>${escapeHtml(target ? target.nombre : '?')}</td><td>${fmtCurrency(t.importeFrom, t.monedaFrom)}</td><td>${fmtCurrency(t.importeTo, t.monedaTo)}</td><td>${escapeHtml(t.nota || '')}</td><td><button class="ghost" data-del-transfer="${t.id}">Eliminar</button></td>`;
+    tr.innerHTML = `<td>${fmtDate(t.fecha)}</td><td>${escapeHtml(source ? accountLabel(source) : '?')}</td><td>${escapeHtml(target ? accountLabel(target) : '?')}</td><td>${fmtCurrency(t.importeFrom, t.monedaFrom)}</td><td>${fmtCurrency(t.importeTo, t.monedaTo)}</td><td>${escapeHtml(transferRateLabel(t))}</td><td>${escapeHtml(t.nota || '')}</td><td><button class="ghost" data-del-transfer="${t.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -693,13 +1866,15 @@ function renderViajes() {
   const tbody = $('#tabla-viajes tbody');
   tbody.innerHTML = '';
   state.viajes.forEach(v => {
+    const budget = numberValue(v.presupuesto);
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${numberValue(v.presupuesto) ? fmtCurrency(v.presupuesto, 'EUR') : '-'}</td><td><button class="ghost" data-edit-viaje="${v.id}">Editar</button> <button class="ghost" data-del-viaje="${v.id}">Eliminar</button></td>`;
+    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${escapeHtml(tripCountryLabel(v))}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td><button class="ghost" data-edit-viaje="${v.id}">Editar</button> <button class="ghost" data-del-viaje="${v.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
   });
 }
 
 function renderMonedasConfig() {
+  renderCurrencyCodeDatalist();
   const tbody = $('#tabla-monedas tbody');
   tbody.innerHTML = '';
   const rows = [
@@ -719,61 +1894,121 @@ function renderViajesHome() {
   if (!tbody) return;
   tbody.innerHTML = '';
   const info = $('#selected-trip-info');
-  const selected = state.viajes.find(v => v.id === state.selectedViajeId);
-  info.textContent = selected ? `Viaje seleccionado: ${selected.nombre}` : 'Selecciona un viaje para consultar sus gastos o resumen.';
+  const selectedIds = selectedTripSet();
+  info.textContent = selectedTripsLabel();
   if (!state.viajes.length) {
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td colspan="6">Todavia no hay viajes. Puedes crearlos en Configuracion.</td>';
+    tr.innerHTML = '<td colspan="8">Todavía no hay viajes. Puedes crearlos en Configuración.</td>';
     tbody.appendChild(tr);
     return;
   }
   const tripsByYear = {};
   state.viajes.forEach(v => {
-    const year = (v.fechaInicio || 'Sin fecha').slice(0, 4);
+    const year = getTripYear(v);
     (tripsByYear[year] = tripsByYear[year] || []).push(v);
   });
   Object.keys(tripsByYear).sort().forEach(year => {
+    const yearTrips = tripsByYear[year];
+    const yearChecked = yearTrips.every(v => selectedIds.has(v.id));
     const header = document.createElement('tr');
     header.className = 'group-row';
-    header.innerHTML = `<td colspan="8">Ano ${escapeHtml(year)}</td>`;
+    header.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-year="${escapeHtml(year)}"${yearChecked ? ' checked' : ''}> <span>Año ${escapeHtml(year)}</span></label></td><td colspan="7">Selecciona el año para sumar todos sus viajes</td>`;
     tbody.appendChild(header);
+    const yearInput = header.querySelector('input[data-trip-year]');
     let yearExpenses = 0;
     let yearTotal = 0;
-    tripsByYear[year].forEach(v => {
+    let yearBudget = 0;
+    yearTrips.forEach(v => {
       const expenses = state.gastos.filter(g => g.viajeId === v.id);
       const total = expenses.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
-      const budget = numberValue(v.presupuesto);
+      const budget = effectiveTripBudget(v);
       const remaining = budget ? budget - total : null;
       yearExpenses += expenses.length;
       yearTotal += total;
+      yearBudget += budget;
       const tr = document.createElement('tr');
       if (remaining !== null && remaining < 0) tr.className = 'warning-row';
-      tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td><button class="ghost" data-trip-gastos="${v.id}">Gastos</button> <button class="ghost" data-trip-resumen="${v.id}">Resumen</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button></td>`;
+      tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><span class="trip-actions-inline"><button class="ghost" data-trip-gastos="${v.id}">Gastos</button> <button class="ghost" data-trip-resumen="${v.id}">Resumen</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button></span></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
-    subtotal.className = 'subtotal-row';
-    subtotal.innerHTML = `<td colspan="3">Subtotal ${escapeHtml(year)}</td><td>${yearExpenses}</td><td>${fmtCurrency(yearTotal, 'EUR')}</td><td colspan="3"></td>`;
+    const yearRemaining = yearBudget ? yearBudget - yearTotal : null;
+    subtotal.className = yearRemaining !== null && yearRemaining < 0 ? 'warning-row' : 'subtotal-row';
+    subtotal.innerHTML = `<td colspan="3">Subtotal ${escapeHtml(year)}</td><td>${yearExpenses}</td><td>${fmtCurrency(yearTotal, 'EUR')}</td><td>${yearBudget ? fmtCurrency(yearBudget, 'EUR') : '-'}</td><td>${yearRemaining === null ? '-' : fmtCurrency(yearRemaining, 'EUR')}</td><td></td>`;
     tbody.appendChild(subtotal);
+    if (yearInput) yearInput.indeterminate = !yearChecked && yearTrips.some(v => selectedIds.has(v.id));
   });
 }
 
 function renderCategorias() {
-  const tbody = $('#tabla-cats tbody');
-  tbody.innerHTML = '';
-  state.categorias.forEach(cat => {
-    const parent = state.categorias.find(c => c.id === cat.parentId);
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(cat.nombre)}</td><td>${cat.parentId ? 'Subcategoria' : 'Categoria'}</td><td>${parent ? escapeHtml(parent.nombre) : '-'}</td><td><button class="ghost" data-edit-cat="${cat.id}">Editar</button> <button class="ghost" data-del-cat="${cat.id}">Eliminar</button></td>`;
-    tbody.appendChild(tr);
-  });
+  const tree = $('#categorias-tree');
+  if (!tree) return;
+  const openCategoryIds = new Set($$('#categorias-tree .category-node[open]').map(el => String(el.dataset.categoryNode || '')));
+  const parents = state.categorias.filter(cat => !cat.parentId).sort(byName);
+  const children = state.categorias.filter(cat => cat.parentId).sort(byName);
+  if (!parents.length) {
+    tree.innerHTML = '<p class="small">Todavía no hay categorías guardadas.</p>';
+    return;
+  }
+  tree.innerHTML = parents.map(cat => {
+    const subcats = children.filter(sub => Number(sub.parentId) === Number(cat.id));
+    const open = openCategoryIds.has(String(cat.id)) ? ' open' : '';
+    const subHtml = subcats.length
+      ? subcats.map(sub => `<div class="place-row">
+          <div class="place-name"><strong>${escapeHtml(sub.nombre)}</strong><span>Subcategoría</span></div>
+          <div class="place-actions"><button class="ghost" data-edit-cat="${sub.id}">Editar</button><button class="ghost" data-del-cat="${sub.id}">Eliminar</button></div>
+        </div>`).join('')
+      : '<p class="small">Todavía no hay subcategorías en esta categoría.</p>';
+    return `<details class="category-node" data-category-node="${cat.id}"${open}>
+      <summary><span class="category-title"><strong>${escapeHtml(cat.nombre)}</strong></span><span class="category-meta">${subcats.length} subcategorías</span></summary>
+      <div class="category-body">
+        <div class="category-toolbar"><button class="ghost" data-edit-cat="${cat.id}">Editar categoría</button><button class="ghost" data-del-cat="${cat.id}">Eliminar categoría</button></div>
+        <div class="subcategory-list">${subHtml}</div>
+      </div>
+    </details>`;
+  }).join('');
+}
+
+function renderLugares() {
+  const tree = $('#lugares-tree');
+  if (!tree) return;
+  const openCountryIds = new Set($$('#lugares-tree .country-node[open]').map(el => String(el.dataset.countryNode || '')));
+  const count = $('#lugares-count');
+  const paises = state.lugares.filter(l => !l.parentId).sort(byName);
+  const ciudades = state.lugares.filter(l => l.parentId).sort(byName);
+  if (count) {
+    count.textContent = `(${paises.length} países, ${ciudades.length} ciudades)`;
+  }
+  if (!paises.length) {
+    tree.innerHTML = '<p class="small">Todavía no hay países guardados.</p>';
+    return;
+  }
+  tree.innerHTML = paises.map(pais => {
+    const cityList = ciudades.filter(ciudad => Number(ciudad.parentId) === Number(pais.id));
+    const open = openCountryIds.has(String(pais.id)) ? ' open' : '';
+    const cityHtml = cityList.length
+      ? cityList.map(ciudad => `<div class="place-row">
+          <div class="place-name"><strong>${escapeHtml(ciudad.nombre)}</strong><span>${escapeHtml(lugarCoordsLabel(ciudad))}</span></div>
+          <div class="place-actions"><button class="ghost" data-locate-lugar="${ciudad.id}">Localizar</button><button class="ghost" data-edit-lugar="${ciudad.id}">Editar</button><button class="ghost" data-del-lugar="${ciudad.id}">Eliminar</button></div>
+        </div>`).join('')
+      : '<p class="small">Todavía no hay ciudades en este país.</p>';
+    return `<details class="country-node" data-country-node="${pais.id}"${open}>
+      <summary><span class="country-title"><strong>${escapeHtml(pais.nombre)}</strong><span>${escapeHtml(lugarCoordsLabel(pais))}</span></span><span class="country-meta">${cityList.length} ciudades</span></summary>
+      <div class="country-body">
+        <div class="country-toolbar"><button class="ghost" data-locate-lugar="${pais.id}">Localizar país</button><button class="ghost" data-edit-lugar="${pais.id}">Editar país</button><button class="ghost" data-del-lugar="${pais.id}">Eliminar país</button></div>
+        <div class="city-list">${cityHtml}</div>
+      </div>
+    </details>`;
+  }).join('');
 }
 
 function filteredGastos() {
   const fMon = $('#f-moneda').value;
   const fCta = $('#f-cuenta').value;
   const fCat = $('#f-cat').value;
-  const fViaje = $('#f-viaje').value;
+  const fSubcat = $('#f-subcat') ? $('#f-subcat').value : '';
+  const fPais = $('#f-pais') ? $('#f-pais').value : '';
+  const fCiudad = $('#f-ciudad') ? $('#f-ciudad').value : '';
   const fDesde = $('#f-desde').value;
   const fHasta = $('#f-hasta').value;
   const fDesc = ($('#f-desc').value || '').trim().toLowerCase();
@@ -781,7 +2016,9 @@ function filteredGastos() {
     .filter(g => !fMon || g.moneda === fMon)
     .filter(g => !fCta || g.cuentaId === Number(fCta))
     .filter(g => !fCat || g.catId === Number(fCat))
-    .filter(g => !fViaje || g.viajeId === Number(fViaje))
+    .filter(g => !fSubcat || g.subcatId === Number(fSubcat))
+    .filter(g => gastoMatchesLugarFilters(g, fPais, fCiudad))
+    .filter(gastoMatchesTripSelection)
     .filter(g => !fDesde || g.fecha >= fDesde)
     .filter(g => !fHasta || g.fecha <= fHasta)
     .filter(g => !fDesc || (g.desc || '').toLowerCase().includes(fDesc))
@@ -789,7 +2026,7 @@ function filteredGastos() {
 }
 
 function hasActiveGastoFilters() {
-  return ['#f-moneda', '#f-cuenta', '#f-cat', '#f-viaje', '#f-desde', '#f-hasta', '#f-desc']
+  return hasTripSelection() || ['#f-moneda', '#f-cuenta', '#f-cat', '#f-subcat', '#f-pais', '#f-ciudad', '#f-viaje', '#f-desde', '#f-hasta', '#f-desc']
     .some(sel => $(sel) && $(sel).value);
 }
 
@@ -800,11 +2037,17 @@ function updateMobileClearFilters() {
 }
 
 function clearExpenseFilters() {
-  ['#f-moneda', '#f-cuenta', '#f-cat', '#f-viaje', '#f-desde', '#f-hasta', '#f-desc'].forEach(sel => $(sel).value = '');
-  state.selectedViajeId = null;
+  ['#f-moneda', '#f-cuenta', '#f-cat', '#f-subcat', '#f-pais', '#f-ciudad', '#f-viaje', '#f-desde', '#f-hasta', '#f-desc'].forEach(sel => $(sel).value = '');
+  setSelectedTrips([]);
+  renderFilterSubcategories();
+  renderFilterCiudades();
   closeFiltersPanel();
   renderViajesHome();
   renderGastosTabla();
+  renderCuentas();
+  renderTransferAccountSelectors();
+  renderBackupStatus();
+  renderResumen();
 }
 
 function renderGastosTabla() {
@@ -829,10 +2072,15 @@ function renderGastosTabla() {
   }).forEach(key => {
     const [date, tripId] = key.split('|');
     const groupTrip = state.viajes.find(v => v.id === Number(tripId));
-    const title = `${fmtDate(date)}${groupTrip ? ` - ${escapeHtml(groupTrip.nombre)}` : ''}`;
+    const paisNames = gastosPaisNames(byGroup[key]);
+    const chips = [
+      groupTrip ? `<span class="group-chip trip-chip">${escapeHtml(groupTrip.nombre)}</span>` : '',
+      ...paisNames.map(name => `<span class="group-chip country-chip">${escapeHtml(name)}</span>`)
+    ].filter(Boolean).join(' ');
+    const title = `${fmtDate(date)}${chips ? ` ${chips}` : ''}`;
     const header = document.createElement('tr');
     header.className = 'group-row';
-    header.innerHTML = `<td colspan="9"><b>${title}</b></td>`;
+    header.innerHTML = `<td colspan="10"><b>${title}</b></td>`;
     tbody.appendChild(header);
     let subtotalEur = 0;
     byGroup[key].forEach(g => {
@@ -844,12 +2092,12 @@ function renderGastosTabla() {
       totalEur += eur;
       const tr = document.createElement('tr');
       tr.className = 'expense-row';
-      tr.innerHTML = `<td data-label="Categoria">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripcion">${escapeHtml(g.desc || '')}</td><td data-label="Ticket">${ticketLink(g)}</td><td class="action-col" data-label="Acciones"><span class="desktop-actions"><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-dup-gasto="${g.id}">Duplicar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></span><select class="mobile-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Acciones</option><option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
+      tr.innerHTML = `<td data-label="Ciudad">${escapeHtml(gastoCiudadLabel(g))}</td><td data-label="Categoría">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? accountLabel(cta) : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripción">${escapeHtml(g.desc || '')}</td><td data-label="Ticket">${ticketLink(g)}</td><td class="action-col" data-label="Acciones"><span class="desktop-actions"><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-dup-gasto="${g.id}">Duplicar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></span><select class="mobile-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Acciones</option><option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
     subtotal.className = 'subtotal-row';
-    subtotal.innerHTML = `<td colspan="5" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="3"></td>`;
+    subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="3"></td>`;
     tbody.appendChild(subtotal);
   });
   $('#tg-total').textContent = fmtCurrency(totalEur, 'EUR');
@@ -907,14 +2155,677 @@ function drawBarChart(container, data) {
   container.innerHTML = svg;
 }
 
+function mapScopedTripIds(gastos = []) {
+  const ids = new Set();
+  const selectedResumenTripId = Number($('#r-viaje') ? $('#r-viaje').value : 0);
+  if (selectedResumenTripId) ids.add(selectedResumenTripId);
+  else if (hasTripSelection()) selectedTripIds().forEach(id => ids.add(Number(id)));
+  else state.viajes.forEach(v => ids.add(Number(v.id)));
+  return ids;
+}
+
+function mapScopedTrips(gastos = []) {
+  const ids = mapScopedTripIds(gastos);
+  return state.viajes.filter(v => ids.has(Number(v.id)));
+}
+
+function mapCityOrderForScope(gastos = []) {
+  const trips = mapScopedTrips(gastos);
+  if (trips.length !== 1) return new Map();
+  return new Map(tripCityIds(trips[0]).map((id, index) => [Number(id), index]));
+}
+
+function mapPaisOptionsForScope(gastos = []) {
+  const byId = new Map();
+  usedPaisOptionsForGastos(gastos).forEach(option => {
+    byId.set(Number(option.value), option.label);
+  });
+  mapScopedTrips(gastos).forEach(trip => {
+    tripCountryIds(trip).forEach(id => {
+      const pais = state.lugares.find(l => Number(l.id) === Number(id));
+      if (pais) byId.set(Number(pais.id), pais.nombre);
+    });
+    tripCityIds(trip).forEach(id => {
+      const ciudad = state.lugares.find(l => Number(l.id) === Number(id));
+      const pais = state.lugares.find(l => Number(l.id) === Number(ciudad && ciudad.parentId));
+      if (pais) byId.set(Number(pais.id), pais.nombre);
+    });
+  });
+  return [...byId.entries()]
+    .map(([value, label]) => ({ value: String(value), label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'es'));
+}
+
+function compareGastosRouteOrder(a, b) {
+  return (a.fecha || '').localeCompare(b.fecha || '') ||
+    (a.createdAt || '').localeCompare(b.createdAt || '') ||
+    Number(a.id || 0) - Number(b.id || 0);
+}
+
+function mapRouteCities(gastos, paisId) {
+  const byCity = new Map();
+  const routeOrder = mapCityOrderForScope(gastos);
+  gastos
+    .filter(g => gastoMatchesLugarFilters(g, paisId, ''))
+    .slice()
+    .sort(compareGastosRouteOrder)
+    .forEach((g, index) => {
+      const ciudad = state.lugares.find(l => l.id === Number(g.ciudadId));
+      if (!ciudad) return;
+      if (isTransitPlaceName(ciudad.nombre)) return;
+      const pais = state.lugares.find(l => l.id === Number(g.paisId || ciudad.parentId));
+      if (paisId && Number(pais && pais.id) !== Number(paisId)) return;
+      const key = Number(ciudad.id);
+      if (!byCity.has(key)) {
+        byCity.set(key, {
+          ciudad,
+          pais,
+          firstDate: g.fecha || '',
+          firstOrder: index,
+          routeOrder: routeOrder.has(key) ? routeOrder.get(key) : Number.POSITIVE_INFINITY,
+          count: 0,
+          totalEur: 0
+        });
+      }
+      const item = byCity.get(key);
+      item.count += 1;
+      item.totalEur += toEur(g.importe, g.moneda);
+    });
+  if (tripMapState.showPlanned) {
+    const scopedTripIds = mapScopedTripIds(gastos);
+    const plannedCityIds = new Set(
+      state.viajes
+        .filter(v => scopedTripIds.has(Number(v.id)))
+        .flatMap(tripCityIds)
+        .map(Number)
+        .filter(Boolean)
+    );
+    plannedCityIds.forEach(id => {
+      if (byCity.has(id)) return;
+      const ciudad = state.lugares.find(l => Number(l.id) === Number(id));
+      if (!ciudad || isTransitPlaceName(ciudad.nombre)) return;
+      const pais = state.lugares.find(l => Number(l.id) === Number(ciudad.parentId));
+      if (paisId && Number(pais && pais.id) !== Number(paisId)) return;
+      byCity.set(id, {
+        ciudad,
+        pais,
+        firstDate: '',
+        firstOrder: Number.POSITIVE_INFINITY,
+        routeOrder: routeOrder.has(Number(id)) ? routeOrder.get(Number(id)) : Number.POSITIVE_INFINITY,
+        count: 0,
+        totalEur: 0,
+        configuredOnly: true,
+        plannedOnly: true
+      });
+    });
+  }
+  return [...byCity.values()].sort((a, b) => {
+    if (!!a.configuredOnly !== !!b.configuredOnly) return a.configuredOnly ? 1 : -1;
+    const aOrdered = Number.isFinite(a.routeOrder);
+    const bOrdered = Number.isFinite(b.routeOrder);
+    if (aOrdered || bOrdered) {
+      return (aOrdered ? a.routeOrder : Number.POSITIVE_INFINITY) - (bOrdered ? b.routeOrder : Number.POSITIVE_INFINITY) ||
+        Number(a.firstOrder || 0) - Number(b.firstOrder || 0) ||
+        byName(a.ciudad, b.ciudad);
+    }
+    return (a.firstDate || '9999-99-99').localeCompare(b.firstDate || '9999-99-99') ||
+      Number(a.firstOrder || 0) - Number(b.firstOrder || 0) ||
+      byName(a.ciudad, b.ciudad);
+  });
+}
+
+function renderCurrencyCodeDatalist() {
+  renderCurrencyCodeSuggestions(false);
+}
+
+function mapWorldPoint(lat, lng, zoom) {
+  const scale = 256 * (2 ** zoom);
+  const safeLat = Math.max(-85.05112878, Math.min(85.05112878, Number(lat)));
+  const sin = Math.sin(safeLat * Math.PI / 180);
+  return {
+    x: ((Number(lng) + 180) / 360) * scale,
+    y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale
+  };
+}
+
+function chooseMapZoom(items, width, height) {
+  if (items.length <= 1) return 11;
+  for (let zoom = 11; zoom >= 4; zoom -= 1) {
+    const points = items.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom));
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+    const spanX = Math.max(...xs) - Math.min(...xs);
+    const spanY = Math.max(...ys) - Math.min(...ys);
+    if (spanX <= width * 0.68 && spanY <= height * 0.58) return zoom;
+  }
+  return 4;
+}
+
+function mapGeocodeNames(name) {
+  const clean = String(name || '').trim();
+  const normalized = normalizePlaceName(clean);
+  const names = [clean];
+  if (normalized === 'torun') names.push('Toruń');
+  if (normalized === 'gdansk' || normalized === 'gdanks') names.push('Gdańsk', 'Gdansk');
+  if (normalized === 'varsovia') names.push('Warszawa', 'Warsaw');
+  return [...new Set(names.filter(Boolean))];
+}
+
+async function fetchFirstGeocodeResultForPlace(name, country = '') {
+  if (isTransitPlaceName(name)) return null;
+  const queries = mapGeocodeNames(name)
+    .map(cityName => [cityName, country].filter(Boolean).join(', '));
+  for (const query of queries) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=es&q=${encodeURIComponent(query)}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = (await response.json())[0];
+    if (result) return result;
+  }
+  return null;
+}
+
+async function fetchFirstGeocodeResult(item) {
+  return fetchFirstGeocodeResultForPlace(item.ciudad.nombre, item.pais ? item.pais.nombre : '');
+}
+
+async function locateLugarById(id) {
+  const lugar = state.lugares.find(item => item.id === Number(id));
+  if (!lugar) throw new Error('No existe el lugar');
+  if (isTransitPlaceName(lugar.nombre)) throw new Error('En tránsito no es un lugar concreto para localizar en el mapa');
+  const parent = state.lugares.find(item => item.id === Number(lugar.parentId));
+  const result = await fetchFirstGeocodeResultForPlace(lugar.nombre, parent ? parent.nombre : '');
+  if (!result) throw new Error(`No he encontrado coordenadas para ${lugar.nombre}`);
+  await updateLugar(lugar.id, {
+    lat: optionalNumberValue(result.lat),
+    lng: optionalNumberValue(result.lon)
+  });
+  await loadAll();
+  return result;
+}
+
+async function locateLugarForm() {
+  const name = $('#lugar-nombre').value.trim();
+  if (!name) throw new Error('Escribe primero el nombre');
+  if (isTransitPlaceName(name)) throw new Error('En tránsito no es un lugar concreto para localizar en el mapa');
+  const parent = state.lugares.find(item => item.id === Number($('#lugar-parent').value));
+  const result = await fetchFirstGeocodeResultForPlace(name, parent ? parent.nombre : '');
+  if (!result) throw new Error(`No he encontrado coordenadas para ${name}`);
+  $('#lugar-lat').value = formatRate(result.lat);
+  $('#lugar-lng').value = formatRate(result.lon);
+}
+
+async function geocodeTripMapCities() {
+  resetTripMapView();
+  await loadAll();
+  const info = $('#trip-map-info');
+  const paisId = Number($('#map-pais') ? $('#map-pais').value : 0);
+  const gastos = gastosForSelectorTripScope('#r-viaje');
+  const cities = mapRouteCities(gastos, paisId);
+  const candidates = cities.filter(item => item.ciudad && !isTransitPlaceName(item.ciudad.nombre) && !lugarHasCoords(item.ciudad));
+  if (!candidates.length) {
+    renderTripMap();
+    if (info) info.textContent = 'Mapa actualizado con las coordenadas guardadas en Configuración.';
+    return;
+  }
+  if (info) info.textContent = `Localizando ${candidates.length} ciudades...`;
+  let updated = 0;
+  const failed = [];
+  for (let i = 0; i < candidates.length; i += 1) {
+    const item = candidates[i];
+    try {
+      const result = await fetchFirstGeocodeResult(item);
+      if (!result) throw new Error('sin resultado');
+      await updateLugar(item.ciudad.id, {
+        lat: optionalNumberValue(result.lat),
+        lng: optionalNumberValue(result.lon)
+      });
+      updated += 1;
+    } catch (err) {
+      failed.push(item.ciudad.nombre);
+    }
+    if (i < candidates.length - 1) await wait(900);
+  }
+  resetTripMapView();
+  await loadAll();
+  if (info) {
+    const failText = failed.length ? ` No localizadas: ${failed.join(', ')}.` : '';
+    info.textContent = `${updated} ciudades localizadas.${failText}`;
+  }
+}
+
+async function refreshTripMapFromConfig() {
+  resetTripMapView();
+  await loadAll();
+  renderTripMap();
+  const info = $('#trip-map-info');
+  if (info) info.textContent = 'Mapa actualizado con las coordenadas guardadas en Configuración.';
+}
+
+function currentMapTrip() {
+  const selectedResumenTripId = Number($('#r-viaje') ? $('#r-viaje').value : 0);
+  if (selectedResumenTripId) return state.viajes.find(v => Number(v.id) === selectedResumenTripId) || null;
+  const ids = selectedTripIds();
+  if (ids.length === 1) return state.viajes.find(v => Number(v.id) === ids[0]) || null;
+  const gastos = gastosForSelectorTripScope('#r-viaje');
+  const tripIds = [...new Set(gastos.map(g => Number(g.viajeId)).filter(Boolean))];
+  if (tripIds.length === 1) return state.viajes.find(v => Number(v.id) === tripIds[0]) || null;
+  return null;
+}
+
+function currentMapCountryId(trip) {
+  const selected = Number($('#map-pais') ? $('#map-pais').value : 0);
+  if (selected) return selected;
+  const countries = tripCountryIds(trip);
+  return countries.length === 1 ? countries[0] : 0;
+}
+
+function renderMapAfterTripChange() {
+  renderResumenAccountSelector();
+  renderResumenPaises();
+  renderMapPaises();
+  renderViajesHome();
+  renderGastosTabla();
+  renderCuentas();
+  renderTransferAccountSelectors();
+  renderBackupStatus();
+  renderResumen();
+}
+
+async function addMapStopToTrip() {
+  const trip = currentMapTrip();
+  if (!trip) {
+    alert('Selecciona un único viaje para añadir una parada.');
+    return;
+  }
+  const paisId = currentMapCountryId(trip);
+  const pais = state.lugares.find(l => Number(l.id) === Number(paisId));
+  if (!pais) {
+    alert('Selecciona un país del mapa para añadir la parada.');
+    return;
+  }
+  const plannedIds = new Set(tripCityIds(trip).map(Number));
+  const options = plannedCityOptionsForCountries([paisId])
+    .filter(option => !plannedIds.has(Number(option.value)));
+  openFormDialog({
+    title: `Añadir parada a ${trip.nombre}`,
+    fields: [
+      { name: 'ciudadId', label: 'Ciudad existente', type: 'select', value: '', placeholder: options.length ? '(elige ciudad)' : '(sin ciudades disponibles)', options },
+      { name: 'nuevaCiudad', label: 'O escribe una ciudad nueva', value: '' }
+    ],
+    onSubmit: async values => {
+      let cityId = Number(values.ciudadId);
+      const newName = String(values.nuevaCiudad || '').trim();
+      if (newName) {
+        const existing = state.lugares.find(l => Number(l.parentId) === Number(paisId) && normalizePlaceName(l.nombre) === normalizePlaceName(newName));
+        cityId = existing ? Number(existing.id) : await addLugar({ nombre: newName, parentId: paisId });
+        if (!existing && !isTransitPlaceName(newName)) {
+          try {
+            const result = await fetchFirstGeocodeResultForPlace(newName, pais.nombre);
+            if (result) await updateLugar(cityId, { lat: optionalNumberValue(result.lat), lng: optionalNumberValue(result.lon) });
+          } catch {
+            // Se queda como parada, aunque no se pueda localizar automaticamente.
+          }
+        }
+      }
+      if (!cityId) throw new Error('Elige una ciudad o escribe una nueva');
+      const selectedCity = state.lugares.find(l => Number(l.id) === Number(cityId));
+      if (selectedCity && !lugarHasCoords(selectedCity) && !isTransitPlaceName(selectedCity.nombre)) {
+        try {
+          const result = await fetchFirstGeocodeResultForPlace(selectedCity.nombre, pais.nombre);
+          if (result) await updateLugar(cityId, { lat: optionalNumberValue(result.lat), lng: optionalNumberValue(result.lon) });
+        } catch {
+          // Se queda como parada, aunque no se pueda localizar automaticamente.
+        }
+      }
+      const cityIds = [...new Set([...tripCityIds(trip), cityId].map(Number).filter(Boolean))];
+      const paisIds = new Set(tripCountryIds(trip).map(Number).filter(Boolean));
+      paisIds.add(Number(paisId));
+      await updateViaje(trip.id, {
+        ciudadIds: cityIds,
+        paisIds: [...paisIds],
+        updatedAt: new Date().toISOString()
+      });
+      tripMapState.showPlanned = true;
+      resetTripMapView();
+      await loadAll();
+      setSelectedTrips([trip.id]);
+      renderLugarSelectors();
+      renderMapAfterTripChange();
+    }
+  });
+}
+
+function tripMapItemsForCurrentScope() {
+  const paisId = Number($('#map-pais') ? $('#map-pais').value : 0);
+  const gastos = gastosForSelectorTripScope('#r-viaje');
+  const scopedTripIds = mapScopedTripIds(gastos);
+  const cities = mapRouteCities(gastos, paisId);
+  return {
+    paisId,
+    cities,
+    withCoords: cities.filter(item => lugarHasCoords(item.ciudad)),
+    shouldDrawRoute: scopedTripIds.size <= 1
+  };
+}
+
+function zoomTripMapAtPoint(x, y, delta = 1) {
+  const { withCoords } = tripMapItemsForCurrentScope();
+  if (!withCoords.length || !delta) return false;
+  const { width, height } = tripMapSize();
+  const baseZoom = chooseMapZoom(withCoords, width, height);
+  const oldZoom = Math.max(4, Math.min(18, baseZoom + tripMapState.zoomDelta));
+  const newZoom = Math.max(4, Math.min(18, oldZoom + delta));
+  if (newZoom === oldZoom) return false;
+  const oldPoints = withCoords.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, oldZoom));
+  const oldCenterX = (Math.min(...oldPoints.map(p => p.x)) + Math.max(...oldPoints.map(p => p.x))) / 2;
+  const oldCenterY = (Math.min(...oldPoints.map(p => p.y)) + Math.max(...oldPoints.map(p => p.y))) / 2;
+  const oldStartX = oldCenterX - width / 2 - tripMapState.panX;
+  const oldStartY = oldCenterY - height / 2 - tripMapState.panY;
+  const factor = 2 ** (newZoom - oldZoom);
+  const clickedNewX = (oldStartX + x) * factor;
+  const clickedNewY = (oldStartY + y) * factor;
+  const newPoints = withCoords.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, newZoom));
+  const newCenterX = (Math.min(...newPoints.map(p => p.x)) + Math.max(...newPoints.map(p => p.x))) / 2;
+  const newCenterY = (Math.min(...newPoints.map(p => p.y)) + Math.max(...newPoints.map(p => p.y))) / 2;
+  tripMapState.zoomDelta = newZoom - baseZoom;
+  tripMapState.panX = newCenterX - width / 2 - (clickedNewX - x);
+  tripMapState.panY = newCenterY - height / 2 - (clickedNewY - y);
+  renderTripMap();
+  return true;
+}
+
+function zoomTripMapAtClient(frame, clientX, clientY, delta = 1) {
+  if (!frame) return false;
+  const rect = frame.getBoundingClientRect();
+  const { width, height } = tripMapSize();
+  const x = Math.max(0, Math.min(width, ((clientX - rect.left) / rect.width) * width));
+  const y = Math.max(0, Math.min(height, ((clientY - rect.top) / rect.height) * height));
+  return zoomTripMapAtPoint(x, y, delta);
+}
+
+function zoomTripMapAt(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (target.closest('.map-controls')) return;
+  const frame = target.closest('.trip-map-frame');
+  if (!frame) return;
+  event.preventDefault();
+  zoomTripMapAtClient(frame, event.clientX, event.clientY, 1);
+}
+
+function renderTripMap() {
+  const container = $('#trip-map');
+  const info = $('#trip-map-info');
+  if (!container || !info) return;
+  const { paisId, cities, withCoords, shouldDrawRoute } = tripMapItemsForCurrentScope();
+  const missing = cities.filter(item => !lugarHasCoords(item.ciudad));
+  if (!cities.length) {
+    container.innerHTML = '<div class="map-empty">Sin ciudades en este viaje.</div>';
+    info.textContent = '';
+    return;
+  }
+  if (!withCoords.length) {
+    container.innerHTML = '<div class="map-empty">Añade latitud y longitud a las ciudades para ver el mapa.</div>';
+    info.textContent = `Faltan coordenadas: ${missing.map(item => item.ciudad.nombre).join(', ')}.`;
+    return;
+  }
+  const { width, height } = tripMapSize();
+  const routeKey = [
+    `${width}x${height}`,
+    paisId || 'all',
+    withCoords.map(item => `${item.ciudad.id}:${item.ciudad.lat}:${item.ciudad.lng}`).join(',')
+  ].join('|');
+  if (tripMapState.key !== routeKey) {
+    tripMapState.key = routeKey;
+    tripMapState.zoomDelta = 0;
+    tripMapState.panX = 0;
+    tripMapState.panY = 0;
+  }
+  const baseZoom = chooseMapZoom(withCoords, width, height);
+  const zoom = Math.max(4, Math.min(18, baseZoom + tripMapState.zoomDelta));
+  const worldPoints = withCoords.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom));
+  const minX = Math.min(...worldPoints.map(p => p.x));
+  const maxX = Math.max(...worldPoints.map(p => p.x));
+  const minY = Math.min(...worldPoints.map(p => p.y));
+  const maxY = Math.max(...worldPoints.map(p => p.y));
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const startX = centerX - width / 2 - tripMapState.panX;
+  const startY = centerY - height / 2 - tripMapState.panY;
+  const maxTile = (2 ** zoom) - 1;
+  const tileMinX = Math.max(0, Math.floor(startX / 256));
+  const tileMaxX = Math.min(maxTile, Math.floor((startX + width) / 256));
+  const tileMinY = Math.max(0, Math.floor(startY / 256));
+  const tileMaxY = Math.min(maxTile, Math.floor((startY + height) / 256));
+  const tiles = [];
+  for (let x = tileMinX; x <= tileMaxX; x += 1) {
+    for (let y = tileMinY; y <= tileMaxY; y += 1) {
+      const left = ((x * 256 - startX) / width) * 100;
+      const top = ((y * 256 - startY) / height) * 100;
+      const tileW = (256 / width) * 100;
+      const tileH = (256 / height) * 100;
+      const primary = `https://a.basemaps.cartocdn.com/rastertiles/voyager/${zoom}/${x}/${y}.png`;
+      const fallback = `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+      tiles.push(`<img class="map-tile" src="${primary}" onerror="this.onerror=null;this.src='${fallback}'" alt="" loading="lazy" decoding="async" draggable="false" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${tileW.toFixed(3)}%;height:${tileH.toFixed(3)}%;">`);
+    }
+  }
+  const project = item => {
+    const point = mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom);
+    return {
+      x: point.x - startX,
+      y: point.y - startY
+    };
+  };
+  const projectedItems = withCoords.map((item, index) => ({ ...item, index, point: project(item) }));
+  const pointGroups = new Map();
+  projectedItems.forEach(item => {
+    const key = `${Math.round(item.point.x / 4)}:${Math.round(item.point.y / 4)}`;
+    if (!pointGroups.has(key)) pointGroups.set(key, []);
+    pointGroups.get(key).push(item);
+  });
+  pointGroups.forEach(group => {
+    if (group.length <= 1) return;
+    group.forEach((item, index) => {
+      const angle = (-Math.PI / 2) + (index * 2 * Math.PI / group.length);
+      item.point = {
+        x: Math.max(16, Math.min(width - 16, item.point.x + Math.cos(angle) * 18)),
+        y: Math.max(16, Math.min(height - 16, item.point.y + Math.sin(angle) * 18))
+      };
+    });
+  });
+  const routeItems = projectedItems.filter(item => !item.configuredOnly);
+  const routePoints = routeItems.map(item => item.point).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const markers = projectedItems.map((item, index) => {
+    const p = item.point;
+    const labelX = p.x + 12 > width - 120 ? p.x - 12 : p.x + 12;
+    const anchor = p.x + 12 > width - 120 ? 'end' : 'start';
+    const markerText = item.configuredOnly ? '+' : index + 1;
+    const title = item.configuredOnly
+      ? `${item.ciudad.nombre} · sin gastos en este viaje`
+      : `${item.ciudad.nombre} · ${item.count} gastos · ${fmtCurrency(item.totalEur, 'EUR')}`;
+    return `<g class="map-marker${item.configuredOnly ? ' map-marker-config' : ''}"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="7"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text><text x="${labelX.toFixed(1)}" y="${(p.y - 10).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(item.ciudad.nombre)}</text><title>${escapeHtml(title)}</title></g>`;
+  }).join('');
+  const zoomLabel = tripMapState.zoomDelta === 0 ? 'auto' : `${tripMapState.zoomDelta > 0 ? '+' : ''}${tripMapState.zoomDelta}`;
+  container.innerHTML = `<div class="trip-map-shell">
+    <div class="map-controls" aria-label="Controles del mapa">
+      <div class="map-controls-actions">
+        <button type="button" data-map-zoom="reset" title="Volver al encuadre automático">Centrar</button>
+        <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
+        <button type="button" data-map-add-stop="1" title="Añadir una ciudad planificada al viaje">Añadir parada</button>
+        <button type="button" data-map-refresh="1" title="Actualizar con las coordenadas guardadas en Configuración">Actualizar</button>
+        <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
+      </div>
+      <div class="map-controls-zoom">
+        <button type="button" data-map-zoom="out" title="Reducir mapa">-</button>
+        <span>Z ${zoom} ${zoomLabel}</span>
+        <button type="button" data-map-zoom="in" title="Ampliar mapa">+</button>
+      </div>
+    </div>
+    <div class="trip-map-frame" data-map-pan="1" style="aspect-ratio:${width} / ${height}">
+      <div class="map-tiles" aria-hidden="true">${tiles.join('')}</div>
+      <svg class="trip-map-overlay" viewBox="0 0 ${width} ${height}" role="img" aria-label="Mapa del viaje">
+        ${shouldDrawRoute && routePoints && routeItems.length > 1 ? `<polyline points="${routePoints}" class="map-route"></polyline>` : ''}
+        ${markers}
+      </svg>
+      <div class="map-attribution">© OpenStreetMap · © CARTO</div>
+    </div>
+  </div>`;
+  const missingText = missing.length ? ` Faltan coordenadas: ${missing.map(item => item.ciudad.nombre).join(', ')}.` : '';
+  const route = withCoords.filter(item => !item.configuredOnly).map(item => item.ciudad.nombre).join(' → ');
+  const configuredStops = withCoords.filter(item => item.configuredOnly).map(item => item.ciudad.nombre);
+  const configuredText = configuredStops.length ? ` Paradas configuradas sin gasto: ${configuredStops.join(', ')}.` : '';
+  const routeLabel = shouldDrawRoute ? `Ruta: ${route || 'sin gastos con ciudad'}.` : `Ciudades: ${route || 'sin gastos con ciudad'}.`;
+  info.textContent = `${withCoords.length} ciudades en el mapa. ${routeLabel}${configuredText}${missingText}`;
+}
+
+function mapGesturePoints() {
+  return [...tripMapGesture.pointers.values()];
+}
+
+function mapGestureDistance(points) {
+  if (points.length < 2) return 0;
+  return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+}
+
+function mapGestureCenter(points) {
+  return {
+    x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+    y: points.reduce((sum, point) => sum + point.y, 0) / points.length
+  };
+}
+
+function clearMapGestureFrame(frame) {
+  if (frame) frame.classList.remove('dragging');
+  tripMapGesture.frame = null;
+  tripMapGesture.pinch = false;
+  tripMapGesture.distance = 0;
+  tripMapGesture.lastZoomAt = 0;
+}
+
+function mapFrameScale(frame) {
+  const rect = frame ? frame.getBoundingClientRect() : null;
+  const { width, height } = tripMapSize();
+  return {
+    x: rect && rect.width ? width / rect.width : 1,
+    y: rect && rect.height ? height / rect.height : 1
+  };
+}
+
+function setMapDragTransform(dx, dy) {
+  if (!tripMapDrag.frame) return;
+  tripMapDrag.frame.querySelectorAll('.map-tiles, .trip-map-overlay').forEach(el => {
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+  });
+}
+
+function startTripMapDrag(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (target.closest('.map-controls')) return;
+  const frame = target.closest('.trip-map-frame');
+  if (!frame) return;
+  try {
+    frame.setPointerCapture(event.pointerId);
+  } catch {
+    // Algunos navegadores móviles no permiten capturar el puntero en ciertos gestos.
+  }
+  tripMapGesture.frame = frame;
+  tripMapGesture.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  const points = mapGesturePoints();
+  if (points.length >= 2) {
+    setMapDragTransform(0, 0);
+    tripMapDrag.active = false;
+    tripMapDrag.frame = null;
+    tripMapDrag.lastDx = 0;
+    tripMapDrag.lastDy = 0;
+    tripMapGesture.pinch = true;
+    tripMapGesture.distance = mapGestureDistance(points);
+    tripMapGesture.lastZoomAt = 0;
+    frame.classList.add('dragging');
+    event.preventDefault();
+    return;
+  }
+  tripMapDrag.active = true;
+  tripMapDrag.frame = frame;
+  tripMapDrag.startX = event.clientX;
+  tripMapDrag.startY = event.clientY;
+  tripMapDrag.lastDx = 0;
+  tripMapDrag.lastDy = 0;
+  frame.classList.add('dragging');
+}
+
+function moveTripMapDrag(event) {
+  if (tripMapGesture.pointers.has(event.pointerId)) {
+    tripMapGesture.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  }
+  if (tripMapGesture.pinch && tripMapGesture.pointers.size >= 2) {
+    const points = mapGesturePoints();
+    const distance = mapGestureDistance(points);
+    const center = mapGestureCenter(points);
+    const frame = tripMapGesture.frame;
+    const now = Date.now();
+    const ratio = 1.55;
+    if (distance && tripMapGesture.distance && now - tripMapGesture.lastZoomAt > 320) {
+      if (distance > tripMapGesture.distance * ratio) {
+        if (zoomTripMapAtClient(frame, center.x, center.y, 1)) {
+          tripMapGesture.distance = distance;
+          tripMapGesture.lastZoomAt = now;
+        }
+      } else if (distance < tripMapGesture.distance / ratio) {
+        if (zoomTripMapAtClient(frame, center.x, center.y, -1)) {
+          tripMapGesture.distance = distance;
+          tripMapGesture.lastZoomAt = now;
+        }
+      }
+    }
+    event.preventDefault();
+    return;
+  }
+  if (!tripMapDrag.active) return;
+  tripMapDrag.lastDx = event.clientX - tripMapDrag.startX;
+  tripMapDrag.lastDy = event.clientY - tripMapDrag.startY;
+  setMapDragTransform(tripMapDrag.lastDx, tripMapDrag.lastDy);
+  event.preventDefault();
+}
+
+function endTripMapDrag(event) {
+  if (event && tripMapGesture.pointers.has(event.pointerId)) {
+    tripMapGesture.pointers.delete(event.pointerId);
+  }
+  if (tripMapGesture.pinch) {
+    if (tripMapGesture.pointers.size < 2) clearMapGestureFrame(tripMapGesture.frame);
+    return;
+  }
+  if (!tripMapDrag.active) return;
+  const frame = tripMapDrag.frame;
+  const dx = tripMapDrag.lastDx;
+  const dy = tripMapDrag.lastDy;
+  const moved = Math.abs(dx) > 2 || Math.abs(dy) > 2;
+  if (moved) {
+    const scale = mapFrameScale(frame);
+    tripMapState.panX += dx * scale.x;
+    tripMapState.panY += dy * scale.y;
+  }
+  tripMapDrag.active = false;
+  tripMapDrag.frame = null;
+  tripMapDrag.lastDx = 0;
+  tripMapDrag.lastDy = 0;
+  if (frame) frame.classList.remove('dragging');
+  if (tripMapGesture.pointers.size === 0) clearMapGestureFrame(frame);
+  if (moved) renderTripMap();
+}
+
 function renderResumen() {
   const mon = $('#r-moneda').value;
   const cta = $('#r-cuenta').value;
-  const viaje = $('#r-viaje').value;
+  const pais = $('#r-pais') ? $('#r-pais').value : '';
+  const ciudad = $('#r-ciudad') ? $('#r-ciudad').value : '';
   const gastos = state.gastos
     .filter(g => !mon || g.moneda === mon)
     .filter(g => !cta || g.cuentaId === Number(cta))
-    .filter(g => !viaje || g.viajeId === Number(viaje));
+    .filter(g => gastoMatchesLugarFilters(g, pais, ciudad))
+    .filter(gastoMatchesTripSelection);
   const totalEur = gastos.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
   const totalsByCurrency = gastos.reduce((items, g) => {
     items[g.moneda] = (items[g.moneda] || 0) + numberValue(g.importe);
@@ -925,43 +2836,50 @@ function renderResumen() {
       .filter(([currency]) => currency !== 'EUR')
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([currency, amount]) => ({ currency, amount })));
+  const days = summaryDays(gastos);
+  const daysLine = `<div>${days} ${days === 1 ? 'día' : 'días'}</div>`;
   if (gastos.length) {
-    const dates = gastos.map(g => new Date(`${g.fecha}T00:00:00`));
-    const min = new Date(Math.min(...dates));
-    const max = new Date(Math.max(...dates));
-    const days = Math.max(1, Math.ceil((max - min) / 86400000) + 1);
-    $('#kpi-total').innerHTML = formatCurrencyLines(totalLines);
+    $('#kpi-total').innerHTML = `${daysLine}<div class="kpi-note">Total</div>${formatCurrencyLines(totalLines)}`;
     $('#kpi-media').innerHTML = totalLines.map(item => ({
       currency: item.currency,
       amount: item.amount / days,
       always: item.always
     }))
       .filter(item => Math.abs(numberValue(item.amount)) > 0.000001 || item.always)
-      .map(item => `<div>${fmtCurrency(item.amount, item.currency)}/dia</div>`)
+      .map(item => `<div>${fmtDailyCurrencyWithEur(item.amount, item.currency)}</div>`)
       .join('');
   } else {
-    $('#kpi-total').innerHTML = formatCurrencyLines(totalLines);
-    $('#kpi-media').textContent = fmtCurrency(0, 'EUR');
+    $('#kpi-total').innerHTML = `${daysLine}<div class="kpi-note">Total</div>${formatCurrencyLines(totalLines)}`;
+    $('#kpi-media').innerHTML = `<div>${fmtCurrency(0, 'EUR')}/día</div>`;
   }
-  const remainingByCurrency = {};
-  let remainingEur = 0;
-  const pcts = state.cuentas.map(c => {
-    const spent = gastos
-      .filter(g => g.cuentaId === c.id)
-      .reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
-    if (c.presupuesto) {
-      const remaining = numberValue(c.presupuesto) - spent;
-      remainingByCurrency[c.moneda] = (remainingByCurrency[c.moneda] || 0) + remaining;
-      remainingEur += toEur(remaining, c.moneda);
-    }
-    return c.presupuesto ? Math.min(100, spent * 100 / c.presupuesto) : 0;
-  });
-  const budgetPct = `${(pcts.reduce((a, b) => a + b, 0) / Math.max(1, pcts.length)).toFixed(0)}%`;
-  const remainingLines = [{ currency: 'EUR', amount: remainingEur, always: true }]
-    .concat(Object.entries(remainingByCurrency)
-      .filter(([currency]) => currency !== 'EUR')
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([currency, amount]) => ({ currency, amount })));
+  const tripBudget = tripBudgetSummary(gastos);
+  let budgetPct = '0%';
+  let remainingLines = [{ currency: 'EUR', amount: 0, always: true }];
+  if (tripBudget) {
+    budgetPct = `${Math.min(100, tripBudget.pct).toFixed(0)}%`;
+    remainingLines = [{ currency: 'EUR', amount: tripBudget.remainingEur, always: true }];
+  } else {
+    const remainingByCurrency = {};
+    let remainingEur = 0;
+    const budgetAccounts = accountsForBudgetScope(gastos);
+    const pcts = budgetAccounts.map(c => {
+      const spent = gastos
+        .filter(g => g.cuentaId === c.id)
+        .reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
+      if (c.presupuesto) {
+        const remaining = numberValue(c.presupuesto) - spent;
+        remainingByCurrency[c.moneda] = (remainingByCurrency[c.moneda] || 0) + remaining;
+        remainingEur += toEur(remaining, c.moneda);
+      }
+      return c.presupuesto ? Math.min(100, spent * 100 / c.presupuesto) : 0;
+    });
+    budgetPct = `${(pcts.reduce((a, b) => a + b, 0) / Math.max(1, pcts.length)).toFixed(0)}%`;
+    remainingLines = [{ currency: 'EUR', amount: remainingEur, always: true }]
+      .concat(Object.entries(remainingByCurrency)
+        .filter(([currency]) => currency !== 'EUR')
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([currency, amount]) => ({ currency, amount })));
+  }
   $('#kpi-presu').innerHTML = `<div>${budgetPct}</div><div class="kpi-note">Restante</div>${formatCurrencyLines(remainingLines)}`;
 
   const byCategory = {};
@@ -974,7 +2892,12 @@ function renderResumen() {
   const categoryRows = Object.entries(byCategory)
     .map(([key, total]) => ({ cat: key.split('||')[0], sub: key.split('||')[1], total }))
     .sort((a, b) => b.total - a.total);
-  $('#tabla-cat tbody').innerHTML = categoryRows.map(row => `<tr><td>${escapeHtml(row.cat)}</td><td>${escapeHtml(row.sub)}</td><td>${fmtCurrency(row.total, 'EUR')}</td></tr>`).join('');
+  const totalShare = value => totalEur ? `${((numberValue(value) * 100) / totalEur).toFixed(1)}%` : '0.0%';
+  const breakdownRow = (firstLabel, secondLabel, value, className = '') =>
+    `<tr${className ? ` class="${className}"` : ''}><td>${escapeHtml(firstLabel)}</td><td>${escapeHtml(secondLabel)}</td><td>${fmtCurrency(value, 'EUR')}</td><td>${totalShare(value)}</td></tr>`;
+  const summaryTotalRow = (firstLabel = 'Total', secondLabel = '-') =>
+    `<tr class="subtotal-row summary-total-row"><td>${escapeHtml(firstLabel)}</td><td>${escapeHtml(secondLabel)}</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>${totalEur ? '100.0%' : '0.0%'}</td></tr>`;
+  $('#tabla-cat tbody').innerHTML = categoryRows.map(row => breakdownRow(row.cat, row.sub, row.total)).join('') + summaryTotalRow('Total', '-');
   drawPieChart($('#chart-cat'), categoryRows.slice(0, 6).map(row => ({ label: row.sub === '(sin subcat)' ? row.cat : `${row.cat} · ${row.sub}`, value: row.total })));
 
   const categoryTotals = categoryRows
@@ -986,10 +2909,12 @@ function renderResumen() {
     }, [])
     .sort((a, b) => b.total - a.total);
   const breakdownMode = $('#r-desglose') ? $('#r-desglose').value : 'subcategorias';
+  const breakdownHead = $('#tabla-cat thead tr');
+  if (breakdownHead) breakdownHead.innerHTML = '<th>Categoría</th><th>Subcategoría</th><th>Total EUR</th><th>% gasto</th>';
   if (breakdownMode === 'categorias') {
     $('#tabla-cat tbody').innerHTML = categoryTotals
-      .map(row => `<tr><td>${escapeHtml(row.cat)}</td><td>-</td><td>${fmtCurrency(row.total, 'EUR')}</td></tr>`)
-      .join('');
+      .map(row => breakdownRow(row.cat, '-', row.total))
+      .join('') + summaryTotalRow('Total', '-');
     drawPieChart($('#chart-cat'), categoryTotals.slice(0, 6).map(row => ({ label: row.cat, value: row.total })));
   } else {
     const groupedRows = [];
@@ -999,45 +2924,88 @@ function renderResumen() {
         .filter(row => row.cat === catRow.cat)
         .sort((a, b) => b.total - a.total)
         .forEach(row => {
-          groupedRows.push(`<tr><td>${escapeHtml(row.cat)}</td><td>${escapeHtml(row.sub)}</td><td>${fmtCurrency(row.total, 'EUR')}</td></tr>`);
+          groupedRows.push(breakdownRow(row.cat, row.sub, row.total));
           pieRows.push(row);
         });
-      groupedRows.push(`<tr class="subtotal-row"><td>${escapeHtml(catRow.cat)}</td><td>Subtotal categoria</td><td>${fmtCurrency(catRow.total, 'EUR')}</td></tr>`);
+          groupedRows.push(breakdownRow(catRow.cat, 'Subtotal categoría', catRow.total, 'subtotal-row'));
     });
+    groupedRows.push(summaryTotalRow('Total', '-'));
     $('#tabla-cat tbody').innerHTML = groupedRows.join('');
     drawPieChart($('#chart-cat'), pieRows.slice(0, 6).map(row => ({ label: row.sub === '(sin subcat)' ? row.cat : `${row.cat} · ${row.sub}`, value: row.total })));
   }
 
-  const accounts = cta ? state.cuentas.filter(c => c.id === Number(cta)) : state.cuentas;
-  const accountRows = accounts.map(c => {
+  if (breakdownMode === 'ciudades') {
+    const cityTotals = {};
+    gastos.forEach(g => {
+      const ciudad = state.lugares.find(l => l.id === Number(g.ciudadId));
+      const paisLugar = state.lugares.find(l => l.id === Number(g.paisId || (ciudad && ciudad.parentId)));
+      const key = `${ciudad ? ciudad.nombre : '(sin ciudad)'}||${paisLugar ? paisLugar.nombre : '-'}`;
+      cityTotals[key] = (cityTotals[key] || 0) + toEur(g.importe, g.moneda);
+    });
+    const cityRows = Object.entries(cityTotals)
+      .map(([key, total]) => ({ ciudad: key.split('||')[0], pais: key.split('||')[1], total }))
+      .sort((a, b) => b.total - a.total);
+    if (breakdownHead) breakdownHead.innerHTML = '<th>Ciudad</th><th>País</th><th>Total EUR</th><th>% gasto</th>';
+    $('#tabla-cat tbody').innerHTML = cityRows
+      .map(row => breakdownRow(row.ciudad, row.pais, row.total))
+      .join('') + summaryTotalRow('Total', '-');
+    drawPieChart($('#chart-cat'), cityRows.slice(0, 6).map(row => ({ label: row.ciudad, value: row.total })));
+  }
+
+  const usedAccountIds = new Set(gastos.map(g => Number(g.cuentaId)));
+  const accounts = cta
+    ? state.cuentas.filter(c => c.id === Number(cta))
+    : state.cuentas.filter(c => usedAccountIds.has(Number(c.id)));
+  let accountRows = accounts.map(c => {
     const spentAccountCurrency = gastos
       .filter(g => g.cuentaId === c.id)
       .reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
     const spentEur = gastos.filter(g => g.cuentaId === c.id).reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
-    const budget = numberValue(c.presupuesto);
-    const budgetEur = budget ? toEur(budget, c.moneda) : 0;
-    const remainingEur = budget ? budgetEur - spentEur : null;
+    let budget = numberValue(c.presupuesto);
+    let budgetEur = budget ? toEur(budget, c.moneda) : 0;
+    let remainingEur = budget ? budgetEur - spentEur : null;
+    let pct = budget ? spentEur * 100 / budgetEur : 0;
     return {
-      label: c.nombre,
+      label: accountLabel(c),
       moneda: c.moneda,
       total: spentAccountCurrency,
       totalEur: spentEur,
       presupuesto: budget,
       presupuestoEur: budgetEur,
       restanteEur: remainingEur,
-      pct: budget ? spentEur * 100 / budgetEur : 0
+      pct
     };
   }).sort((a, b) => b.totalEur - a.totalEur);
   drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.label, value: row.totalEur })));
-  $('#tabla-cuenta tbody').innerHTML = accountRows.map(row => `<tr class="${row.restanteEur !== null && row.restanteEur < 0 ? 'warning-row' : ''}"><td>${escapeHtml(row.label)}</td><td>${escapeHtml(row.moneda)}</td><td>${fmtCurrency(row.total, row.moneda)}</td><td>${fmtCurrency(row.totalEur, 'EUR')}</td><td>${row.presupuesto ? `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}` : '-'}</td><td>${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td>${row.pct.toFixed(1)}%</td></tr>`).join('');
+  const accountHtml = accountRows.map(row => `<tr class="${row.restanteEur !== null && row.restanteEur < 0 ? 'warning-row' : ''}"><td>${escapeHtml(row.label)}</td><td>${escapeHtml(row.moneda)}</td><td>${fmtCurrency(row.total, row.moneda)}</td><td>${fmtCurrency(row.totalEur, 'EUR')}</td><td>${row.presupuesto ? `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}` : '-'}</td><td>${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td>${row.pct.toFixed(1)}%</td></tr>`);
+  const accountBudgetEur = accountRows.reduce((sum, row) => sum + numberValue(row.presupuestoEur), 0);
+  const accountRemainingEur = accountBudgetEur ? accountBudgetEur - totalEur : null;
+  const accountPct = accountBudgetEur ? totalEur * 100 / accountBudgetEur : 0;
+  if (accountBudgetEur) {
+    accountHtml.push(`<tr class="${accountRemainingEur !== null && accountRemainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td>Total / presupuesto de cuentas</td><td>EUR</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>${fmtCurrency(accountBudgetEur, 'EUR')}</td><td>${accountRemainingEur === null ? '-' : fmtCurrency(accountRemainingEur, 'EUR')}</td><td>${accountPct.toFixed(1)}%</td></tr>`);
+  }
+  if (tripBudget) {
+    accountHtml.push(`<tr class="${tripBudget.remainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td>Total / presupuesto del viaje</td><td>EUR</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>${fmtCurrency(tripBudget.budgetEur, 'EUR')}</td><td>${fmtCurrency(tripBudget.remainingEur, 'EUR')}</td><td>${tripBudget.pct.toFixed(1)}%</td></tr>`);
+  } else if (!accountBudgetEur) {
+    accountHtml.push(`<tr class="subtotal-row"><td>Total gastado</td><td>EUR</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>-</td><td>-</td><td>-</td></tr>`);
+  }
+  $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
+  renderTripMap();
 }
 
 async function exportAll() {
+  return buildBackupData('all');
+}
+
+function buildBackupData(scope = 'all', tripId = null) {
+  if (scope === 'trip') return buildTripBackupData(tripId);
   return {
     version: APP_VERSION,
     generatedAt: new Date().toISOString(),
+    backupScope: 'all',
     cuentas: state.cuentas,
     categorias: state.categorias,
+    lugares: state.lugares,
     gastos: state.gastos,
     viajes: state.viajes,
     monedas: state.monedas,
@@ -1045,11 +3013,38 @@ async function exportAll() {
   };
 }
 
+async function exportTripBackup(tripId) {
+  return buildTripBackupData(tripId);
+}
+
+function buildTripBackupData(tripId) {
+  const id = Number(tripId);
+  const trip = state.viajes.find(v => Number(v.id) === id);
+  if (!trip) throw new Error('Elige un viaje para exportar');
+  const gastos = state.gastos.filter(g => Number(g.viajeId) === id);
+  const usedAccountIds = new Set(gastos.map(g => Number(g.cuentaId)).filter(Boolean));
+  const cuentas = state.cuentas.filter(c => Number(c.viajeId) === id || usedAccountIds.has(Number(c.id)));
+  const accountIds = new Set(cuentas.map(c => Number(c.id)));
+  const transferencias = state.transferencias.filter(t => accountIds.has(Number(t.fromId)) || accountIds.has(Number(t.toId)));
+  return {
+    version: APP_VERSION,
+    generatedAt: new Date().toISOString(),
+    backupScope: 'trip',
+    cuentas,
+    categorias: state.categorias,
+    lugares: state.lugares,
+    gastos,
+    viajes: [trip],
+    monedas: state.monedas,
+    transferencias
+  };
+}
+
 async function importAll(data) {
   if (!data || !Array.isArray(data.cuentas) || !Array.isArray(data.categorias) || !Array.isArray(data.gastos)) {
-    throw new Error('Archivo no valido');
+    throw new Error('Archivo no válido');
   }
-  await clearStores(['cuentas', 'categorias', 'gastos', 'viajes', 'monedas', 'transferencias']);
+  await clearStores(['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'monedas', 'transferencias']);
   await ensureBaseCurrency();
   for (const m of data.monedas || []) {
     const codigo = String(m.codigo || '').toUpperCase();
@@ -1068,6 +3063,8 @@ async function importAll(data) {
       fechaInicio: v.fechaInicio,
       fechaFin: v.fechaFin,
       presupuesto: numberValue(v.presupuesto),
+      paisIds: tripCountryIds(v),
+      ciudadIds: tripCityIds(v),
       createdAt: v.createdAt || new Date().toISOString(),
       updatedAt: v.updatedAt || new Date().toISOString()
     };
@@ -1078,6 +3075,7 @@ async function importAll(data) {
     const obj = {
       nombre: c.nombre,
       moneda: c.moneda || 'EUR',
+      viajeId: c.viajeId ? Number(c.viajeId) : null,
       saldoInicial: numberValue(c.saldoInicial),
       saldoActual: numberValue(c.saldoActual ?? c.saldoInicial),
       presupuesto: numberValue(c.presupuesto),
@@ -1113,10 +3111,22 @@ async function importAll(data) {
     if (c.id != null) obj.id = c.id;
     await addRecord('categorias', obj);
   }
+  for (const l of data.lugares || []) {
+    const obj = {
+      nombre: l.nombre,
+      parentId: l.parentId ? Number(l.parentId) : null,
+      lat: optionalNumberValue(l.lat),
+      lng: optionalNumberValue(l.lng)
+    };
+    if (l.id != null) obj.id = l.id;
+    await addRecord('lugares', obj);
+  }
   for (const g of data.gastos || []) {
     const obj = {
       ...g,
       viajeId: g.viajeId || null,
+      paisId: g.paisId || null,
+      ciudadId: g.ciudadId || null,
       importe: numberValue(g.importe),
       importeEur: toEur(g.importe, g.moneda)
     };
@@ -1125,8 +3135,95 @@ async function importAll(data) {
   }
 }
 
+async function importTripBackup(data, targetTripId) {
+  if (!data || !Array.isArray(data.viajes) || !data.viajes.length || !Array.isArray(data.gastos)) {
+    throw new Error('El archivo no contiene un viaje exportado');
+  }
+  const targetId = Number(targetTripId);
+  const targetTrip = state.viajes.find(v => Number(v.id) === targetId);
+  if (!targetTrip) throw new Error('Elige el viaje que quieres reemplazar');
+  const sourceTrip = data.viajes[0];
+  const sourceTripId = Number(sourceTrip.id);
+  const now = new Date().toISOString();
+
+  for (const l of data.lugares || []) {
+    if (l.id == null || state.lugares.some(existing => Number(existing.id) === Number(l.id))) continue;
+    await addRecord('lugares', {
+      id: Number(l.id),
+      nombre: l.nombre,
+      parentId: l.parentId ? Number(l.parentId) : null,
+      lat: optionalNumberValue(l.lat),
+      lng: optionalNumberValue(l.lng)
+    });
+  }
+  await loadAll();
+
+  const oldTripAccounts = state.cuentas.filter(c => Number(c.viajeId) === targetId);
+  const oldTripAccountIds = new Set(oldTripAccounts.map(c => Number(c.id)));
+  for (const gasto of state.gastos.filter(g => Number(g.viajeId) === targetId)) {
+    await deleteRecord('gastos', Number(gasto.id));
+  }
+  for (const transfer of state.transferencias.filter(t => oldTripAccountIds.has(Number(t.fromId)) || oldTripAccountIds.has(Number(t.toId)))) {
+    await deleteRecord('transferencias', Number(transfer.id));
+  }
+  for (const account of oldTripAccounts) {
+    await deleteRecord('cuentas', Number(account.id));
+  }
+  const tripPatch = { updatedAt: now };
+  if (sourceTrip.presupuesto != null) tripPatch.presupuesto = numberValue(sourceTrip.presupuesto);
+  if (Array.isArray(sourceTrip.paisIds) || sourceTrip.paisId) tripPatch.paisIds = tripCountryIds(sourceTrip);
+  if (Array.isArray(sourceTrip.ciudadIds)) tripPatch.ciudadIds = tripCityIds(sourceTrip);
+  await updateViaje(targetId, tripPatch);
+  const accountMap = {};
+  for (const c of (data.cuentas || []).filter(c => Number(c.viajeId) === sourceTripId)) {
+    const obj = {
+      nombre: c.nombre,
+      moneda: c.moneda || 'EUR',
+      viajeId: targetId,
+      saldoInicial: numberValue(c.saldoInicial),
+      saldoActual: numberValue(c.saldoActual ?? c.saldoInicial),
+      presupuesto: numberValue(c.presupuesto),
+      nota: c.nota || '',
+      createdAt: c.createdAt || now,
+      updatedAt: now
+    };
+    accountMap[Number(c.id)] = await addRecord('cuentas', obj);
+  }
+  for (const g of data.gastos || []) {
+    const sourceAccountId = Number(g.cuentaId);
+    let cuentaId = accountMap[sourceAccountId];
+    if (!cuentaId) {
+      const sourceAccount = (data.cuentas || []).find(c => Number(c.id) === sourceAccountId);
+      const global = sourceAccount && state.cuentas.find(c => !c.viajeId && accountKey(c) === accountKey(sourceAccount));
+      cuentaId = global ? global.id : null;
+    }
+    if (!cuentaId) continue;
+    const obj = {
+      ...g,
+      id: undefined,
+      viajeId: targetId,
+      cuentaId: Number(cuentaId),
+      importe: numberValue(g.importe),
+      importeEur: toEur(g.importe, g.moneda),
+      createdAt: g.createdAt || now,
+      updatedAt: now
+    };
+    delete obj.id;
+    await addRecord('gastos', obj);
+  }
+}
+
 async function seedIfEmpty() {
   await seedDefaults();
+}
+
+function scrollToGastosStart() {
+  const view = $('#view-gastos');
+  if (!view) return;
+  requestAnimationFrame(() => {
+    const top = Math.max(0, view.getBoundingClientRect().top + window.scrollY - 12);
+    window.scrollTo({ top, behavior: 'smooth' });
+  });
 }
 
 function setTab(id) {
@@ -1136,15 +3233,19 @@ function setTab(id) {
     $(`#view-${tab}`).style.display = tab === id ? 'block' : 'none';
   });
   if (id === 'resumen') renderResumen();
+  if (id === 'gastos') scrollToGastosStart();
 }
 
 function applySelectedTrip(id) {
-  state.selectedViajeId = id ? Number(id) : null;
-  const value = state.selectedViajeId ? String(state.selectedViajeId) : '';
-  if ($('#f-viaje')) $('#f-viaje').value = value;
-  if ($('#r-viaje')) $('#r-viaje').value = value;
+  setSelectedTrips(id ? [Number(id)] : []);
   renderViajesHome();
+  renderFilterAccountSelector();
+  renderResumenAccountSelector();
+  renderFilterPaises();
+  renderResumenPaises();
+  renderMapPaises();
   renderGastosTabla();
+  renderCuentas();
   renderResumen();
 }
 
@@ -1154,13 +3255,19 @@ function openEditGasto(gasto) {
   $('#edit-gasto-id').value = gasto.id;
   $('#edit-gasto-fecha').value = gasto.fecha || todayIso();
   $('#edit-gasto-viaje').value = gasto.viajeId ? String(gasto.viajeId) : '';
+  renderEditGastoAccountSelector();
   $('#edit-gasto-cuenta').value = String(gasto.cuentaId || '');
   const account = state.cuentas.find(c => c.id === Number(gasto.cuentaId));
   $('#edit-gasto-moneda').value = account ? account.moneda : gasto.moneda;
   $('#edit-gasto-cat').value = String(gasto.catId || '');
   renderEditSubcategories();
   $('#edit-gasto-subcat').value = gasto.subcatId ? String(gasto.subcatId) : '';
-  $('#edit-gasto-importe').value = numberValue(gasto.importe);
+  $('#edit-gasto-pais').value = gasto.paisId ? String(gasto.paisId) : '';
+  renderEditCiudades();
+  $('#edit-gasto-ciudad').value = gasto.ciudadId ? String(gasto.ciudadId) : '';
+  const currentAmount = numberValue(gasto.importe);
+  $('#edit-gasto-tipo').value = currentAmount < 0 ? 'ingreso' : 'gasto';
+  $('#edit-gasto-importe').value = Math.abs(currentAmount);
   $('#edit-gasto-desc').value = gasto.desc || '';
   $('#edit-gasto-ticket').value = '';
   $('#edit-gasto-ticket-remove').checked = false;
@@ -1182,7 +3289,10 @@ function openAddGasto() {
   if (!dialog) return;
   setMessage('#msg-gasto', '');
   if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
-  if (state.selectedViajeId && $('#g-viaje')) $('#g-viaje').value = String(state.selectedViajeId);
+  const ids = selectedTripIds();
+  if (ids.length === 1 && $('#g-viaje')) $('#g-viaje').value = String(ids[0]);
+  renderGastoAccountSelector();
+  applyDefaultTripCountryToExpense();
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute('open', 'open');
 }
@@ -1240,16 +3350,223 @@ function closePrintDialog() {
   else dialog.removeAttribute('open');
 }
 
+function syncBackupExportTripVisibility() {
+  const tripMode = $('#backup-export-scope') && $('#backup-export-scope').value === 'trip';
+  const field = $('#backup-export-trip-field');
+  if (field) field.style.display = tripMode ? '' : 'none';
+  if ($('#backup-export-trip')) {
+    $('#backup-export-trip').disabled = !tripMode;
+    if (!tripMode) $('#backup-export-trip').value = '';
+  }
+}
+
+function syncBackupShareAvailability() {
+  const supported = canShareBackupFiles();
+  const shareButton = $('#backup-share');
+  if (shareButton) {
+    shareButton.hidden = !supported;
+    shareButton.disabled = !supported;
+    shareButton.title = supported
+      ? 'Compartir la copia con otras apps del móvil'
+      : 'Este navegador no permite compartir archivos de backup';
+  }
+  const dest = $('#backup-export-dest');
+  if (dest) {
+    const shareOption = [...dest.options].find(option => option.value === 'share');
+    if (shareOption) {
+      shareOption.disabled = !supported;
+      shareOption.hidden = !supported;
+    }
+    if (!supported && dest.value === 'share') dest.value = 'download';
+  }
+}
+
+function disableBackupShareOption() {
+  const shareButton = $('#backup-share');
+  if (shareButton) {
+    shareButton.hidden = true;
+    shareButton.disabled = true;
+  }
+  const dest = $('#backup-export-dest');
+  if (dest) {
+    const shareOption = [...dest.options].find(option => option.value === 'share');
+    if (shareOption) {
+      shareOption.disabled = true;
+      shareOption.hidden = true;
+    }
+    if (dest.value === 'share') dest.value = 'download';
+  }
+}
+
+function openBackupDialog(mode = 'all') {
+  const dialog = $('#backup-dialog');
+  if (!dialog) return;
+  const importOnly = mode === 'import';
+  const backupOnly = mode === 'backup';
+  if ($('#backup-export-section')) $('#backup-export-section').style.display = importOnly ? 'none' : '';
+  if ($('#backup-import-section')) $('#backup-import-section').style.display = backupOnly ? 'none' : '';
+  if ($('#backup-export-section') && !$('#backup-history')) {
+    const box = document.createElement('div');
+    box.className = 'backup-history-box';
+    box.innerHTML = '<h3>Ultimas copias</h3><div id="backup-history"></div><p class="small">Si estas dentro de las fechas de un viaje y pasan 2 dias sin copia, la app mostrara un recordatorio.</p>';
+    $('#backup-export-section').appendChild(box);
+  }
+  const title = importOnly ? 'Importación' : backupOnly ? 'Backups' : 'Importación / Backups';
+  const heading = $('#backup-dialog h2');
+  if (heading) heading.textContent = title;
+  const ids = selectedTripIds();
+  if (ids.length === 1 && $('#backup-export-trip')) {
+    $('#backup-export-scope').value = 'trip';
+    $('#backup-export-trip').value = String(ids[0]);
+  } else if ($('#backup-export-scope')) {
+    $('#backup-export-scope').value = 'all';
+  }
+  syncBackupExportTripVisibility();
+  syncBackupShareAvailability();
+  if ($('#backup-import-trip')) {
+    const tripImport = $('#backup-import-mode').value === 'trip';
+    $('#backup-import-trip').disabled = !tripImport;
+    if (!tripImport) $('#backup-import-trip').value = '';
+  }
+  renderBackupHistory();
+  setMessage('#msg-backup', '');
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeBackupDialog() {
+  const dialog = $('#backup-dialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function openBackupDialogSafe(mode = 'all') {
+  try {
+    const normalizedMode = typeof mode === 'string' ? mode : 'all';
+    const dialog = $('#backup-dialog');
+    if (!dialog) return;
+    const importOnly = normalizedMode === 'import';
+    const backupOnly = normalizedMode === 'backup';
+    if ($('#backup-export-section')) $('#backup-export-section').style.display = importOnly ? 'none' : '';
+    if ($('#backup-import-section')) $('#backup-import-section').style.display = backupOnly ? 'none' : '';
+    const heading = $('#backup-dialog h2');
+    if (heading) heading.textContent = importOnly ? 'Importación' : backupOnly ? 'Backups' : 'Importación / Backups';
+    const ids = selectedTripIds();
+    if (ids.length === 1 && $('#backup-export-trip')) {
+      $('#backup-export-scope').value = 'trip';
+      $('#backup-export-trip').value = String(ids[0]);
+    } else if ($('#backup-export-scope')) {
+      $('#backup-export-scope').value = 'all';
+    }
+    syncBackupExportTripVisibility();
+    syncBackupShareAvailability();
+    if ($('#backup-import-trip')) {
+      const tripImport = $('#backup-import-mode').value === 'trip';
+      $('#backup-import-trip').disabled = !tripImport;
+      if (!tripImport) $('#backup-import-trip').value = '';
+    }
+    renderBackupHistory();
+    setMessage('#msg-backup', '');
+    if (dialog.open) return;
+    if (dialog.showModal) {
+      try {
+        dialog.showModal();
+      } catch {
+        dialog.setAttribute('open', 'open');
+      }
+    } else {
+      dialog.setAttribute('open', 'open');
+    }
+  } catch (err) {
+    alert(`No se pudo abrir Importación/Backups: ${err.message || err}`);
+  }
+}
+
+function closeBackupResultDialog() {
+  const dialog = $('#backup-result-dialog');
+  const isImport = (($('#backup-result-title') && $('#backup-result-title').textContent) || '').toLowerCase().includes('import');
+  if (dialog) {
+    if (dialog.close) dialog.close();
+    else dialog.removeAttribute('open');
+  }
+  closeBackupDialog();
+  if (isImport) setTab('viajes');
+}
+
+function showBackupResult(title, detail = '') {
+  if ($('#backup-result-title')) $('#backup-result-title').textContent = title;
+  if ($('#backup-result-detail')) $('#backup-result-detail').textContent = detail;
+  const dialog = $('#backup-result-dialog');
+  if (dialog) {
+    if (dialog.showModal) dialog.showModal();
+    else dialog.setAttribute('open', 'open');
+  }
+  setMessage('#msg-backup', '');
+}
+
+function showBackupResultSoon(title, detail = '') {
+  setTimeout(() => showBackupResult(title, detail), 900);
+}
+
+async function handleBackupDownload() {
+  try {
+    const filename = await prepareJsonBackup({
+      autoDownload: true,
+      scope: $('#backup-export-scope').value,
+      tripId: $('#backup-export-trip').value
+    });
+    setMessage('#msg-backup', `Copia creada: ${filename}`);
+    setMessage('#msg-export', `Copia creada: ${filename}`);
+    showBackupResultSoon('Copia realizada', filename);
+  } catch (err) {
+    setMessage('#msg-backup', err.message || String(err), true);
+  }
+}
+
+async function handleBackupShare() {
+  try {
+    syncBackupShareAvailability();
+    if (!canShareBackupFiles()) {
+      setMessage('#msg-backup', 'Este navegador no permite compartir archivos de backup. Usa Crear copia.', true);
+      return;
+    }
+    const filename = await shareJsonBackup($('#backup-export-scope').value, $('#backup-export-trip').value);
+    setMessage('#msg-backup', `Copia compartida: ${filename}`);
+    showBackupResult('Copia compartida', filename);
+  } catch (err) {
+    const cancelled = /abort|cancel/i.test(err.name || err.message || '');
+    if (!cancelled) disableBackupShareOption();
+    const message = cancelled
+      ? 'Compartir cancelado.'
+      : 'No se ha podido abrir compartir. Usa Crear copia para guardar el archivo en Descargas.';
+    setMessage('#msg-backup', message, !cancelled);
+  }
+}
+
+function handleBackupImportClick() {
+  const input = $('#file-import');
+  if (input) input.click();
+}
+
 function printableSectionHtml(id) {
   const original = $(`#view-${id}`);
   if (!original) return '';
   const clone = original.cloneNode(true);
   clone.removeAttribute('id');
   clone.style.display = 'block';
+  clone.querySelectorAll('.map-controls').forEach(el => el.remove());
+  clone.querySelectorAll('.map-tile').forEach(el => {
+    el.removeAttribute('loading');
+    el.setAttribute('decoding', 'sync');
+  });
   clone.querySelectorAll('.section-head, .filters-card, .row4, .action-col, .desktop-actions, .mobile-action-select, button, input, select, label').forEach(el => el.remove());
   clone.querySelectorAll('[style]').forEach(el => {
+    if (el.closest('.trip-map')) return;
     if (el instanceof HTMLElement) el.removeAttribute('style');
   });
+  const mapCard = clone.querySelector('#resumen-mapa');
+  if (mapCard) mapCard.insertAdjacentHTML('afterbegin', '<h2>Mapa del viaje</h2>');
   const title = id === 'gastos' ? 'Gastos' : 'Resumen';
   return `<section class="print-section print-${id}"><h1>${title}</h1>${clone.innerHTML}</section>`;
 }
@@ -1278,22 +3595,62 @@ function printableDocument(section) {
     body.desktop-print .chart { width: 60%; max-width: 640px; max-height: 360px; display: block; margin: 4px auto 6px; }
     body.desktop-print .card:has(.chart) { padding: 6px 8px; }
     body.mobile-print .chart { width: 100%; }
+    #resumen-cuentas, #resumen-mapa { break-before: page; page-break-before: always; }
+    #resumen-mapa, .trip-map, .trip-map-shell, .trip-map-frame { break-inside: avoid; page-break-inside: avoid; }
+    .trip-map { min-height: 0; margin-top: 6px; border: 1px solid #dbe3ef; border-radius: 6px; background: #dbeafe; overflow: hidden; }
+    .trip-map-shell { position: relative; }
+    .map-controls { display: none !important; }
+    .trip-map-frame { position: relative; width: 100%; height: 92mm !important; min-height: 0 !important; aspect-ratio: auto !important; overflow: hidden; border-radius: 6px; background: #cfe8f3; }
+    .map-tiles, .trip-map-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .map-tile { position: absolute; object-fit: cover; max-width: none !important; user-select: none; pointer-events: none; }
+    .trip-map-overlay { z-index: 2; pointer-events: none; }
+    .map-route { fill: none; stroke: #1d4ed8; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
+    .map-marker circle { fill: #dc2626; stroke: #fff; stroke-width: 3; }
+    .map-marker-config circle { fill: #2563eb; }
+    .map-marker text { fill: #111827; font-size: 15px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
+    .map-marker .map-marker-number { fill: #fff; stroke: none; font-size: 9px; text-anchor: middle; font-weight: 800; }
+    .map-attribution { position: absolute; left: 6px; bottom: 6px; z-index: 3; padding: 2px 4px; color: #334155; font-size: 9px; text-shadow: 0 1px 2px #fff; }
     .page-break { break-after: page; page-break-after: always; height: 0; }
     @media screen { body { padding: 12px; } }
-  </style></head><body class="${printClass}">${body}<script>setTimeout(function(){window.print();}, 150);</script></body></html>`;
+  </style></head><body class="${printClass}">${body}<script>
+    function waitForPrintImages() {
+      var images = Array.prototype.slice.call(document.images || []);
+      if (!images.length) return Promise.resolve();
+      var waits = images.map(function(img) {
+        if (img.complete && img.naturalWidth !== 0) return Promise.resolve();
+        return new Promise(function(resolve) {
+          img.addEventListener('load', resolve, { once: true });
+          img.addEventListener('error', resolve, { once: true });
+        });
+      });
+      return Promise.race([
+        Promise.all(waits),
+        new Promise(function(resolve) { setTimeout(resolve, 3500); })
+      ]);
+    }
+    waitForPrintImages().then(function(){ setTimeout(function(){ window.print(); }, 150); });
+  </script></body></html>`;
 }
 
 function printSection(section) {
   closePrintDialog();
+  const needsResumen = section === 'resumen' || section === 'todo';
+  const savedMapState = { ...tripMapState };
+  if (needsResumen) tripMapState.printMode = true;
   if (section === 'gastos' || section === 'todo') renderGastosTabla();
-  if (section === 'resumen' || section === 'todo') renderResumen();
+  if (needsResumen) renderResumen();
+  const html = printableDocument(section);
+  if (needsResumen) {
+    Object.assign(tripMapState, savedMapState);
+    renderResumen();
+  }
   const win = window.open('', '_blank');
   if (!win) {
-    alert('El navegador ha bloqueado la ventana de impresion. Permite ventanas emergentes para imprimir.');
+    alert('El navegador ha bloqueado la ventana de impresión. Permite ventanas emergentes para imprimir.');
     return;
   }
   win.document.open();
-  win.document.write(printableDocument(section));
+  win.document.write(html);
   win.document.close();
 }
 
@@ -1306,8 +3663,28 @@ function openFormDialog({ title, fields, onSubmit }) {
     const value = escapeHtml(field.value ?? '');
     const step = field.step ? ` step="${escapeHtml(field.step)}"` : '';
     const min = field.min != null ? ` min="${escapeHtml(field.min)}"` : '';
-    return `<div><label>${escapeHtml(field.label)}</label><input id="form-field-${escapeHtml(field.name)}" type="${field.type || 'text'}"${step}${min} value="${value}"></div>`;
+    if (field.type === 'multiselect') {
+      const selected = new Set((field.value || []).map(String));
+      const options = (field.options || []).map(option => `<option value="${escapeHtml(option.value)}"${selected.has(String(option.value)) ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
+      const controls = field.reorder
+        ? `<div class="multi-select-order-actions"><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="-1">Subir</button><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="1">Bajar</button></div>`
+        : '';
+      return `<div class="form-field form-field-multiselect"><label>${escapeHtml(field.label)}</label><select id="form-field-${escapeHtml(field.name)}" multiple size="${field.size || 4}">${options}</select>${controls}</div>`;
+    }
+    if (field.type === 'select') {
+      const selected = String(field.value ?? '');
+      const placeholder = field.placeholder ? `<option value="">${escapeHtml(field.placeholder)}</option>` : '';
+      const options = (field.options || []).map(option => `<option value="${escapeHtml(option.value)}"${selected === String(option.value) ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
+      return `<div class="form-field form-field-select"><label>${escapeHtml(field.label)}</label><select id="form-field-${escapeHtml(field.name)}">${placeholder}${options}</select></div>`;
+    }
+    return `<div class="form-field form-field-input"><label>${escapeHtml(field.label)}</label><input id="form-field-${escapeHtml(field.name)}" type="${field.type || 'text'}"${step}${min} value="${value}"></div>`;
   }).join('');
+  $$('#form-dialog-fields [data-form-move]').forEach(button => {
+    button.onclick = event => {
+      event.preventDefault();
+      moveSelectedMultiOption(`#form-field-${button.dataset.formMove}`, Number(button.dataset.formDir));
+    };
+  });
   setMessage('#msg-form-dialog', '');
   activeFormDialogSubmit = onSubmit;
   if (dialog.showModal) dialog.showModal();
@@ -1327,14 +3704,20 @@ function formDialogValues() {
   $$('#form-dialog-fields input').forEach(input => {
     values[input.id.replace('form-field-', '')] = input.value;
   });
+  $$('#form-dialog-fields select').forEach(select => {
+    values[select.id.replace('form-field-', '')] = select.multiple
+      ? [...select.selectedOptions].map(option => Number(option.value)).filter(Boolean)
+      : select.value;
+  });
   return values;
 }
 
 async function resetDataValue(option) {
   const value = String(option || '').trim().toLowerCase();
   const map = {
-    todo: ['cuentas', 'categorias', 'gastos', 'viajes', 'monedas', 'transferencias'],
+    todo: ['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'monedas', 'transferencias'],
     categorias: ['categorias'],
+    lugares: ['lugares'],
     monedas: ['monedas'],
     cuentas: ['cuentas'],
     viajes: ['viajes'],
@@ -1343,10 +3726,10 @@ async function resetDataValue(option) {
   };
   const stores = map[value];
   if (!stores) {
-    alert('Opcion no reconocida. Usa: todo, categorias, monedas, cuentas, viajes, gastos o transferencias.');
+    alert('Opción no reconocida. Usa: todo, categorías, monedas, cuentas, viajes, gastos o transferencias.');
     return;
   }
-  if (!confirm(`Se borrara: ${value}. Continuar?`)) return;
+  if (!confirm(`Se borrará: ${value}. ¿Continuar?`)) return;
   try {
     if (window.caches && value === 'todo') {
       const keys = await caches.keys();
@@ -1360,7 +3743,7 @@ async function resetDataValue(option) {
     if (value === 'todo' || value === 'monedas') await ensureBaseCurrency();
     if (value === 'todo' || value === 'cuentas') await seedDefaultAccounts();
     if (value === 'todo' || value === 'categorias') await seedDefaultCategories();
-    state.selectedViajeId = null;
+    setSelectedTrips([]);
     await loadAll();
     alert('Reset completado');
   } catch (err) {
@@ -1371,7 +3754,7 @@ async function resetDataValue(option) {
 async function resetDataPrompt() {
   openFormDialog({
     title: 'Resetear datos',
-    fields: [{ name: 'opcion', label: 'Escribe: todo, categorias, monedas, cuentas, viajes, gastos o transferencias', value: 'todo' }],
+    fields: [{ name: 'opcion', label: 'Escribe: todo, categorías, monedas, cuentas, viajes, gastos o transferencias', value: 'todo' }],
     onSubmit: values => resetDataValue(values.opcion)
   });
 }
@@ -1400,6 +3783,7 @@ function bindEvents() {
     setTab('viajes');
   };
   $('#btn-open-add-gasto').onclick = openAddGasto;
+  $('#btn-open-add-gasto-bottom').onclick = openAddGasto;
   $('#btn-open-filters').onclick = openFiltersPanel;
   $('#filters-close').onclick = closeFiltersPanel;
   $('#add-gasto-close').onclick = closeAddGasto;
@@ -1419,9 +3803,15 @@ function bindEvents() {
   };
   $('#g-cat').onchange = renderSubcategories;
   $('#edit-gasto-cat').onchange = renderEditSubcategories;
+  $('#g-pais').onchange = renderCiudades;
+  $('#edit-gasto-pais').onchange = renderEditCiudades;
   $('#edit-gasto-cuenta').onchange = () => {
     const account = state.cuentas.find(c => c.id === Number($('#edit-gasto-cuenta').value));
     if (account) $('#edit-gasto-moneda').value = account.moneda;
+  };
+  $('#edit-gasto-viaje').onchange = () => {
+    renderEditGastoAccountSelector();
+    renderEditCiudades();
   };
   $('#edit-gasto-close').onclick = closeEditGasto;
   $('#edit-gasto-cancel').onclick = closeEditGasto;
@@ -1444,8 +3834,9 @@ function bindEvents() {
       const id = Number($('#edit-gasto-id').value);
       const cuentaId = $('#edit-gasto-cuenta').value;
       const catId = $('#edit-gasto-cat').value;
-      const importe = numberValue($('#edit-gasto-importe').value);
-      if (!cuentaId || !catId || importe <= 0) throw new Error('Completa cuenta, categoria e importe');
+      const rawImporte = numberValue($('#edit-gasto-importe').value);
+      const importe = $('#edit-gasto-tipo')?.value === 'ingreso' ? -Math.abs(rawImporte) : Math.abs(rawImporte);
+      if (!cuentaId || !catId || importe === 0) throw new Error('Completa cuenta, categoría e importe');
       const current = state.gastos.find(g => g.id === id);
       const ticket = await readFileData($('#edit-gasto-ticket'));
       const ticketPatch = $('#edit-gasto-ticket-remove').checked
@@ -1459,6 +3850,8 @@ function bindEvents() {
         cuentaId,
         catId,
         subcatId: $('#edit-gasto-subcat').value || null,
+        paisId: $('#edit-gasto-pais').value || null,
+        ciudadId: $('#edit-gasto-ciudad').value || null,
         importe,
         desc: $('#edit-gasto-desc').value.trim(),
         ...ticketPatch
@@ -1472,6 +3865,10 @@ function bindEvents() {
   $('#g-cuenta').onchange = () => {
     const account = state.cuentas.find(c => c.id === Number($('#g-cuenta').value));
     if (account) $('#g-moneda').value = account.moneda;
+  };
+  $('#g-viaje').onchange = () => {
+    renderGastoAccountSelector();
+    applyDefaultTripCountryToExpense();
   };
   $('#g-moneda').onchange = () => {
     const account = state.cuentas.find(c => c.id === Number($('#g-cuenta').value));
@@ -1493,30 +3890,67 @@ function bindEvents() {
   }
   $('#m-eur').oninput = () => syncCurrencyRate('eur');
   $('#m-back').oninput = () => syncCurrencyRate('back');
-  ['#f-moneda', '#f-cuenta', '#f-cat', '#f-desde', '#f-hasta'].forEach(sel => $(sel).onchange = renderGastosTabla);
-  $('#f-desc').oninput = renderGastosTabla;
-  $('#f-viaje').onchange = () => {
-    state.selectedViajeId = $('#f-viaje').value ? Number($('#f-viaje').value) : null;
-    if ($('#r-viaje')) $('#r-viaje').value = $('#f-viaje').value;
-    renderViajesHome();
+  ['#f-moneda', '#f-cuenta', '#f-subcat', '#f-ciudad', '#f-desde', '#f-hasta'].forEach(sel => $(sel).onchange = renderGastosTabla);
+  $('#f-cat').onchange = () => {
+    renderFilterSubcategories();
     renderGastosTabla();
   };
-  ['#r-moneda', '#r-cuenta', '#r-desglose'].forEach(sel => $(sel).onchange = renderResumen);
-  $('#r-viaje').onchange = () => {
-    state.selectedViajeId = $('#r-viaje').value ? Number($('#r-viaje').value) : null;
-    if ($('#f-viaje')) $('#f-viaje').value = $('#r-viaje').value;
+  $('#f-pais').onchange = () => {
+    renderFilterCiudades();
+    renderGastosTabla();
+  };
+  $('#f-desc').oninput = renderGastosTabla;
+  $('#f-viaje').onchange = () => {
+    setSelectedTrips($('#f-viaje').value ? [Number($('#f-viaje').value)] : []);
+    renderFilterAccountSelector();
+    renderFilterPaises();
     renderViajesHome();
+    renderGastosTabla();
+    renderCuentas();
+    renderTransferAccountSelectors();
+    renderBackupStatus();
     renderResumen();
   };
+  ['#r-moneda', '#r-cuenta', '#r-ciudad', '#r-desglose'].forEach(sel => $(sel).onchange = renderResumen);
+  $('#r-pais').onchange = () => {
+    renderResumenCiudades();
+    renderResumen();
+  };
+  $('#map-pais').onchange = () => {
+    tripMapState.showPlanned = true;
+    resetTripMapView();
+    renderTripMap();
+  };
+  $('#r-viaje').onchange = () => {
+    setSelectedTrips($('#r-viaje').value ? [Number($('#r-viaje').value)] : []);
+    tripMapState.showPlanned = true;
+    resetTripMapView();
+    renderResumenAccountSelector();
+    renderResumenPaises();
+    renderMapPaises();
+    renderViajesHome();
+    renderGastosTabla();
+    renderCuentas();
+    renderTransferAccountSelectors();
+    renderBackupStatus();
+    renderResumen();
+  };
+  $('#c-viaje').onchange = () => {
+    if ($('#c-template')) $('#c-template').value = '';
+    renderAccountTemplateSelector();
+    renderCuentas();
+  };
+  if ($('#c-template')) $('#c-template').onchange = applyAccountTemplate;
 
-  $('#btn-add-gasto').onclick = async () => {
+  async function saveNewGasto(keepOpen = false) {
     try {
       const fecha = $('#g-fecha').value || todayIso();
       const cuentaId = $('#g-cuenta').value;
       const moneda = $('#g-moneda').value;
       const catId = $('#g-cat').value;
-      const importe = numberValue($('#g-importe').value);
-      if (!cuentaId || !catId || importe <= 0) throw new Error('Completa cuenta, categoria e importe');
+      const rawImporte = numberValue($('#g-importe').value);
+      const importe = $('#g-tipo')?.value === 'ingreso' ? -Math.abs(rawImporte) : Math.abs(rawImporte);
+      if (!cuentaId || !catId || importe === 0) throw new Error('Completa cuenta, categoría e importe');
       const ticket = await readFileData($('#g-ticket'));
       await addGasto({
         fecha,
@@ -1525,6 +3959,8 @@ function bindEvents() {
         moneda,
         catId,
         subcatId: $('#g-subcat').value || null,
+        paisId: $('#g-pais').value || null,
+        ciudadId: $('#g-ciudad').value || null,
         importe,
         desc: $('#g-desc').value.trim(),
         ticketName: ticket ? ticket.name : '',
@@ -1534,28 +3970,42 @@ function bindEvents() {
       $('#g-importe').value = '';
       $('#g-desc').value = '';
       $('#g-ticket').value = '';
-      setMessage('#msg-gasto', 'Gasto anadido');
-      closeAddGasto();
+      setMessage('#msg-gasto', keepOpen ? 'Gasto añadido. Puedes seguir.' : 'Gasto añadido');
+      if (!keepOpen) closeAddGasto();
       await loadAll();
+      if (keepOpen && $('#g-importe')) $('#g-importe').focus();
     } catch (err) {
       setMessage('#msg-gasto', err.message || String(err), true);
     }
-  };
+  }
+
+  $('#btn-add-gasto').onclick = () => saveNewGasto(false);
+  $('#btn-add-gasto-continue').onclick = () => saveNewGasto(true);
 
   $('#btn-add-cuenta').onclick = async () => {
     try {
-      const nombre = $('#c-nombre').value.trim();
+      const viajeId = $('#c-viaje').value || null;
+      const templateId = Number($('#c-template') ? $('#c-template').value : 0);
+      const template = viajeId ? state.cuentas.find(c => Number(c.id) === templateId && !c.viajeId) : null;
+      const nombre = $('#c-nombre').value.trim() || (template ? template.nombre : '');
       if (!nombre) throw new Error('Pon un nombre');
-      const moneda = $('#c-moneda').value;
+      const moneda = template && !$('#c-moneda').value ? template.moneda : $('#c-moneda').value;
       if (!hasValidCurrency(moneda)) throw new Error('Configura esa moneda antes de crear la cuenta');
+      const nextKey = accountKey({ nombre, moneda });
+      const exists = state.cuentas.some(c =>
+        (viajeId ? Number(c.viajeId) === Number(viajeId) : !c.viajeId)
+        && accountKey(c) === nextKey
+      );
+      if (exists) throw new Error(viajeId ? 'Esa cuenta ya existe en este viaje' : 'Esa plantilla global ya existe');
       await addCuenta({
         nombre,
         moneda,
+        viajeId,
         saldoInicial: $('#c-saldo').value,
         presupuesto: $('#c-presu').value,
         nota: $('#c-nota').value.trim()
       });
-      ['#c-nombre', '#c-saldo', '#c-presu', '#c-nota'].forEach(sel => $(sel).value = '');
+      ['#c-nombre', '#c-template', '#c-saldo', '#c-presu', '#c-nota'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
       setMessage('#msg-cuenta', 'Cuenta anadida');
       await loadAll();
     } catch (err) {
@@ -1570,9 +4020,10 @@ function bindEvents() {
         fromId: $('#t-from').value,
         toId: $('#t-to').value,
         importe: $('#t-importe').value,
+        importeTo: $('#t-importe-to') ? $('#t-importe-to').value : '',
         nota: $('#t-nota').value
       });
-      ['#t-importe', '#t-nota'].forEach(sel => $(sel).value = '');
+      ['#t-importe', '#t-importe-to', '#t-cambio', '#t-nota'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
       if (!$('#t-fecha').value) $('#t-fecha').value = todayIso();
       setMessage('#msg-transfer', 'Transferencia anadida');
       await loadAll();
@@ -1581,6 +4032,13 @@ function bindEvents() {
     }
   };
 
+  ['#t-from', '#t-to'].forEach(sel => {
+    if ($(sel)) $(sel).onchange = updateTransferRatePreview;
+  });
+  ['#t-importe', '#t-importe-to'].forEach(sel => {
+    if ($(sel)) $(sel).oninput = updateTransferRatePreview;
+  });
+
   $('#btn-add-viaje').onclick = async () => {
     try {
       const nombre = $('#v-nombre').value.trim();
@@ -1588,8 +4046,10 @@ function bindEvents() {
       const fechaFin = $('#v-fin').value;
       if (!nombre || !fechaInicio || !fechaFin) throw new Error('Completa nombre, inicio y final');
       if (fechaFin < fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
-      await addViaje({ nombre, fechaInicio, fechaFin, presupuesto: $('#v-presu').value });
+      await addViaje({ nombre, fechaInicio, fechaFin, presupuesto: $('#v-presu').value, paisIds: selectedMultiValues('#v-paises'), ciudadIds: selectedMultiValues('#v-ciudades') });
       ['#v-nombre', '#v-inicio', '#v-fin', '#v-presu'].forEach(sel => $(sel).value = '');
+      if ($('#v-paises')) [...$('#v-paises').options].forEach(opt => { opt.selected = false; });
+      if ($('#v-ciudades')) [...$('#v-ciudades').options].forEach(opt => { opt.selected = false; });
       setMessage('#msg-viaje', 'Viaje anadido');
       await loadAll();
     } catch (err) {
@@ -1597,15 +4057,71 @@ function bindEvents() {
     }
   };
 
+  $('#v-inicio').onchange = () => {
+    const start = $('#v-inicio').value;
+    if (start && (!$('#v-fin').value || $('#v-fin').value < start)) $('#v-fin').value = start;
+  };
+  $('#v-paises').onchange = renderTripPlannedCitySelector;
+  $('#v-ciudades').onchange = updateTripPlanningCounters;
+  if ($('#v-ciudades-up')) $('#v-ciudades-up').onclick = event => {
+    event.preventDefault();
+    moveSelectedMultiOption('#v-ciudades', -1);
+  };
+  if ($('#v-ciudades-down')) $('#v-ciudades-down').onclick = event => {
+    event.preventDefault();
+    moveSelectedMultiOption('#v-ciudades', 1);
+  };
+
+  $('#m-iso-entry').oninput = () => {
+    const code = currentCurrencyCodeInput();
+    $('#m-iso-entry').value = code;
+    maybeFillCurrencyName(code);
+    clearCurrencyQuote();
+    renderCurrencyCodeSuggestions(true);
+  };
+  $('#m-iso-entry').onfocus = () => renderCurrencyCodeSuggestions(true);
+  $('#m-iso-entry').onkeydown = event => {
+    if (event.key === 'Escape') hideCurrencySuggestions();
+  };
+
+  $('#btn-check-moneda').onclick = async () => {
+    const button = $('#btn-check-moneda');
+    try {
+      clearCurrencyQuote();
+      const code = currentCurrencyCodeInput();
+      setMessage('#msg-moneda-rate', 'Consultando cambio actual...');
+      button.disabled = true;
+      latestCurrencyQuote = await fetchCurrentCurrencyQuote(code);
+      $('#btn-use-moneda-rate').hidden = false;
+      setMessage('#msg-moneda-rate', `Referencia Frankfurter ${latestCurrencyQuote.fecha}: 1 EUR ≈ ${formatRate(latestCurrencyQuote.unidadesPorEuro)} ${latestCurrencyQuote.codigo}. No se aplica automáticamente.`);
+    } catch (err) {
+      setMessage('#msg-moneda-rate', err.message || String(err), true);
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  $('#btn-use-moneda-rate').onclick = () => {
+    const code = currentCurrencyCodeInput();
+    if (!latestCurrencyQuote || latestCurrencyQuote.codigo !== code) {
+      setMessage('#msg-moneda-rate', 'Consulta primero el cambio de esta moneda', true);
+      return;
+    }
+    $('#m-back').value = formatRate(latestCurrencyQuote.unidadesPorEuro);
+    $('#m-eur').value = formatRate(latestCurrencyQuote.eurPorUnidad);
+    setMessage('#msg-moneda-rate', `Cambio copiado al formulario: 1 EUR = ${formatRate(latestCurrencyQuote.unidadesPorEuro)} ${latestCurrencyQuote.codigo}`);
+  };
+
   $('#btn-add-moneda').onclick = async () => {
     try {
       await upsertMoneda({
-        codigo: $('#m-codigo').value,
+        codigo: currentCurrencyCodeInput(),
         nombre: $('#m-nombre').value,
         eurPorUnidad: $('#m-eur').value,
         unidadesPorEuro: $('#m-back').value
       });
-      ['#m-codigo', '#m-nombre', '#m-eur', '#m-back'].forEach(sel => $(sel).value = '');
+      ['#m-iso-entry', '#m-nombre', '#m-eur', '#m-back'].forEach(sel => $(sel).value = '');
+      clearCurrencyQuote();
       setMessage('#msg-moneda', 'Moneda guardada');
       await loadAll();
     } catch (err) {
@@ -1620,10 +4136,39 @@ function bindEvents() {
       await addCategoria({ nombre, parentId: $('#cat-parent').value || null });
       $('#cat-nombre').value = '';
       $('#cat-parent').value = '';
-      setMessage('#msg-cat', 'Categoria guardada');
+      setMessage('#msg-cat', 'Categoría guardada');
       await loadAll();
     } catch (err) {
       setMessage('#msg-cat', err.message || String(err), true);
+    }
+  };
+
+  $('#btn-add-lugar').onclick = async () => {
+    try {
+      const nombre = $('#lugar-nombre').value.trim();
+      if (!nombre) throw new Error('Escribe un nombre');
+      await addLugar({
+        nombre,
+        parentId: $('#lugar-parent').value || null,
+        lat: $('#lugar-lat').value,
+        lng: $('#lugar-lng').value
+      });
+      $('#lugar-nombre').value = '';
+      $('#lugar-parent').value = '';
+      $('#lugar-lat').value = '';
+      $('#lugar-lng').value = '';
+      setMessage('#msg-lugar', 'Lugar guardado');
+      await loadAll();
+    } catch (err) {
+      setMessage('#msg-lugar', err.message || String(err), true);
+    }
+  };
+  $('#btn-locate-lugar').onclick = async () => {
+    try {
+      await locateLugarForm();
+      setMessage('#msg-lugar', 'Coordenadas encontradas');
+    } catch (err) {
+      setMessage('#msg-lugar', err.message || String(err), true);
     }
   };
 
@@ -1633,6 +4178,32 @@ function bindEvents() {
 
   document.addEventListener('change', async event => {
     const target = event.target;
+    if (target instanceof HTMLInputElement && target.dataset.tripCheck) {
+      toggleSelectedTrip(target.dataset.tripCheck, target.checked);
+      renderViajesHome();
+      renderFilterAccountSelector();
+      renderResumenAccountSelector();
+      renderFilterPaises();
+      renderResumenPaises();
+      renderMapPaises();
+      renderGastosTabla();
+      renderCuentas();
+      renderResumen();
+      return;
+    }
+    if (target instanceof HTMLInputElement && target.dataset.tripYear) {
+      setSelectedYear(target.dataset.tripYear, target.checked);
+      renderViajesHome();
+      renderFilterAccountSelector();
+      renderResumenAccountSelector();
+      renderFilterPaises();
+      renderResumenPaises();
+      renderMapPaises();
+      renderGastosTabla();
+      renderCuentas();
+      renderResumen();
+      return;
+    }
     if (!(target instanceof HTMLSelectElement) || !target.dataset.gastoAction || !target.value) return;
     try {
       const action = target.value;
@@ -1643,12 +4214,74 @@ function bindEvents() {
     }
   });
 
+  document.addEventListener('click', event => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const suggestion = target.closest('[data-currency-code]');
+    if (suggestion) {
+      selectCurrencySuggestion(suggestion.dataset.currencyCode);
+      return;
+    }
+    if (!target.closest('.currency-code-field')) hideCurrencySuggestions();
+  });
+
+  document.addEventListener('pointerdown', startTripMapDrag);
+  document.addEventListener('pointermove', moveTripMapDrag);
+  document.addEventListener('pointerup', endTripMapDrag);
+  document.addEventListener('pointercancel', endTripMapDrag);
+  document.addEventListener('dblclick', zoomTripMapAt);
+
   document.addEventListener('click', async event => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     try {
-      if (target.dataset.delCuenta) {
+      const mapZoomButton = target.closest('[data-map-zoom]');
+      if (mapZoomButton) {
+        const action = mapZoomButton.dataset.mapZoom;
+        const { width, height } = tripMapSize();
+        if (action === 'in') {
+          zoomTripMapAtPoint(width / 2, height / 2, 1);
+        } else if (action === 'out') {
+          zoomTripMapAtPoint(width / 2, height / 2, -1);
+        } else {
+          resetTripMapView();
+          renderTripMap();
+        }
+        return;
+      }
+      const mapGeocodeButton = target.closest('[data-map-geocode]');
+      if (mapGeocodeButton) {
+        await geocodeTripMapCities();
+        return;
+      }
+      const mapAddStopButton = target.closest('[data-map-add-stop]');
+      if (mapAddStopButton) {
+        await addMapStopToTrip();
+        return;
+      }
+      const mapRefreshButton = target.closest('[data-map-refresh]');
+      if (mapRefreshButton) {
+        await refreshTripMapFromConfig();
+        return;
+      }
+      const mapPlannedButton = target.closest('[data-map-planned]');
+      if (mapPlannedButton) {
+        tripMapState.showPlanned = !tripMapState.showPlanned;
+        resetTripMapView();
+        renderTripMap();
+        return;
+      }
+      if (target.dataset.openTicket) {
+        openTicket(target.dataset.openTicket);
+        return;
+      } else if (target.dataset.delCuenta) {
         if (confirm('Eliminar esta cuenta?')) await delCuenta(target.dataset.delCuenta);
+      } else if (target.dataset.migrateCuenta) {
+        const trip = state.viajes.find(v => v.id === Number(target.dataset.migrateViaje));
+        if (!trip) return;
+        if (confirm(`Pasar esta cuenta global a cuenta específica de ${trip.nombre}? Los gastos de ese viaje se moverán a la nueva cuenta.`)) {
+          await migrateGlobalAccountToTrip(target.dataset.migrateCuenta, target.dataset.migrateViaje);
+        }
       } else if (target.dataset.editCuenta) {
         const c = state.cuentas.find(item => item.id === Number(target.dataset.editCuenta));
         if (!c) return;
@@ -1657,16 +4290,15 @@ function bindEvents() {
           fields: [
             { name: 'nombre', label: 'Nombre', value: c.nombre },
             { name: 'presupuesto', label: 'Presupuesto', type: 'number', step: '0.01', value: c.presupuesto || 0 },
-            { name: 'ajuste', label: 'Ajuste de saldo actual (+50, -20, ...)', type: 'number', step: '0.01', value: '' }
+            { name: 'saldoActual', label: 'Saldo actual', type: 'number', step: '0.01', value: numberValue(c.saldoActual) }
           ],
           onSubmit: values => {
-            const saldoActual = values.ajuste ? numberValue(c.saldoActual) + numberValue(values.ajuste) : numberValue(c.saldoActual);
-            return updateCuenta(c.id, { nombre: values.nombre.trim() || c.nombre, presupuesto: numberValue(values.presupuesto), saldoActual });
+            return updateCuenta(c.id, { nombre: values.nombre.trim() || c.nombre, presupuesto: numberValue(values.presupuesto), saldoActual: numberValue(values.saldoActual) });
           }
         });
         return;
       } else if (target.dataset.delViaje) {
-        if (confirm('Eliminar este viaje? Los gastos se conservaran sin viaje.')) await delViaje(target.dataset.delViaje);
+        if (confirm('Eliminar este viaje? Los gastos se conservarán sin viaje.')) await delViaje(target.dataset.delViaje);
       } else if (target.dataset.editViaje) {
         const v = state.viajes.find(item => item.id === Number(target.dataset.editViaje));
         if (!v) return;
@@ -1676,11 +4308,13 @@ function bindEvents() {
             { name: 'nombre', label: 'Nombre', value: v.nombre },
             { name: 'fechaInicio', label: 'Fecha de inicio', type: 'date', value: v.fechaInicio },
             { name: 'fechaFin', label: 'Fecha final', type: 'date', value: v.fechaFin },
+            { name: 'paisIds', label: 'Países creados', type: 'multiselect', value: tripCountryIds(v), options: state.lugares.filter(l => !l.parentId).map(l => ({ value: String(l.id), label: l.nombre })) },
+            { name: 'ciudadIds', label: 'Ciudades planificadas', type: 'multiselect', size: 6, value: tripCityIds(v), options: plannedCityOptionsForCountries(tripCountryIds(v), tripCityIds(v)), reorder: true },
             { name: 'presupuesto', label: 'Presupuesto del viaje (EUR)', type: 'number', step: '0.01', min: '0', value: v.presupuesto || 0 }
           ],
           onSubmit: values => {
             if (values.fechaFin < values.fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
-            return updateViaje(v.id, { nombre: values.nombre.trim() || v.nombre, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin, presupuesto: numberValue(values.presupuesto) });
+            return updateViaje(v.id, { nombre: values.nombre.trim() || v.nombre, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin, paisIds: values.paisIds || [], ciudadIds: values.ciudadIds || [], presupuesto: numberValue(values.presupuesto) });
           }
         });
         return;
@@ -1695,21 +4329,49 @@ function bindEvents() {
         openFormDialog({
           title: `Editar ${m.codigo}`,
           fields: [
-            { name: 'eurPorUnidad', label: `1 ${m.codigo} equivale a EUR`, type: 'number', step: '0.000001', min: '0', value: m.eurPorUnidad },
-            { name: 'unidadesPorEuro', label: `1 EUR equivale a ${m.codigo}`, type: 'number', step: '0.000001', min: '0', value: m.unidadesPorEuro }
+            { name: 'codigo', label: 'Código', value: m.codigo },
+            { name: 'nombre', label: 'Nombre', value: m.nombre || '' },
+            { name: 'eurPorUnidad', label: '1 moneda equivale a EUR', type: 'number', step: '0.000001', min: '0', value: m.eurPorUnidad },
+            { name: 'unidadesPorEuro', label: '1 EUR equivale a moneda', type: 'number', step: '0.000001', min: '0', value: m.unidadesPorEuro }
           ],
-          onSubmit: values => upsertMoneda({ ...m, eurPorUnidad: values.eurPorUnidad, unidadesPorEuro: values.unidadesPorEuro })
+          onSubmit: values => updateMonedaWithCode(m.codigo, values)
         });
         return;
       } else if (target.dataset.delCat) {
-        if (confirm('Eliminar esta categoria?')) await delCategoria(target.dataset.delCat);
+        if (confirm('¿Eliminar esta categoría?')) await delCategoria(target.dataset.delCat);
       } else if (target.dataset.editCat) {
         const c = state.categorias.find(item => item.id === Number(target.dataset.editCat));
         if (!c) return;
         openFormDialog({
-          title: 'Editar categoria',
+          title: 'Editar categoría',
           fields: [{ name: 'nombre', label: 'Nombre', value: c.nombre }],
           onSubmit: values => updateCategoria(c.id, { nombre: values.nombre.trim() || c.nombre })
+        });
+        return;
+      } else if (target.dataset.delLugar) {
+        if (confirm('Eliminar este lugar?')) await delLugar(target.dataset.delLugar);
+      } else if (target.dataset.locateLugar) {
+        await locateLugarById(target.dataset.locateLugar);
+        await loadAll();
+        setMessage('#msg-lugar', 'Lugar localizado');
+        resetTripMapView();
+        renderTripMap();
+        return;
+      } else if (target.dataset.editLugar) {
+        const l = state.lugares.find(item => item.id === Number(target.dataset.editLugar));
+        if (!l) return;
+        openFormDialog({
+          title: 'Editar lugar',
+          fields: [
+            { name: 'nombre', label: 'Nombre', value: l.nombre },
+            { name: 'lat', label: 'Latitud', type: 'number', step: '0.000001', value: l.lat ?? '' },
+            { name: 'lng', label: 'Longitud', type: 'number', step: '0.000001', value: l.lng ?? '' }
+          ],
+          onSubmit: values => updateLugar(l.id, {
+            nombre: values.nombre.trim() || l.nombre,
+            lat: optionalNumberValue(values.lat),
+            lng: optionalNumberValue(values.lng)
+          })
         });
         return;
       } else if (target.dataset.delGasto) {
@@ -1740,24 +4402,23 @@ function bindEvents() {
     }
   });
 
-  $('#btn-export').onclick = async () => {
-    try {
-      await prepareJsonBackup();
-      setMessage('#msg-export', 'Backup generado. Usa Descargar, Abrir JSON o copia el texto.');
-    } catch (err) {
-      alert(`No se pudo exportar: ${err.message || err}`);
-    }
+  $('#btn-export').onclick = () => openBackupDialogSafe();
+  $('#backup-close').onclick = closeBackupDialog;
+  $('#backup-exit').onclick = closeBackupResultDialog;
+  $('#backup-export-scope').onchange = () => {
+    syncBackupExportTripVisibility();
   };
-  $('#btn-import').onclick = () => $('#file-import').click();
-  $('#btn-export-home').onclick = async () => {
-    try {
-      setTab('config');
-      const filename = await prepareJsonBackup({ autoDownload: true });
-      setMessage('#msg-export', `Descarga iniciada: ${filename}. Si no aparece, usa el enlace Descargar.`);
-    } catch (err) {
-      alert(`No se pudo exportar: ${err.message || err}`);
-    }
+  $('#backup-import-mode').onchange = () => {
+    const tripImport = $('#backup-import-mode').value === 'trip';
+    $('#backup-import-trip').disabled = !tripImport;
+    if (!tripImport) $('#backup-import-trip').value = '';
   };
+  $('#backup-download').onclick = handleBackupDownload;
+  $('#backup-share').onclick = handleBackupShare;
+  $('#backup-import').onclick = handleBackupImportClick;
+  $('#btn-import').onclick = () => openBackupDialogSafe('import');
+  $('#btn-import-home').onclick = () => openBackupDialogSafe('import');
+  $('#btn-backup-home').onclick = () => openBackupDialogSafe('backup');
   $('#btn-export-csv').onclick = exportCurrentCsv;
   $('#btn-print-summary').onclick = openPrintDialog;
   $('#print-dialog-close').onclick = closePrintDialog;
@@ -1768,13 +4429,19 @@ function bindEvents() {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
     try {
-      const ok = confirm('Importar reemplazara todos los datos locales actuales. Si quieres conservarlos, cancela y exporta primero. Continuar?');
+      const mode = $('#backup-import-mode') ? $('#backup-import-mode').value : 'all';
+      const ok = confirm(mode === 'trip'
+        ? 'Importar reemplazará los gastos y cuentas propias del viaje elegido. ¿Continuar?'
+        : 'Importar reemplazará todos los datos locales actuales. Si quieres conservarlos, cancela y exporta primero. ¿Continuar?');
       if (!ok) return;
-      await importAll(JSON.parse(await file.text()));
+      const data = JSON.parse(await file.text());
+      if (mode === 'trip') await importTripBackup(data, $('#backup-import-trip').value);
+      else await importAll(data);
       await loadAll();
-      alert('Datos importados');
+      setMessage('#msg-backup', 'Datos importados');
+      showBackupResult('Importación realizada', file.name);
     } catch (err) {
-      alert(`Archivo no valido: ${err.message || err}`);
+      alert(`Archivo no válido: ${err.message || err}`);
     } finally {
       event.target.value = '';
     }
@@ -1785,6 +4452,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
   await seedIfEmpty();
   await loadAll();
+  renderBackupStatus();
 });
 
 Object.assign(window, {
@@ -1801,7 +4469,16 @@ Object.assign(window, {
   addViaje,
   updateViaje,
   delViaje,
+  addLugar,
+  updateLugar,
+  delLugar,
   upsertMoneda,
   exportAll,
-  importAll
+  importAll,
+  openBackupDialog,
+  openBackupDialogSafe,
+  closeBackupDialog,
+  handleBackupDownload,
+  handleBackupShare,
+  handleBackupImportClick
 });
