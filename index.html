@@ -18,7 +18,7 @@
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config">Configuración</button>
   </nav>
-  <div class="app-version">700v57</div>
+  <div class="app-version">700v58</div>
 </header>
 
 <main>
@@ -464,11 +464,30 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v57"></script>
+<script src="app.bundle.js?v=700v58"></script>
 <script>
   if ('serviceWorker' in navigator) {
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+      navigator.serviceWorker.register('./sw.js')
+        .then(registration => {
+          registration.update().catch(() => {});
+          registration.addEventListener('updatefound', () => {
+            const worker = registration.installing;
+            if (!worker) return;
+            worker.addEventListener('statechange', () => {
+              if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                worker.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
+        })
+        .catch(() => {});
     });
   }
 </script>

@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v57';
+const APP_VERSION = '700v58';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -2490,14 +2490,8 @@ async function addMapStopToTrip() {
 }
 
 function routeCityOptionsForTrip(trip) {
-  const currentCityCountries = tripCityIds(trip)
-    .map(id => state.lugares.find(l => Number(l.id) === Number(id)))
-    .map(city => Number(city && city.parentId))
-    .filter(Boolean);
-  const countryIds = [...tripCountryIds(trip), ...currentCityCountries];
-  const allowed = new Set(countryIds.map(Number).filter(Boolean));
   const source = state.lugares
-    .filter(l => l.parentId && (!allowed.size || allowed.has(Number(l.parentId))))
+    .filter(l => l.parentId)
     .sort((a, b) => {
       const paisA = lugarName(a.parentId);
       const paisB = lugarName(b.parentId);
@@ -2564,8 +2558,13 @@ function renderRouteDialog() {
 function openRouteDialog(trip) {
   const dialog = $('#route-dialog');
   if (!dialog) return;
+  const gastos = gastosForSelectorTripScope('#r-viaje')
+    .filter(g => Number(g.viajeId) === Number(trip.id));
+  const mapCityIds = mapRouteCities(gastos, 0)
+    .map(item => Number(item.ciudad && item.ciudad.id))
+    .filter(Boolean);
   routeEditorState.tripId = Number(trip.id);
-  routeEditorState.cityIds = tripCityIds(trip).map(Number).filter(Boolean);
+  routeEditorState.cityIds = mapCityIds.length ? mapCityIds : tripCityIds(trip).map(Number).filter(Boolean);
   routeEditorState.dragIndex = null;
   $('#route-dialog-title').textContent = `Añadir / modificar paradas de ${trip.nombre}`;
   setMessage('#msg-route-dialog', '');
@@ -2752,12 +2751,13 @@ function renderTripMap() {
     const labelX = p.x + 12 > width - 120 ? p.x - 12 : p.x + 12;
     const anchor = p.x + 12 > width - 120 ? 'end' : 'start';
     const markerText = item.configuredOnly ? '+' : index + 1;
+    const markerLabel = item.configuredOnly ? item.ciudad.nombre : `${markerText}. ${item.ciudad.nombre}`;
     const title = item.configuredOnly
       ? `${item.ciudad.nombre} · sin gastos en este viaje`
       : item.plannedOnly
         ? `${item.ciudad.nombre} · parada planificada sin gastos`
       : `${item.ciudad.nombre} · ${item.count} gastos · ${fmtCurrency(item.totalEur, 'EUR')}`;
-    return `<g class="map-marker${item.configuredOnly ? ' map-marker-config' : ''}"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="7"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text><text x="${labelX.toFixed(1)}" y="${(p.y - 10).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(item.ciudad.nombre)}</text><title>${escapeHtml(title)}</title></g>`;
+    return `<g class="map-marker${item.configuredOnly ? ' map-marker-config' : ''}"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="8"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text><text x="${labelX.toFixed(1)}" y="${(p.y - 10).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(markerLabel)}</text><title>${escapeHtml(title)}</title></g>`;
   }).join('');
   const zoomLabel = tripMapState.zoomDelta === 0 ? 'auto' : `${tripMapState.zoomDelta > 0 ? '+' : ''}${tripMapState.zoomDelta}`;
   container.innerHTML = `<div class="trip-map-shell">
