@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v68';
+const APP_VERSION = '700v69';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -911,6 +911,10 @@ function canShareBackupFiles() {
   return backupShareFiles('{}', 'gastos-backup.json').some(canShareFile);
 }
 
+function shareWasCancelled(err) {
+  return /abort|cancel/i.test(err && (err.name || err.message || ''));
+}
+
 function backupScopeFromSelection() {
   const ids = selectedTripIds();
   return ids.length === 1
@@ -1015,6 +1019,12 @@ async function shareJsonBackup(scope = 'all', tripId = null) {
     }
   }
   throw lastError || new Error('Este navegador no permite compartir este archivo. Usa Crear copia.');
+}
+
+async function downloadBackupAfterShareFailure(scope = 'all', tripId = null) {
+  const filename = await prepareJsonBackup({ autoDownload: true, scope, tripId });
+  setMessage('#msg-export', `No se pudo compartir. Copia creada: ${filename}`);
+  return filename;
 }
 
 function fillSelect(selector, options, placeholder) {
@@ -3600,11 +3610,11 @@ function syncBackupShareAvailability() {
   const supported = canShareBackupFiles();
   const shareButton = $('#backup-share');
   if (shareButton) {
-    shareButton.hidden = !supported;
-    shareButton.disabled = !supported;
+    shareButton.hidden = false;
+    shareButton.disabled = false;
     shareButton.title = supported
       ? 'Compartir la copia con otras apps del móvil'
-      : 'Este navegador no permite compartir archivos de backup';
+      : 'Compartir no está disponible: al pulsar se creará una copia';
   }
   const homeShareButton = $('#btn-share-home');
   if (homeShareButton) {
@@ -3612,8 +3622,8 @@ function syncBackupShareAvailability() {
     homeShareButton.disabled = false;
     homeShareButton.title = supported
       ? 'Compartir backup'
-      : 'Este navegador no permite compartir archivos de backup';
-    homeShareButton.classList.toggle('is-unavailable', !supported);
+      : 'Crear copia de backup';
+    homeShareButton.classList.remove('is-unavailable');
   }
   const dest = $('#backup-export-dest');
   if (dest) {
@@ -3770,38 +3780,55 @@ async function handleBackupDownload() {
 }
 
 async function handleBackupShare() {
+  const scope = $('#backup-export-scope').value;
+  const tripId = $('#backup-export-trip').value;
   try {
     syncBackupShareAvailability();
     if (!canShareBackupFiles()) {
-      setMessage('#msg-backup', 'Este navegador no permite compartir archivos de backup. Usa Crear copia.', true);
+      const filename = await downloadBackupAfterShareFailure(scope, tripId);
+      setMessage('#msg-backup', `Compartir no está disponible. Copia creada: ${filename}`);
+      showBackupResultSoon('Copia creada', `El navegador no permite compartir. Se ha preparado ${filename}.`);
       return;
     }
-    const filename = await shareJsonBackup($('#backup-export-scope').value, $('#backup-export-trip').value);
+    const filename = await shareJsonBackup(scope, tripId);
     setMessage('#msg-backup', `Copia compartida: ${filename}`);
     showBackupResult('Copia compartida', filename);
   } catch (err) {
-    const cancelled = /abort|cancel/i.test(err.name || err.message || '');
+    const cancelled = shareWasCancelled(err);
     if (!cancelled) disableBackupShareOption();
-    const message = cancelled
-      ? 'Compartir cancelado.'
-      : 'No se ha podido abrir compartir. Usa Crear copia para guardar el archivo en Descargas.';
-    setMessage('#msg-backup', message, !cancelled);
+    if (cancelled) {
+      setMessage('#msg-backup', 'Compartir cancelado.');
+      return;
+    }
+    try {
+      const filename = await downloadBackupAfterShareFailure(scope, tripId);
+      setMessage('#msg-backup', `No se pudo compartir. Copia creada: ${filename}`);
+      showBackupResultSoon('Copia creada', `El navegador rechazó compartir. Se ha preparado ${filename}.`);
+    } catch (fallbackErr) {
+      setMessage('#msg-backup', fallbackErr.message || String(fallbackErr), true);
+    }
   }
 }
 
 async function handleHomeBackupShare() {
+  const target = backupScopeFromSelection();
   try {
     syncBackupShareAvailability();
     if (!canShareBackupFiles()) {
-      alert('Este navegador no permite compartir archivos de backup. Usa Backups > Crear copia.');
+      const filename = await downloadBackupAfterShareFailure(target.scope, target.tripId);
+      showBackupResultSoon('Copia creada', `El navegador no permite compartir. Se ha preparado ${filename}.`);
       return;
     }
-    const target = backupScopeFromSelection();
     const filename = await shareJsonBackup(target.scope, target.tripId);
     showBackupResult('Copia compartida', filename);
   } catch (err) {
-    const cancelled = /abort|cancel/i.test(err.name || err.message || '');
-    if (!cancelled) alert('No se ha podido abrir compartir. Usa Backups > Crear copia para guardar el archivo.');
+    if (shareWasCancelled(err)) return;
+    try {
+      const filename = await downloadBackupAfterShareFailure(target.scope, target.tripId);
+      showBackupResultSoon('Copia creada', `El navegador rechazó compartir. Se ha preparado ${filename}.`);
+    } catch (fallbackErr) {
+      alert(fallbackErr.message || String(fallbackErr));
+    }
   }
 }
 
