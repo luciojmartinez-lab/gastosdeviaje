@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v66';
+const APP_VERSION = '700v67';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -12,7 +12,8 @@ let hasAppliedDefaultTripSelection = false;
 const routeEditorState = {
   tripId: null,
   cityIds: [],
-  dragIndex: null
+  dragIndex: null,
+  optionMode: 'expenses'
 };
 const tripMapState = {
   key: '',
@@ -2592,7 +2593,14 @@ function routeCityOptionsForTrip(trip) {
     .filter(g => Number(g.viajeId) === Number(trip.id))
     .map(g => Number(g.ciudadId))
     .filter(Boolean);
-  const allowedCityIds = new Set([...routeIds, ...expenseIds]);
+  const tripCountryIdsSet = new Set(tripCountryIds(trip).map(Number).filter(Boolean));
+  const countryCityIds = routeEditorState.optionMode === 'tripCountries'
+    ? state.lugares
+      .filter(l => l.parentId && tripCountryIdsSet.has(Number(l.parentId)))
+      .map(l => Number(l.id))
+      .filter(Boolean)
+    : [];
+  const allowedCityIds = new Set([...routeIds, ...expenseIds, ...countryCityIds]);
   const source = state.lugares
     .filter(l => l.parentId && allowedCityIds.has(Number(l.id)))
     .sort((a, b) => {
@@ -2658,7 +2666,7 @@ function renderRouteDialog() {
   `;
 }
 
-function openRouteDialog(trip) {
+function openRouteDialog(trip, options = {}) {
   const dialog = $('#route-dialog');
   if (!dialog) return;
   const gastos = gastosForSelectorTripScope('#r-viaje')
@@ -2666,9 +2674,11 @@ function openRouteDialog(trip) {
   const mapCityIds = mapRouteCities(gastos, 0)
     .map(item => Number(item.ciudad && item.ciudad.id))
     .filter(Boolean);
+  const configuredCityIds = tripCityIds(trip).map(Number).filter(Boolean);
   routeEditorState.tripId = Number(trip.id);
-  routeEditorState.cityIds = mapCityIds.length ? mapCityIds : tripCityIds(trip).map(Number).filter(Boolean);
+  routeEditorState.cityIds = options.preferConfigured ? configuredCityIds : (mapCityIds.length ? mapCityIds : configuredCityIds);
   routeEditorState.dragIndex = null;
+  routeEditorState.optionMode = options.optionMode || 'expenses';
   $('#route-dialog-title').textContent = `Añadir / modificar paradas de ${trip.nombre}`;
   setMessage('#msg-route-dialog', '');
   renderRouteDialog();
@@ -2681,6 +2691,7 @@ function closeRouteDialog() {
   routeEditorState.tripId = null;
   routeEditorState.cityIds = [];
   routeEditorState.dragIndex = null;
+  routeEditorState.optionMode = 'expenses';
   if (!dialog) return;
   if (dialog.close) dialog.close();
   else dialog.removeAttribute('open');
@@ -3885,7 +3896,7 @@ function openFormDialog({ title, fields, onSubmit }) {
         : (field.options || []);
       const options = fieldOptions.map(option => `<option value="${escapeHtml(option.value)}"${field.routeList ? '' : (selected.has(String(option.value)) ? ' selected' : '')}${option.parentId != null ? ` data-parent-id="${escapeHtml(option.parentId)}"` : ''}>${escapeHtml(option.label)}</option>`).join('');
       const controls = field.reorder
-        ? `<div class="multi-select-order-actions"><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="-1">Subir</button><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="1">Bajar</button><button class="btn ghost" type="button" data-form-remove="${escapeHtml(field.name)}" title="Quitar de este viaje">X</button><button class="btn ghost" type="button" data-form-reset="${escapeHtml(field.name)}">Restablecer</button></div>`
+        ? `<div class="multi-select-order-actions"><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="-1">Subir</button><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="1">Bajar</button><button class="btn ghost" type="button" data-form-remove="${escapeHtml(field.name)}" title="Quitar de este viaje">X</button><button class="btn ghost" type="button" data-form-reset="${escapeHtml(field.name)}">Restablecer</button>${field.routeTripId ? `<button class="btn ghost" type="button" data-form-route="${escapeHtml(field.routeTripId)}">Añadir / modificar</button>` : ''}</div>`
         : '';
       return `<div class="form-field form-field-${escapeHtml(field.name)} form-field-multiselect"><label>${escapeHtml(field.label)}</label><select id="form-field-${escapeHtml(field.name)}" multiple size="${field.size || 4}">${options}</select>${controls}</div>`;
     }
@@ -3913,6 +3924,22 @@ function openFormDialog({ title, fields, onSubmit }) {
     button.onclick = event => {
       event.preventDefault();
       if (button.dataset.formReset === 'ciudadIds') resetPlannedCitySelector('#form-field-paisIds', '#form-field-ciudadIds');
+    };
+  });
+  $$('#form-dialog-fields [data-form-route]').forEach(button => {
+    button.onclick = async event => {
+      event.preventDefault();
+      if (!activeFormDialogSubmit) return;
+      try {
+        const tripId = Number(button.dataset.formRoute);
+        await activeFormDialogSubmit(formDialogValues());
+        closeFormDialog();
+        await loadAll();
+        const trip = state.viajes.find(v => Number(v.id) === tripId);
+        if (trip) openRouteDialog(trip, { preferConfigured: true, optionMode: 'tripCountries' });
+      } catch (err) {
+        setMessage('#msg-form-dialog', err.message || String(err), true);
+      }
     };
   });
   const formPaisSelect = $('#form-field-paisIds');
@@ -4652,7 +4679,7 @@ function bindEvents() {
             { name: 'fechaInicio', label: 'Fecha de inicio', type: 'date', value: v.fechaInicio },
             { name: 'fechaFin', label: 'Fecha final', type: 'date', value: v.fechaFin },
             { name: 'paisIds', label: 'Países creados', type: 'multiselect', value: tripCountryIds(v), options: state.lugares.filter(l => !l.parentId).map(l => ({ value: String(l.id), label: l.nombre })) },
-            { name: 'ciudadIds', label: 'Ciudades planificadas', type: 'multiselect', size: 6, value: tripCityIds(v), options: plannedCityOptionsForCountries(tripCountryIds(v), tripCityIds(v)), reorder: true, routeList: true },
+            { name: 'ciudadIds', label: 'Ciudades planificadas', type: 'multiselect', size: 6, value: tripCityIds(v), options: plannedCityOptionsForCountries(tripCountryIds(v), tripCityIds(v)), reorder: true, routeList: true, routeTripId: v.id },
             { name: 'presupuesto', label: 'Presupuesto del viaje (EUR)', type: 'number', step: '0.01', min: '0', value: v.presupuesto || 0 }
           ],
           onSubmit: values => {
