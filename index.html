@@ -20,7 +20,7 @@
     <button id="tab-config">Configuración</button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v70</div>
+  <div class="app-version">700v71</div>
 </header>
 
 <main>
@@ -33,7 +33,7 @@
       <p id="selected-trip-info" class="small"></p>
       <div class="backup-strip">
         <span class="backup-status small"></span>
-        <span class="backup-actions"><button class="btn ghost" id="btn-import-home" onclick="openBackupDialogSafe('import')" type="button">Importación</button><button class="btn ghost" id="btn-backup-home" onclick="openBackupDialogSafe('backup')" type="button">Backups</button><button class="btn ghost drive-backup-btn" id="btn-drive-home" type="button" title="Guardar backup en Google Drive" aria-label="Guardar backup en Google Drive">Drive</button></span>
+        <span class="backup-actions"><button class="btn ghost" id="btn-import-home" onclick="openBackupDialogSafe('import')" type="button">Importación</button><button class="btn ghost" id="btn-backup-home" onclick="openBackupDialogSafe('backup')" type="button">Backups</button></span>
       </div>
       <div class="table-wrap">
         <table id="tabla-viajes-home"><thead><tr><th>Viaje / filtro</th><th>Inicio</th><th>Final</th><th>Gastos</th><th>Total EUR</th><th>Presupuesto</th><th>Restante</th><th>Acciones</th></tr></thead><tbody></tbody></table>
@@ -433,20 +433,10 @@
     <div class="row3">
       <div><label>Exportar</label><select id="backup-export-scope"><option value="all">Todos los viajes</option><option value="trip">Un viaje</option></select></div>
       <div id="backup-export-trip-field"><label>Viaje</label><select id="backup-export-trip"></select></div>
-      <div><label>Destino</label><select id="backup-export-dest"><option value="download">Descargas</option><option value="drive">Google Drive</option></select></div>
     </div>
     <div class="actions">
       <button type="button" class="btn" id="backup-download" onclick="handleBackupDownload()">Crear copia</button>
-      <button type="button" class="ghost drive-backup-btn" id="backup-drive" onclick="handleBackupDrive()">Guardar en Drive</button>
     </div>
-    <details class="drive-config-panel">
-      <summary>Configurar Google Drive</summary>
-      <div class="row">
-        <div><label>Google OAuth Client ID</label><input id="backup-drive-client-id" placeholder="xxxxxxxxxxxx.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></div>
-        <div class="filter-action"><button type="button" class="ghost" id="backup-drive-save-client">Guardar ID</button></div>
-      </div>
-      <p class="small">La carpeta "Gastos de Viaje" se crea automáticamente en tu Drive la primera vez. El Client ID es público y se guarda solo en este dispositivo.</p>
-    </details>
     <div class="compat-hidden">
       <select id="backup-auto"><option value="off">No programar</option></select>
       <input type="time" id="backup-auto-time" value="20:00">
@@ -476,8 +466,7 @@
   </form>
 </dialog>
 
-<script src="https://accounts.google.com/gsi/client" async defer data-google-identity="true"></script>
-<script src="app.bundle.js?v=700v70"></script>
+<script src="app.bundle.js?v=700v71"></script>
 <script>
   if ('serviceWorker' in navigator) {
     let refreshing = false;

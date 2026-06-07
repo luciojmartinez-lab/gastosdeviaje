@@ -1,20 +1,14 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v70';
+const APP_VERSION = '700v71';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
-const DRIVE_CLIENT_ID_KEY = 'gastos_viaje_google_drive_client_id';
-const DRIVE_FOLDER_ID_KEY = 'gastos_viaje_google_drive_folder_id';
-const DRIVE_FOLDER_NAME = 'Gastos de Viaje';
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const TRIP_MAP_WIDTH = 920;
 const TRIP_MAP_HEIGHT = 460;
 let dbPromise = null;
 let activeFormDialogSubmit = null;
 let hasAppliedDefaultTripSelection = false;
-let googleIdentityLoadPromise = null;
-let driveAccessToken = '';
 const routeEditorState = {
   tripId: null,
   cityIds: [],
@@ -895,39 +889,6 @@ function isMobileDevice() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.matchMedia('(max-width: 720px)').matches;
 }
 
-function canShareFile(file) {
-  if (!navigator.share || typeof File === 'undefined') return false;
-  if (!navigator.canShare) return true;
-  try {
-    return navigator.canShare({ files: [file] });
-  } catch {
-    return false;
-  }
-}
-
-function backupShareFiles(json, filename) {
-  return [
-    new File([json], filename, { type: 'text/plain' }),
-    new File([json], filename.replace(/\.json$/i, '.txt'), { type: 'text/plain' }),
-    new File([json], filename, { type: 'application/json' })
-  ];
-}
-
-function canShareBackupFiles() {
-  return backupShareFiles('{}', 'gastos-backup.json').some(canShareFile);
-}
-
-function shareWasCancelled(err) {
-  return /abort|cancel/i.test(err && (err.name || err.message || ''));
-}
-
-function backupScopeFromSelection() {
-  const ids = selectedTripIds();
-  return ids.length === 1
-    ? { scope: 'trip', tripId: ids[0] }
-    : { scope: 'all', tripId: null };
-}
-
 function csvCell(value) {
   return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
@@ -981,8 +942,7 @@ function buildJsonBackupPayload(scope = 'all', tripId = null) {
   return { data, json, filename };
 }
 
-async function prepareJsonBackup({ autoDownload = false, scope = 'all', tripId = null, share = false } = {}) {
-  if (share) return shareJsonBackup(scope, tripId);
+async function prepareJsonBackup({ autoDownload = false, scope = 'all', tripId = null } = {}) {
   const { json, filename } = buildJsonBackupPayload(scope, tripId);
   const blob = new Blob([json], { type: 'application/json' });
   const link = $('#export-link');
@@ -1004,232 +964,6 @@ async function prepareJsonBackup({ autoDownload = false, scope = 'all', tripId =
   recordBackup(filename, scope);
   if (autoDownload) link.click();
   return filename;
-}
-
-async function shareJsonBackup(scope = 'all', tripId = null) {
-  const { json, filename } = buildJsonBackupPayload(scope, tripId);
-  const files = backupShareFiles(json, filename).filter(canShareFile);
-  if (!navigator.share || !files.length) {
-    throw new Error('Este navegador no permite compartir archivos de backup. Usa Crear copia.');
-  }
-  let lastError = null;
-  for (const file of files) {
-    try {
-      await navigator.share({
-        files: [file],
-        title: 'Backup Gastos de Viaje',
-        text: filename
-      });
-      recordBackup(filename, scope);
-      return filename;
-    } catch (err) {
-      if (/abort|cancel/i.test(err.name || err.message || '')) throw err;
-      lastError = err;
-    }
-  }
-  throw lastError || new Error('Este navegador no permite compartir este archivo. Usa Crear copia.');
-}
-
-async function downloadBackupAfterShareFailure(scope = 'all', tripId = null) {
-  const filename = await prepareJsonBackup({ autoDownload: true, scope, tripId });
-  setMessage('#msg-export', `No se pudo compartir. Copia creada: ${filename}`);
-  return filename;
-}
-
-function driveClientId() {
-  return (localStorage.getItem(DRIVE_CLIENT_ID_KEY) || '').trim();
-}
-
-function setDriveClientId(value) {
-  const clean = String(value || '').trim();
-  if (clean) localStorage.setItem(DRIVE_CLIENT_ID_KEY, clean);
-  else localStorage.removeItem(DRIVE_CLIENT_ID_KEY);
-  driveAccessToken = '';
-  syncDriveClientIdField();
-  return clean;
-}
-
-function syncDriveClientIdField() {
-  const input = $('#backup-drive-client-id');
-  if (input && input.value.trim() !== driveClientId()) input.value = driveClientId();
-}
-
-function ensureDriveClientId() {
-  const input = $('#backup-drive-client-id');
-  const fromInput = input ? input.value.trim() : '';
-  if (fromInput) return setDriveClientId(fromInput);
-  const saved = driveClientId();
-  if (saved) return saved;
-  throw new Error('Falta configurar Google Drive. Abre Backups > Configurar Google Drive y pega el OAuth Client ID.');
-}
-
-function saveDriveClientIdFromForm() {
-  const input = $('#backup-drive-client-id');
-  const value = input ? input.value : '';
-  const saved = setDriveClientId(value);
-  setMessage('#msg-backup', saved ? 'Google Drive configurado para este dispositivo.' : 'Se ha borrado la configuración de Google Drive.', !saved);
-}
-
-function loadGoogleIdentityClient() {
-  if (window.google && window.google.accounts && window.google.accounts.oauth2) return Promise.resolve();
-  if (googleIdentityLoadPromise) return googleIdentityLoadPromise;
-  googleIdentityLoadPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[data-google-identity]');
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      if (window.google && window.google.accounts && window.google.accounts.oauth2) {
-        settled = true;
-        resolve();
-      }
-    };
-    const fail = () => {
-      if (settled) return;
-      settled = true;
-      reject(new Error('No se pudo cargar Google Identity Services.'));
-    };
-    const poll = () => {
-      const started = Date.now();
-      const timer = setInterval(() => {
-        finish();
-        if (settled || Date.now() - started > 10000) {
-          clearInterval(timer);
-          if (!settled) fail();
-        }
-      }, 100);
-    };
-    if (existing) {
-      existing.addEventListener('load', finish, { once: true });
-      existing.addEventListener('error', fail, { once: true });
-      poll();
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.dataset.googleIdentity = 'true';
-    script.onload = finish;
-    script.onerror = fail;
-    document.head.appendChild(script);
-    poll();
-  });
-  return googleIdentityLoadPromise;
-}
-
-async function requestDriveAccessToken() {
-  const clientId = ensureDriveClientId();
-  await loadGoogleIdentityClient();
-  return new Promise((resolve, reject) => {
-    try {
-      const tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
-        scope: DRIVE_SCOPE,
-        callback: response => {
-          if (!response || response.error) {
-            reject(new Error((response && (response.error_description || response.error)) || 'Google no autorizó el acceso a Drive.'));
-            return;
-          }
-          driveAccessToken = response.access_token;
-          resolve(driveAccessToken);
-        }
-      });
-      tokenClient.requestAccessToken({ prompt: driveAccessToken ? '' : 'consent' });
-    } catch (err) {
-      reject(new Error(`No se pudo iniciar Google Drive: ${err.message || err}`));
-    }
-  });
-}
-
-function driveApiError(response, text) {
-  try {
-    const data = JSON.parse(text);
-    const message = data && data.error && data.error.message;
-    if (message) return `Google Drive (${response.status}): ${message}`;
-  } catch {}
-  return `Google Drive respondió ${response.status}.`;
-}
-
-async function driveFetch(url, options = {}, token = driveAccessToken) {
-  const headers = Object.assign({}, options.headers || {}, { Authorization: `Bearer ${token}` });
-  const response = await fetch(url, Object.assign({}, options, { headers }));
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(driveApiError(response, text));
-  }
-  if (response.status === 204) return null;
-  return response.json();
-}
-
-function driveQueryLiteral(value) {
-  return `'${String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
-}
-
-async function getStoredDriveFolder(token) {
-  const storedId = localStorage.getItem(DRIVE_FOLDER_ID_KEY);
-  if (!storedId) return null;
-  try {
-    const folder = await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(storedId)}?fields=id,name,trashed,webViewLink`, {}, token);
-    if (folder && !folder.trashed) return folder;
-  } catch {}
-  localStorage.removeItem(DRIVE_FOLDER_ID_KEY);
-  return null;
-}
-
-async function findDriveFolder(token) {
-  const q = [
-    `name=${driveQueryLiteral(DRIVE_FOLDER_NAME)}`,
-    "mimeType='application/vnd.google-apps.folder'",
-    'trashed=false'
-  ].join(' and ');
-  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&spaces=drive&fields=files(id,name,webViewLink)&pageSize=10`;
-  const result = await driveFetch(url, {}, token);
-  const folder = result && result.files && result.files[0];
-  if (folder) localStorage.setItem(DRIVE_FOLDER_ID_KEY, folder.id);
-  return folder || null;
-}
-
-async function createDriveFolder(token) {
-  const folder = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
-    body: JSON.stringify({
-      name: DRIVE_FOLDER_NAME,
-      mimeType: 'application/vnd.google-apps.folder'
-    })
-  }, token);
-  if (folder && folder.id) localStorage.setItem(DRIVE_FOLDER_ID_KEY, folder.id);
-  return folder;
-}
-
-async function ensureDriveFolder(token) {
-  return (await getStoredDriveFolder(token)) || (await findDriveFolder(token)) || createDriveFolder(token);
-}
-
-async function uploadBackupToDrive(scope = 'all', tripId = null) {
-  const token = await requestDriveAccessToken();
-  const folder = await ensureDriveFolder(token);
-  const { json, filename } = buildJsonBackupPayload(scope, tripId);
-  const boundary = `gastosdeviaje_${Date.now()}`;
-  const metadata = {
-    name: filename,
-    parents: [folder.id],
-    mimeType: 'application/json'
-  };
-  const body = new Blob([
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
-    JSON.stringify(metadata),
-    `\r\n--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
-    json,
-    `\r\n--${boundary}--`
-  ], { type: `multipart/related; boundary=${boundary}` });
-  const file = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
-    method: 'POST',
-    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
-    body
-  }, token);
-  recordBackup(filename, scope);
-  return { filename, folder, file };
 }
 
 function fillSelect(selector, options, placeholder) {
@@ -3812,41 +3546,7 @@ function syncBackupExportTripVisibility() {
 }
 
 function syncBackupShareAvailability() {
-  syncDriveClientIdField();
-  const configured = Boolean(driveClientId());
-  const driveButton = $('#backup-drive');
-  if (driveButton) {
-    driveButton.hidden = false;
-    driveButton.disabled = false;
-    driveButton.title = configured
-      ? 'Guardar la copia en Google Drive'
-      : 'Configura el OAuth Client ID antes de guardar en Drive';
-  }
-  const homeDriveButton = $('#btn-drive-home');
-  if (homeDriveButton) {
-    homeDriveButton.hidden = false;
-    homeDriveButton.disabled = false;
-    homeDriveButton.title = configured
-      ? 'Guardar backup en Google Drive'
-      : 'Configurar Google Drive';
-  }
-}
-
-function disableBackupShareOption() {
-  const shareButton = $('#backup-share');
-  if (shareButton) {
-    shareButton.hidden = true;
-    shareButton.disabled = true;
-  }
-  const dest = $('#backup-export-dest');
-  if (dest) {
-    const shareOption = [...dest.options].find(option => option.value === 'share');
-    if (shareOption) {
-      shareOption.disabled = true;
-      shareOption.hidden = true;
-    }
-    if (dest.value === 'share') dest.value = 'download';
-  }
+  // Reserved for future backup destinations.
 }
 
 function openBackupDialog(mode = 'all') {
@@ -3961,10 +3661,6 @@ function showBackupResultSoon(title, detail = '') {
 }
 
 async function handleBackupDownload() {
-  if ($('#backup-export-dest') && $('#backup-export-dest').value === 'drive') {
-    await handleBackupDrive();
-    return;
-  }
   try {
     const filename = await prepareJsonBackup({
       autoDownload: true,
@@ -3976,106 +3672,6 @@ async function handleBackupDownload() {
     showBackupResultSoon('Copia realizada', filename);
   } catch (err) {
     setMessage('#msg-backup', err.message || String(err), true);
-  }
-}
-
-async function handleBackupDrive() {
-  const scope = $('#backup-export-scope').value;
-  const tripId = $('#backup-export-trip').value;
-  try {
-    let clientId = '';
-    try {
-      clientId = ensureDriveClientId();
-    } catch (configErr) {
-      if ($('.drive-config-panel')) $('.drive-config-panel').open = true;
-      setMessage('#msg-backup', configErr.message || String(configErr), true);
-      const input = $('#backup-drive-client-id');
-      if (input) input.focus();
-      return;
-    }
-    setMessage('#msg-backup', clientId ? 'Conectando con Google Drive...' : 'Configura primero el OAuth Client ID de Google Drive.', !clientId);
-    const result = await uploadBackupToDrive(scope, tripId);
-    const detail = `${result.filename} guardado en la carpeta "${DRIVE_FOLDER_NAME}".`;
-    setMessage('#msg-backup', detail);
-    setMessage('#msg-export', detail);
-    renderBackupStatus();
-    showBackupResult('Copia en Drive', detail);
-  } catch (err) {
-    setMessage('#msg-backup', err.message || String(err), true);
-  }
-}
-
-async function handleBackupShare() {
-  const scope = $('#backup-export-scope').value;
-  const tripId = $('#backup-export-trip').value;
-  try {
-    syncBackupShareAvailability();
-    if (!canShareBackupFiles()) {
-      const filename = await downloadBackupAfterShareFailure(scope, tripId);
-      setMessage('#msg-backup', `Compartir no está disponible. Copia creada: ${filename}`);
-      showBackupResultSoon('Copia creada', `El navegador no permite compartir. Se ha preparado ${filename}.`);
-      return;
-    }
-    const filename = await shareJsonBackup(scope, tripId);
-    setMessage('#msg-backup', `Copia compartida: ${filename}`);
-    showBackupResult('Copia compartida', filename);
-  } catch (err) {
-    const cancelled = shareWasCancelled(err);
-    if (!cancelled) disableBackupShareOption();
-    if (cancelled) {
-      setMessage('#msg-backup', 'Compartir cancelado.');
-      return;
-    }
-    try {
-      const filename = await downloadBackupAfterShareFailure(scope, tripId);
-      setMessage('#msg-backup', `No se pudo compartir. Copia creada: ${filename}`);
-      showBackupResultSoon('Copia creada', `El navegador rechazó compartir. Se ha preparado ${filename}.`);
-    } catch (fallbackErr) {
-      setMessage('#msg-backup', fallbackErr.message || String(fallbackErr), true);
-    }
-  }
-}
-
-async function handleHomeBackupDrive() {
-  const target = backupScopeFromSelection();
-  if (!driveClientId()) {
-    openBackupDialogSafe('backup');
-    const panel = $('.drive-config-panel');
-    if (panel) panel.open = true;
-    const input = $('#backup-drive-client-id');
-    if (input) input.focus();
-    setMessage('#msg-backup', 'Para probar Drive, pega primero el OAuth Client ID de Google.');
-    return;
-  }
-  try {
-    const result = await uploadBackupToDrive(target.scope, target.tripId);
-    const detail = `${result.filename} guardado en la carpeta "${DRIVE_FOLDER_NAME}".`;
-    renderBackupStatus();
-    showBackupResult('Copia en Drive', detail);
-  } catch (err) {
-    showBackupResult('Google Drive', err.message || String(err));
-  }
-}
-
-async function handleHomeBackupShare() {
-  const target = backupScopeFromSelection();
-  try {
-    syncBackupShareAvailability();
-    if (!canShareBackupFiles()) {
-      const filename = await downloadBackupAfterShareFailure(target.scope, target.tripId);
-      showBackupResultSoon('Copia creada', `El navegador no permite compartir. Se ha preparado ${filename}.`);
-      return;
-    }
-    const filename = await shareJsonBackup(target.scope, target.tripId);
-    showBackupResult('Copia compartida', filename);
-  } catch (err) {
-    if (shareWasCancelled(err)) return;
-    try {
-      const filename = await downloadBackupAfterShareFailure(target.scope, target.tripId);
-      showBackupResultSoon('Copia creada', `El navegador rechazó compartir. Se ha preparado ${filename}.`);
-    } catch (fallbackErr) {
-      alert(fallbackErr.message || String(fallbackErr));
-    }
   }
 }
 
@@ -5096,13 +4692,10 @@ function bindEvents() {
     if (!tripImport) $('#backup-import-trip').value = '';
   };
   $('#backup-download').onclick = handleBackupDownload;
-  $('#backup-drive').onclick = handleBackupDrive;
-  $('#backup-drive-save-client').onclick = saveDriveClientIdFromForm;
   $('#backup-import').onclick = handleBackupImportClick;
   $('#btn-import').onclick = () => openBackupDialogSafe('import');
   $('#btn-import-home').onclick = () => openBackupDialogSafe('import');
   $('#btn-backup-home').onclick = () => openBackupDialogSafe('backup');
-  $('#btn-drive-home').onclick = handleHomeBackupDrive;
   $('#btn-export-csv').onclick = exportCurrentCsv;
   $('#btn-print-summary').onclick = openPrintDialog;
   $('#print-dialog-close').onclick = closePrintDialog;
@@ -5163,6 +4756,5 @@ Object.assign(window, {
   openBackupDialogSafe,
   closeBackupDialog,
   handleBackupDownload,
-  handleBackupDrive,
   handleBackupImportClick
 });
