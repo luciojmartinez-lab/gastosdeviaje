@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 5;
-const APP_VERSION = '700v67';
+const APP_VERSION = '700v68';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -799,7 +799,10 @@ function transferRateLabel(transfer) {
 
 function renderBackupStatus() {
   const items = $$('.backup-status');
-  if (!items.length) return;
+  if (!items.length) {
+    syncBackupShareAvailability();
+    return;
+  }
   const saved = localStorage.getItem(BACKUP_KEY);
   if (!saved) {
     items.forEach(el => {
@@ -807,6 +810,7 @@ function renderBackupStatus() {
       el.classList.add('backup-warning');
     });
     renderBackupHistory();
+    syncBackupShareAvailability();
     return;
   }
   const date = new Date(saved);
@@ -818,6 +822,7 @@ function renderBackupStatus() {
     el.classList.toggle('backup-warning', needsReminder || ageDays >= 7);
   });
   renderBackupHistory();
+  syncBackupShareAvailability();
 }
 
 function readFileData(input) {
@@ -904,6 +909,13 @@ function backupShareFiles(json, filename) {
 
 function canShareBackupFiles() {
   return backupShareFiles('{}', 'gastos-backup.json').some(canShareFile);
+}
+
+function backupScopeFromSelection() {
+  const ids = selectedTripIds();
+  return ids.length === 1
+    ? { scope: 'trip', tripId: ids[0] }
+    : { scope: 'all', tripId: null };
 }
 
 function csvCell(value) {
@@ -3594,6 +3606,15 @@ function syncBackupShareAvailability() {
       ? 'Compartir la copia con otras apps del móvil'
       : 'Este navegador no permite compartir archivos de backup';
   }
+  const homeShareButton = $('#btn-share-home');
+  if (homeShareButton) {
+    homeShareButton.hidden = false;
+    homeShareButton.disabled = false;
+    homeShareButton.title = supported
+      ? 'Compartir backup'
+      : 'Este navegador no permite compartir archivos de backup';
+    homeShareButton.classList.toggle('is-unavailable', !supported);
+  }
   const dest = $('#backup-export-dest');
   if (dest) {
     const shareOption = [...dest.options].find(option => option.value === 'share');
@@ -3765,6 +3786,22 @@ async function handleBackupShare() {
       ? 'Compartir cancelado.'
       : 'No se ha podido abrir compartir. Usa Crear copia para guardar el archivo en Descargas.';
     setMessage('#msg-backup', message, !cancelled);
+  }
+}
+
+async function handleHomeBackupShare() {
+  try {
+    syncBackupShareAvailability();
+    if (!canShareBackupFiles()) {
+      alert('Este navegador no permite compartir archivos de backup. Usa Backups > Crear copia.');
+      return;
+    }
+    const target = backupScopeFromSelection();
+    const filename = await shareJsonBackup(target.scope, target.tripId);
+    showBackupResult('Copia compartida', filename);
+  } catch (err) {
+    const cancelled = /abort|cancel/i.test(err.name || err.message || '');
+    if (!cancelled) alert('No se ha podido abrir compartir. Usa Backups > Crear copia para guardar el archivo.');
   }
 }
 
@@ -4790,6 +4827,7 @@ function bindEvents() {
   $('#btn-import').onclick = () => openBackupDialogSafe('import');
   $('#btn-import-home').onclick = () => openBackupDialogSafe('import');
   $('#btn-backup-home').onclick = () => openBackupDialogSafe('backup');
+  $('#btn-share-home').onclick = handleHomeBackupShare;
   $('#btn-export-csv').onclick = exportCurrentCsv;
   $('#btn-print-summary').onclick = openPrintDialog;
   $('#print-dialog-close').onclick = closePrintDialog;

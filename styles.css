@@ -717,8 +717,19 @@ input[type="checkbox"] {
 
 .backup-actions {
   display: inline-flex;
+  align-items: center;
   gap: 8px;
   margin-left: auto;
+}
+
+.share-backup-btn svg {
+  width: 19px;
+  height: 19px;
+  fill: currentColor;
+}
+
+.share-backup-btn.is-unavailable {
+  opacity: 0.55;
 }
 
 .export-panel textarea {
