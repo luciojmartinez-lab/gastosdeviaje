@@ -722,14 +722,26 @@ input[type="checkbox"] {
   margin-left: auto;
 }
 
-.share-backup-btn svg {
-  width: 19px;
-  height: 19px;
-  fill: currentColor;
+.drive-backup-btn {
+  font-weight: 800;
 }
 
-.share-backup-btn.is-unavailable {
-  opacity: 0.55;
+.drive-config-panel {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.drive-config-panel > summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.drive-config-panel .row {
+  margin-top: 10px;
 }
 
 .export-panel textarea {
