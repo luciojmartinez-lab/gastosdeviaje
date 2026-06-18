@@ -1,14 +1,21 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
-const DB_VERSION = 5;
-const APP_VERSION = '700v71';
+const DB_VERSION = 6;
+const APP_VERSION = '700v72';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
+const DATA_UPDATED_KEY = 'gastos_viaje_data_updated_at';
+const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
+const SYNC_ENDPOINT = '/api/travel-sync';
+const LOCAL_BACKUP_LIMIT = 5;
 const TRIP_MAP_WIDTH = 920;
 const TRIP_MAP_HEIGHT = 460;
 let dbPromise = null;
 let activeFormDialogSubmit = null;
 let hasAppliedDefaultTripSelection = false;
+let dataTrackingPaused = 0;
+let localBackupHistoryCache = [];
+let currentCloudMetadata = null;
 const routeEditorState = {
   tripId: null,
   cityIds: [],
@@ -102,6 +109,10 @@ function openDB() {
         const s = db.createObjectStore('transferencias', { keyPath: 'id', autoIncrement: true });
         s.createIndex('byFecha', 'fecha');
       }
+      if (!db.objectStoreNames.contains('localBackups')) {
+        const s = db.createObjectStore('localBackups', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('byDate', 'date');
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -130,11 +141,61 @@ function getOne(name, key) {
   }));
 }
 
+function getLocalBackupSummaries() {
+  return store('localBackups').then(s => new Promise((resolve, reject) => {
+    const items = [];
+    const req = s.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) {
+        resolve(items);
+        return;
+      }
+      const value = cursor.value || {};
+      items.push({
+        id: value.id,
+        filename: value.filename,
+        scope: value.scope,
+        date: value.date,
+        reason: value.reason
+      });
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  }));
+}
+
+function localDataUpdatedAt() {
+  return localStorage.getItem(DATA_UPDATED_KEY) || '';
+}
+
+function setLocalDataUpdatedAt(value = new Date().toISOString()) {
+  const next = value || new Date().toISOString();
+  localStorage.setItem(DATA_UPDATED_KEY, next);
+  return next;
+}
+
+function noteLocalDataChanged(storeName) {
+  if (!dataTrackingPaused && storeName !== 'localBackups') setLocalDataUpdatedAt();
+}
+
+async function withDataTrackingPaused(callback) {
+  dataTrackingPaused += 1;
+  try {
+    return await callback();
+  } finally {
+    dataTrackingPaused = Math.max(0, dataTrackingPaused - 1);
+  }
+}
+
 async function addRecord(name, data) {
   const s = await store(name, 'readwrite');
   return new Promise((resolve, reject) => {
     const req = s.add(data);
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      noteLocalDataChanged(name);
+      resolve(req.result);
+    };
     req.onerror = () => reject(req.error);
   });
 }
@@ -143,7 +204,10 @@ async function putRecord(name, data) {
   const s = await store(name, 'readwrite');
   return new Promise((resolve, reject) => {
     const req = s.put(data);
-    req.onsuccess = () => resolve(data);
+    req.onsuccess = () => {
+      noteLocalDataChanged(name);
+      resolve(data);
+    };
     req.onerror = () => reject(req.error);
   });
 }
@@ -156,7 +220,10 @@ async function updateRecord(name, key, patch) {
       if (!req.result) return reject(new Error('No existe'));
       const obj = { ...req.result, ...patch, updatedAt: new Date().toISOString() };
       const put = s.put(obj);
-      put.onsuccess = () => resolve(obj);
+      put.onsuccess = () => {
+        noteLocalDataChanged(name);
+        resolve(obj);
+      };
       put.onerror = () => reject(put.error);
     };
     req.onerror = () => reject(req.error);
@@ -167,7 +234,10 @@ async function deleteRecord(name, key) {
   const s = await store(name, 'readwrite');
   return new Promise((resolve, reject) => {
     const req = s.delete(key);
-    req.onsuccess = () => resolve(true);
+    req.onsuccess = () => {
+      noteLocalDataChanged(name);
+      resolve(true);
+    };
     req.onerror = () => reject(req.error);
   });
 }
@@ -177,7 +247,10 @@ async function clearStores(names) {
   await new Promise((resolve, reject) => {
     const tx = db.transaction(names, 'readwrite');
     names.forEach(name => tx.objectStore(name).clear());
-    tx.oncomplete = () => resolve(true);
+    tx.oncomplete = () => {
+      names.forEach(noteLocalDataChanged);
+      resolve(true);
+    };
     tx.onerror = () => reject(tx.error);
   });
 }
@@ -749,20 +822,46 @@ function setMessage(selector, text, isError = false) {
 }
 
 function backupHistory() {
-  try {
-    return JSON.parse(localStorage.getItem(BACKUP_HISTORY_KEY) || '[]');
-  } catch {
-    return [];
-  }
+  return localBackupHistoryCache;
 }
 
-function recordBackup(filename, scope = 'all') {
-  const entry = { filename, scope, date: new Date().toISOString() };
-  const history = [entry].concat(backupHistory()).slice(0, 5);
-  localStorage.setItem(BACKUP_HISTORY_KEY, JSON.stringify(history));
+function backupReasonLabel(reason) {
+  const labels = {
+    entry: 'Entrada en la app',
+    manual: 'Copia manual',
+    'before-sync': 'Antes de sincronizar',
+    'after-sync': 'Después de sincronizar'
+  };
+  return labels[reason] || 'Copia local';
+}
+
+async function refreshLocalBackupHistory() {
+  const all = await getLocalBackupSummaries();
+  localBackupHistoryCache = all
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    .slice(0, LOCAL_BACKUP_LIMIT);
+  renderBackupHistory();
+  return localBackupHistoryCache;
+}
+
+async function recordBackup(filename, scope = 'all', data = null, reason = 'manual') {
+  const entry = {
+    filename,
+    scope,
+    date: new Date().toISOString(),
+    reason,
+    data: data || buildBackupData('all')
+  };
+  await addRecord('localBackups', entry);
+  const all = (await getLocalBackupSummaries()).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  for (const old of all.slice(LOCAL_BACKUP_LIMIT)) {
+    await deleteRecord('localBackups', Number(old.id));
+  }
+  localBackupHistoryCache = all.slice(0, LOCAL_BACKUP_LIMIT);
   localStorage.setItem(BACKUP_KEY, entry.date);
   renderBackupStatus();
   renderBackupHistory();
+  return entry;
 }
 
 function currentTripInProgress() {
@@ -777,13 +876,13 @@ function renderBackupHistory() {
   if (!targets.length) return;
   const history = backupHistory();
   if (!history.length) {
-    targets.forEach(el => { el.innerHTML = '<p class="small">Todavia no hay copias registradas en este dispositivo.</p>'; });
+    targets.forEach(el => { el.innerHTML = '<p class="small">Todavía no hay copias guardadas en este dispositivo.</p>'; });
     return;
   }
   const html = `<ul class="backup-history-list">${history.map(item => {
     const date = new Date(item.date);
     const type = item.scope === 'trip' ? 'Un viaje' : 'Todos los viajes';
-    return `<li><strong>${escapeHtml(item.filename || 'copia JSON')}</strong><span><b>${type}</b> · ${date.toLocaleString('es-ES')}</span></li>`;
+    return `<li><span class="backup-history-copy"><strong>${escapeHtml(item.filename || 'copia JSON')}</strong><span><b>${escapeHtml(backupReasonLabel(item.reason))}</b> · ${type} · ${date.toLocaleString('es-ES')}</span></span><button class="ghost compact-button" type="button" data-download-local-backup="${item.id}">Descargar</button></li>`;
   }).join('')}</ul>`;
   targets.forEach(el => { el.innerHTML = html; });
 }
@@ -935,6 +1034,10 @@ function backupFilename(data) {
   return `gastos_todos-los-viajes_${date}.json`;
 }
 
+function backupTimestamp() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, '').replace(/[:T]/g, '-');
+}
+
 function buildJsonBackupPayload(scope = 'all', tripId = null) {
   const data = buildBackupData(scope, tripId);
   const json = JSON.stringify(data, null, 2);
@@ -943,7 +1046,7 @@ function buildJsonBackupPayload(scope = 'all', tripId = null) {
 }
 
 async function prepareJsonBackup({ autoDownload = false, scope = 'all', tripId = null } = {}) {
-  const { json, filename } = buildJsonBackupPayload(scope, tripId);
+  const { data, json, filename } = buildJsonBackupPayload(scope, tripId);
   const blob = new Blob([json], { type: 'application/json' });
   const link = $('#export-link');
   const openLink = $('#export-open-link');
@@ -961,9 +1064,22 @@ async function prepareJsonBackup({ autoDownload = false, scope = 'all', tripId =
   openLink.style.display = 'inline-flex';
   if ($('#export-json')) $('#export-json').value = json;
   if ($('#export-panel')) $('#export-panel').style.display = 'none';
-  recordBackup(filename, scope);
+  await recordBackup(filename, scope, data, 'manual');
   if (autoDownload) link.click();
-  return filename;
+  return { filename, data };
+}
+
+async function createEntryBackup() {
+  const data = buildBackupData('all');
+  const filename = `gastos_entrada_${backupTimestamp()}.json`;
+  return recordBackup(filename, 'all', data, 'entry');
+}
+
+async function createSyncBackup(reason) {
+  const after = reason === 'after-sync';
+  const data = buildBackupData('all');
+  const filename = `gastos_${after ? 'sincronizado' : 'antes-de-sincronizar'}_${backupTimestamp()}${after ? '-2' : ''}.json`;
+  return recordBackup(filename, 'all', data, reason);
 }
 
 function fillSelect(selector, options, placeholder) {
@@ -1263,6 +1379,7 @@ async function updateMonedaWithCode(oldCodigo, data) {
 }
 
 async function ensureBaseCurrency() {
+  if (await getOne('monedas', 'EUR')) return;
   await putRecord('monedas', { ...DEFAULT_MONEDAS[0], updatedAt: new Date().toISOString() });
 }
 
@@ -3546,7 +3663,269 @@ function syncBackupExportTripVisibility() {
 }
 
 function syncBackupShareAvailability() {
-  // Reserved for future backup destinations.
+  const key = ensureSyncKey();
+  if ($('#sync-key-input') && document.activeElement !== $('#sync-key-input')) {
+    $('#sync-key-input').value = key;
+  }
+}
+
+function generateSyncKey() {
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const raw = Array.from(bytes, byte => alphabet[byte % alphabet.length]).join('');
+  return raw.match(/.{1,6}/g).join('-');
+}
+
+function ensureSyncKey() {
+  let key = (localStorage.getItem(SYNC_KEY_STORAGE) || '').trim();
+  if (!key) {
+    key = generateSyncKey();
+    localStorage.setItem(SYNC_KEY_STORAGE, key);
+  }
+  return key;
+}
+
+function syncKey() {
+  return (localStorage.getItem(SYNC_KEY_STORAGE) || ensureSyncKey()).trim();
+}
+
+function inferLocalDataUpdatedAt() {
+  const dates = [
+    ...state.cuentas,
+    ...state.categorias,
+    ...state.lugares,
+    ...state.gastos,
+    ...state.viajes,
+    ...state.monedas,
+    ...state.transferencias
+  ].flatMap(item => [item && item.updatedAt, item && item.createdAt]).filter(Boolean).sort();
+  return dates[dates.length - 1] || new Date(0).toISOString();
+}
+
+function ensureLocalDataUpdatedAt() {
+  return localDataUpdatedAt() || setLocalDataUpdatedAt(inferLocalDataUpdatedAt());
+}
+
+function formatSyncDate(value) {
+  if (!value) return 'No disponible';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'No disponible' : date.toLocaleString('es-ES');
+}
+
+function setSyncMessage(text, isError = false) {
+  setMessage('#sync-message', text, isError);
+}
+
+function syncMetadataDate(metadata) {
+  return metadata && (metadata.updatedAt || metadata.savedAt) || '';
+}
+
+function hasMeaningfulLocalData() {
+  return Boolean(
+    state.viajes.length
+    || state.gastos.length
+    || state.transferencias.length
+    || state.lugares.length
+    || state.monedas.some(item => item.codigo !== 'EUR')
+  );
+}
+
+async function fetchCloudMetadata() {
+  if (!navigator.onLine) throw new Error('No hay conexión a Internet');
+  const response = await fetch(SYNC_ENDPOINT, {
+    headers: { 'x-sync-key': syncKey() },
+    cache: 'no-store'
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error('No se pudo consultar la copia en Netlify');
+  const payload = await response.json();
+  return payload.metadata || null;
+}
+
+async function fetchCloudSnapshot() {
+  const response = await fetch(`${SYNC_ENDPOINT}?content=1`, {
+    headers: { 'x-sync-key': syncKey() },
+    cache: 'no-store'
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error('No se pudo descargar la versión de la nube');
+  return response.json();
+}
+
+async function uploadCloudSnapshot({ backupData = null, backupName = '' } = {}) {
+  const fullData = buildBackupData('all');
+  const fullName = backupFilename(fullData);
+  const body = {
+    data: fullData,
+    updatedAt: ensureLocalDataUpdatedAt(),
+    filename: fullName,
+    appVersion: APP_VERSION
+  };
+  if (backupData) body.backup = { data: backupData, filename: backupName || backupFilename(backupData) };
+  const text = JSON.stringify(body);
+  if (new TextEncoder().encode(text).byteLength > 5_300_000) {
+    throw new Error('La copia supera el tamaño permitido para sincronizar. Descárgala localmente.');
+  }
+  const response = await fetch(SYNC_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-sync-key': syncKey()
+    },
+    body: text
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    if (detail.error === 'payload_too_large') throw new Error('La copia supera el tamaño permitido por Netlify');
+    throw new Error('No se pudo guardar la copia en Netlify');
+  }
+  const saved = await response.json();
+  currentCloudMetadata = saved;
+  return saved;
+}
+
+function renderSyncComparison(metadata) {
+  currentCloudMetadata = metadata;
+  const localDate = ensureLocalDataUpdatedAt();
+  const cloudDate = syncMetadataDate(metadata);
+  if ($('#sync-local-date')) $('#sync-local-date').textContent = formatSyncDate(localDate);
+  if ($('#sync-cloud-date')) $('#sync-cloud-date').textContent = metadata ? formatSyncDate(cloudDate) : 'No existe todavía';
+  if ($('#sync-cloud-saved-date')) {
+    $('#sync-cloud-saved-date').textContent = metadata && metadata.savedAt
+      ? `Copia guardada: ${formatSyncDate(metadata.savedAt)}`
+      : '';
+  }
+
+  const localTime = Date.parse(localDate || 0);
+  const cloudTime = Date.parse(cloudDate || 0);
+  const cloudIsPreferred = metadata && (!hasMeaningfulLocalData() || cloudTime > localTime);
+  const downloadButton = $('#sync-download');
+  const uploadButton = $('#sync-upload');
+  if (downloadButton) downloadButton.style.display = cloudIsPreferred ? '' : 'none';
+  if (uploadButton) uploadButton.style.display = !metadata || (hasMeaningfulLocalData() && localTime > cloudTime) ? '' : 'none';
+
+  if (!metadata) {
+    setSyncMessage('No hay una versión en la nube. Puedes guardar la versión local.');
+  } else if (cloudIsPreferred) {
+    setSyncMessage('La versión de la nube es más reciente. ¿Quieres actualizar este dispositivo?');
+  } else if (localTime > cloudTime) {
+    setSyncMessage('La versión local es más reciente. ¿Quieres guardarla en la nube?');
+  } else {
+    setSyncMessage('La versión local y la versión en la nube están sincronizadas.');
+  }
+}
+
+async function refreshSyncComparison() {
+  setSyncMessage('Consultando Netlify...');
+  if ($('#sync-download')) $('#sync-download').style.display = 'none';
+  if ($('#sync-upload')) $('#sync-upload').style.display = 'none';
+  try {
+    renderSyncComparison(await fetchCloudMetadata());
+  } catch (error) {
+    currentCloudMetadata = null;
+    if ($('#sync-local-date')) $('#sync-local-date').textContent = formatSyncDate(ensureLocalDataUpdatedAt());
+    if ($('#sync-cloud-date')) $('#sync-cloud-date').textContent = 'No se pudo consultar';
+    setSyncMessage(error.message || String(error), true);
+  }
+}
+
+async function openSyncDialog(metadata = undefined) {
+  const dialog = $('#sync-dialog');
+  if (!dialog) return;
+  const keyInput = $('#sync-key-input');
+  if (keyInput) {
+    keyInput.type = 'password';
+    keyInput.value = ensureSyncKey();
+  }
+  if ($('#sync-key-toggle')) $('#sync-key-toggle').textContent = 'Mostrar';
+  if (!dialog.open) dialog.showModal();
+  if (metadata !== undefined) renderSyncComparison(metadata);
+  else await refreshSyncComparison();
+}
+
+function closeSyncDialog() {
+  const dialog = $('#sync-dialog');
+  if (dialog && dialog.open) dialog.close();
+}
+
+async function saveChangedSyncKey() {
+  const input = $('#sync-key-input');
+  const next = String(input ? input.value : '').trim();
+  if (next.length < 12) throw new Error('La clave debe tener al menos 12 caracteres');
+  const current = syncKey();
+  if (next === current) {
+    setSyncMessage('La clave no ha cambiado.');
+    return;
+  }
+  if (!confirm('Cambiar la clave abre otro espacio de copias en la nube. ¿Continuar?')) {
+    input.value = current;
+    return;
+  }
+  localStorage.setItem(SYNC_KEY_STORAGE, next);
+  currentCloudMetadata = null;
+  await refreshSyncComparison();
+}
+
+function toggleSyncKeyVisibility() {
+  const input = $('#sync-key-input');
+  const button = $('#sync-key-toggle');
+  if (!input) return;
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  if (button) button.textContent = show ? 'Ocultar' : 'Mostrar';
+}
+
+async function copySyncKey() {
+  await navigator.clipboard.writeText(syncKey());
+  setSyncMessage('Clave copiada. Guárdala para usarla en otro dispositivo.');
+}
+
+async function performCloudDownload() {
+  setSyncMessage('Preparando la sincronización...');
+  const remote = await fetchCloudSnapshot();
+  if (!remote || !remote.data) throw new Error('No hay datos disponibles en la nube');
+  await createSyncBackup('before-sync');
+  await withDataTrackingPaused(() => importAll(remote.data));
+  setLocalDataUpdatedAt(remote.updatedAt || remote.savedAt || new Date().toISOString());
+  await loadAll();
+  await createSyncBackup('after-sync');
+  await refreshLocalBackupHistory();
+  renderSyncComparison({
+    savedAt: remote.savedAt,
+    updatedAt: remote.updatedAt,
+    filename: remote.filename,
+    appVersion: remote.appVersion
+  });
+  showBackupResult('Sincronización realizada', 'Se creó una copia anterior y otra posterior terminada en -2.');
+}
+
+async function performCloudUpload() {
+  setSyncMessage('Guardando la versión local...');
+  await createSyncBackup('before-sync');
+  const saved = await uploadCloudSnapshot();
+  await createSyncBackup('after-sync');
+  await refreshLocalBackupHistory();
+  renderSyncComparison(saved);
+  showBackupResult('Sincronización realizada', 'La versión local se guardó en Netlify. Se creó también la copia posterior -2.');
+}
+
+async function checkCloudOnEntry() {
+  try {
+    const metadata = await fetchCloudMetadata();
+    if (!metadata) return;
+    const cloudTime = Date.parse(syncMetadataDate(metadata) || 0);
+    const localTime = Date.parse(ensureLocalDataUpdatedAt() || 0);
+    if (!hasMeaningfulLocalData() || cloudTime > localTime) await openSyncDialog(metadata);
+  } catch (error) {
+    console.warn('No se pudo comprobar la sincronización al entrar', error);
+  }
+}
+
+async function downloadStoredLocalBackup(id) {
+  const backup = await getOne('localBackups', Number(id));
+  if (!backup || !backup.data) throw new Error('No se encuentra esa copia local');
+  downloadText(backup.filename || 'gastos-copia.json', JSON.stringify(backup.data, null, 2), 'application/json');
 }
 
 function openBackupDialog(mode = 'all') {
@@ -3662,14 +4041,22 @@ function showBackupResultSoon(title, detail = '') {
 
 async function handleBackupDownload() {
   try {
-    const filename = await prepareJsonBackup({
+    const result = await prepareJsonBackup({
       autoDownload: true,
       scope: $('#backup-export-scope').value,
       tripId: $('#backup-export-trip').value
     });
+    const { filename, data } = result;
     setMessage('#msg-backup', `Copia creada: ${filename}`);
     setMessage('#msg-export', `Copia creada: ${filename}`);
-    showBackupResultSoon('Copia realizada', filename);
+    if (confirm('¿Quieres guardar también esta copia en la nube para que esté disponible al sincronizar?')) {
+      try {
+        await uploadCloudSnapshot({ backupData: data, backupName: filename });
+        showBackupResult('Copia local y en la nube', `${filename} se descargó y también se guardó en Netlify.`);
+      } catch (cloudError) {
+        showBackupResult('Copia local realizada', `No se pudo guardar en la nube: ${cloudError.message || cloudError}`);
+      }
+    } else showBackupResultSoon('Copia realizada', filename);
   } catch (err) {
     setMessage('#msg-backup', err.message || String(err), true);
   }
@@ -4512,6 +4899,11 @@ function bindEvents() {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     try {
+      const localBackupButton = target.closest('[data-download-local-backup]');
+      if (localBackupButton) {
+        await downloadStoredLocalBackup(localBackupButton.dataset.downloadLocalBackup);
+        return;
+      }
       const mapZoomButton = target.closest('[data-map-zoom]');
       if (mapZoomButton) {
         const action = mapZoomButton.dataset.mapZoom;
@@ -4696,6 +5088,39 @@ function bindEvents() {
   $('#btn-import').onclick = () => openBackupDialogSafe('import');
   $('#btn-import-home').onclick = () => openBackupDialogSafe('import');
   $('#btn-backup-home').onclick = () => openBackupDialogSafe('backup');
+  $('#btn-sync-home').onclick = () => openSyncDialog();
+  $('#btn-sync-config').onclick = () => openSyncDialog();
+  $('#sync-close').onclick = closeSyncDialog;
+  $('#sync-refresh').onclick = refreshSyncComparison;
+  $('#sync-key-save').onclick = async () => {
+    try {
+      await saveChangedSyncKey();
+    } catch (error) {
+      setSyncMessage(error.message || String(error), true);
+    }
+  };
+  $('#sync-key-toggle').onclick = toggleSyncKeyVisibility;
+  $('#sync-key-copy').onclick = async () => {
+    try {
+      await copySyncKey();
+    } catch {
+      setSyncMessage('No se pudo copiar la clave. Puedes mostrarla y copiarla manualmente.', true);
+    }
+  };
+  $('#sync-download').onclick = async () => {
+    try {
+      await performCloudDownload();
+    } catch (error) {
+      setSyncMessage(error.message || String(error), true);
+    }
+  };
+  $('#sync-upload').onclick = async () => {
+    try {
+      await performCloudUpload();
+    } catch (error) {
+      setSyncMessage(error.message || String(error), true);
+    }
+  };
   $('#btn-export-csv').onclick = exportCurrentCsv;
   $('#btn-print-summary').onclick = openPrintDialog;
   $('#print-dialog-close').onclick = closePrintDialog;
@@ -4727,9 +5152,18 @@ function bindEvents() {
 
 window.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
-  await seedIfEmpty();
+  ensureSyncKey();
+  await withDataTrackingPaused(seedIfEmpty);
   await loadAll();
+  ensureLocalDataUpdatedAt();
+  await refreshLocalBackupHistory();
+  try {
+    await createEntryBackup();
+  } catch (error) {
+    console.warn('No se pudo crear la copia local de entrada', error);
+  }
   renderBackupStatus();
+  await checkCloudOnEntry();
 });
 
 Object.assign(window, {
@@ -4756,5 +5190,6 @@ Object.assign(window, {
   openBackupDialogSafe,
   closeBackupDialog,
   handleBackupDownload,
-  handleBackupImportClick
+  handleBackupImportClick,
+  openSyncDialog
 });

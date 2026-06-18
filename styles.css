@@ -365,7 +365,7 @@ h2 {
 
 .backup-history-box {
   margin-top: 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
   padding-top: 12px;
 }
 
@@ -382,10 +382,27 @@ h2 {
 
 .backup-history-list li {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
   padding: 8px 0;
+}
+
+.backup-history-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.backup-history-copy strong,
+.backup-history-copy span {
+  overflow-wrap: anywhere;
+}
+
+.compact-button {
+  flex: 0 0 auto;
+  padding: 7px 10px;
 }
 
 .compact-select {
@@ -769,6 +786,52 @@ input[type="checkbox"] {
 
 .result-modal {
   width: min(420px, calc(100vw - 40px));
+}
+
+.sync-modal {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.sync-key-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.sync-key-row input {
+  min-width: 0;
+}
+
+.sync-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.sync-comparison > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.sync-comparison span,
+.sync-comparison small {
+  color: var(--muted);
+}
+
+.sync-message {
+  min-height: 22px;
+  margin: 14px 0 0;
+}
+
+.sync-actions {
+  margin-top: 8px;
 }
 
 .table-wrap {
@@ -1950,5 +2013,43 @@ footer {
   .expense-row {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+}
+
+@media screen and (max-width: 720px) {
+  .sync-key-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .sync-key-row input {
+    grid-column: 1 / -1;
+  }
+
+  .sync-key-row .btn {
+    padding: 8px 6px;
+    font-size: 13px;
+  }
+
+  .sync-comparison {
+    grid-template-columns: 1fr;
+  }
+
+  .sync-actions .btn {
+    width: 100%;
+  }
+
+  .backup-history-list li {
+    align-items: flex-start;
+  }
+
+  .backup-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .backup-actions .btn {
+    width: 100%;
+    padding-inline: 6px;
   }
 }

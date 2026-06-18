@@ -1,0 +1,9 @@
+{
+  "name": "gastosdeviaje",
+  "private": true,
+  "version": "700.72.0",
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^9.1.0"
+  }
+}

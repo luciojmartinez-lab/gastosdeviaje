@@ -418,7 +418,7 @@
 <body>
   <header class="topbar">
     <a href="index.html">Volver</a>
-    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v71</span></h1>
+    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v72</span></h1>
   </header>
 
   <main>
@@ -630,19 +630,27 @@
       <div class="grid-2">
         <article class="mini-card">
           <h3>Backups</h3>
-          <p>La pestaña Viajes incluye accesos rápidos a importación y backups. La app crea copias JSON descargables y conserva un registro de las últimas copias generadas para ayudarte a saber cuándo protegiste los datos.</p>
+          <p>La pestaña Viajes incluye accesos rápidos a importación y backups. La app guarda en IndexedDB las últimas cinco copias completas y crea automáticamente una copia local cada vez que entras. Todas pueden descargarse desde el historial.</p>
         </article>
         <article class="mini-card">
           <h3>Exportación</h3>
           <p>El CSV se exporta en UTF-8 con BOM para abrirlo correctamente en Excel. Los informes PDF incluyen tablas, gráficos y el mapa cuando corresponde.</p>
         </article>
+        <article class="mini-card">
+          <h3>Sincronización</h3>
+          <p>Sincronizar compara la fecha de la versión local con la copia guardada en Netlify. Nunca reemplaza datos sin permiso. Antes de sincronizar crea una copia local y, al terminar, otra cuyo nombre acaba en <b>-2</b>.</p>
+        </article>
+        <article class="mini-card">
+          <h3>Clave de acceso</h3>
+          <p>La clave se genera automáticamente y puede mostrarse, copiarse o cambiarse. Usa exactamente la misma clave en los demás dispositivos. Cambiarla abre un espacio de nube diferente y no elimina las copias de la clave anterior.</p>
+        </article>
       </div>
       <div class="callout">
-        <b>Consejo:</b> antes de importar datos o hacer cambios grandes de configuración, crea una copia de seguridad.
+        <b>Copias en la nube:</b> al crear un backup, la app pregunta si quieres guardarlo también en Netlify. Al entrar solo avisa cuando la versión de la nube es más reciente que la local.
       </div>
     </section>
 
-    <p class="footer-note">Gastos de Viaje 700v71. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
+    <p class="footer-note">Gastos de Viaje 700v72. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
   </main>
 </body>
 </html>

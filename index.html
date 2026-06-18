@@ -20,7 +20,7 @@
     <button id="tab-config">Configuración</button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v71</div>
+  <div class="app-version">700v72</div>
 </header>
 
 <main>
@@ -33,7 +33,7 @@
       <p id="selected-trip-info" class="small"></p>
       <div class="backup-strip">
         <span class="backup-status small"></span>
-        <span class="backup-actions"><button class="btn ghost" id="btn-import-home" onclick="openBackupDialogSafe('import')" type="button">Importación</button><button class="btn ghost" id="btn-backup-home" onclick="openBackupDialogSafe('backup')" type="button">Backups</button></span>
+        <span class="backup-actions"><button class="btn ghost" id="btn-import-home" onclick="openBackupDialogSafe('import')" type="button">Importación</button><button class="btn ghost" id="btn-backup-home" onclick="openBackupDialogSafe('backup')" type="button">Backups</button><button class="btn ghost" id="btn-sync-home" type="button">Sincronizar</button></span>
       </div>
       <div class="table-wrap">
         <table id="tabla-viajes-home"><thead><tr><th>Viaje / filtro</th><th>Inicio</th><th>Final</th><th>Gastos</th><th>Total EUR</th><th>Presupuesto</th><th>Restante</th><th>Acciones</th></tr></thead><tbody></tbody></table>
@@ -275,6 +275,7 @@
       <h2>Exportar / Importar</h2>
       <div class="actions">
         <button class="btn ghost" id="btn-export" onclick="openBackupDialogSafe()" type="button">Exportar / backup</button>
+        <button class="btn ghost" id="btn-sync-config" type="button">Sincronizar</button>
         <button class="btn ghost" id="btn-export-csv">Exportar CSV</button>
         <button class="btn ghost" id="btn-print-summary">Imprimir / PDF</button>
         <input type="file" id="file-import" accept="application/json" style="display:none">
@@ -287,7 +288,7 @@
       <div class="backup-history-box">
         <h3>Últimas copias</h3>
         <div class="backup-history"></div>
-        <p class="small">Se guardan las últimas 5 copias registradas en este dispositivo.</p>
+        <p class="small">Se guardan las últimas 5 copias completas en este dispositivo.</p>
       </div>
       <p class="small">Datos locales guardados en IndexedDB.</p>
     </div>
@@ -444,7 +445,7 @@
     <div class="backup-history-box">
       <h3>Últimas copias</h3>
       <div id="backup-history"></div>
-      <p class="small">Se guardan las últimas 5 copias registradas en este dispositivo.</p>
+      <p class="small">Se guardan las últimas 5 copias completas en este dispositivo.</p>
     </div>
     </div>
     <div id="backup-import-section" class="row3">
@@ -453,6 +454,40 @@
       <div class="filter-action"><button type="button" class="btn" id="backup-import" onclick="handleBackupImportClick()">Importar JSON</button></div>
     </div>
     <div class="actions"><span id="msg-backup" class="small"></span></div>
+  </form>
+</dialog>
+
+<dialog id="sync-dialog" class="modal sync-modal">
+  <form method="dialog">
+    <div class="modal-head">
+      <h2>Sincronizar</h2>
+      <button type="button" class="ghost icon-btn" id="sync-close" aria-label="Cerrar">x</button>
+    </div>
+    <p class="small">La clave identifica tus copias en Netlify. Usa la misma clave en todos tus dispositivos.</p>
+    <label for="sync-key-input">Clave de acceso</label>
+    <div class="sync-key-row">
+      <input id="sync-key-input" type="password" autocomplete="off" spellcheck="false">
+      <button type="button" class="btn ghost" id="sync-key-toggle">Mostrar</button>
+      <button type="button" class="btn ghost" id="sync-key-copy">Copiar</button>
+      <button type="button" class="btn ghost" id="sync-key-save">Cambiar clave</button>
+    </div>
+    <div class="sync-comparison">
+      <div>
+        <span>Versión en la nube</span>
+        <strong id="sync-cloud-date">Consultando...</strong>
+        <small id="sync-cloud-saved-date"></small>
+      </div>
+      <div>
+        <span>Última versión local</span>
+        <strong id="sync-local-date">Consultando...</strong>
+      </div>
+    </div>
+    <p id="sync-message" class="sync-message small"></p>
+    <div class="actions sync-actions">
+      <button type="button" class="btn ghost" id="sync-refresh">Comprobar de nuevo</button>
+      <button type="button" class="btn" id="sync-download" style="display:none">Actualizar desde la nube</button>
+      <button type="button" class="btn" id="sync-upload" style="display:none">Guardar versión local en la nube</button>
+    </div>
   </form>
 </dialog>
 
@@ -466,7 +501,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v71"></script>
+<script src="app.bundle.js?v=700v72"></script>
 <script>
   if ('serviceWorker' in navigator) {
     let refreshing = false;
