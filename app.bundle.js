@@ -3799,7 +3799,7 @@ function renderSyncComparison(metadata) {
 
   const localTime = Date.parse(localDate || 0);
   const cloudTime = Date.parse(cloudDate || 0);
-  const cloudIsPreferred = metadata && (!hasMeaningfulLocalData() || cloudTime > localTime);
+  const cloudIsPreferred = metadata && (cloudTime > localTime || (!hasMeaningfulLocalData() && cloudTime !== localTime));
   const downloadButton = $('#sync-download');
   const uploadButton = $('#sync-upload');
   if (downloadButton) downloadButton.style.display = cloudIsPreferred ? '' : 'none';
