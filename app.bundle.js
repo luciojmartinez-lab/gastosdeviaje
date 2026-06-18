@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 6;
-const APP_VERSION = '700v73';
+const APP_VERSION = '700v74';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -3916,7 +3916,8 @@ async function checkCloudOnEntry() {
     if (!metadata) return;
     const cloudTime = Date.parse(syncMetadataDate(metadata) || 0);
     const localTime = Date.parse(ensureLocalDataUpdatedAt() || 0);
-    if (!hasMeaningfulLocalData() || cloudTime > localTime) await openSyncDialog(metadata);
+    const cloudIsPreferred = cloudTime > localTime || (!hasMeaningfulLocalData() && cloudTime !== localTime);
+    if (cloudIsPreferred) await openSyncDialog(metadata);
   } catch (error) {
     console.warn('No se pudo comprobar la sincronización al entrar', error);
   }
