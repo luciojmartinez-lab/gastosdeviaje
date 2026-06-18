@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 6;
-const APP_VERSION = '700v76';
+const APP_VERSION = '700v77';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -942,14 +942,55 @@ function ticketLink(gasto) {
   return `<button class="ghost" data-open-ticket="${gasto.id}" type="button">${escapeHtml(gasto.ticketName || 'Ver ticket')}</button>`;
 }
 
+function normalizeTicketDataValue(value) {
+  if (typeof value === 'string') return value;
+  if (value && typeof value.data === 'string') return value.data;
+  if (value && typeof value.url === 'string') return value.url;
+  if (value == null) return '';
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function ticketDataInfo(value, fallbackType = 'application/octet-stream') {
+  const original = normalizeTicketDataValue(value);
+  let data = original;
+  if (data.startsWith('data:') && !data.includes(',')) {
+    const marker = data.indexOf(';base64');
+    if (marker >= 0) data = `${data.slice(0, marker + 7)},${data.slice(marker + 7)}`;
+  }
+  if (data.startsWith('data:') && data.includes(',')) {
+    const comma = data.indexOf(',');
+    const meta = data.slice(0, comma);
+    const payload = data.slice(comma + 1);
+    const mime = (meta.match(/^data:([^;]+)/) || [])[1] || fallbackType;
+    try {
+      if (/;base64(?:;|$)/i.test(meta)) {
+        const binary = atob(payload.replace(/\s+/g, ''));
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        return { data, blob: new Blob([bytes], { type: mime }), encoding: 'data-url' };
+      }
+      return {
+        data,
+        blob: new Blob([decodeURIComponent(payload)], { type: mime }),
+        encoding: 'data-url'
+      };
+    } catch {
+      // Preserve malformed legacy content exactly instead of blocking the backup.
+    }
+  }
+  return {
+    data: original,
+    blob: new Blob([original], { type: fallbackType }),
+    encoding: 'legacy-text'
+  };
+}
+
 function dataUrlToBlob(dataUrl, fallbackType = 'application/octet-stream') {
-  const [meta, payload] = String(dataUrl || '').split(',');
-  if (!meta || !payload) throw new Error('El ticket guardado no tiene datos validos');
-  const mime = (meta.match(/^data:([^;]+)/) || [])[1] || fallbackType;
-  const binary = atob(payload);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
+  return ticketDataInfo(dataUrl, fallbackType).blob;
 }
 
 async function sha256Hex(blob) {
@@ -968,9 +1009,10 @@ async function prepareCloudBackupData(sourceData) {
     const next = { ...gasto };
     if (gasto.ticketData) {
       setSyncMessage(`Preparando tickets y fotos: ${index + 1} de ${sourceGastos.length}`);
-      const blob = dataUrlToBlob(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
+      const ticket = ticketDataInfo(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
+      const blob = ticket.blob;
       const id = await sha256Hex(blob);
-      const parts = Math.max(1, Math.ceil(String(gasto.ticketData).length / CLOUD_ATTACHMENT_CHUNK_CHARS));
+      const parts = Math.max(1, Math.ceil(ticket.data.length / CLOUD_ATTACHMENT_CHUNK_CHARS));
       next.ticketRef = id;
       delete next.ticketData;
       if (!attachments.has(id)) {
@@ -980,7 +1022,8 @@ async function prepareCloudBackupData(sourceData) {
           mime: blob.type || gasto.ticketType || 'application/octet-stream',
           size: blob.size,
           parts,
-          data: gasto.ticketData
+          encoding: ticket.encoding,
+          data: ticket.data
         });
       }
     } else {
@@ -1058,7 +1101,8 @@ async function uploadCloudAttachments(attachments) {
       total,
       name: attachment.name,
       mime: attachment.mime,
-      size: attachment.size
+      size: attachment.size,
+      encoding: attachment.encoding
     });
   }
   return { total: unique.length, uploaded: missing.length, reused: existing.size };
@@ -1069,8 +1113,8 @@ async function localAttachmentDataById() {
   const gastos = state.gastos.filter(gasto => gasto.ticketData);
   for (let index = 0; index < gastos.length; index += 1) {
     const gasto = gastos[index];
-    const blob = dataUrlToBlob(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
-    result.set(await sha256Hex(blob), gasto.ticketData);
+    const ticket = ticketDataInfo(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
+    result.set(await sha256Hex(ticket.blob), ticket.data);
   }
   return result;
 }
@@ -1090,8 +1134,8 @@ async function downloadCloudAttachment(attachment) {
     chunks.push(await response.text());
   }
   const dataUrl = chunks.join('');
-  const blob = dataUrlToBlob(dataUrl, attachment.mime || 'application/octet-stream');
-  if (await sha256Hex(blob) !== attachment.id) {
+  const ticket = ticketDataInfo(dataUrl, attachment.mime || 'application/octet-stream');
+  if (await sha256Hex(ticket.blob) !== attachment.id) {
     throw new Error(`La foto ${attachment.name || ''} no superó la comprobación de integridad`);
   }
   return dataUrl;

@@ -150,6 +150,7 @@ export default async (req) => {
       parts: total,
       name: safeFilename(body.name || "ticket"),
       mime: String(body.mime || "application/octet-stream").slice(0, 120),
+      encoding: String(body.encoding || "data-url").slice(0, 40),
       size: Math.max(0, Number(body.size) || 0),
       savedAt: new Date().toISOString(),
     };
@@ -158,6 +159,7 @@ export default async (req) => {
         id,
         parts: total,
         mime: manifest.mime,
+        encoding: manifest.encoding,
         size: manifest.size,
         savedAt: manifest.savedAt,
       },

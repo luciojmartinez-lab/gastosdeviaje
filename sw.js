@@ -1,9 +1,9 @@
-const CACHE_NAME = 'gastosdeviaje-700v76';
+const CACHE_NAME = 'gastosdeviaje-700v77';
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css',
-  './app.bundle.js?v=700v76',
+  './app.bundle.js?v=700v77',
   './ayuda.html',
   './manifest.webmanifest',
   './icon.svg'
