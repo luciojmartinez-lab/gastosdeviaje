@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 6;
-const APP_VERSION = '700v77';
+const APP_VERSION = '700v78';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -907,7 +907,7 @@ function renderBackupStatus() {
   const saved = localStorage.getItem(BACKUP_KEY);
   if (!saved) {
     items.forEach(el => {
-      el.textContent = 'Aún no consta ningún backup en este dispositivo.';
+      el.textContent = 'Aún no hay ninguna copia local en este dispositivo.';
       el.classList.add('backup-warning');
     });
     renderBackupHistory();
@@ -917,9 +917,9 @@ function renderBackupStatus() {
   const date = new Date(saved);
   const ageDays = Math.floor((Date.now() - date.getTime()) / 86400000);
   items.forEach(el => {
-    el.textContent = `Último backup generado: ${date.toLocaleString('es-ES')}${ageDays >= 7 ? ` (hace ${ageDays} días)` : ''}.`;
+    el.textContent = `Última copia local creada: ${date.toLocaleString('es-ES')}${ageDays >= 7 ? ` (hace ${ageDays} días)` : ''}.`;
     const needsReminder = currentTripInProgress() && ageDays >= 2;
-    if (needsReminder) el.textContent = `Recuerda hacer backup: estas en viaje y la ultima copia es de hace ${ageDays} dias.`;
+    if (needsReminder) el.textContent = `Recuerda crear una copia local: estás de viaje y la última copia es de hace ${ageDays} días.`;
     el.classList.toggle('backup-warning', needsReminder || ageDays >= 7);
   });
   renderBackupHistory();
@@ -1122,7 +1122,7 @@ async function localAttachmentDataById() {
 async function downloadCloudAttachment(attachment) {
   const chunks = [];
   for (let part = 0; part < Number(attachment.parts || 0); part += 1) {
-    setSyncMessage(`Descargando fotos: parte ${part + 1} de ${attachment.parts}`);
+    setSyncMessage(`Recuperando fotos desde la nube: parte ${part + 1} de ${attachment.parts}`);
     const response = await fetch(
       `${SYNC_ENDPOINT}?attachment=${encodeURIComponent(attachment.id)}&part=${part}`,
       {
@@ -1130,7 +1130,7 @@ async function downloadCloudAttachment(attachment) {
         cache: 'force-cache'
       }
     );
-    if (!response.ok) throw new Error(`No se pudo descargar ${attachment.name || 'una foto'}`);
+    if (!response.ok) throw new Error(`No se pudo recuperar ${attachment.name || 'una foto'} desde la nube`);
     chunks.push(await response.text());
   }
   const dataUrl = chunks.join('');
@@ -1152,7 +1152,7 @@ async function hydrateCloudBackupData(sourceData) {
       downloaded.set(attachment.id, local.get(attachment.id));
       continue;
     }
-    setSyncMessage(`Descargando foto ${index + 1} de ${attachments.length}`);
+    setSyncMessage(`Recuperando foto ${index + 1} de ${attachments.length} desde la nube`);
     downloaded.set(attachment.id, await downloadCloudAttachment(attachment));
   }
   return {
@@ -3963,7 +3963,7 @@ async function fetchCloudSnapshot() {
     cache: 'no-store'
   });
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error('No se pudo descargar la versión de la nube');
+  if (!response.ok) throw new Error('No se pudo recuperar la versión de la nube');
   return response.json();
 }
 
@@ -4126,7 +4126,7 @@ async function performCloudDownload() {
     filename: remote.filename,
     appVersion: remote.appVersion
   });
-  showBackupResult('Sincronización realizada', 'Se creó una copia anterior y otra posterior terminada en -2.');
+  showBackupResult('Sincronización realizada', 'Los datos se actualizaron desde la nube. Se crearon una copia local anterior y otra posterior terminada en -2.');
 }
 
 async function performCloudUpload() {
@@ -4140,7 +4140,7 @@ async function performCloudUpload() {
   const photoDetail = stats.total
     ? ` Fotos nuevas: ${stats.uploaded}. Fotos ya existentes: ${stats.reused}.`
     : ' No había fotos pendientes.';
-  showBackupResult('Sincronización realizada', `La versión local se guardó en Netlify.${photoDetail} Se creó también la copia posterior -2.`);
+  showBackupResult('Sincronización realizada', `La copia en la nube se guardó correctamente.${photoDetail} Se crearon una copia local anterior y otra posterior terminada en -2.`);
 }
 
 async function checkCloudOnEntry() {
@@ -4281,8 +4281,8 @@ async function handleBackupDownload() {
       tripId: $('#backup-export-trip').value
     });
     const { filename, data } = result;
-    setMessage('#msg-backup', `Copia creada: ${filename}`);
-    setMessage('#msg-export', `Copia creada: ${filename}`);
+    setMessage('#msg-backup', `Copia local creada: ${filename}`);
+    setMessage('#msg-export', `Copia local creada: ${filename}`);
     if (confirm('¿Quieres guardar también esta copia en la nube para que esté disponible al sincronizar?')) {
       try {
         const saved = await uploadCloudSnapshot({ backupData: data, backupName: filename });
@@ -4290,11 +4290,11 @@ async function handleBackupDownload() {
         const detail = stats.total
           ? ` Fotos nuevas: ${stats.uploaded}. Fotos ya existentes: ${stats.reused}.`
           : ' No había fotos pendientes.';
-        showBackupResult('Copia local y en la nube', `${filename} se descargó y también se guardó en Netlify.${detail}`);
+        showBackupResult('Copias creadas', `Se creó la copia local ${filename} y se guardó también una copia en Netlify.${detail}`);
       } catch (cloudError) {
-        showBackupResult('Copia local realizada', `No se pudo guardar en la nube: ${cloudError.message || cloudError}`);
+        showBackupResult('Copia local creada', `La copia local se creó correctamente. No se pudo guardar la copia en la nube: ${cloudError.message || cloudError}`);
       }
-    } else showBackupResultSoon('Copia realizada', filename);
+    } else showBackupResultSoon('Copia local creada', filename);
   } catch (err) {
     setMessage('#msg-backup', err.message || String(err), true);
   }

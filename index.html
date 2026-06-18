@@ -20,7 +20,7 @@
     <button id="tab-config">Configuración</button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v77</div>
+  <div class="app-version">700v78</div>
 </header>
 
 <main>
@@ -280,7 +280,7 @@
         <button class="btn ghost" id="btn-print-summary">Imprimir / PDF</button>
         <input type="file" id="file-import" accept="application/json" style="display:none">
         <button class="btn" id="btn-import" onclick="openBackupDialogSafe('import')" type="button">Importar JSON</button>
-        <a id="export-link" class="download-link" href="#" download style="display:none">Descargar backup JSON</a>
+        <a id="export-link" class="download-link" href="#" download style="display:none">Descargar copia JSON</a>
         <a id="export-open-link" class="download-link alt" href="#" target="_blank" rel="noopener" style="display:none">Abrir JSON</a>
         <span id="msg-export" class="small"></span>
       </div>
@@ -502,7 +502,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v77"></script>
+<script src="app.bundle.js?v=700v78"></script>
 <script>
   if ('serviceWorker' in navigator) {
     let refreshing = false;
