@@ -133,7 +133,7 @@ export default async (req) => {
       onlyIfNew: true,
       metadata: { id, index, total },
     });
-    return json({ ok: true, stored: Boolean(result.modified), index, total });
+    return json({ ok: true, stored: Boolean(result && result.modified), index, total });
   }
 
   if (body.action === "commit-attachment") {
