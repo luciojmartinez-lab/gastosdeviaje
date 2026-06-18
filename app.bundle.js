@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 6;
-const APP_VERSION = '700v78';
+const APP_VERSION = '700v79';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -884,7 +884,7 @@ function renderBackupHistory() {
   const html = `<ul class="backup-history-list">${history.map(item => {
     const date = new Date(item.date);
     const type = item.scope === 'trip' ? 'Un viaje' : 'Todos los viajes';
-    return `<li><span class="backup-history-copy"><strong>${escapeHtml(item.filename || 'copia JSON')}</strong><span><b>${escapeHtml(backupReasonLabel(item.reason))}</b> · ${type} · ${date.toLocaleString('es-ES')}</span></span><button class="ghost compact-button" type="button" data-download-local-backup="${item.id}">Descargar</button></li>`;
+    return `<li><span class="backup-history-copy"><strong>${escapeHtml(item.filename || 'copia JSON')}</strong><span><b>${escapeHtml(backupReasonLabel(item.reason))}</b> · ${type} · ${date.toLocaleString('es-ES')}</span></span><button class="ghost compact-button" type="button" data-download-local-backup="${item.id}">Guardar archivo</button></li>`;
   }).join('')}</ul>`;
   targets.forEach(el => { el.innerHTML = html; });
 }
@@ -1185,6 +1185,49 @@ function downloadText(filename, text, type = 'text/plain') {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+async function chooseSaveFile(filename, type = 'application/octet-stream', extension = '') {
+  if (typeof window.showSaveFilePicker !== 'function') return { status: 'unsupported' };
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: filename,
+      types: [{
+        description: extension === '.json' ? 'Copia JSON' : 'Archivo',
+        accept: { [type]: extension ? [extension] : [] }
+      }]
+    });
+    return { status: 'selected', handle };
+  } catch (error) {
+    if (error && error.name === 'AbortError') return { status: 'cancelled' };
+    console.warn('No se pudo abrir el selector de guardado; se usará Descargas', error);
+    return { status: 'unsupported' };
+  }
+}
+
+async function writeBlobToFileHandle(handle, blob) {
+  const writable = await handle.createWritable();
+  try {
+    await writable.write(blob);
+  } finally {
+    await writable.close();
+  }
+}
+
+async function saveBlobOnDevice(filename, blob, fallbackLink = null) {
+  const selection = await chooseSaveFile(filename, blob.type || 'application/octet-stream', '.json');
+  if (selection.status === 'cancelled') return 'cancelled';
+  if (selection.status === 'selected') {
+    try {
+      await writeBlobToFileHandle(selection.handle, blob);
+      return 'picker';
+    } catch (error) {
+      console.warn('No se pudo guardar en la ubicación elegida; se usará Descargas', error);
+    }
+  }
+  if (fallbackLink) fallbackLink.click();
+  else downloadText(filename, await blob.text(), blob.type || 'application/octet-stream');
+  return 'download';
+}
+
 function downloadUtf8Csv(filename, text) {
   downloadText(filename, `\ufeff${text}`, 'text/csv;charset=utf-8');
 }
@@ -1278,9 +1321,9 @@ async function prepareJsonBackup({ autoDownload = false, scope = 'all', tripId =
   openLink.style.display = 'inline-flex';
   if ($('#export-json')) $('#export-json').value = json;
   if ($('#export-panel')) $('#export-panel').style.display = 'none';
+  const saveMethod = autoDownload ? await saveBlobOnDevice(filename, blob, link) : 'prepared';
   await recordBackup(filename, scope, data, 'manual');
-  if (autoDownload) link.click();
-  return { filename, data };
+  return { filename, data, saveMethod };
 }
 
 async function createEntryBackup() {
@@ -4157,9 +4200,24 @@ async function checkCloudOnEntry() {
 }
 
 async function downloadStoredLocalBackup(id) {
+  const summary = backupHistory().find(item => Number(item.id) === Number(id));
+  const filename = (summary && summary.filename) || 'gastos-copia.json';
+  const selection = await chooseSaveFile(filename, 'application/json', '.json');
+  if (selection.status === 'cancelled') return 'cancelled';
   const backup = await getOne('localBackups', Number(id));
   if (!backup || !backup.data) throw new Error('No se encuentra esa copia local');
-  downloadText(backup.filename || 'gastos-copia.json', JSON.stringify(backup.data, null, 2), 'application/json');
+  const finalFilename = backup.filename || filename;
+  const json = JSON.stringify(backup.data, null, 2);
+  if (selection.status === 'selected') {
+    try {
+      await writeBlobToFileHandle(selection.handle, new Blob([json], { type: 'application/json' }));
+      return 'picker';
+    } catch (error) {
+      console.warn('No se pudo guardar en la ubicación elegida; se usará Descargas', error);
+    }
+  }
+  downloadText(finalFilename, json, 'application/json');
+  return 'download';
 }
 
 function openBackupDialog(mode = 'all') {
@@ -4280,9 +4338,14 @@ async function handleBackupDownload() {
       scope: $('#backup-export-scope').value,
       tripId: $('#backup-export-trip').value
     });
-    const { filename, data } = result;
-    setMessage('#msg-backup', `Copia local creada: ${filename}`);
-    setMessage('#msg-export', `Copia local creada: ${filename}`);
+    const { filename, data, saveMethod } = result;
+    const localDetail = saveMethod === 'picker'
+      ? `Copia local creada y guardada en la ubicación elegida: ${filename}`
+      : saveMethod === 'cancelled'
+        ? `Copia local creada dentro de la app. No se guardó un archivo externo: ${filename}`
+        : `Copia local creada: ${filename}`;
+    setMessage('#msg-backup', localDetail);
+    setMessage('#msg-export', localDetail);
     if (confirm('¿Quieres guardar también esta copia en la nube para que esté disponible al sincronizar?')) {
       try {
         const saved = await uploadCloudSnapshot({ backupData: data, backupName: filename });
@@ -4290,11 +4353,11 @@ async function handleBackupDownload() {
         const detail = stats.total
           ? ` Fotos nuevas: ${stats.uploaded}. Fotos ya existentes: ${stats.reused}.`
           : ' No había fotos pendientes.';
-        showBackupResult('Copias creadas', `Se creó la copia local ${filename} y se guardó también una copia en Netlify.${detail}`);
+        showBackupResult('Copias creadas', `${localDetail}. También se guardó una copia en Netlify.${detail}`);
       } catch (cloudError) {
-        showBackupResult('Copia local creada', `La copia local se creó correctamente. No se pudo guardar la copia en la nube: ${cloudError.message || cloudError}`);
+        showBackupResult('Copia local creada', `${localDetail}. No se pudo guardar la copia en la nube: ${cloudError.message || cloudError}`);
       }
-    } else showBackupResultSoon('Copia local creada', filename);
+    } else showBackupResultSoon('Copia local creada', localDetail);
   } catch (err) {
     setMessage('#msg-backup', err.message || String(err), true);
   }
