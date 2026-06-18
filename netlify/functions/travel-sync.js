@@ -3,6 +3,7 @@ import { getStore } from "@netlify/blobs";
 const STORE_NAME = "gastosdeviaje-sync";
 const HISTORY_LIMIT = 5;
 const MAX_BODY_BYTES = 5_500_000;
+const MAX_ATTACHMENT_CHUNK_CHARS = 3_000_000;
 
 function json(body, status = 200) {
   return Response.json(body, {
@@ -47,6 +48,19 @@ async function prune(store, prefix) {
   await Promise.all(old.map((item) => store.delete(item.key)));
 }
 
+function validAttachmentId(value) {
+  const id = String(value || "").toLowerCase();
+  return /^[a-f0-9]{64}$/.test(id) ? id : "";
+}
+
+function attachmentPrefix(keyHash, id) {
+  return `users/${keyHash}/attachments/${id}`;
+}
+
+function attachmentPartKey(keyHash, id, index) {
+  return `${attachmentPrefix(keyHash, id)}/parts/${String(index).padStart(6, "0")}`;
+}
+
 export default async (req) => {
   if (!["GET", "POST"].includes(req.method)) return json({ error: "method_not_allowed" }, 405);
 
@@ -59,6 +73,20 @@ export default async (req) => {
   const url = new URL(req.url);
 
   if (req.method === "GET") {
+    const attachmentId = validAttachmentId(url.searchParams.get("attachment"));
+    if (attachmentId) {
+      const part = Number(url.searchParams.get("part"));
+      if (!Number.isInteger(part) || part < 0) return json({ error: "invalid_attachment_part" }, 400);
+      const data = await store.get(attachmentPartKey(keyHash, attachmentId, part));
+      if (data === null) return json({ error: "attachment_part_not_found" }, 404);
+      return new Response(data, {
+        status: 200,
+        headers: {
+          "Cache-Control": "private, max-age=31536000, immutable",
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      });
+    }
     if (url.searchParams.get("content") === "1") {
       const saved = await store.get(currentKey, { type: "json" });
       if (!saved) return json({ data: null }, 404);
@@ -75,6 +103,68 @@ export default async (req) => {
   } catch (error) {
     return json({ error: error.message === "payload_too_large" ? "payload_too_large" : "invalid_json" }, 400);
   }
+
+  if (body.action === "check-attachments") {
+    const ids = [...new Set((Array.isArray(body.ids) ? body.ids : [])
+      .map(validAttachmentId)
+      .filter(Boolean))]
+      .slice(0, 100);
+    const found = await Promise.all(ids.map(async (id) => {
+      const metadata = await store.getMetadata(`${attachmentPrefix(keyHash, id)}/manifest.json`);
+      return metadata ? id : null;
+    }));
+    const existing = found.filter(Boolean);
+    const existingSet = new Set(existing);
+    return json({ existing, missing: ids.filter((id) => !existingSet.has(id)) });
+  }
+
+  if (body.action === "put-attachment-part") {
+    const id = validAttachmentId(body.id);
+    const index = Number(body.index);
+    const total = Number(body.total);
+    const data = typeof body.data === "string" ? body.data : "";
+    if (!id || !Number.isInteger(index) || index < 0 || !Number.isInteger(total) || total < 1 || index >= total) {
+      return json({ error: "invalid_attachment_part" }, 400);
+    }
+    if (!data || data.length > MAX_ATTACHMENT_CHUNK_CHARS) {
+      return json({ error: "attachment_part_too_large" }, 400);
+    }
+    const result = await store.set(attachmentPartKey(keyHash, id, index), data, {
+      onlyIfNew: true,
+      metadata: { id, index, total },
+    });
+    return json({ ok: true, stored: Boolean(result.modified), index, total });
+  }
+
+  if (body.action === "commit-attachment") {
+    const id = validAttachmentId(body.id);
+    const total = Number(body.total);
+    if (!id || !Number.isInteger(total) || total < 1 || total > 10_000) {
+      return json({ error: "invalid_attachment_manifest" }, 400);
+    }
+    const parts = await Promise.all(Array.from({ length: total }, (_, index) =>
+      store.getMetadata(attachmentPartKey(keyHash, id, index))));
+    if (parts.some((part) => !part)) return json({ error: "attachment_incomplete" }, 409);
+    const manifest = {
+      id,
+      parts: total,
+      name: safeFilename(body.name || "ticket"),
+      mime: String(body.mime || "application/octet-stream").slice(0, 120),
+      size: Math.max(0, Number(body.size) || 0),
+      savedAt: new Date().toISOString(),
+    };
+    await store.setJSON(`${attachmentPrefix(keyHash, id)}/manifest.json`, manifest, {
+      metadata: {
+        id,
+        parts: total,
+        mime: manifest.mime,
+        size: manifest.size,
+        savedAt: manifest.savedAt,
+      },
+    });
+    return json({ ok: true, manifest });
+  }
+
   if (!body.data || typeof body.data !== "object" || body.data.backupScope !== "all") {
     return json({ error: "invalid_sync_payload" }, 400);
   }

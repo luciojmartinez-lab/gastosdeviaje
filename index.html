@@ -20,7 +20,7 @@
     <button id="tab-config">Configuración</button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v74</div>
+  <div class="app-version">700v75</div>
 </header>
 
 <main>
@@ -483,6 +483,7 @@
       </div>
     </div>
     <p id="sync-message" class="sync-message small"></p>
+    <p class="small">Los tickets y fotos se identifican por su huella. Si ya existen en Netlify no se vuelven a subir.</p>
     <div class="actions sync-actions">
       <button type="button" class="btn ghost" id="sync-refresh">Comprobar de nuevo</button>
       <button type="button" class="btn" id="sync-download" style="display:none">Actualizar desde la nube</button>
@@ -501,7 +502,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v74"></script>
+<script src="app.bundle.js?v=700v75"></script>
 <script>
   if ('serviceWorker' in navigator) {
     let refreshing = false;

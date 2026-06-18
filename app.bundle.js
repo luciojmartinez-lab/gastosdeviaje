@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 6;
-const APP_VERSION = '700v74';
+const APP_VERSION = '700v75';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -8,6 +8,8 @@ const DATA_UPDATED_KEY = 'gastos_viaje_data_updated_at';
 const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
 const SYNC_ENDPOINT = '/api/travel-sync';
 const LOCAL_BACKUP_LIMIT = 5;
+const CLOUD_ATTACHMENT_CHUNK_CHARS = 2_500_000;
+const CLOUD_ATTACHMENT_CHECK_BATCH = 75;
 const TRIP_MAP_WIDTH = 920;
 const TRIP_MAP_HEIGHT = 460;
 let dbPromise = null;
@@ -948,6 +950,174 @@ function dataUrlToBlob(dataUrl, fallbackType = 'application/octet-stream') {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return new Blob([bytes], { type: mime });
+}
+
+async function sha256Hex(blob) {
+  const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+  return Array.from(new Uint8Array(digest))
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function prepareCloudBackupData(sourceData) {
+  const attachments = new Map();
+  const gastos = [];
+  const sourceGastos = Array.isArray(sourceData && sourceData.gastos) ? sourceData.gastos : [];
+  for (let index = 0; index < sourceGastos.length; index += 1) {
+    const gasto = sourceGastos[index];
+    const next = { ...gasto };
+    if (gasto.ticketData) {
+      setSyncMessage(`Preparando tickets y fotos: ${index + 1} de ${sourceGastos.length}`);
+      const blob = dataUrlToBlob(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
+      const id = await sha256Hex(blob);
+      const parts = Math.max(1, Math.ceil(String(gasto.ticketData).length / CLOUD_ATTACHMENT_CHUNK_CHARS));
+      next.ticketRef = id;
+      delete next.ticketData;
+      if (!attachments.has(id)) {
+        attachments.set(id, {
+          id,
+          name: gasto.ticketName || 'ticket',
+          mime: blob.type || gasto.ticketType || 'application/octet-stream',
+          size: blob.size,
+          parts,
+          data: gasto.ticketData
+        });
+      }
+    } else {
+      delete next.ticketRef;
+    }
+    gastos.push(next);
+  }
+  return {
+    data: {
+      ...sourceData,
+      cloudFormat: 2,
+      gastos,
+      attachments: Array.from(attachments.values()).map(({ data, ...metadata }) => metadata)
+    },
+    attachments: Array.from(attachments.values())
+  };
+}
+
+async function syncAction(body) {
+  const response = await fetch(SYNC_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-sync-key': syncKey()
+    },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const messages = {
+      payload_too_large: 'Un fragmento supera el tamaño permitido por Netlify',
+      attachment_part_too_large: 'Un fragmento de foto es demasiado grande',
+      attachment_incomplete: 'La foto no llegó completa a Netlify'
+    };
+    throw new Error(messages[payload.error] || 'No se pudo guardar un archivo en Netlify');
+  }
+  return payload;
+}
+
+async function existingCloudAttachmentIds(ids) {
+  const existing = new Set();
+  for (let index = 0; index < ids.length; index += CLOUD_ATTACHMENT_CHECK_BATCH) {
+    const batch = ids.slice(index, index + CLOUD_ATTACHMENT_CHECK_BATCH);
+    setSyncMessage(`Comprobando fotos en la nube: ${Math.min(index + batch.length, ids.length)} de ${ids.length}`);
+    const result = await syncAction({ action: 'check-attachments', ids: batch });
+    (result.existing || []).forEach(id => existing.add(id));
+  }
+  return existing;
+}
+
+async function uploadCloudAttachments(attachments) {
+  const unique = Array.from(new Map(attachments.map(item => [item.id, item])).values());
+  if (!unique.length) return { total: 0, uploaded: 0, reused: 0 };
+  const existing = await existingCloudAttachmentIds(unique.map(item => item.id));
+  const missing = unique.filter(item => !existing.has(item.id));
+  for (let fileIndex = 0; fileIndex < missing.length; fileIndex += 1) {
+    const attachment = missing[fileIndex];
+    const total = Math.max(1, Math.ceil(String(attachment.data).length / CLOUD_ATTACHMENT_CHUNK_CHARS));
+    for (let part = 0; part < total; part += 1) {
+      setSyncMessage(`Subiendo foto ${fileIndex + 1} de ${missing.length}, parte ${part + 1} de ${total}`);
+      await syncAction({
+        action: 'put-attachment-part',
+        id: attachment.id,
+        index: part,
+        total,
+        data: String(attachment.data).slice(
+          part * CLOUD_ATTACHMENT_CHUNK_CHARS,
+          (part + 1) * CLOUD_ATTACHMENT_CHUNK_CHARS
+        )
+      });
+    }
+    await syncAction({
+      action: 'commit-attachment',
+      id: attachment.id,
+      total,
+      name: attachment.name,
+      mime: attachment.mime,
+      size: attachment.size
+    });
+  }
+  return { total: unique.length, uploaded: missing.length, reused: existing.size };
+}
+
+async function localAttachmentDataById() {
+  const result = new Map();
+  const gastos = state.gastos.filter(gasto => gasto.ticketData);
+  for (let index = 0; index < gastos.length; index += 1) {
+    const gasto = gastos[index];
+    const blob = dataUrlToBlob(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
+    result.set(await sha256Hex(blob), gasto.ticketData);
+  }
+  return result;
+}
+
+async function downloadCloudAttachment(attachment) {
+  const chunks = [];
+  for (let part = 0; part < Number(attachment.parts || 0); part += 1) {
+    setSyncMessage(`Descargando fotos: parte ${part + 1} de ${attachment.parts}`);
+    const response = await fetch(
+      `${SYNC_ENDPOINT}?attachment=${encodeURIComponent(attachment.id)}&part=${part}`,
+      {
+        headers: { 'x-sync-key': syncKey() },
+        cache: 'force-cache'
+      }
+    );
+    if (!response.ok) throw new Error(`No se pudo descargar ${attachment.name || 'una foto'}`);
+    chunks.push(await response.text());
+  }
+  const dataUrl = chunks.join('');
+  const blob = dataUrlToBlob(dataUrl, attachment.mime || 'application/octet-stream');
+  if (await sha256Hex(blob) !== attachment.id) {
+    throw new Error(`La foto ${attachment.name || ''} no superó la comprobación de integridad`);
+  }
+  return dataUrl;
+}
+
+async function hydrateCloudBackupData(sourceData) {
+  const attachments = Array.isArray(sourceData && sourceData.attachments) ? sourceData.attachments : [];
+  if (!attachments.length) return sourceData;
+  const local = await localAttachmentDataById();
+  const downloaded = new Map();
+  for (let index = 0; index < attachments.length; index += 1) {
+    const attachment = attachments[index];
+    if (local.has(attachment.id)) {
+      downloaded.set(attachment.id, local.get(attachment.id));
+      continue;
+    }
+    setSyncMessage(`Descargando foto ${index + 1} de ${attachments.length}`);
+    downloaded.set(attachment.id, await downloadCloudAttachment(attachment));
+  }
+  return {
+    ...sourceData,
+    gastos: (sourceData.gastos || []).map(gasto => ({
+      ...gasto,
+      ticketData: gasto.ticketRef ? (downloaded.get(gasto.ticketRef) || '') : (gasto.ticketData || '')
+    }))
+  };
 }
 
 function openTicket(gastoId) {
@@ -3756,16 +3926,29 @@ async function fetchCloudSnapshot() {
 async function uploadCloudSnapshot({ backupData = null, backupName = '' } = {}) {
   const fullData = buildBackupData('all');
   const fullName = backupFilename(fullData);
+  const preparedFull = await prepareCloudBackupData(fullData);
+  const preparedBackup = backupData && backupData.backupScope === 'trip'
+    ? await prepareCloudBackupData(backupData)
+    : null;
+  const attachmentStats = await uploadCloudAttachments([
+    ...preparedFull.attachments,
+    ...(preparedBackup ? preparedBackup.attachments : [])
+  ]);
   const body = {
-    data: fullData,
+    data: preparedFull.data,
     updatedAt: ensureLocalDataUpdatedAt(),
     filename: fullName,
     appVersion: APP_VERSION
   };
-  if (backupData) body.backup = { data: backupData, filename: backupName || backupFilename(backupData) };
+  if (preparedBackup) {
+    body.backup = {
+      data: preparedBackup.data,
+      filename: backupName || backupFilename(backupData)
+    };
+  }
   const text = JSON.stringify(body);
   if (new TextEncoder().encode(text).byteLength > 5_300_000) {
-    throw new Error('La copia supera el tamaño permitido para sincronizar. Descárgala localmente.');
+    throw new Error('Los datos sin fotos superan el tamaño permitido. Será necesario dividir también el archivo de datos.');
   }
   const response = await fetch(SYNC_ENDPOINT, {
     method: 'POST',
@@ -3781,6 +3964,7 @@ async function uploadCloudSnapshot({ backupData = null, backupName = '' } = {}) 
     throw new Error('No se pudo guardar la copia en Netlify');
   }
   const saved = await response.json();
+  saved.attachmentStats = attachmentStats;
   currentCloudMetadata = saved;
   return saved;
 }
@@ -3886,7 +4070,8 @@ async function performCloudDownload() {
   const remote = await fetchCloudSnapshot();
   if (!remote || !remote.data) throw new Error('No hay datos disponibles en la nube');
   await createSyncBackup('before-sync');
-  await withDataTrackingPaused(() => importAll(remote.data));
+  const hydratedData = await hydrateCloudBackupData(remote.data);
+  await withDataTrackingPaused(() => importAll(hydratedData));
   setLocalDataUpdatedAt(remote.updatedAt || remote.savedAt || new Date().toISOString());
   await loadAll();
   await createSyncBackup('after-sync');
@@ -3907,7 +4092,11 @@ async function performCloudUpload() {
   await createSyncBackup('after-sync');
   await refreshLocalBackupHistory();
   renderSyncComparison(saved);
-  showBackupResult('Sincronización realizada', 'La versión local se guardó en Netlify. Se creó también la copia posterior -2.');
+  const stats = saved.attachmentStats || {};
+  const photoDetail = stats.total
+    ? ` Fotos nuevas: ${stats.uploaded}. Fotos ya existentes: ${stats.reused}.`
+    : ' No había fotos pendientes.';
+  showBackupResult('Sincronización realizada', `La versión local se guardó en Netlify.${photoDetail} Se creó también la copia posterior -2.`);
 }
 
 async function checkCloudOnEntry() {
@@ -4052,8 +4241,12 @@ async function handleBackupDownload() {
     setMessage('#msg-export', `Copia creada: ${filename}`);
     if (confirm('¿Quieres guardar también esta copia en la nube para que esté disponible al sincronizar?')) {
       try {
-        await uploadCloudSnapshot({ backupData: data, backupName: filename });
-        showBackupResult('Copia local y en la nube', `${filename} se descargó y también se guardó en Netlify.`);
+        const saved = await uploadCloudSnapshot({ backupData: data, backupName: filename });
+        const stats = saved.attachmentStats || {};
+        const detail = stats.total
+          ? ` Fotos nuevas: ${stats.uploaded}. Fotos ya existentes: ${stats.reused}.`
+          : ' No había fotos pendientes.';
+        showBackupResult('Copia local y en la nube', `${filename} se descargó y también se guardó en Netlify.${detail}`);
       } catch (cloudError) {
         showBackupResult('Copia local realizada', `No se pudo guardar en la nube: ${cloudError.message || cloudError}`);
       }
