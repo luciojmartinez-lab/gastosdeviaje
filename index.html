@@ -20,7 +20,7 @@
     <button id="tab-config">Configuración</button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v82</div>
+  <div class="app-version">700v83</div>
 </header>
 
 <main>
@@ -410,6 +410,36 @@
   </form>
 </dialog>
 
+<dialog id="trip-documents-dialog" class="modal trip-documents-modal">
+  <form method="dialog" id="trip-documents-form">
+    <div class="modal-head">
+      <h2 id="trip-documents-title">Documentos viaje</h2>
+      <button type="button" class="ghost icon-btn" id="trip-documents-close" aria-label="Cerrar">x</button>
+    </div>
+    <div class="trip-document-add">
+      <label for="trip-document-description">Descripción</label>
+      <input id="trip-document-description" maxlength="160" placeholder="Billete, reserva, seguro, pasaporte...">
+      <div class="trip-document-picker-actions">
+        <label class="btn ghost trip-document-picker">Documento o foto
+          <input type="file" id="trip-document-file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.rtf">
+        </label>
+        <label class="btn ghost trip-document-picker">Cámara
+          <input type="file" id="trip-document-camera" accept="image/*" capture="environment">
+        </label>
+      </div>
+      <p id="trip-document-selected" class="small">Ningún archivo seleccionado.</p>
+      <div class="actions">
+        <button type="button" class="btn" id="trip-document-add">Añadir documento</button>
+        <span id="msg-trip-document" class="small"></span>
+      </div>
+    </div>
+    <div class="trip-documents-list-box">
+      <h3>Documentos guardados</h3>
+      <div id="trip-documents-list"></div>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="print-dialog" class="modal">
   <form method="dialog" id="print-dialog-form">
     <div class="modal-head">
@@ -495,7 +525,7 @@
       </div>
     </div>
     <p id="sync-message" class="sync-message small"></p>
-    <p class="small">Los tickets y fotos se identifican por su huella. Si ya existen en Netlify no se vuelven a subir.</p>
+    <p class="small">Los tickets y documentos de viaje se identifican por su huella. Si ya existen en Netlify no se vuelven a subir.</p>
     <div class="actions sync-actions">
       <button type="button" class="btn ghost" id="sync-refresh">Comprobar de nuevo</button>
       <button type="button" class="btn" id="sync-download" style="display:none">Actualizar desde la nube</button>
@@ -514,7 +544,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v82"></script>
+<script src="app.bundle.js?v=700v83"></script>
 <script>
   if ('serviceWorker' in navigator) {
     let refreshing = false;

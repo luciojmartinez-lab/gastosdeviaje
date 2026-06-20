@@ -418,7 +418,7 @@
 <body>
   <header class="topbar">
     <a href="index.html">Volver</a>
-    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v82</span></h1>
+    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v83</span></h1>
   </header>
 
   <main>
@@ -585,6 +585,7 @@
         <li>Selección automática del viaje en curso o del próximo viaje futuro al abrir.</li>
         <li>Presupuesto manual del viaje, separado del presupuesto de las cuentas.</li>
         <li>Ciudades planificadas por país, con orden, eliminación, restablecimiento, editor de paradas y repetición de ciudades cuando el viaje vuelve por una ciudad.</li>
+        <li>Documentos múltiples por viaje: reservas, billetes, seguros, fotografías u otros archivos. Cada documento exige una descripción y puede añadirse desde archivos o desde la cámara.</li>
       </ul>
 
       <h3>Gastos</h3>
@@ -630,7 +631,7 @@
       <div class="grid-2">
         <article class="mini-card">
           <h3>Backups</h3>
-          <p>La pestaña Viajes incluye accesos rápidos a importación y backups. La app guarda en IndexedDB las últimas cinco copias completas y crea automáticamente una copia local cada vez que entras. En navegadores compatibles puedes elegir una carpeta de copias y dejarla fijada. Cada archivo incorpora fecha, hora y milisegundos para que una copia nueva nunca sustituya a otra del mismo día. Android puede pedir que vuelvas a autorizar la carpeta después de cerrar la app; si no hay carpeta fija, podrás elegir la ubicación o se usará Descargas.</p>
+          <p>La pestaña Viajes incluye accesos rápidos a importación y backups. La app guarda en IndexedDB las últimas cinco copias completas y crea automáticamente una copia local cada vez que entras. El botón <b>Copiar a carpeta local</b> permite extraer cualquiera de esas copias internas. En navegadores compatibles puedes elegir una carpeta de copias y dejarla fijada. Cada archivo incorpora fecha, hora y milisegundos para que una copia nueva nunca sustituya a otra del mismo día. Android puede pedir que vuelvas a autorizar la carpeta después de cerrar la app; si no hay carpeta fija, podrás elegir la ubicación o se usará Descargas.</p>
         </article>
         <article class="mini-card">
           <h3>Exportación</h3>
@@ -639,7 +640,7 @@
         <article class="mini-card">
           <h3>Sincronización</h3>
           <p>Sincronizar muestra por separado la fecha real de la última copia local, la fecha de la copia en Netlify y cuándo se modificaron los datos de cada versión. La comparación utiliza la fecha de modificación de los datos para no reemplazar cambios por una copia más nueva que contenga información más antigua. Nunca reemplaza datos sin permiso. Antes de sincronizar crea una copia local y, al terminar, otra cuyo nombre acaba en <b>-2</b>.</p>
-          <p>Los datos y las fotos se guardan por separado. Cada ticket se identifica mediante una huella digital: la app consulta primero Netlify y solo sube las fotos que todavía no existen. Los archivos grandes se dividen en fragmentos y se reconstruyen automáticamente al recuperarlos desde la nube.</p>
+          <p>Los datos, tickets y documentos de viaje se guardan por separado. Cada archivo se identifica mediante una huella digital: la app consulta primero Netlify y solo sube los que todavía no existen. Los archivos grandes se dividen en fragmentos y se reconstruyen automáticamente al recuperarlos desde la nube.</p>
           <p>Los tickets creados con versiones antiguas se conservan aunque utilicen un formato diferente. Un ticket heredado o incompleto no impide sincronizar el resto de la copia.</p>
         </article>
         <article class="mini-card">
@@ -652,7 +653,7 @@
       </div>
     </section>
 
-    <p class="footer-note">Gastos de Viaje 700v82. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
+    <p class="footer-note">Gastos de Viaje 700v83. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
   </main>
 </body>
 </html>

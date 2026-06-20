@@ -815,6 +815,92 @@ input[type="checkbox"] {
   width: min(760px, calc(100vw - 32px));
 }
 
+.trip-documents-modal {
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+}
+
+.trip-document-add {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.trip-document-picker-actions,
+.trip-document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trip-document-picker-actions {
+  margin-top: 10px;
+}
+
+.trip-document-picker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: var(--primary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.trip-document-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.trip-documents-list-box {
+  margin-top: 16px;
+}
+
+.trip-documents-list-box h3 {
+  margin: 0 0 8px;
+}
+
+.trip-document-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.trip-document-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.trip-document-info {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.trip-document-info strong,
+.trip-document-info span {
+  overflow-wrap: anywhere;
+}
+
+.trip-document-info span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.danger-text {
+  color: #b91c1c;
+}
+
 .sync-key-row {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto auto auto;
@@ -2040,6 +2126,39 @@ footer {
 }
 
 @media screen and (max-width: 720px) {
+  .trip-documents-modal {
+    width: min(430px, calc(100vw - 18px));
+    max-height: calc(100dvh - 18px);
+  }
+
+  .trip-documents-modal form {
+    padding: 10px;
+  }
+
+  .trip-document-picker-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trip-document-picker {
+    width: 100%;
+    padding: 9px 6px;
+    font-size: 13px;
+  }
+
+  .trip-document-list li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .trip-document-actions {
+    width: 100%;
+  }
+
+  .trip-document-actions .ghost {
+    flex: 1 1 0;
+  }
+
   .sync-key-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

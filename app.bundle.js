@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
-const DB_VERSION = 7;
-const APP_VERSION = '700v82';
+const DB_VERSION = 8;
+const APP_VERSION = '700v83';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -20,6 +20,7 @@ let dataTrackingPaused = 0;
 let localBackupHistoryCache = [];
 let currentCloudMetadata = null;
 let backupDirectorySettingCache;
+let activeTripDocumentsId = null;
 const routeEditorState = {
   tripId: null,
   cityIds: [],
@@ -119,6 +120,10 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains('appSettings')) {
         db.createObjectStore('appSettings', { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains('tripDocuments')) {
+        const s = db.createObjectStore('tripDocuments', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('byViaje', 'viajeId');
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -325,6 +330,7 @@ const state = {
   lugares: [],
   gastos: [],
   viajes: [],
+  viajeDocumentos: [],
   monedas: [],
   transferencias: []
 };
@@ -889,7 +895,7 @@ function renderBackupHistory() {
   const html = `<ul class="backup-history-list">${history.map(item => {
     const date = new Date(item.date);
     const type = item.scope === 'trip' ? 'Un viaje' : 'Todos los viajes';
-    return `<li><span class="backup-history-copy"><strong>${escapeHtml(item.filename || 'copia JSON')}</strong><span><b>${escapeHtml(backupReasonLabel(item.reason))}</b> · ${type} · ${date.toLocaleString('es-ES')}</span></span><button class="ghost compact-button" type="button" data-download-local-backup="${item.id}">Guardar archivo</button></li>`;
+    return `<li><span class="backup-history-copy"><strong>${escapeHtml(item.filename || 'copia JSON')}</strong><span><b>${escapeHtml(backupReasonLabel(item.reason))}</b> · ${type} · ${date.toLocaleString('es-ES')}</span></span><button class="ghost compact-button" type="button" data-download-local-backup="${item.id}">Copiar a carpeta local</button></li>`;
   }).join('')}</ul>`;
   targets.forEach(el => { el.innerHTML = html; });
 }
@@ -936,7 +942,12 @@ function readFileData(input) {
   if (!file) return Promise.resolve(null);
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve({ name: file.name, type: file.type || 'application/octet-stream', data: reader.result });
+    reader.onload = () => resolve({
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      size: Number(file.size) || 0,
+      data: reader.result
+    });
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
@@ -1007,6 +1018,24 @@ async function sha256Hex(blob) {
 
 async function prepareCloudBackupData(sourceData) {
   const attachments = new Map();
+  const addAttachment = async ({ data, name, mime }) => {
+    const file = ticketDataInfo(data, mime || 'application/octet-stream');
+    const blob = file.blob;
+    const id = await sha256Hex(blob);
+    const parts = Math.max(1, Math.ceil(file.data.length / CLOUD_ATTACHMENT_CHUNK_CHARS));
+    if (!attachments.has(id)) {
+      attachments.set(id, {
+        id,
+        name: name || 'archivo',
+        mime: blob.type || mime || 'application/octet-stream',
+        size: blob.size,
+        parts,
+        encoding: file.encoding,
+        data: file.data
+      });
+    }
+    return id;
+  };
   const gastos = [];
   const sourceGastos = Array.isArray(sourceData && sourceData.gastos) ? sourceData.gastos : [];
   for (let index = 0; index < sourceGastos.length; index += 1) {
@@ -1014,33 +1043,41 @@ async function prepareCloudBackupData(sourceData) {
     const next = { ...gasto };
     if (gasto.ticketData) {
       setSyncMessage(`Preparando tickets y fotos: ${index + 1} de ${sourceGastos.length}`);
-      const ticket = ticketDataInfo(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
-      const blob = ticket.blob;
-      const id = await sha256Hex(blob);
-      const parts = Math.max(1, Math.ceil(ticket.data.length / CLOUD_ATTACHMENT_CHUNK_CHARS));
-      next.ticketRef = id;
+      next.ticketRef = await addAttachment({
+        data: gasto.ticketData,
+        name: gasto.ticketName || 'ticket',
+        mime: gasto.ticketType || 'application/octet-stream'
+      });
       delete next.ticketData;
-      if (!attachments.has(id)) {
-        attachments.set(id, {
-          id,
-          name: gasto.ticketName || 'ticket',
-          mime: blob.type || gasto.ticketType || 'application/octet-stream',
-          size: blob.size,
-          parts,
-          encoding: ticket.encoding,
-          data: ticket.data
-        });
-      }
     } else {
       delete next.ticketRef;
     }
     gastos.push(next);
   }
+  const viajeDocumentos = [];
+  const sourceDocuments = Array.isArray(sourceData && sourceData.viajeDocumentos) ? sourceData.viajeDocumentos : [];
+  for (let index = 0; index < sourceDocuments.length; index += 1) {
+    const document = sourceDocuments[index];
+    const next = { ...document };
+    if (document.fileData) {
+      setSyncMessage(`Preparando documentos de viaje: ${index + 1} de ${sourceDocuments.length}`);
+      next.fileRef = await addAttachment({
+        data: document.fileData,
+        name: document.fileName || 'documento',
+        mime: document.fileType || 'application/octet-stream'
+      });
+      delete next.fileData;
+    } else {
+      delete next.fileRef;
+    }
+    viajeDocumentos.push(next);
+  }
   return {
     data: {
       ...sourceData,
-      cloudFormat: 2,
+      cloudFormat: 3,
       gastos,
+      viajeDocumentos,
       attachments: Array.from(attachments.values()).map(({ data, ...metadata }) => metadata)
     },
     attachments: Array.from(attachments.values())
@@ -1060,8 +1097,8 @@ async function syncAction(body) {
   if (!response.ok) {
     const messages = {
       payload_too_large: 'Un fragmento supera el tamaño permitido por Netlify',
-      attachment_part_too_large: 'Un fragmento de foto es demasiado grande',
-      attachment_incomplete: 'La foto no llegó completa a Netlify'
+      attachment_part_too_large: 'Un fragmento de archivo es demasiado grande',
+      attachment_incomplete: 'El archivo no llegó completo a Netlify'
     };
     throw new Error(messages[payload.error] || 'No se pudo guardar un archivo en Netlify');
   }
@@ -1072,7 +1109,7 @@ async function existingCloudAttachmentIds(ids) {
   const existing = new Set();
   for (let index = 0; index < ids.length; index += CLOUD_ATTACHMENT_CHECK_BATCH) {
     const batch = ids.slice(index, index + CLOUD_ATTACHMENT_CHECK_BATCH);
-    setSyncMessage(`Comprobando fotos en la nube: ${Math.min(index + batch.length, ids.length)} de ${ids.length}`);
+    setSyncMessage(`Comprobando archivos en la nube: ${Math.min(index + batch.length, ids.length)} de ${ids.length}`);
     const result = await syncAction({ action: 'check-attachments', ids: batch });
     (result.existing || []).forEach(id => existing.add(id));
   }
@@ -1088,7 +1125,7 @@ async function uploadCloudAttachments(attachments) {
     const attachment = missing[fileIndex];
     const total = Math.max(1, Math.ceil(String(attachment.data).length / CLOUD_ATTACHMENT_CHUNK_CHARS));
     for (let part = 0; part < total; part += 1) {
-      setSyncMessage(`Subiendo foto ${fileIndex + 1} de ${missing.length}, parte ${part + 1} de ${total}`);
+      setSyncMessage(`Subiendo archivo ${fileIndex + 1} de ${missing.length}, parte ${part + 1} de ${total}`);
       await syncAction({
         action: 'put-attachment-part',
         id: attachment.id,
@@ -1121,13 +1158,19 @@ async function localAttachmentDataById() {
     const ticket = ticketDataInfo(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
     result.set(await sha256Hex(ticket.blob), ticket.data);
   }
+  const documents = state.viajeDocumentos.filter(document => document.fileData);
+  for (let index = 0; index < documents.length; index += 1) {
+    const document = documents[index];
+    const file = ticketDataInfo(document.fileData, document.fileType || 'application/octet-stream');
+    result.set(await sha256Hex(file.blob), file.data);
+  }
   return result;
 }
 
 async function downloadCloudAttachment(attachment) {
   const chunks = [];
   for (let part = 0; part < Number(attachment.parts || 0); part += 1) {
-    setSyncMessage(`Recuperando fotos desde la nube: parte ${part + 1} de ${attachment.parts}`);
+    setSyncMessage(`Recuperando archivos desde la nube: parte ${part + 1} de ${attachment.parts}`);
     const response = await fetch(
       `${SYNC_ENDPOINT}?attachment=${encodeURIComponent(attachment.id)}&part=${part}`,
       {
@@ -1135,13 +1178,13 @@ async function downloadCloudAttachment(attachment) {
         cache: 'force-cache'
       }
     );
-    if (!response.ok) throw new Error(`No se pudo recuperar ${attachment.name || 'una foto'} desde la nube`);
+    if (!response.ok) throw new Error(`No se pudo recuperar ${attachment.name || 'un archivo'} desde la nube`);
     chunks.push(await response.text());
   }
   const dataUrl = chunks.join('');
   const ticket = ticketDataInfo(dataUrl, attachment.mime || 'application/octet-stream');
   if (await sha256Hex(ticket.blob) !== attachment.id) {
-    throw new Error(`La foto ${attachment.name || ''} no superó la comprobación de integridad`);
+    throw new Error(`El archivo ${attachment.name || ''} no superó la comprobación de integridad`);
   }
   return dataUrl;
 }
@@ -1157,7 +1200,7 @@ async function hydrateCloudBackupData(sourceData) {
       downloaded.set(attachment.id, local.get(attachment.id));
       continue;
     }
-    setSyncMessage(`Recuperando foto ${index + 1} de ${attachments.length} desde la nube`);
+    setSyncMessage(`Recuperando archivo ${index + 1} de ${attachments.length} desde la nube`);
     downloaded.set(attachment.id, await downloadCloudAttachment(attachment));
   }
   return {
@@ -1165,6 +1208,10 @@ async function hydrateCloudBackupData(sourceData) {
     gastos: (sourceData.gastos || []).map(gasto => ({
       ...gasto,
       ticketData: gasto.ticketRef ? (downloaded.get(gasto.ticketRef) || '') : (gasto.ticketData || '')
+    })),
+    viajeDocumentos: (sourceData.viajeDocumentos || []).map(document => ({
+      ...document,
+      fileData: document.fileRef ? (downloaded.get(document.fileRef) || '') : (document.fileData || '')
     }))
   };
 }
@@ -1173,6 +1220,107 @@ function openTicket(gastoId) {
   const gasto = state.gastos.find(g => Number(g.id) === Number(gastoId));
   if (!gasto || !gasto.ticketData) throw new Error('No se encuentra el ticket');
   const blob = dataUrlToBlob(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function formatFileSize(value) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function tripDocumentsFor(tripId) {
+  return state.viajeDocumentos
+    .filter(item => Number(item.viajeId) === Number(tripId))
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+}
+
+function renderTripDocumentsDialog() {
+  const list = $('#trip-documents-list');
+  if (!list) return;
+  const documents = tripDocumentsFor(activeTripDocumentsId);
+  if (!documents.length) {
+    list.innerHTML = '<p class="small">Todavía no hay documentos asociados a este viaje.</p>';
+    return;
+  }
+  list.innerHTML = `<ul class="trip-document-list">${documents.map(document => {
+    const date = document.createdAt ? formatSyncDate(document.createdAt) : '';
+    const detail = [document.fileName, formatFileSize(document.fileSize), date].filter(Boolean).join(' · ');
+    return `<li>
+      <span class="trip-document-info">
+        <strong>${escapeHtml(document.descripcion || 'Documento')}</strong>
+        <span>${escapeHtml(detail)}</span>
+      </span>
+      <span class="trip-document-actions">
+        <button type="button" class="ghost" data-open-trip-document="${document.id}">Abrir</button>
+        <button type="button" class="ghost danger-text" data-delete-trip-document="${document.id}">Eliminar</button>
+      </span>
+    </li>`;
+  }).join('')}</ul>`;
+}
+
+function clearTripDocumentForm() {
+  if ($('#trip-document-description')) $('#trip-document-description').value = '';
+  if ($('#trip-document-file')) $('#trip-document-file').value = '';
+  if ($('#trip-document-camera')) $('#trip-document-camera').value = '';
+  if ($('#trip-document-selected')) $('#trip-document-selected').textContent = 'Ningún archivo seleccionado.';
+  setMessage('#msg-trip-document', '');
+}
+
+function openTripDocumentsDialog(tripId) {
+  const trip = state.viajes.find(item => Number(item.id) === Number(tripId));
+  if (!trip) throw new Error('No se encuentra el viaje');
+  activeTripDocumentsId = Number(trip.id);
+  if ($('#trip-documents-title')) $('#trip-documents-title').textContent = `Documentos viaje · ${trip.nombre}`;
+  clearTripDocumentForm();
+  renderTripDocumentsDialog();
+  const dialog = $('#trip-documents-dialog');
+  if (!dialog) return;
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeTripDocumentsDialog() {
+  activeTripDocumentsId = null;
+  const dialog = $('#trip-documents-dialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+async function saveTripDocumentFromForm() {
+  if (!activeTripDocumentsId) throw new Error('No hay un viaje seleccionado');
+  const description = String($('#trip-document-description') ? $('#trip-document-description').value : '').trim();
+  if (!description) throw new Error('Escribe una descripción');
+  const fileInput = $('#trip-document-camera') && $('#trip-document-camera').files.length
+    ? $('#trip-document-camera')
+    : $('#trip-document-file');
+  const file = await readFileData(fileInput);
+  if (!file) throw new Error('Elige un documento, una foto o usa la cámara');
+  await addTripDocument({
+    viajeId: activeTripDocumentsId,
+    descripcion: description,
+    fileName: file.name,
+    fileType: file.type,
+    fileSize: file.size,
+    fileData: file.data
+  });
+  state.viajeDocumentos = await getAll('tripDocuments');
+  clearTripDocumentForm();
+  renderTripDocumentsDialog();
+  renderViajes();
+  renderViajesHome();
+  setMessage('#msg-trip-document', 'Documento añadido');
+}
+
+function openTripDocument(id) {
+  const document = state.viajeDocumentos.find(item => Number(item.id) === Number(id));
+  if (!document || !document.fileData) throw new Error('No se encuentra el documento');
+  const blob = dataUrlToBlob(document.fileData, document.fileType || 'application/octet-stream');
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
   setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -1683,7 +1831,34 @@ async function updateViaje(id, patch) {
 }
 
 async function delViaje(id) {
-  return deleteRecord('viajes', Number(id));
+  const tripId = Number(id);
+  for (const document of state.viajeDocumentos.filter(item => Number(item.viajeId) === tripId)) {
+    await deleteRecord('tripDocuments', Number(document.id));
+  }
+  return deleteRecord('viajes', tripId);
+}
+
+async function addTripDocument({ viajeId, descripcion, fileName, fileType, fileSize = 0, fileData }) {
+  const tripId = Number(viajeId);
+  if (!state.viajes.some(v => Number(v.id) === tripId)) throw new Error('El viaje no existe');
+  const detail = String(descripcion || '').trim();
+  if (!detail) throw new Error('Escribe una descripción');
+  if (!fileData) throw new Error('Elige un documento, una foto o usa la cámara');
+  const now = new Date().toISOString();
+  return addRecord('tripDocuments', {
+    viajeId: tripId,
+    descripcion: detail,
+    fileName: String(fileName || 'documento'),
+    fileType: String(fileType || 'application/octet-stream'),
+    fileSize: Math.max(0, Number(fileSize) || 0),
+    fileData,
+    createdAt: now,
+    updatedAt: now
+  });
+}
+
+async function delTripDocument(id) {
+  return deleteRecord('tripDocuments', Number(id));
 }
 
 function normalizeCurrencyCode(codigo) {
@@ -1921,12 +2096,13 @@ async function delTransferencia(id) {
 }
 
 async function loadAll() {
-  const [cuentas, categorias, lugares, gastos, viajes, monedas, transferencias] = await Promise.all([
+  const [cuentas, categorias, lugares, gastos, viajes, viajeDocumentos, monedas, transferencias] = await Promise.all([
     getAll('cuentas'),
     getAll('categorias'),
     getAll('lugares'),
     getAll('gastos'),
     getAll('viajes'),
+    getAll('tripDocuments'),
     getAll('monedas'),
     getAll('transferencias')
   ]);
@@ -1935,6 +2111,7 @@ async function loadAll() {
   state.lugares = sortLugaresHierarchical(lugares);
   state.gastos = gastos.map(g => ({ ...g, importeEur: g.importeEur ?? toEur(g.importe, g.moneda) }));
   state.viajes = viajes.sort((a, b) => (a.fechaInicio || '').localeCompare(b.fechaInicio || '') || byName(a, b));
+  state.viajeDocumentos = viajeDocumentos.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   const validSelectedTripIds = selectedTripIds().filter(id => state.viajes.some(v => v.id === id));
   if (!validSelectedTripIds.length && !hasAppliedDefaultTripSelection && state.viajes.length) {
     const defaultTripIdValue = defaultTripId();
@@ -2412,8 +2589,9 @@ function renderViajes() {
   tbody.innerHTML = '';
   state.viajes.forEach(v => {
     const budget = numberValue(v.presupuesto);
+    const documentCount = tripDocumentsFor(v.id).length;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${escapeHtml(tripCountryLabel(v))}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td><button class="ghost" data-edit-viaje="${v.id}">Editar</button> <button class="ghost" data-del-viaje="${v.id}">Eliminar</button></td>`;
+    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${escapeHtml(tripCountryLabel(v))}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td><button class="ghost" data-trip-documents="${v.id}" title="${documentCount} documento(s)">Documentos viaje</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button> <button class="ghost" data-del-viaje="${v.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -2473,7 +2651,8 @@ function renderViajesHome() {
       yearBudget += budget;
       const tr = document.createElement('tr');
       if (remaining !== null && remaining < 0) tr.className = 'warning-row';
-      tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><span class="trip-actions-inline"><button class="ghost" data-trip-gastos="${v.id}">Gastos</button> <button class="ghost" data-trip-resumen="${v.id}">Resumen</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button></span></td>`;
+      const documentCount = tripDocumentsFor(v.id).length;
+      tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><span class="trip-actions-inline"><button class="ghost" data-trip-gastos="${v.id}">Gastos</button> <button class="ghost" data-trip-resumen="${v.id}">Resumen</button> <button class="ghost" data-trip-documents="${v.id}" title="${documentCount} documento(s)">Documentos viaje</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button></span></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
@@ -3690,6 +3869,7 @@ function buildBackupData(scope = 'all', tripId = null) {
     lugares: state.lugares,
     gastos: state.gastos,
     viajes: state.viajes,
+    viajeDocumentos: state.viajeDocumentos,
     monedas: state.monedas,
     transferencias: state.transferencias
   };
@@ -3704,6 +3884,7 @@ function buildTripBackupData(tripId) {
   const trip = state.viajes.find(v => Number(v.id) === id);
   if (!trip) throw new Error('Elige un viaje para exportar');
   const gastos = state.gastos.filter(g => Number(g.viajeId) === id);
+  const viajeDocumentos = state.viajeDocumentos.filter(document => Number(document.viajeId) === id);
   const usedAccountIds = new Set(gastos.map(g => Number(g.cuentaId)).filter(Boolean));
   const cuentas = state.cuentas.filter(c => Number(c.viajeId) === id || usedAccountIds.has(Number(c.id)));
   const accountIds = new Set(cuentas.map(c => Number(c.id)));
@@ -3718,6 +3899,7 @@ function buildTripBackupData(tripId) {
     lugares: state.lugares,
     gastos,
     viajes: [trip],
+    viajeDocumentos,
     monedas: state.monedas,
     transferencias
   };
@@ -3727,7 +3909,7 @@ async function importAll(data) {
   if (!data || !Array.isArray(data.cuentas) || !Array.isArray(data.categorias) || !Array.isArray(data.gastos)) {
     throw new Error('Archivo no válido');
   }
-  await clearStores(['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'monedas', 'transferencias']);
+  await clearStores(['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'tripDocuments', 'monedas', 'transferencias']);
   await ensureBaseCurrency();
   for (const m of data.monedas || []) {
     const codigo = String(m.codigo || '').toUpperCase();
@@ -3816,6 +3998,20 @@ async function importAll(data) {
     if (g.id == null) delete obj.id;
     await addRecord('gastos', obj);
   }
+  for (const document of data.viajeDocumentos || []) {
+    const obj = {
+      ...document,
+      viajeId: Number(document.viajeId),
+      descripcion: String(document.descripcion || '').trim() || document.fileName || 'Documento',
+      fileName: document.fileName || 'documento',
+      fileType: document.fileType || 'application/octet-stream',
+      fileSize: Math.max(0, Number(document.fileSize) || 0),
+      createdAt: document.createdAt || new Date().toISOString(),
+      updatedAt: document.updatedAt || new Date().toISOString()
+    };
+    if (document.id == null) delete obj.id;
+    await addRecord('tripDocuments', obj);
+  }
 }
 
 async function importTripBackup(data, targetTripId) {
@@ -3845,6 +4041,9 @@ async function importTripBackup(data, targetTripId) {
   const oldTripAccountIds = new Set(oldTripAccounts.map(c => Number(c.id)));
   for (const gasto of state.gastos.filter(g => Number(g.viajeId) === targetId)) {
     await deleteRecord('gastos', Number(gasto.id));
+  }
+  for (const document of state.viajeDocumentos.filter(item => Number(item.viajeId) === targetId)) {
+    await deleteRecord('tripDocuments', Number(document.id));
   }
   for (const transfer of state.transferencias.filter(t => oldTripAccountIds.has(Number(t.fromId)) || oldTripAccountIds.has(Number(t.toId)))) {
     await deleteRecord('transferencias', Number(transfer.id));
@@ -3893,6 +4092,21 @@ async function importTripBackup(data, targetTripId) {
     };
     delete obj.id;
     await addRecord('gastos', obj);
+  }
+  for (const document of data.viajeDocumentos || []) {
+    const obj = {
+      ...document,
+      id: undefined,
+      viajeId: targetId,
+      descripcion: String(document.descripcion || '').trim() || document.fileName || 'Documento',
+      fileName: document.fileName || 'documento',
+      fileType: document.fileType || 'application/octet-stream',
+      fileSize: Math.max(0, Number(document.fileSize) || 0),
+      createdAt: document.createdAt || now,
+      updatedAt: now
+    };
+    delete obj.id;
+    await addRecord('tripDocuments', obj);
   }
 }
 
@@ -4078,6 +4292,7 @@ function inferLocalDataUpdatedAt() {
     ...state.lugares,
     ...state.gastos,
     ...state.viajes,
+    ...state.viajeDocumentos,
     ...state.monedas,
     ...state.transferencias
   ].flatMap(item => [item && item.updatedAt, item && item.createdAt]).filter(Boolean).sort();
@@ -4108,6 +4323,7 @@ function hasMeaningfulLocalData() {
     || state.gastos.length
     || state.transferencias.length
     || state.lugares.length
+    || state.viajeDocumentos.length
     || state.monedas.some(item => item.codigo !== 'EUR')
   );
 }
@@ -4160,7 +4376,7 @@ async function uploadCloudSnapshot({ backupData = null, backupName = '' } = {}) 
   }
   const text = JSON.stringify(body);
   if (new TextEncoder().encode(text).byteLength > 5_300_000) {
-    throw new Error('Los datos sin fotos superan el tamaño permitido. Será necesario dividir también el archivo de datos.');
+    throw new Error('Los datos sin archivos adjuntos superan el tamaño permitido. Será necesario dividir también el archivo de datos.');
   }
   const response = await fetch(SYNC_ENDPOINT, {
     method: 'POST',
@@ -4326,8 +4542,8 @@ async function performCloudUpload() {
   renderSyncComparison(saved);
   const stats = saved.attachmentStats || {};
   const photoDetail = stats.total
-    ? ` Fotos nuevas: ${stats.uploaded}. Fotos ya existentes: ${stats.reused}.`
-    : ' No había fotos pendientes.';
+    ? ` Archivos nuevos: ${stats.uploaded}. Archivos ya existentes: ${stats.reused}.`
+    : ' No había archivos pendientes.';
   showBackupResult('Sincronización realizada', `La copia en la nube se guardó correctamente.${photoDetail} Se crearon una copia local anterior y otra posterior terminada en -2.`);
 }
 
@@ -4520,8 +4736,8 @@ async function handleBackupDownload() {
         const saved = await uploadCloudSnapshot({ backupData: data, backupName: filename });
         const stats = saved.attachmentStats || {};
         const detail = stats.total
-          ? ` Fotos nuevas: ${stats.uploaded}. Fotos ya existentes: ${stats.reused}.`
-          : ' No había fotos pendientes.';
+          ? ` Archivos nuevos: ${stats.uploaded}. Archivos ya existentes: ${stats.reused}.`
+          : ' No había archivos pendientes.';
         showBackupResult('Copias creadas', `${localDetail}. También se guardó una copia en Netlify.${detail}`);
       } catch (cloudError) {
         showBackupResult('Copia local creada', `${localDetail}. No se pudo guardar la copia en la nube: ${cloudError.message || cloudError}`);
@@ -4744,12 +4960,12 @@ function formDialogValues() {
 async function resetDataValue(option) {
   const value = String(option || '').trim().toLowerCase();
   const map = {
-    todo: ['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'monedas', 'transferencias'],
+    todo: ['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'tripDocuments', 'monedas', 'transferencias'],
     categorias: ['categorias'],
     lugares: ['lugares'],
     monedas: ['monedas'],
     cuentas: ['cuentas'],
-    viajes: ['viajes'],
+    viajes: ['viajes', 'tripDocuments'],
     gastos: ['gastos'],
     transferencias: ['transferencias']
   };
@@ -5374,6 +5590,26 @@ function bindEvents() {
         await downloadStoredLocalBackup(localBackupButton.dataset.downloadLocalBackup);
         return;
       }
+      const tripDocumentsButton = target.closest('[data-trip-documents]');
+      if (tripDocumentsButton) {
+        openTripDocumentsDialog(tripDocumentsButton.dataset.tripDocuments);
+        return;
+      }
+      const openTripDocumentButton = target.closest('[data-open-trip-document]');
+      if (openTripDocumentButton) {
+        openTripDocument(openTripDocumentButton.dataset.openTripDocument);
+        return;
+      }
+      const deleteTripDocumentButton = target.closest('[data-delete-trip-document]');
+      if (deleteTripDocumentButton) {
+        if (!confirm('¿Eliminar este documento del viaje?')) return;
+        await delTripDocument(deleteTripDocumentButton.dataset.deleteTripDocument);
+        state.viajeDocumentos = await getAll('tripDocuments');
+        renderTripDocumentsDialog();
+        renderViajes();
+        renderViajesHome();
+        return;
+      }
       const mapZoomButton = target.closest('[data-map-zoom]');
       if (mapZoomButton) {
         const action = mapZoomButton.dataset.mapZoom;
@@ -5543,6 +5779,29 @@ function bindEvents() {
   });
 
   $('#btn-export').onclick = () => openBackupDialogSafe();
+  $('#trip-documents-close').onclick = closeTripDocumentsDialog;
+  $('#trip-document-file').onchange = () => {
+    if ($('#trip-document-file').files.length) {
+      $('#trip-document-camera').value = '';
+      $('#trip-document-selected').textContent = $('#trip-document-file').files[0].name;
+    }
+  };
+  $('#trip-document-camera').onchange = () => {
+    if ($('#trip-document-camera').files.length) {
+      $('#trip-document-file').value = '';
+      $('#trip-document-selected').textContent = $('#trip-document-camera').files[0].name || 'Foto de cámara';
+    }
+  };
+  $('#trip-document-add').onclick = async () => {
+    try {
+      await saveTripDocumentFromForm();
+    } catch (error) {
+      setMessage('#msg-trip-document', error.message || String(error), true);
+    }
+  };
+  $('#trip-documents-form').onsubmit = event => {
+    event.preventDefault();
+  };
   $('#backup-close').onclick = closeBackupDialog;
   $('#backup-exit').onclick = closeBackupResultDialog;
   $('#backup-export-scope').onchange = () => {
