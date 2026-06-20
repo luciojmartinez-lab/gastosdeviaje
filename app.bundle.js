@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 8;
-const APP_VERSION = '700v84';
+const APP_VERSION = '700v85';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -3709,6 +3709,54 @@ function endTripMapDrag(event) {
   if (moved) renderTripMap();
 }
 
+function summaryDocumentDate(value, dateOnly = false) {
+  if (!value) return '-';
+  if (dateOnly && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-');
+    return `${day}/${month}/${year}`;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('es-ES');
+}
+
+function renderSummaryDocuments() {
+  const tripBody = $('#tabla-documentos-viaje tbody');
+  const expenseBody = $('#tabla-documentos-gastos tbody');
+  if (!tripBody || !expenseBody) return;
+  const selectedIds = selectedTripSet();
+  const includedTripIds = selectedIds.size
+    ? selectedIds
+    : new Set(state.viajes.map(viaje => Number(viaje.id)));
+  const showTripName = includedTripIds.size !== 1;
+  const emptyRow = message => `<tr><td colspan="3" class="small">${message}</td></tr>`;
+  const descriptionCell = (description, viajeId) => {
+    const trip = showTripName ? tripName(viajeId) : '';
+    return `<span class="summary-document-description">${escapeHtml(description || 'Documento')}</span>${trip ? `<span class="summary-document-trip">${escapeHtml(trip)}</span>` : ''}`;
+  };
+
+  const tripDocuments = state.viajeDocumentos
+    .filter(document => document.fileData && includedTripIds.has(Number(document.viajeId)))
+    .sort((a, b) => (b.createdAt || b.updatedAt || '').localeCompare(a.createdAt || a.updatedAt || ''));
+  tripBody.innerHTML = tripDocuments.length
+    ? tripDocuments.map(document => `<tr>
+      <td>${summaryDocumentDate(document.createdAt || document.updatedAt)}</td>
+      <td>${descriptionCell(document.descripcion || document.fileName || 'Documento', document.viajeId)}</td>
+      <td><button type="button" class="ghost summary-document-link" data-open-trip-document="${document.id}">Abrir archivo</button></td>
+    </tr>`).join('')
+    : emptyRow('No hay documentos de viaje para la selección actual.');
+
+  const expenseDocuments = state.gastos
+    .filter(gasto => gasto.ticketData && includedTripIds.has(Number(gasto.viajeId)))
+    .sort((a, b) => (b.fecha || b.createdAt || '').localeCompare(a.fecha || a.createdAt || ''));
+  expenseBody.innerHTML = expenseDocuments.length
+    ? expenseDocuments.map(gasto => `<tr>
+      <td>${summaryDocumentDate(gasto.fecha || gasto.createdAt, Boolean(gasto.fecha))}</td>
+      <td>${descriptionCell(gasto.desc || gasto.ticketName || 'Ticket', gasto.viajeId)}</td>
+      <td><button type="button" class="ghost summary-document-link" data-open-ticket="${gasto.id}">Abrir archivo</button></td>
+    </tr>`).join('')
+    : emptyRow('No hay tickets de gastos para la selección actual.');
+}
+
 function renderResumen() {
   const mon = $('#r-moneda').value;
   const cta = $('#r-cuenta').value;
@@ -3884,6 +3932,7 @@ function renderResumen() {
   }
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
   renderTripMap();
+  renderSummaryDocuments();
 }
 
 async function exportAll() {

@@ -20,7 +20,7 @@
     <button id="tab-config">Configuración</button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v84</div>
+  <div class="app-version">700v85</div>
 </header>
 
 <main>
@@ -99,6 +99,7 @@
         <a class="btn ghost" href="#resumen-desglose">Desglose</a>
         <a class="btn ghost" href="#resumen-cuentas">Cuentas</a>
         <a class="btn ghost" href="#resumen-mapa">Mapa</a>
+        <a class="btn ghost" href="#resumen-documentos">Documentos</a>
       </div>
     </div>
     <div class="kpi" id="resumen-totales">
@@ -136,6 +137,27 @@
       </div>
       <div id="trip-map" class="trip-map"></div>
       <p id="trip-map-info" class="small"></p>
+    </div>
+    <div class="card summary-documents" id="resumen-documentos">
+      <h2>Documentos</h2>
+      <section class="summary-document-section">
+        <h3>Documentos viaje</h3>
+        <div class="table-wrap">
+          <table class="summary-documents-table" id="tabla-documentos-viaje">
+            <thead><tr><th>Fecha documento</th><th>Descripción</th><th>Archivo</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="summary-document-section">
+        <h3>Documentos gastos</h3>
+        <div class="table-wrap">
+          <table class="summary-documents-table" id="tabla-documentos-gastos">
+            <thead><tr><th>Fecha documento</th><th>Descripción</th><th>Archivo</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
     </div>
   </section>
 
@@ -566,7 +588,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v84"></script>
+<script src="app.bundle.js?v=700v85"></script>
 <script>
   if ('serviceWorker' in navigator) {
     let refreshing = false;

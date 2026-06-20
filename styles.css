@@ -1072,6 +1072,47 @@ tfoot td { font-weight: 700; }
   font-weight: 500;
 }
 
+.summary-document-section + .summary-document-section {
+  margin-top: 22px;
+}
+
+.summary-document-section h3 {
+  margin-bottom: 6px;
+}
+
+.summary-documents-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.summary-documents-table th:first-child,
+.summary-documents-table td:first-child {
+  width: 25%;
+}
+
+.summary-documents-table th:last-child,
+.summary-documents-table td:last-child {
+  width: 130px;
+  text-align: right;
+}
+
+.summary-document-description {
+  overflow-wrap: anywhere;
+}
+
+.summary-document-trip {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.summary-document-link {
+  padding: 6px 9px;
+  font-size: 13px;
+  text-decoration: underline;
+}
+
 .small {
   color: var(--muted);
   font-size: 12px;
@@ -1346,9 +1387,69 @@ footer {
   .row3,
   .row4,
   .filters,
-  .kpi,
   .section-head {
     grid-template-columns: 1fr;
+  }
+
+  #resumen-totales.kpi {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    overflow: hidden;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px #0000000a;
+  }
+
+  #resumen-totales .box {
+    min-width: 0;
+    padding: 10px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  #resumen-totales .box + .box {
+    border-left: 1px solid var(--line);
+  }
+
+  #resumen-totales .small,
+  #resumen-totales .kpi-note {
+    font-size: 10px;
+  }
+
+  #resumen-totales .big {
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+
+  .summary-documents {
+    padding: 12px;
+  }
+
+  .summary-documents-table {
+    width: 100%;
+    font-size: 12px;
+  }
+
+  .summary-documents-table th,
+  .summary-documents-table td {
+    padding: 7px 5px;
+    font-size: 12px;
+  }
+
+  .summary-documents-table th:first-child,
+  .summary-documents-table td:first-child {
+    width: 28%;
+  }
+
+  .summary-documents-table th:last-child,
+  .summary-documents-table td:last-child {
+    width: 78px;
+  }
+
+  .summary-document-link {
+    padding: 5px 3px;
+    font-size: 12px;
+    white-space: normal;
   }
 
   .compact-config-form {
