@@ -20,7 +20,7 @@
     <button id="tab-config">Configuración</button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v83</div>
+  <div class="app-version">700v84</div>
 </header>
 
 <main>
@@ -330,7 +330,18 @@
       <div><label>Tipo</label><select id="g-tipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso / devolución</option></select></div>
       <div><label>Descripción (opcional)</label><input id="g-desc"></div>
     </div>
-    <div><label>Foto / ticket</label><input type="file" accept="image/*,.pdf" id="g-ticket"></div>
+    <div class="expense-ticket-field">
+      <label>Foto / ticket</label>
+      <div class="expense-ticket-actions">
+        <label class="btn ghost trip-document-picker">Elegir archivo
+          <input type="file" accept="image/*,.pdf" id="g-ticket">
+        </label>
+        <label class="btn ghost trip-document-picker">Cámara
+          <input type="file" accept="image/*" capture="environment" id="g-ticket-camera">
+        </label>
+      </div>
+      <p id="g-ticket-selected" class="small">Ningún ticket seleccionado.</p>
+    </div>
     <div class="actions">
       <button type="button" class="btn" id="btn-add-gasto">Añadir y salir</button>
       <button type="button" class="ghost" id="btn-add-gasto-continue">Añadir y seguir</button>
@@ -368,8 +379,19 @@
       <div><label>Tipo</label><select id="edit-gasto-tipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso / devolución</option></select></div>
       <div><label>Descripción</label><input id="edit-gasto-desc"></div>
     </div>
-    <div class="row">
-      <div><label>Nuevo ticket</label><input type="file" accept="image/*,.pdf" id="edit-gasto-ticket"></div>
+    <div class="row edit-ticket-fields">
+      <div class="expense-ticket-field">
+        <label>Nuevo ticket</label>
+        <div class="expense-ticket-actions">
+          <label class="btn ghost trip-document-picker">Elegir archivo
+            <input type="file" accept="image/*,.pdf" id="edit-gasto-ticket">
+          </label>
+          <label class="btn ghost trip-document-picker">Cámara
+            <input type="file" accept="image/*" capture="environment" id="edit-gasto-ticket-camera">
+          </label>
+        </div>
+        <p id="edit-gasto-ticket-selected" class="small">Ningún ticket nuevo seleccionado.</p>
+      </div>
       <div><label><input type="checkbox" id="edit-gasto-ticket-remove"> Quitar ticket actual</label><p id="edit-gasto-ticket-current" class="small"></p></div>
     </div>
     <div class="actions">
@@ -544,7 +566,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v83"></script>
+<script src="app.bundle.js?v=700v84"></script>
 <script>
   if ('serviceWorker' in navigator) {
     let refreshing = false;

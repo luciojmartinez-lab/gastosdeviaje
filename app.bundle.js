@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 8;
-const APP_VERSION = '700v83';
+const APP_VERSION = '700v84';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -951,6 +951,39 @@ function readFileData(input) {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+function selectedFileInput(fileSelector, cameraSelector) {
+  const camera = $(cameraSelector);
+  if (camera && camera.files && camera.files.length) return camera;
+  return $(fileSelector);
+}
+
+function clearExpenseTicketSelection(prefix) {
+  const file = $(`#${prefix}-ticket`);
+  const camera = $(`#${prefix}-ticket-camera`);
+  const status = $(`#${prefix}-ticket-selected`);
+  if (file) file.value = '';
+  if (camera) camera.value = '';
+  if (status) {
+    status.textContent = prefix === 'edit-gasto'
+      ? 'Ningún ticket nuevo seleccionado.'
+      : 'Ningún ticket seleccionado.';
+  }
+}
+
+function syncExpenseTicketSelection(prefix, source) {
+  const file = $(`#${prefix}-ticket`);
+  const camera = $(`#${prefix}-ticket-camera`);
+  const status = $(`#${prefix}-ticket-selected`);
+  const selected = source === 'camera' ? camera : file;
+  const other = source === 'camera' ? file : camera;
+  if (!selected || !selected.files || !selected.files.length) return;
+  if (other) other.value = '';
+  if (prefix === 'edit-gasto' && $('#edit-gasto-ticket-remove')) {
+    $('#edit-gasto-ticket-remove').checked = false;
+  }
+  if (status) status.textContent = selected.files[0].name || (source === 'camera' ? 'Foto de cámara' : 'Ticket seleccionado');
 }
 
 function ticketLink(gasto) {
@@ -4166,7 +4199,7 @@ function openEditGasto(gasto) {
   $('#edit-gasto-tipo').value = currentAmount < 0 ? 'ingreso' : 'gasto';
   $('#edit-gasto-importe').value = Math.abs(currentAmount);
   $('#edit-gasto-desc').value = gasto.desc || '';
-  $('#edit-gasto-ticket').value = '';
+  clearExpenseTicketSelection('edit-gasto');
   $('#edit-gasto-ticket-remove').checked = false;
   $('#edit-gasto-ticket-current').innerHTML = gasto.ticketData ? `Ticket actual: ${ticketLink(gasto)}` : 'Sin ticket asociado.';
   setMessage('#msg-edit-gasto', '');
@@ -4185,6 +4218,7 @@ function openAddGasto() {
   const dialog = $('#add-gasto-dialog');
   if (!dialog) return;
   setMessage('#msg-gasto', '');
+  clearExpenseTicketSelection('g');
   if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
   const ids = selectedTripIds();
   if (ids.length === 1 && $('#g-viaje')) $('#g-viaje').value = String(ids[0]);
@@ -5048,6 +5082,13 @@ function bindEvents() {
   };
   $('#g-cat').onchange = renderSubcategories;
   $('#edit-gasto-cat').onchange = renderEditSubcategories;
+  $('#g-ticket').onchange = () => syncExpenseTicketSelection('g', 'file');
+  $('#g-ticket-camera').onchange = () => syncExpenseTicketSelection('g', 'camera');
+  $('#edit-gasto-ticket').onchange = () => syncExpenseTicketSelection('edit-gasto', 'file');
+  $('#edit-gasto-ticket-camera').onchange = () => syncExpenseTicketSelection('edit-gasto', 'camera');
+  $('#edit-gasto-ticket-remove').onchange = () => {
+    if ($('#edit-gasto-ticket-remove').checked) clearExpenseTicketSelection('edit-gasto');
+  };
   $('#g-pais').onchange = renderCiudades;
   $('#edit-gasto-pais').onchange = renderEditCiudades;
   $('#edit-gasto-cuenta').onchange = () => {
@@ -5093,7 +5134,7 @@ function bindEvents() {
       const importe = $('#edit-gasto-tipo')?.value === 'ingreso' ? -Math.abs(rawImporte) : Math.abs(rawImporte);
       if (!cuentaId || !catId || importe === 0) throw new Error('Completa cuenta, categoría e importe');
       const current = state.gastos.find(g => g.id === id);
-      const ticket = await readFileData($('#edit-gasto-ticket'));
+      const ticket = await readFileData(selectedFileInput('#edit-gasto-ticket', '#edit-gasto-ticket-camera'));
       const ticketPatch = $('#edit-gasto-ticket-remove').checked
         ? { ticketName: '', ticketType: '', ticketData: '' }
         : ticket
@@ -5206,7 +5247,7 @@ function bindEvents() {
       const rawImporte = numberValue($('#g-importe').value);
       const importe = $('#g-tipo')?.value === 'ingreso' ? -Math.abs(rawImporte) : Math.abs(rawImporte);
       if (!cuentaId || !catId || importe === 0) throw new Error('Completa cuenta, categoría e importe');
-      const ticket = await readFileData($('#g-ticket'));
+      const ticket = await readFileData(selectedFileInput('#g-ticket', '#g-ticket-camera'));
       await addGasto({
         fecha,
         viajeId: $('#g-viaje').value || null,
@@ -5224,7 +5265,7 @@ function bindEvents() {
       });
       $('#g-importe').value = '';
       $('#g-desc').value = '';
-      $('#g-ticket').value = '';
+      clearExpenseTicketSelection('g');
       setMessage('#msg-gasto', keepOpen ? 'Gasto añadido. Puedes seguir.' : 'Gasto añadido');
       if (!keepOpen) closeAddGasto();
       await loadAll();

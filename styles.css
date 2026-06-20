@@ -829,14 +829,24 @@ input[type="checkbox"] {
 }
 
 .trip-document-picker-actions,
+.expense-ticket-actions,
 .trip-document-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.trip-document-picker-actions {
+.trip-document-picker-actions,
+.expense-ticket-actions {
   margin-top: 10px;
+}
+
+.expense-ticket-field > label {
+  margin-bottom: 0;
+}
+
+.expense-ticket-field .small {
+  margin: 6px 0 0;
 }
 
 .trip-document-picker {
@@ -2140,10 +2150,27 @@ footer {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .expense-ticket-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 5px;
+  }
+
   .trip-document-picker {
     width: 100%;
     padding: 9px 6px;
     font-size: 13px;
+  }
+
+  .expense-ticket-field .trip-document-picker {
+    padding: 7px 5px;
+    font-size: 12px;
+  }
+
+  .edit-ticket-fields {
+    align-items: start;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
   }
 
   .trip-document-list li {
