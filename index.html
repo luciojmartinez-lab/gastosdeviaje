@@ -20,7 +20,7 @@
     <button id="tab-config">Configuración</button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v80</div>
+  <div class="app-version">700v81</div>
 </header>
 
 <main>
@@ -484,13 +484,14 @@
     </div>
     <div class="sync-comparison">
       <div>
-        <span>Versión en la nube</span>
-        <strong id="sync-cloud-date">Consultando...</strong>
-        <small id="sync-cloud-saved-date"></small>
+        <span>Copia en la nube</span>
+        <strong id="sync-cloud-saved-date">Consultando...</strong>
+        <small id="sync-cloud-date"></small>
       </div>
       <div>
-        <span>Última versión local</span>
-        <strong id="sync-local-date">Consultando...</strong>
+        <span>Última copia local</span>
+        <strong id="sync-local-backup-date">Consultando...</strong>
+        <small id="sync-local-date"></small>
       </div>
     </div>
     <p id="sync-message" class="sync-message small"></p>
@@ -513,7 +514,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v80"></script>
+<script src="app.bundle.js?v=700v81"></script>
 <script>
   if ('serviceWorker' in navigator) {
     let refreshing = false;

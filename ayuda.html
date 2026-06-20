@@ -418,7 +418,7 @@
 <body>
   <header class="topbar">
     <a href="index.html">Volver</a>
-    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v80</span></h1>
+    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v81</span></h1>
   </header>
 
   <main>
@@ -630,7 +630,7 @@
       <div class="grid-2">
         <article class="mini-card">
           <h3>Backups</h3>
-          <p>La pestaña Viajes incluye accesos rápidos a importación y backups. La app guarda en IndexedDB las últimas cinco copias completas y crea automáticamente una copia local cada vez que entras. En navegadores compatibles puedes elegir una carpeta de copias y dejarla fijada. Las copias manuales y los archivos guardados desde el historial irán directamente a esa carpeta. Android puede pedir que vuelvas a autorizarla después de cerrar la app; si no hay carpeta fija, podrás elegir la ubicación o se usará Descargas.</p>
+          <p>La pestaña Viajes incluye accesos rápidos a importación y backups. La app guarda en IndexedDB las últimas cinco copias completas y crea automáticamente una copia local cada vez que entras. En navegadores compatibles puedes elegir una carpeta de copias y dejarla fijada. Cada archivo incorpora fecha, hora y milisegundos para que una copia nueva nunca sustituya a otra del mismo día. Android puede pedir que vuelvas a autorizar la carpeta después de cerrar la app; si no hay carpeta fija, podrás elegir la ubicación o se usará Descargas.</p>
         </article>
         <article class="mini-card">
           <h3>Exportación</h3>
@@ -638,7 +638,7 @@
         </article>
         <article class="mini-card">
           <h3>Sincronización</h3>
-          <p>Sincronizar compara la fecha de la versión local con la copia guardada en Netlify. Nunca reemplaza datos sin permiso. Antes de sincronizar crea una copia local y, al terminar, otra cuyo nombre acaba en <b>-2</b>.</p>
+          <p>Sincronizar muestra por separado la fecha real de la última copia local, la fecha de la copia en Netlify y cuándo se modificaron los datos de cada versión. La comparación utiliza la fecha de modificación de los datos para no reemplazar cambios por una copia más nueva que contenga información más antigua. Nunca reemplaza datos sin permiso. Antes de sincronizar crea una copia local y, al terminar, otra cuyo nombre acaba en <b>-2</b>.</p>
           <p>Los datos y las fotos se guardan por separado. Cada ticket se identifica mediante una huella digital: la app consulta primero Netlify y solo sube las fotos que todavía no existen. Los archivos grandes se dividen en fragmentos y se reconstruyen automáticamente al recuperarlos desde la nube.</p>
           <p>Los tickets creados con versiones antiguas se conservan aunque utilicen un formato diferente. Un ticket heredado o incompleto no impide sincronizar el resto de la copia.</p>
         </article>
@@ -652,7 +652,7 @@
       </div>
     </section>
 
-    <p class="footer-note">Gastos de Viaje 700v80. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
+    <p class="footer-note">Gastos de Viaje 700v81. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
   </main>
 </body>
 </html>

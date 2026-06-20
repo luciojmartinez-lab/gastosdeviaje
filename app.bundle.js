@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 7;
-const APP_VERSION = '700v80';
+const APP_VERSION = '700v81';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1395,15 +1395,26 @@ function exportCurrentCsv() {
 }
 
 function backupFilename(data) {
-  const date = todayIso();
+  const timestamp = backupTimestamp();
   if (data.backupScope === 'trip' && data.viajes && data.viajes[0]) {
-    return `gastos_${slugFilePart(data.viajes[0].nombre)}_${date}.json`;
+    return `gastos_${slugFilePart(data.viajes[0].nombre)}_${timestamp}.json`;
   }
-  return `gastos_todos-los-viajes_${date}.json`;
+  return `gastos_todos-los-viajes_${timestamp}.json`;
 }
 
 function backupTimestamp() {
-  return new Date().toISOString().replace(/\.\d{3}Z$/, '').replace(/[:T]/g, '-');
+  const date = new Date();
+  const pad = (value, length = 2) => String(value).padStart(length, '0');
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate())
+  ].join('-') + '_' + [
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+    pad(date.getMilliseconds(), 3)
+  ].join('-');
 }
 
 function buildJsonBackupPayload(scope = 'all', tripId = null) {
@@ -3672,6 +3683,7 @@ function buildBackupData(scope = 'all', tripId = null) {
   return {
     version: APP_VERSION,
     generatedAt: new Date().toISOString(),
+    dataUpdatedAt: ensureLocalDataUpdatedAt(),
     backupScope: 'all',
     cuentas: state.cuentas,
     categorias: state.categorias,
@@ -3699,6 +3711,7 @@ function buildTripBackupData(tripId) {
   return {
     version: APP_VERSION,
     generatedAt: new Date().toISOString(),
+    dataUpdatedAt: ensureLocalDataUpdatedAt(),
     backupScope: 'trip',
     cuentas,
     categorias: state.categorias,
@@ -4122,8 +4135,9 @@ async function fetchCloudSnapshot() {
 }
 
 async function uploadCloudSnapshot({ backupData = null, backupName = '' } = {}) {
-  const fullData = buildBackupData('all');
-  const fullName = backupFilename(fullData);
+  const manualFullBackup = backupData && backupData.backupScope === 'all';
+  const fullData = manualFullBackup ? backupData : buildBackupData('all');
+  const fullName = manualFullBackup && backupName ? backupName : backupFilename(fullData);
   const preparedFull = await prepareCloudBackupData(fullData);
   const preparedBackup = backupData && backupData.backupScope === 'trip'
     ? await prepareCloudBackupData(backupData)
@@ -4134,7 +4148,7 @@ async function uploadCloudSnapshot({ backupData = null, backupName = '' } = {}) 
   ]);
   const body = {
     data: preparedFull.data,
-    updatedAt: ensureLocalDataUpdatedAt(),
+    updatedAt: fullData.dataUpdatedAt || ensureLocalDataUpdatedAt(),
     filename: fullName,
     appVersion: APP_VERSION
   };
@@ -4162,25 +4176,38 @@ async function uploadCloudSnapshot({ backupData = null, backupName = '' } = {}) 
     throw new Error('No se pudo guardar la copia en Netlify');
   }
   const saved = await response.json();
-  saved.attachmentStats = attachmentStats;
-  currentCloudMetadata = saved;
-  return saved;
+  const verified = await fetchCloudMetadata();
+  const savedTime = Date.parse(saved.savedAt || 0);
+  const verifiedTime = Date.parse(verified && verified.savedAt || 0);
+  if (!verified || !verifiedTime || (savedTime && verifiedTime < savedTime)) {
+    throw new Error('Netlify recibió la copia, pero no confirmó la fecha nueva. Comprueba de nuevo antes de sincronizar.');
+  }
+  verified.attachmentStats = attachmentStats;
+  currentCloudMetadata = verified;
+  return verified;
 }
 
 function renderSyncComparison(metadata) {
   currentCloudMetadata = metadata;
-  const localDate = ensureLocalDataUpdatedAt();
-  const cloudDate = syncMetadataDate(metadata);
-  if ($('#sync-local-date')) $('#sync-local-date').textContent = formatSyncDate(localDate);
-  if ($('#sync-cloud-date')) $('#sync-cloud-date').textContent = metadata ? formatSyncDate(cloudDate) : 'No existe todavía';
+  const localDataDate = ensureLocalDataUpdatedAt();
+  const localBackupDate = localStorage.getItem(BACKUP_KEY) || '';
+  const cloudDataDate = syncMetadataDate(metadata);
+  const cloudBackupDate = metadata && (metadata.savedAt || cloudDataDate) || '';
+  if ($('#sync-local-backup-date')) {
+    $('#sync-local-backup-date').textContent = localBackupDate ? formatSyncDate(localBackupDate) : 'No existe todavía';
+  }
+  if ($('#sync-local-date')) {
+    $('#sync-local-date').textContent = `Datos modificados: ${formatSyncDate(localDataDate)}`;
+  }
+  if ($('#sync-cloud-date')) {
+    $('#sync-cloud-date').textContent = metadata ? `Datos modificados: ${formatSyncDate(cloudDataDate)}` : '';
+  }
   if ($('#sync-cloud-saved-date')) {
-    $('#sync-cloud-saved-date').textContent = metadata && metadata.savedAt
-      ? `Copia guardada: ${formatSyncDate(metadata.savedAt)}`
-      : '';
+    $('#sync-cloud-saved-date').textContent = metadata ? formatSyncDate(cloudBackupDate) : 'No existe todavía';
   }
 
-  const localTime = Date.parse(localDate || 0);
-  const cloudTime = Date.parse(cloudDate || 0);
+  const localTime = Date.parse(localDataDate || 0);
+  const cloudTime = Date.parse(cloudDataDate || 0);
   const cloudIsPreferred = metadata && (cloudTime > localTime || (!hasMeaningfulLocalData() && cloudTime !== localTime));
   const downloadButton = $('#sync-download');
   const uploadButton = $('#sync-upload');
@@ -4206,8 +4233,15 @@ async function refreshSyncComparison() {
     renderSyncComparison(await fetchCloudMetadata());
   } catch (error) {
     currentCloudMetadata = null;
-    if ($('#sync-local-date')) $('#sync-local-date').textContent = formatSyncDate(ensureLocalDataUpdatedAt());
-    if ($('#sync-cloud-date')) $('#sync-cloud-date').textContent = 'No se pudo consultar';
+    const localBackupDate = localStorage.getItem(BACKUP_KEY) || '';
+    if ($('#sync-local-backup-date')) {
+      $('#sync-local-backup-date').textContent = localBackupDate ? formatSyncDate(localBackupDate) : 'No existe todavía';
+    }
+    if ($('#sync-local-date')) {
+      $('#sync-local-date').textContent = `Datos modificados: ${formatSyncDate(ensureLocalDataUpdatedAt())}`;
+    }
+    if ($('#sync-cloud-saved-date')) $('#sync-cloud-saved-date').textContent = 'No se pudo consultar';
+    if ($('#sync-cloud-date')) $('#sync-cloud-date').textContent = '';
     setSyncMessage(error.message || String(error), true);
   }
 }
