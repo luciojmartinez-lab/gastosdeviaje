@@ -1,9 +1,9 @@
-const CACHE_NAME = 'gastosdeviaje-700v81';
+const CACHE_NAME = 'gastosdeviaje-700v82';
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css',
-  './app.bundle.js?v=700v81',
+  './app.bundle.js?v=700v82',
   './ayuda.html',
   './manifest.webmanifest',
   './icon.svg'
@@ -35,6 +35,7 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/')) return;
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request, { cache: 'no-store' }).then(response => {

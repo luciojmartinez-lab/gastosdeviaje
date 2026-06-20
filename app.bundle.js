@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 7;
-const APP_VERSION = '700v81';
+const APP_VERSION = '700v82';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -4114,7 +4114,7 @@ function hasMeaningfulLocalData() {
 
 async function fetchCloudMetadata() {
   if (!navigator.onLine) throw new Error('No hay conexión a Internet');
-  const response = await fetch(SYNC_ENDPOINT, {
+  const response = await fetch(`${SYNC_ENDPOINT}?metadata=1&_=${Date.now()}`, {
     headers: { 'x-sync-key': syncKey() },
     cache: 'no-store'
   });
@@ -4125,7 +4125,7 @@ async function fetchCloudMetadata() {
 }
 
 async function fetchCloudSnapshot() {
-  const response = await fetch(`${SYNC_ENDPOINT}?content=1`, {
+  const response = await fetch(`${SYNC_ENDPOINT}?content=1&_=${Date.now()}`, {
     headers: { 'x-sync-key': syncKey() },
     cache: 'no-store'
   });
