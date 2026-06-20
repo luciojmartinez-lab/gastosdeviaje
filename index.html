@@ -20,7 +20,7 @@
     <button id="tab-config">Configuración</button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v79</div>
+  <div class="app-version">700v80</div>
 </header>
 
 <main>
@@ -438,7 +438,17 @@
     <div class="actions">
       <button type="button" class="btn" id="backup-download" onclick="handleBackupDownload()">Crear y guardar copia</button>
     </div>
-    <p class="small">Podrás elegir dónde guardar el archivo si el navegador lo permite. En caso contrario se guardará en Descargas.</p>
+    <div class="backup-folder-box">
+      <div>
+        <strong>Carpeta de copias</strong>
+        <span class="small" id="backup-folder-status">Comprobando carpeta...</span>
+      </div>
+      <div class="backup-folder-actions">
+        <button type="button" class="btn ghost" id="backup-folder-select">Elegir carpeta</button>
+        <button type="button" class="btn ghost" id="backup-folder-forget">Olvidar</button>
+      </div>
+    </div>
+    <p class="small">Si fijas una carpeta, las siguientes copias se guardarán directamente en ella. Android puede volver a pedir permiso después de cerrar la app. Sin carpeta fija, podrás elegir la ubicación o se usará Descargas.</p>
     <div class="compat-hidden">
       <select id="backup-auto"><option value="off">No programar</option></select>
       <input type="time" id="backup-auto-time" value="20:00">
@@ -503,7 +513,7 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v79"></script>
+<script src="app.bundle.js?v=700v80"></script>
 <script>
   if ('serviceWorker' in navigator) {
     let refreshing = false;

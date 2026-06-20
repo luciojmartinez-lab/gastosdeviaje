@@ -374,6 +374,29 @@ h2 {
   font-size: 1rem;
 }
 
+.backup-folder-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.backup-folder-box > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.backup-folder-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .backup-history-list {
   list-style: none;
   margin: 0;
@@ -2040,6 +2063,20 @@ footer {
 
   .backup-history-list li {
     align-items: flex-start;
+  }
+
+  .backup-folder-box {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .backup-folder-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .backup-folder-actions .btn {
+    width: 100%;
   }
 
   .backup-actions {

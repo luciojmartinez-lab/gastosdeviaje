@@ -1,11 +1,12 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
-const DB_VERSION = 6;
-const APP_VERSION = '700v79';
+const DB_VERSION = 7;
+const APP_VERSION = '700v80';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
 const DATA_UPDATED_KEY = 'gastos_viaje_data_updated_at';
 const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
+const BACKUP_DIRECTORY_SETTING_KEY = 'backupDirectory';
 const SYNC_ENDPOINT = '/api/travel-sync';
 const LOCAL_BACKUP_LIMIT = 5;
 const CLOUD_ATTACHMENT_CHUNK_CHARS = 2_500_000;
@@ -18,6 +19,7 @@ let hasAppliedDefaultTripSelection = false;
 let dataTrackingPaused = 0;
 let localBackupHistoryCache = [];
 let currentCloudMetadata = null;
+let backupDirectorySettingCache;
 const routeEditorState = {
   tripId: null,
   cityIds: [],
@@ -115,6 +117,9 @@ function openDB() {
         const s = db.createObjectStore('localBackups', { keyPath: 'id', autoIncrement: true });
         s.createIndex('byDate', 'date');
       }
+      if (!db.objectStoreNames.contains('appSettings')) {
+        db.createObjectStore('appSettings', { keyPath: 'key' });
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -178,7 +183,7 @@ function setLocalDataUpdatedAt(value = new Date().toISOString()) {
 }
 
 function noteLocalDataChanged(storeName) {
-  if (!dataTrackingPaused && storeName !== 'localBackups') setLocalDataUpdatedAt();
+  if (!dataTrackingPaused && !['localBackups', 'appSettings'].includes(storeName)) setLocalDataUpdatedAt();
 }
 
 async function withDataTrackingPaused(callback) {
@@ -1212,7 +1217,113 @@ async function writeBlobToFileHandle(handle, blob) {
   }
 }
 
+function backupDirectorySupported() {
+  return typeof window.showDirectoryPicker === 'function';
+}
+
+async function getBackupDirectorySetting({ refresh = false } = {}) {
+  if (!refresh && backupDirectorySettingCache !== undefined) return backupDirectorySettingCache;
+  backupDirectorySettingCache = await getOne('appSettings', BACKUP_DIRECTORY_SETTING_KEY);
+  return backupDirectorySettingCache;
+}
+
+async function backupDirectoryPermission(handle, request = false) {
+  if (!handle) return 'denied';
+  const options = { mode: 'readwrite' };
+  if (typeof handle.queryPermission !== 'function') return 'unknown';
+  let permission = await handle.queryPermission(options);
+  if (permission === 'prompt' && request && typeof handle.requestPermission === 'function') {
+    permission = await handle.requestPermission(options);
+  }
+  return permission;
+}
+
+async function renderBackupDirectorySetting() {
+  const status = $('#backup-folder-status');
+  const selectButton = $('#backup-folder-select');
+  const forgetButton = $('#backup-folder-forget');
+  if (!status || !selectButton || !forgetButton) return;
+  if (!backupDirectorySupported()) {
+    status.textContent = 'Este navegador no permite fijar una carpeta. Se usará el selector de archivos o Descargas.';
+    selectButton.style.display = 'none';
+    forgetButton.style.display = 'none';
+    return;
+  }
+  selectButton.style.display = '';
+  const setting = await getBackupDirectorySetting();
+  if (!setting || !setting.handle) {
+    status.textContent = 'Sin carpeta fija. La app preguntará dónde guardar cada archivo.';
+    selectButton.textContent = 'Elegir carpeta';
+    forgetButton.style.display = 'none';
+    return;
+  }
+  let permission = 'unknown';
+  try {
+    permission = await backupDirectoryPermission(setting.handle);
+  } catch {
+    permission = 'denied';
+  }
+  const name = setting.name || setting.handle.name || 'carpeta seleccionada';
+  status.textContent = permission === 'granted'
+    ? `Carpeta fija: ${name}`
+    : `Carpeta recordada: ${name}. Android puede pedir autorización al guardar.`;
+  selectButton.textContent = 'Cambiar carpeta';
+  forgetButton.style.display = '';
+}
+
+async function selectBackupDirectory() {
+  if (!backupDirectorySupported()) {
+    showBackupResult('Carpeta no disponible', 'Este navegador no permite fijar una carpeta. Las copias seguirán usando el selector de archivos o Descargas.');
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const setting = {
+      key: BACKUP_DIRECTORY_SETTING_KEY,
+      handle,
+      name: handle.name || 'Carpeta seleccionada',
+      updatedAt: new Date().toISOString()
+    };
+    await putRecord('appSettings', setting);
+    backupDirectorySettingCache = setting;
+    await renderBackupDirectorySetting();
+    setMessage('#msg-backup', `Carpeta de copias fijada: ${setting.name}`);
+  } catch (error) {
+    if (!error || error.name !== 'AbortError') {
+      setMessage('#msg-backup', `No se pudo seleccionar la carpeta: ${error.message || error}`, true);
+    }
+  }
+}
+
+async function forgetBackupDirectory() {
+  await deleteRecord('appSettings', BACKUP_DIRECTORY_SETTING_KEY);
+  backupDirectorySettingCache = null;
+  await renderBackupDirectorySetting();
+  setMessage('#msg-backup', 'Se olvidó la carpeta fija. La próxima copia volverá a preguntar dónde guardarla.');
+}
+
+async function saveBlobToBackupDirectory(filename, blob, requestPermission = true) {
+  const setting = await getBackupDirectorySetting();
+  if (!setting || !setting.handle) return { status: 'unconfigured' };
+  try {
+    const permission = await backupDirectoryPermission(setting.handle, requestPermission);
+    if (permission === 'denied' || permission === 'prompt') {
+      await renderBackupDirectorySetting();
+      return { status: 'denied', name: setting.name || setting.handle.name || '' };
+    }
+    const fileHandle = await setting.handle.getFileHandle(filename, { create: true });
+    await writeBlobToFileHandle(fileHandle, blob);
+    return { status: 'saved', name: setting.name || setting.handle.name || '' };
+  } catch (error) {
+    console.warn('No se pudo guardar en la carpeta fija', error);
+    await renderBackupDirectorySetting();
+    return { status: 'failed', name: setting.name || setting.handle.name || '', error };
+  }
+}
+
 async function saveBlobOnDevice(filename, blob, fallbackLink = null) {
+  const fixedDirectory = await saveBlobToBackupDirectory(filename, blob);
+  if (fixedDirectory.status === 'saved') return 'folder';
   const selection = await chooseSaveFile(filename, blob.type || 'application/octet-stream', '.json');
   if (selection.status === 'cancelled') return 'cancelled';
   if (selection.status === 'selected') {
@@ -4202,15 +4313,33 @@ async function checkCloudOnEntry() {
 async function downloadStoredLocalBackup(id) {
   const summary = backupHistory().find(item => Number(item.id) === Number(id));
   const filename = (summary && summary.filename) || 'gastos-copia.json';
-  const selection = await chooseSaveFile(filename, 'application/json', '.json');
-  if (selection.status === 'cancelled') return 'cancelled';
+  const fixedSetting = await getBackupDirectorySetting();
+  let selection = { status: 'unsupported' };
+  let fixedDirectoryReady = false;
+  if (fixedSetting && fixedSetting.handle) {
+    try {
+      const permission = await backupDirectoryPermission(fixedSetting.handle, true);
+      fixedDirectoryReady = permission === 'granted' || permission === 'unknown';
+    } catch {
+      fixedDirectoryReady = false;
+    }
+  }
+  if (!fixedDirectoryReady) {
+    selection = await chooseSaveFile(filename, 'application/json', '.json');
+    if (selection.status === 'cancelled') return 'cancelled';
+  }
   const backup = await getOne('localBackups', Number(id));
   if (!backup || !backup.data) throw new Error('No se encuentra esa copia local');
   const finalFilename = backup.filename || filename;
   const json = JSON.stringify(backup.data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  if (fixedDirectoryReady) {
+    const fixedDirectory = await saveBlobToBackupDirectory(finalFilename, blob, false);
+    if (fixedDirectory.status === 'saved') return 'folder';
+  }
   if (selection.status === 'selected') {
     try {
-      await writeBlobToFileHandle(selection.handle, new Blob([json], { type: 'application/json' }));
+      await writeBlobToFileHandle(selection.handle, blob);
       return 'picker';
     } catch (error) {
       console.warn('No se pudo guardar en la ubicación elegida; se usará Descargas', error);
@@ -4245,6 +4374,7 @@ function openBackupDialog(mode = 'all') {
   }
   syncBackupExportTripVisibility();
   syncBackupShareAvailability();
+  renderBackupDirectorySetting().catch(error => console.warn('No se pudo mostrar la carpeta de copias', error));
   if ($('#backup-import-trip')) {
     const tripImport = $('#backup-import-mode').value === 'trip';
     $('#backup-import-trip').disabled = !tripImport;
@@ -4283,6 +4413,7 @@ function openBackupDialogSafe(mode = 'all') {
     }
     syncBackupExportTripVisibility();
     syncBackupShareAvailability();
+    renderBackupDirectorySetting().catch(error => console.warn('No se pudo mostrar la carpeta de copias', error));
     if ($('#backup-import-trip')) {
       const tripImport = $('#backup-import-mode').value === 'trip';
       $('#backup-import-trip').disabled = !tripImport;
@@ -4339,7 +4470,11 @@ async function handleBackupDownload() {
       tripId: $('#backup-export-trip').value
     });
     const { filename, data, saveMethod } = result;
-    const localDetail = saveMethod === 'picker'
+    const folderSetting = await getBackupDirectorySetting();
+    const folderName = folderSetting && (folderSetting.name || (folderSetting.handle && folderSetting.handle.name));
+    const localDetail = saveMethod === 'folder'
+      ? `Copia local creada y guardada en la carpeta ${folderName || 'seleccionada'}: ${filename}`
+      : saveMethod === 'picker'
       ? `Copia local creada y guardada en la ubicación elegida: ${filename}`
       : saveMethod === 'cancelled'
         ? `Copia local creada dentro de la app. No se guardó un archivo externo: ${filename}`
@@ -5385,6 +5520,10 @@ function bindEvents() {
     if (!tripImport) $('#backup-import-trip').value = '';
   };
   $('#backup-download').onclick = handleBackupDownload;
+  $('#backup-folder-select').onclick = selectBackupDirectory;
+  $('#backup-folder-forget').onclick = () => {
+    forgetBackupDirectory().catch(error => setMessage('#msg-backup', error.message || String(error), true));
+  };
   $('#backup-import').onclick = handleBackupImportClick;
   $('#btn-import').onclick = () => openBackupDialogSafe('import');
   $('#btn-import-home').onclick = () => openBackupDialogSafe('import');
