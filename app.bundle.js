@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v88';
+const APP_VERSION = '700v89';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -4517,6 +4517,45 @@ function stopBlogDictation() {
   if ($('#blog-voice')) $('#blog-voice').textContent = 'Dictar por voz';
 }
 
+function cleanSpeechText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function compactSpeechSegments(values) {
+  const compact = [];
+  for (const value of values || []) {
+    const segment = cleanSpeechText(value);
+    if (!segment) continue;
+    if (!compact.length) {
+      compact.push(segment);
+      continue;
+    }
+    const previous = compact[compact.length - 1];
+    const previousKey = previous.toLocaleLowerCase('es-ES');
+    const segmentKey = segment.toLocaleLowerCase('es-ES');
+    if (segmentKey === previousKey || previousKey.startsWith(`${segmentKey} `)) continue;
+    if (segmentKey.startsWith(`${previousKey} `)) {
+      compact[compact.length - 1] = segment;
+      continue;
+    }
+    compact.push(segment);
+  }
+  return compact.join(' ');
+}
+
+function capitalizeSpeechText(value) {
+  const text = cleanSpeechText(value);
+  return text ? text.charAt(0).toLocaleUpperCase('es-ES') + text.slice(1) : '';
+}
+
+function composeBlogDictationText(baseValue, transcriptValue) {
+  const base = String(baseValue || '').trimEnd();
+  const transcript = capitalizeSpeechText(transcriptValue);
+  if (!base) return transcript;
+  if (!transcript) return base;
+  return `${base}${/\s$/.test(base) ? '' : ' '}${transcript}`;
+}
+
 function closeBlogEntryDialog() {
   stopBlogDictation();
   activeBlogEntryId = null;
@@ -4675,6 +4714,10 @@ function startBlogDictation() {
     return;
   }
   const recognition = new SpeechRecognition();
+  const textField = $('#blog-texto');
+  const baseText = textField ? textField.value : '';
+  const sessionResults = new Map();
+  let lastTranscript = '';
   recognition.lang = 'es-ES';
   recognition.continuous = true;
   recognition.interimResults = true;
@@ -4683,25 +4726,33 @@ function startBlogDictation() {
     setMessage('#blog-voice-status', 'Escuchando...');
   };
   recognition.onresult = event => {
-    let finalText = '';
-    let interimText = '';
     for (let index = event.resultIndex; index < event.results.length; index += 1) {
-      const text = event.results[index][0].transcript;
-      if (event.results[index].isFinal) finalText += text;
-      else interimText += text;
+      sessionResults.set(index, {
+        text: event.results[index][0].transcript,
+        final: Boolean(event.results[index].isFinal)
+      });
     }
-    if (finalText && $('#blog-texto')) {
-      const current = $('#blog-texto').value.trimEnd();
-      $('#blog-texto').value = `${current}${current ? ' ' : ''}${finalText.trim()}`;
-    }
+    const ordered = Array.from(sessionResults.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(item => item[1]);
+    lastTranscript = compactSpeechSegments(ordered.map(item => item.text));
+    const finalTranscript = compactSpeechSegments(ordered.filter(item => item.final).map(item => item.text));
+    const interimText = compactSpeechSegments(ordered.filter(item => !item.final).map(item => item.text));
+    if (textField) textField.value = composeBlogDictationText(baseText, lastTranscript);
     setMessage('#blog-voice-status', interimText ? `Escuchando: ${interimText}` : 'Escuchando...');
   };
   recognition.onerror = event => {
     setMessage('#blog-voice-status', event.error === 'not-allowed' ? 'Permiso de micrófono denegado.' : 'No se pudo continuar el dictado.', true);
   };
   recognition.onend = () => {
+    const ordered = Array.from(sessionResults.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(item => item[1]);
+    const finalTranscript = compactSpeechSegments(ordered.filter(item => item.final).map(item => item.text));
+    if (textField) textField.value = composeBlogDictationText(baseText, finalTranscript || lastTranscript);
     blogSpeechRecognition = null;
     if ($('#blog-voice')) $('#blog-voice').textContent = 'Dictar por voz';
+    setMessage('#blog-voice-status', finalTranscript || lastTranscript ? 'Dictado finalizado.' : '');
   };
   blogSpeechRecognition = recognition;
   recognition.start();
