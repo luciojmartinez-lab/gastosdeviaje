@@ -20,7 +20,7 @@
     <button id="tab-config">Configuración</button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v86</div>
+  <div class="app-version">700v87</div>
 </header>
 
 <main>
@@ -100,6 +100,7 @@
         <a class="btn ghost" href="#resumen-cuentas">Cuentas</a>
         <a class="btn ghost" href="#resumen-mapa">Mapa</a>
         <a class="btn ghost" href="#resumen-documentos">Documentos</a>
+        <button class="btn ghost" id="btn-print-summary-top" type="button">Imprimir PDF</button>
       </div>
     </div>
     <div class="kpi" id="resumen-totales">
@@ -588,10 +589,10 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v86"></script>
+<script src="app.bundle.js?v=700v87"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v86';
+    const pageVersion = '700v87';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -618,7 +619,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v86', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v87', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

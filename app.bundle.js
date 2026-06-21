@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 8;
-const APP_VERSION = '700v86';
+const APP_VERSION = '700v87';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -34,6 +34,7 @@ const tripMapState = {
   panX: 0,
   panY: 0,
   showPlanned: true,
+  destinationOnly: false,
   printMode: false
 };
 const tripMapDrag = {
@@ -697,6 +698,7 @@ function syncTripSelectsFromSelection() {
 function setSelectedTrips(ids) {
   state.selectedViajeIds = [...new Set((ids || []).map(Number).filter(Boolean))];
   tripMapState.showPlanned = true;
+  tripMapState.destinationOnly = false;
   resetTripMapView();
   syncTripSelectsFromSelection();
 }
@@ -2967,6 +2969,17 @@ function compareGastosRouteOrder(a, b) {
     Number(a.id || 0) - Number(b.id || 0);
 }
 
+function destinationRouteScope(routeIds = []) {
+  const completeIds = routeIds.map(Number).filter(Boolean);
+  const applied = tripMapState.destinationOnly && completeIds.length > 2;
+  return {
+    completeIds,
+    applied,
+    visibleIds: applied ? completeIds.slice(1, -1) : completeIds,
+    omittedIds: applied ? new Set([completeIds[0], completeIds[completeIds.length - 1]]) : new Set()
+  };
+}
+
 function mapRouteCities(gastos, paisId) {
   const byCity = new Map();
   const routeOrder = mapCityOrderForScope(gastos);
@@ -2999,20 +3012,24 @@ function mapRouteCities(gastos, paisId) {
       item.totalEur += toEur(g.importe, g.moneda);
     });
   if (scopedTrips.length === 1) {
-    const plannedIds = tripCityIds(scopedTrips[0]).map(Number).filter(Boolean);
+    const destinationScope = destinationRouteScope(tripCityIds(scopedTrips[0]));
+    const omittedEndpointIds = destinationScope.omittedIds;
+    const plannedIds = destinationScope.visibleIds;
     if (!plannedIds.length) {
-      return [...byCity.values()].sort((a, b) => {
-        const aOrdered = Number.isFinite(a.routeOrder);
-        const bOrdered = Number.isFinite(b.routeOrder);
-        if (aOrdered || bOrdered) {
-          return (aOrdered ? a.routeOrder : Number.POSITIVE_INFINITY) - (bOrdered ? b.routeOrder : Number.POSITIVE_INFINITY) ||
+      return [...byCity.values()]
+        .filter(item => !omittedEndpointIds.has(Number(item.ciudad.id)))
+        .sort((a, b) => {
+          const aOrdered = Number.isFinite(a.routeOrder);
+          const bOrdered = Number.isFinite(b.routeOrder);
+          if (aOrdered || bOrdered) {
+            return (aOrdered ? a.routeOrder : Number.POSITIVE_INFINITY) - (bOrdered ? b.routeOrder : Number.POSITIVE_INFINITY) ||
+              Number(a.firstOrder || 0) - Number(b.firstOrder || 0) ||
+              byName(a.ciudad, b.ciudad);
+          }
+          return (a.firstDate || '9999-99-99').localeCompare(b.firstDate || '9999-99-99') ||
             Number(a.firstOrder || 0) - Number(b.firstOrder || 0) ||
             byName(a.ciudad, b.ciudad);
-        }
-        return (a.firstDate || '9999-99-99').localeCompare(b.firstDate || '9999-99-99') ||
-          Number(a.firstOrder || 0) - Number(b.firstOrder || 0) ||
-          byName(a.ciudad, b.ciudad);
-      });
+        });
     }
     const seenPlanned = new Set();
     const plannedItems = plannedIds.map((id, index) => {
@@ -3036,7 +3053,8 @@ function mapRouteCities(gastos, paisId) {
       };
     }).filter(Boolean);
     const extraExpenseItems = [...byCity.values()]
-      .filter(item => !seenPlanned.has(Number(item.ciudad.id)));
+      .filter(item => !seenPlanned.has(Number(item.ciudad.id)))
+      .filter(item => !omittedEndpointIds.has(Number(item.ciudad.id)));
     return plannedItems.concat(extraExpenseItems).sort((a, b) => {
       const aOrdered = Number.isFinite(a.routeOrder);
       const bOrdered = Number.isFinite(b.routeOrder);
@@ -3396,12 +3414,17 @@ function tripMapItemsForCurrentScope() {
   const paisId = Number($('#map-pais') ? $('#map-pais').value : 0);
   const gastos = gastosForSelectorTripScope('#r-viaje');
   const scopedTripIds = mapScopedTripIds(gastos);
+  const scopedTrips = mapScopedTrips(gastos);
+  const destinationOnlyAvailable = scopedTrips.length === 1 && tripCityIds(scopedTrips[0]).length > 2;
+  const destinationOnlyApplied = tripMapState.destinationOnly && destinationOnlyAvailable;
   const cities = mapRouteCities(gastos, paisId);
   return {
     paisId,
     cities,
     withCoords: cities.filter(item => lugarHasCoords(item.ciudad)),
-    shouldDrawRoute: scopedTripIds.size <= 1
+    shouldDrawRoute: scopedTripIds.size <= 1,
+    destinationOnlyAvailable,
+    destinationOnlyApplied
   };
 }
 
@@ -3454,7 +3477,14 @@ function renderTripMap() {
   const container = $('#trip-map');
   const info = $('#trip-map-info');
   if (!container || !info) return;
-  const { paisId, cities, withCoords, shouldDrawRoute } = tripMapItemsForCurrentScope();
+  const {
+    paisId,
+    cities,
+    withCoords,
+    shouldDrawRoute,
+    destinationOnlyAvailable,
+    destinationOnlyApplied
+  } = tripMapItemsForCurrentScope();
   const missing = cities.filter(item => !lugarHasCoords(item.ciudad));
   if (!cities.length) {
     container.innerHTML = '<div class="map-empty">Sin ciudades en este viaje.</div>';
@@ -3470,6 +3500,7 @@ function renderTripMap() {
   const routeKey = [
     `${width}x${height}`,
     paisId || 'all',
+    destinationOnlyApplied ? 'destination' : 'complete',
     withCoords.map(item => `${item.ciudad.id}:${item.ciudad.lat}:${item.ciudad.lng}`).join(',')
   ].join('|');
   if (tripMapState.key !== routeKey) {
@@ -3548,6 +3579,7 @@ function renderTripMap() {
       <div class="map-controls-actions">
         <button type="button" data-map-zoom="reset" title="Volver al encuadre automático">Centrar</button>
         <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
+        <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar el viaje completo' : (destinationOnlyAvailable ? 'Omitir la primera y la última parada para ampliar el destino' : 'Disponible en viajes con al menos tres paradas')}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destino</button>
         <button type="button" data-map-add-stop="1" title="Añadir, borrar o reordenar paradas del viaje">Añadir / modificar parada</button>
         <button type="button" data-map-refresh="1" title="Actualizar con las coordenadas guardadas en Configuración">Actualizar</button>
         <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
@@ -3572,7 +3604,8 @@ function renderTripMap() {
   const configuredStops = withCoords.filter(item => item.configuredOnly).map(item => item.ciudad.nombre);
   const configuredText = configuredStops.length ? ` Paradas configuradas sin gasto: ${configuredStops.join(', ')}.` : '';
   const routeLabel = shouldDrawRoute ? `Ruta: ${route || 'sin gastos con ciudad'}.` : `Ciudades: ${route || 'sin gastos con ciudad'}.`;
-  info.textContent = `${withCoords.length} ciudades en el mapa. ${routeLabel}${configuredText}${missingText}`;
+  const destinationText = destinationOnlyApplied ? ' Modo solo destino: se omiten la salida y el regreso.' : '';
+  info.textContent = `${withCoords.length} ciudades en el mapa. ${routeLabel}${destinationText}${configuredText}${missingText}`;
 }
 
 function mapGesturePoints() {
@@ -5277,6 +5310,7 @@ function bindEvents() {
   $('#r-viaje').onchange = () => {
     setSelectedTrips($('#r-viaje').value ? [Number($('#r-viaje').value)] : []);
     tripMapState.showPlanned = true;
+    tripMapState.destinationOnly = false;
     resetTripMapView();
     renderResumenAccountSelector();
     renderResumenPaises();
@@ -5744,6 +5778,15 @@ function bindEvents() {
         renderTripMap();
         return;
       }
+      const mapDestinationButton = target.closest('[data-map-destination]');
+      if (mapDestinationButton) {
+        const { destinationOnlyAvailable } = tripMapItemsForCurrentScope();
+        if (!destinationOnlyAvailable) return;
+        tripMapState.destinationOnly = !tripMapState.destinationOnly;
+        resetTripMapView();
+        renderTripMap();
+        return;
+      }
       if (target.dataset.openTicket) {
         openTicket(target.dataset.openTicket);
         return;
@@ -5954,6 +5997,7 @@ function bindEvents() {
   };
   $('#btn-export-csv').onclick = exportCurrentCsv;
   $('#btn-print-summary').onclick = openPrintDialog;
+  $('#btn-print-summary-top').onclick = openPrintDialog;
   $('#print-dialog-close').onclick = closePrintDialog;
   $('#print-resumen').onclick = () => printSection('resumen');
   $('#print-gastos').onclick = () => printSection('gastos');

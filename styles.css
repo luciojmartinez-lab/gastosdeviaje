@@ -1214,6 +1214,16 @@ tfoot td { font-weight: 700; }
   line-height: 1;
 }
 
+.map-controls button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.map-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .map-controls span {
   min-width: 70px;
   color: var(--muted);
