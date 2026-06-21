@@ -864,6 +864,21 @@ input[type="checkbox"] {
   margin-top: 12px;
 }
 
+.blog-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.blog-filters label {
+  margin-top: 0;
+}
+
 #tabla-blog {
   min-width: 940px;
 }
@@ -1471,6 +1486,11 @@ footer {
     display: grid;
     grid-template-columns: 1fr 1fr;
     width: 100%;
+  }
+
+  .blog-filters {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .blog-entry-modal form {

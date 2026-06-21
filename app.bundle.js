@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v89';
+const APP_VERSION = '700v90';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -28,6 +28,7 @@ let activeBlogEntryId = null;
 let activeBlogEntryType = '';
 let activeBlogImage = null;
 let blogSpeechRecognition = null;
+let blogFilterTripId = null;
 const routeEditorState = {
   tripId: null,
   cityIds: [],
@@ -4420,6 +4421,65 @@ function blogEntriesForTrip(tripId) {
     .sort(compareBlogEntries);
 }
 
+function resetBlogFilterControls() {
+  ['#blog-filter-date', '#blog-filter-country', '#blog-filter-city'].forEach(selector => {
+    const field = $(selector);
+    if (field) field.value = '';
+  });
+}
+
+function syncBlogFilterOptions(trip, entries) {
+  const tripId = trip ? Number(trip.id) : null;
+  if (blogFilterTripId !== tripId) {
+    resetBlogFilterControls();
+    blogFilterTripId = tripId;
+  }
+  const dateField = $('#blog-filter-date');
+  const countryField = $('#blog-filter-country');
+  const cityField = $('#blog-filter-city');
+  if (!trip) {
+    fillSelect('#blog-filter-date', [], '(todos los días)');
+    fillSelect('#blog-filter-country', [], '(todos los países)');
+    fillSelect('#blog-filter-city', [], '(todas las ciudades)');
+    [dateField, countryField, cityField].forEach(field => {
+      if (field) field.disabled = true;
+    });
+    return;
+  }
+  const dates = [...new Set(entries.map(entry => entry.fecha).filter(Boolean))]
+    .sort()
+    .map(value => ({ value, label: summaryDocumentDate(value, true) }));
+  const countryIds = [...new Set(entries.map(entry => Number(entry.paisId)).filter(Boolean))];
+  const countries = countryIds
+    .map(id => ({ value: String(id), label: blogPlaceName(id) }))
+    .sort((a, b) => collator.compare(a.label, b.label));
+  fillSelect('#blog-filter-date', dates, '(todos los días)');
+  fillSelect('#blog-filter-country', countries, '(todos los países)');
+  const selectedCountry = Number(countryField ? countryField.value : 0);
+  const cityIds = [...new Set(entries
+    .filter(entry => !selectedCountry || Number(entry.paisId) === selectedCountry)
+    .map(entry => Number(entry.ciudadId))
+    .filter(Boolean))];
+  const cities = cityIds
+    .map(id => ({ value: String(id), label: blogPlaceName(id) }))
+    .sort((a, b) => collator.compare(a.label, b.label));
+  fillSelect('#blog-filter-city', cities, '(todas las ciudades)');
+  [dateField, countryField, cityField].forEach(field => {
+    if (field) field.disabled = !entries.length;
+  });
+}
+
+function filteredBlogEntries(entries) {
+  const date = $('#blog-filter-date') ? $('#blog-filter-date').value : '';
+  const countryId = Number($('#blog-filter-country') ? $('#blog-filter-country').value : 0);
+  const cityId = Number($('#blog-filter-city') ? $('#blog-filter-city').value : 0);
+  return entries.filter(entry =>
+    (!date || entry.fecha === date) &&
+    (!countryId || Number(entry.paisId) === countryId) &&
+    (!cityId || Number(entry.ciudadId) === cityId)
+  );
+}
+
 function renderBlog() {
   const tbody = $('#tabla-blog tbody');
   if (!tbody) return;
@@ -4427,17 +4487,28 @@ function renderBlog() {
   syncBlogAvailability();
   if ($('#blog-title')) $('#blog-title').textContent = trip ? `Blog · ${trip.nombre}` : 'Blog';
   if (!trip) {
+    syncBlogFilterOptions(null, []);
     if ($('#blog-status')) $('#blog-status').textContent = 'Selecciona exactamente un viaje para consultar su blog.';
     tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">El Blog solo está disponible con un único viaje seleccionado.</td></tr>';
     return;
   }
   const entries = blogEntriesForTrip(trip.id);
-  if ($('#blog-status')) $('#blog-status').textContent = `${entries.length} ${entries.length === 1 ? 'entrada' : 'entradas'} en este viaje.`;
+  syncBlogFilterOptions(trip, entries);
+  const filteredEntries = filteredBlogEntries(entries);
+  if ($('#blog-status')) {
+    $('#blog-status').textContent = filteredEntries.length === entries.length
+      ? `${entries.length} ${entries.length === 1 ? 'entrada' : 'entradas'} en este viaje.`
+      : `${filteredEntries.length} de ${entries.length} entradas coinciden con los filtros.`;
+  }
   if (!entries.length) {
     tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">Todavía no hay entradas en este blog.</td></tr>';
     return;
   }
-  tbody.innerHTML = entries.map(entry => `<tr>
+  if (!filteredEntries.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">No hay entradas que coincidan con estos filtros.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filteredEntries.map(entry => `<tr>
     <td>${summaryDocumentDate(entry.fecha, true)}</td>
     <td>${escapeHtml(entry.hora || '-')}</td>
     <td>${escapeHtml(blogPlaceName(entry.paisId))}</td>
@@ -5843,6 +5914,12 @@ function bindEvents() {
   $('#btn-open-add-gasto-bottom').onclick = openAddGasto;
   $('#btn-blog-add').onclick = () => openBlogEntryDialog();
   $('#btn-blog-pdf').onclick = printBlog;
+  $('#blog-filter-date').onchange = renderBlog;
+  $('#blog-filter-country').onchange = () => {
+    if ($('#blog-filter-city')) $('#blog-filter-city').value = '';
+    renderBlog();
+  };
+  $('#blog-filter-city').onchange = renderBlog;
   $('#blog-entry-close').onclick = closeBlogEntryDialog;
   $('#blog-entry-cancel').onclick = closeBlogEntryDialog;
   $('#blog-entry-dialog').oncancel = stopBlogDictation;
