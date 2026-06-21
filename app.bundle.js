@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v90';
+const APP_VERSION = '700v91';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -11,8 +11,8 @@ const SYNC_ENDPOINT = '/api/travel-sync';
 const LOCAL_BACKUP_LIMIT = 5;
 const CLOUD_ATTACHMENT_CHUNK_CHARS = 2_500_000;
 const CLOUD_ATTACHMENT_CHECK_BATCH = 75;
-const BLOG_IMAGE_INPUT_LIMIT = 6 * 1024 * 1024;
 const BLOG_IMAGE_TARGET_BYTES = 900 * 1024;
+const BLOG_IMAGE_OUTPUT_LIMIT = 1_500_000;
 const BLOG_IMAGE_MAX_DIMENSION = 1800;
 const TRIP_MAP_WIDTH = 920;
 const TRIP_MAP_HEIGHT = 460;
@@ -4715,7 +4715,6 @@ function canvasToJpeg(canvas, quality) {
 
 async function compressBlogImage(file) {
   if (!file || !String(file.type || '').startsWith('image/')) throw new Error('Selecciona un archivo de imagen');
-  if (file.size > BLOG_IMAGE_INPUT_LIMIT) throw new Error('La imagen original no puede superar 6 MB');
   const image = await loadImageFile(file);
   let width = image.naturalWidth || image.width;
   let height = image.naturalHeight || image.height;
@@ -4747,7 +4746,9 @@ async function compressBlogImage(file) {
     width = Math.max(1, Math.round(width * resizeScale));
     height = Math.max(1, Math.round(height * resizeScale));
   }
-  if (!blob || blob.size > 1_500_000) throw new Error('No se pudo reducir suficientemente la imagen');
+  if (!blob || blob.size > BLOG_IMAGE_OUTPUT_LIMIT) {
+    throw new Error('El navegador no pudo reducir suficientemente la imagen. Prueba con otra foto o recórtala antes.');
+  }
   return {
     name: String(file.name || 'imagen').replace(/\.[^.]+$/, '') + '.jpg',
     type: 'image/jpeg',
