@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
-const DB_VERSION = 8;
-const APP_VERSION = '700v87';
+const DB_VERSION = 9;
+const APP_VERSION = '700v88';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -11,6 +11,9 @@ const SYNC_ENDPOINT = '/api/travel-sync';
 const LOCAL_BACKUP_LIMIT = 5;
 const CLOUD_ATTACHMENT_CHUNK_CHARS = 2_500_000;
 const CLOUD_ATTACHMENT_CHECK_BATCH = 75;
+const BLOG_IMAGE_INPUT_LIMIT = 6 * 1024 * 1024;
+const BLOG_IMAGE_TARGET_BYTES = 900 * 1024;
+const BLOG_IMAGE_MAX_DIMENSION = 1800;
 const TRIP_MAP_WIDTH = 920;
 const TRIP_MAP_HEIGHT = 460;
 let dbPromise = null;
@@ -21,6 +24,10 @@ let localBackupHistoryCache = [];
 let currentCloudMetadata = null;
 let backupDirectorySettingCache;
 let activeTripDocumentsId = null;
+let activeBlogEntryId = null;
+let activeBlogEntryType = '';
+let activeBlogImage = null;
+let blogSpeechRecognition = null;
 const routeEditorState = {
   tripId: null,
   cityIds: [],
@@ -125,6 +132,11 @@ function openDB() {
       if (!db.objectStoreNames.contains('tripDocuments')) {
         const s = db.createObjectStore('tripDocuments', { keyPath: 'id', autoIncrement: true });
         s.createIndex('byViaje', 'viajeId');
+      }
+      if (!db.objectStoreNames.contains('blogEntries')) {
+        const s = db.createObjectStore('blogEntries', { keyPath: 'id', autoIncrement: true });
+        s.createIndex('byViaje', 'viajeId');
+        s.createIndex('bySourceGasto', 'sourceGastoId', { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -332,6 +344,7 @@ const state = {
   gastos: [],
   viajes: [],
   viajeDocumentos: [],
+  blogEntries: [],
   monedas: [],
   transferencias: []
 };
@@ -340,6 +353,14 @@ let latestCurrencyQuote = null;
 
 const collator = new Intl.Collator('es', { sensitivity: 'base' });
 const todayIso = () => new Date().toISOString().slice(0, 10);
+const currentLocalDate = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+const currentLocalTime = () => {
+  const date = new Date();
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+};
 const numberValue = value => {
   const n = parseFloat(String(value || '').replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
@@ -701,6 +722,8 @@ function setSelectedTrips(ids) {
   tripMapState.destinationOnly = false;
   resetTripMapView();
   syncTripSelectsFromSelection();
+  syncBlogAvailability();
+  if (state.activeTab === 'blog') renderBlog();
 }
 
 function defaultTripId() {
@@ -1107,12 +1130,31 @@ async function prepareCloudBackupData(sourceData) {
     }
     viajeDocumentos.push(next);
   }
+  const blogEntries = [];
+  const sourceBlogEntries = Array.isArray(sourceData && sourceData.blogEntries) ? sourceData.blogEntries : [];
+  for (let index = 0; index < sourceBlogEntries.length; index += 1) {
+    const entry = sourceBlogEntries[index];
+    const next = { ...entry };
+    if (entry.imageData) {
+      setSyncMessage(`Preparando imágenes del blog: ${index + 1} de ${sourceBlogEntries.length}`);
+      next.imageRef = await addAttachment({
+        data: entry.imageData,
+        name: entry.imageName || 'imagen-blog.jpg',
+        mime: entry.imageType || 'image/jpeg'
+      });
+      delete next.imageData;
+    } else {
+      delete next.imageRef;
+    }
+    blogEntries.push(next);
+  }
   return {
     data: {
       ...sourceData,
-      cloudFormat: 3,
+      cloudFormat: 4,
       gastos,
       viajeDocumentos,
+      blogEntries,
       attachments: Array.from(attachments.values()).map(({ data, ...metadata }) => metadata)
     },
     attachments: Array.from(attachments.values())
@@ -1199,6 +1241,12 @@ async function localAttachmentDataById() {
     const file = ticketDataInfo(document.fileData, document.fileType || 'application/octet-stream');
     result.set(await sha256Hex(file.blob), file.data);
   }
+  const blogImages = state.blogEntries.filter(entry => entry.imageData);
+  for (let index = 0; index < blogImages.length; index += 1) {
+    const entry = blogImages[index];
+    const file = ticketDataInfo(entry.imageData, entry.imageType || 'image/jpeg');
+    result.set(await sha256Hex(file.blob), file.data);
+  }
   return result;
 }
 
@@ -1247,6 +1295,10 @@ async function hydrateCloudBackupData(sourceData) {
     viajeDocumentos: (sourceData.viajeDocumentos || []).map(document => ({
       ...document,
       fileData: document.fileRef ? (downloaded.get(document.fileRef) || '') : (document.fileData || '')
+    })),
+    blogEntries: (sourceData.blogEntries || []).map(entry => ({
+      ...entry,
+      imageData: entry.imageRef ? (downloaded.get(entry.imageRef) || '') : (entry.imageData || '')
     }))
   };
 }
@@ -1870,6 +1922,9 @@ async function delViaje(id) {
   for (const document of state.viajeDocumentos.filter(item => Number(item.viajeId) === tripId)) {
     await deleteRecord('tripDocuments', Number(document.id));
   }
+  for (const entry of state.blogEntries.filter(item => Number(item.viajeId) === tripId)) {
+    await deleteRecord('blogEntries', Number(entry.id));
+  }
   return deleteRecord('viajes', tripId);
 }
 
@@ -1894,6 +1949,85 @@ async function addTripDocument({ viajeId, descripcion, fileName, fileType, fileS
 
 async function delTripDocument(id) {
   return deleteRecord('tripDocuments', Number(id));
+}
+
+async function addBlogEntry(data) {
+  const tripId = Number(data.viajeId);
+  if (!state.viajes.some(v => Number(v.id) === tripId)) throw new Error('El viaje no existe');
+  const type = String(data.tipo || '').toLowerCase();
+  if (!['gasto', 'imagen', 'texto'].includes(type)) throw new Error('Tipo de entrada no válido');
+  const description = String(data.descripcion || '').trim();
+  if (!description) throw new Error('Escribe una descripción');
+  if (type === 'texto' && !String(data.texto || '').trim()) throw new Error('Escribe el texto de la entrada');
+  if (type === 'imagen' && !data.imageData) throw new Error('Selecciona una imagen o usa la cámara');
+  const now = new Date().toISOString();
+  return addRecord('blogEntries', {
+    viajeId: tripId,
+    fecha: data.fecha || currentLocalDate(),
+    hora: data.hora || currentLocalTime(),
+    tipo: type,
+    descripcion: description,
+    paisId: data.paisId ? Number(data.paisId) : null,
+    ciudadId: data.ciudadId ? Number(data.ciudadId) : null,
+    texto: type === 'texto' ? String(data.texto || '') : '',
+    imageName: type === 'imagen' ? String(data.imageName || 'imagen.jpg') : '',
+    imageType: type === 'imagen' ? String(data.imageType || 'image/jpeg') : '',
+    imageSize: type === 'imagen' ? Math.max(0, Number(data.imageSize) || 0) : 0,
+    imageData: type === 'imagen' ? data.imageData : '',
+    imageWidth: type === 'imagen' ? Math.max(0, Number(data.imageWidth) || 0) : 0,
+    imageHeight: type === 'imagen' ? Math.max(0, Number(data.imageHeight) || 0) : 0,
+    sourceGastoId: type === 'gasto' && data.sourceGastoId ? Number(data.sourceGastoId) : null,
+    gastoImporte: type === 'gasto' ? numberValue(data.gastoImporte) : 0,
+    gastoMoneda: type === 'gasto' ? String(data.gastoMoneda || 'EUR') : '',
+    gastoImporteEur: type === 'gasto' ? numberValue(data.gastoImporteEur) : 0,
+    createdAt: data.createdAt || now,
+    updatedAt: now
+  });
+}
+
+async function updateBlogEntry(id, patch) {
+  return updateRecord('blogEntries', Number(id), patch);
+}
+
+async function delBlogEntry(id) {
+  return deleteRecord('blogEntries', Number(id));
+}
+
+function compareBlogEntries(a, b) {
+  return `${a.fecha || ''}T${a.hora || '00:00'}`.localeCompare(`${b.fecha || ''}T${b.hora || '00:00'}`) ||
+    Number(a.id || 0) - Number(b.id || 0);
+}
+
+function normalizeImportedBlogEntry(entry = {}) {
+  const type = ['gasto', 'imagen', 'texto'].includes(String(entry.tipo || '').toLowerCase())
+    ? String(entry.tipo).toLowerCase()
+    : 'texto';
+  const now = new Date().toISOString();
+  const obj = {
+    ...entry,
+    viajeId: Number(entry.viajeId),
+    fecha: entry.fecha || currentLocalDate(),
+    hora: entry.hora || '00:00',
+    tipo: type,
+    descripcion: String(entry.descripcion || '').trim() || (type === 'gasto' ? 'Gasto' : 'Entrada del blog'),
+    paisId: entry.paisId ? Number(entry.paisId) : null,
+    ciudadId: entry.ciudadId ? Number(entry.ciudadId) : null,
+    texto: String(entry.texto || ''),
+    imageName: String(entry.imageName || ''),
+    imageType: String(entry.imageType || ''),
+    imageSize: Math.max(0, Number(entry.imageSize) || 0),
+    imageData: entry.imageData || '',
+    imageWidth: Math.max(0, Number(entry.imageWidth) || 0),
+    imageHeight: Math.max(0, Number(entry.imageHeight) || 0),
+    sourceGastoId: entry.sourceGastoId ? Number(entry.sourceGastoId) : null,
+    gastoImporte: numberValue(entry.gastoImporte),
+    gastoMoneda: String(entry.gastoMoneda || ''),
+    gastoImporteEur: numberValue(entry.gastoImporteEur),
+    createdAt: entry.createdAt || now,
+    updatedAt: entry.updatedAt || now
+  };
+  if (entry.id != null) obj.id = Number(entry.id);
+  return obj;
 }
 
 function normalizeCurrencyCode(codigo) {
@@ -2131,13 +2265,14 @@ async function delTransferencia(id) {
 }
 
 async function loadAll() {
-  const [cuentas, categorias, lugares, gastos, viajes, viajeDocumentos, monedas, transferencias] = await Promise.all([
+  const [cuentas, categorias, lugares, gastos, viajes, viajeDocumentos, blogEntries, monedas, transferencias] = await Promise.all([
     getAll('cuentas'),
     getAll('categorias'),
     getAll('lugares'),
     getAll('gastos'),
     getAll('viajes'),
     getAll('tripDocuments'),
+    getAll('blogEntries'),
     getAll('monedas'),
     getAll('transferencias')
   ]);
@@ -2147,6 +2282,7 @@ async function loadAll() {
   state.gastos = gastos.map(g => ({ ...g, importeEur: g.importeEur ?? toEur(g.importe, g.moneda) }));
   state.viajes = viajes.sort((a, b) => (a.fechaInicio || '').localeCompare(b.fechaInicio || '') || byName(a, b));
   state.viajeDocumentos = viajeDocumentos.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  state.blogEntries = blogEntries.sort(compareBlogEntries);
   const validSelectedTripIds = selectedTripIds().filter(id => state.viajes.some(v => v.id === id));
   if (!validSelectedTripIds.length && !hasAppliedDefaultTripSelection && state.viajes.length) {
     const defaultTripIdValue = defaultTripId();
@@ -2176,6 +2312,8 @@ function renderAll() {
   renderLugares();
   renderGastosTabla();
   renderBackupStatus();
+  syncBlogAvailability();
+  renderBlog();
   if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
   if ($('#t-fecha') && !$('#t-fecha').value) $('#t-fecha').value = todayIso();
 }
@@ -2854,7 +2992,10 @@ function renderGastosTabla() {
       const ticketOption = g.ticketData
         ? '<option value="ticket">Abrir ticket</option>'
         : '<option value="ticket" disabled>Abrir ticket (no disponible)</option>';
-      tr.innerHTML = `<td data-label="Ciudad">${escapeHtml(gastoCiudadLabel(g))}</td><td data-label="Categoría">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? accountLabel(cta) : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripción">${escapeHtml(g.desc || '')}</td><td class="action-col" data-label="Acciones"><select class="expense-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Acciones</option>${ticketOption}<option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
+      const blogOption = g.viajeId
+        ? '<option value="blog">Añadir al blog</option>'
+        : '<option value="blog" disabled>Añadir al blog (sin viaje)</option>';
+      tr.innerHTML = `<td data-label="Ciudad">${escapeHtml(gastoCiudadLabel(g))}</td><td data-label="Categoría">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? accountLabel(cta) : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripción">${escapeHtml(g.desc || '')}</td><td class="action-col" data-label="Acciones"><select class="expense-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Acciones</option>${ticketOption}${blogOption}<option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
@@ -3988,6 +4129,7 @@ function buildBackupData(scope = 'all', tripId = null) {
     gastos: state.gastos,
     viajes: state.viajes,
     viajeDocumentos: state.viajeDocumentos,
+    blogEntries: state.blogEntries,
     monedas: state.monedas,
     transferencias: state.transferencias
   };
@@ -4003,6 +4145,7 @@ function buildTripBackupData(tripId) {
   if (!trip) throw new Error('Elige un viaje para exportar');
   const gastos = state.gastos.filter(g => Number(g.viajeId) === id);
   const viajeDocumentos = state.viajeDocumentos.filter(document => Number(document.viajeId) === id);
+  const blogEntries = state.blogEntries.filter(entry => Number(entry.viajeId) === id);
   const usedAccountIds = new Set(gastos.map(g => Number(g.cuentaId)).filter(Boolean));
   const cuentas = state.cuentas.filter(c => Number(c.viajeId) === id || usedAccountIds.has(Number(c.id)));
   const accountIds = new Set(cuentas.map(c => Number(c.id)));
@@ -4018,6 +4161,7 @@ function buildTripBackupData(tripId) {
     gastos,
     viajes: [trip],
     viajeDocumentos,
+    blogEntries,
     monedas: state.monedas,
     transferencias
   };
@@ -4027,7 +4171,7 @@ async function importAll(data) {
   if (!data || !Array.isArray(data.cuentas) || !Array.isArray(data.categorias) || !Array.isArray(data.gastos)) {
     throw new Error('Archivo no válido');
   }
-  await clearStores(['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'tripDocuments', 'monedas', 'transferencias']);
+  await clearStores(['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'tripDocuments', 'blogEntries', 'monedas', 'transferencias']);
   await ensureBaseCurrency();
   for (const m of data.monedas || []) {
     const codigo = String(m.codigo || '').toUpperCase();
@@ -4130,6 +4274,11 @@ async function importAll(data) {
     if (document.id == null) delete obj.id;
     await addRecord('tripDocuments', obj);
   }
+  for (const entry of data.blogEntries || []) {
+    const obj = normalizeImportedBlogEntry(entry);
+    if (entry.id == null) delete obj.id;
+    await addRecord('blogEntries', obj);
+  }
 }
 
 async function importTripBackup(data, targetTripId) {
@@ -4163,6 +4312,9 @@ async function importTripBackup(data, targetTripId) {
   for (const document of state.viajeDocumentos.filter(item => Number(item.viajeId) === targetId)) {
     await deleteRecord('tripDocuments', Number(document.id));
   }
+  for (const entry of state.blogEntries.filter(item => Number(item.viajeId) === targetId)) {
+    await deleteRecord('blogEntries', Number(entry.id));
+  }
   for (const transfer of state.transferencias.filter(t => oldTripAccountIds.has(Number(t.fromId)) || oldTripAccountIds.has(Number(t.toId)))) {
     await deleteRecord('transferencias', Number(transfer.id));
   }
@@ -4189,6 +4341,7 @@ async function importTripBackup(data, targetTripId) {
     };
     accountMap[Number(c.id)] = await addRecord('cuentas', obj);
   }
+  const expenseMap = {};
   for (const g of data.gastos || []) {
     const sourceAccountId = Number(g.cuentaId);
     let cuentaId = accountMap[sourceAccountId];
@@ -4209,7 +4362,8 @@ async function importTripBackup(data, targetTripId) {
       updatedAt: now
     };
     delete obj.id;
-    await addRecord('gastos', obj);
+    const newExpenseId = await addRecord('gastos', obj);
+    if (g.id != null) expenseMap[Number(g.id)] = Number(newExpenseId);
   }
   for (const document of data.viajeDocumentos || []) {
     const obj = {
@@ -4226,6 +4380,481 @@ async function importTripBackup(data, targetTripId) {
     delete obj.id;
     await addRecord('tripDocuments', obj);
   }
+  for (const entry of data.blogEntries || []) {
+    const obj = normalizeImportedBlogEntry({ ...entry, id: undefined, viajeId: targetId });
+    if (obj.sourceGastoId) obj.sourceGastoId = expenseMap[Number(obj.sourceGastoId)] || null;
+    delete obj.id;
+    await addRecord('blogEntries', obj);
+  }
+}
+
+function selectedBlogTrip() {
+  const ids = selectedTripIds();
+  if (ids.length !== 1) return null;
+  return state.viajes.find(v => Number(v.id) === Number(ids[0])) || null;
+}
+
+function syncBlogAvailability() {
+  const button = $('#tab-blog');
+  const trip = selectedBlogTrip();
+  if (button) {
+    button.disabled = !trip;
+    button.title = trip ? `Blog de ${trip.nombre}` : 'Selecciona exactamente un viaje para abrir el Blog';
+  }
+  if ($('#btn-blog-add')) $('#btn-blog-add').disabled = !trip;
+  if ($('#btn-blog-pdf')) $('#btn-blog-pdf').disabled = !trip;
+}
+
+function blogTypeLabel(type) {
+  return ({ gasto: 'Gasto', imagen: 'Imagen', texto: 'Texto' })[type] || type || '-';
+}
+
+function blogPlaceName(id) {
+  return id ? (state.lugares.find(item => Number(item.id) === Number(id)) || {}).nombre || '-' : '-';
+}
+
+function blogEntriesForTrip(tripId) {
+  return state.blogEntries
+    .filter(entry => Number(entry.viajeId) === Number(tripId))
+    .slice()
+    .sort(compareBlogEntries);
+}
+
+function renderBlog() {
+  const tbody = $('#tabla-blog tbody');
+  if (!tbody) return;
+  const trip = selectedBlogTrip();
+  syncBlogAvailability();
+  if ($('#blog-title')) $('#blog-title').textContent = trip ? `Blog · ${trip.nombre}` : 'Blog';
+  if (!trip) {
+    if ($('#blog-status')) $('#blog-status').textContent = 'Selecciona exactamente un viaje para consultar su blog.';
+    tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">El Blog solo está disponible con un único viaje seleccionado.</td></tr>';
+    return;
+  }
+  const entries = blogEntriesForTrip(trip.id);
+  if ($('#blog-status')) $('#blog-status').textContent = `${entries.length} ${entries.length === 1 ? 'entrada' : 'entradas'} en este viaje.`;
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">Todavía no hay entradas en este blog.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = entries.map(entry => `<tr>
+    <td>${summaryDocumentDate(entry.fecha, true)}</td>
+    <td>${escapeHtml(entry.hora || '-')}</td>
+    <td>${escapeHtml(blogPlaceName(entry.paisId))}</td>
+    <td>${escapeHtml(blogPlaceName(entry.ciudadId))}</td>
+    <td>${escapeHtml(blogTypeLabel(entry.tipo))}</td>
+    <td>${escapeHtml(entry.descripcion || '')}</td>
+    <td>${entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '-'}</td>
+    <td class="blog-entry-actions"><button type="button" class="ghost" data-edit-blog="${entry.id}">Editar</button> <button type="button" class="ghost danger-text" data-delete-blog="${entry.id}">Eliminar</button></td>
+  </tr>`).join('');
+}
+
+function blogCountryOptions(trip) {
+  const ids = new Set(trip ? tripCountryIds(trip).map(Number) : []);
+  return state.lugares
+    .filter(item => !item.parentId && (!ids.size || ids.has(Number(item.id))))
+    .map(item => ({ value: String(item.id), label: item.nombre }))
+    .sort((a, b) => collator.compare(a.label, b.label));
+}
+
+function renderBlogCountries(selected = '') {
+  const trip = selectedBlogTrip();
+  fillSelect('#blog-pais', blogCountryOptions(trip), '(sin país)');
+  if ($('#blog-pais')) $('#blog-pais').value = selected ? String(selected) : '';
+  renderBlogCities();
+}
+
+function renderBlogCities(selected = '') {
+  const countryId = Number($('#blog-pais') ? $('#blog-pais').value : 0);
+  const trip = selectedBlogTrip();
+  const allowed = new Set(trip ? tripCityIds(trip).map(Number) : []);
+  const options = state.lugares
+    .filter(item => item.parentId && (!countryId || Number(item.parentId) === countryId))
+    .filter(item => !allowed.size || allowed.has(Number(item.id)) || Number(item.id) === Number(selected))
+    .map(item => ({ value: String(item.id), label: item.nombre }))
+    .sort((a, b) => collator.compare(a.label, b.label));
+  fillSelect('#blog-ciudad', options, '(sin ciudad)');
+  if ($('#blog-ciudad')) $('#blog-ciudad').value = selected ? String(selected) : '';
+}
+
+function clearBlogImageSelection() {
+  activeBlogImage = null;
+  if ($('#blog-image-file')) $('#blog-image-file').value = '';
+  if ($('#blog-image-camera')) $('#blog-image-camera').value = '';
+  if ($('#blog-image-status')) $('#blog-image-status').textContent = 'Ninguna imagen seleccionada.';
+  if ($('#blog-image-preview')) {
+    $('#blog-image-preview').hidden = true;
+    $('#blog-image-preview').removeAttribute('src');
+  }
+}
+
+function showBlogImage(image) {
+  activeBlogImage = image;
+  if ($('#blog-image-status')) {
+    $('#blog-image-status').textContent = `${image.name} · ${formatFileSize(image.size)} · ${image.width} × ${image.height}`;
+  }
+  if ($('#blog-image-preview')) {
+    $('#blog-image-preview').src = image.data;
+    $('#blog-image-preview').hidden = false;
+  }
+}
+
+function setBlogEntryType(type) {
+  activeBlogEntryType = type;
+  if ($('#blog-entry-type-choice')) $('#blog-entry-type-choice').hidden = true;
+  if ($('#blog-entry-fields')) $('#blog-entry-fields').hidden = false;
+  if ($('#blog-tipo')) $('#blog-tipo').value = blogTypeLabel(type);
+  if ($('#blog-expense-fields')) $('#blog-expense-fields').hidden = type !== 'gasto';
+  if ($('#blog-image-fields')) $('#blog-image-fields').hidden = type !== 'imagen';
+  if ($('#blog-text-fields')) $('#blog-text-fields').hidden = type !== 'texto';
+}
+
+function stopBlogDictation() {
+  if (blogSpeechRecognition) {
+    try { blogSpeechRecognition.stop(); } catch {}
+  }
+  blogSpeechRecognition = null;
+  if ($('#blog-voice')) $('#blog-voice').textContent = 'Dictar por voz';
+}
+
+function closeBlogEntryDialog() {
+  stopBlogDictation();
+  activeBlogEntryId = null;
+  activeBlogEntryType = '';
+  activeBlogImage = null;
+  const dialog = $('#blog-entry-dialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function openBlogEntryDialog(entry = null) {
+  const trip = selectedBlogTrip();
+  if (!trip) {
+    alert('Selecciona exactamente un viaje para añadir una entrada.');
+    return;
+  }
+  activeBlogEntryId = entry ? Number(entry.id) : null;
+  activeBlogEntryType = '';
+  clearBlogImageSelection();
+  if ($('#blog-entry-title')) $('#blog-entry-title').textContent = entry ? 'Editar entrada del blog' : `Añadir entrada · ${trip.nombre}`;
+  if ($('#blog-entry-id')) $('#blog-entry-id').value = entry ? String(entry.id) : '';
+  if ($('#blog-fecha')) $('#blog-fecha').value = entry ? entry.fecha : currentLocalDate();
+  if ($('#blog-hora')) $('#blog-hora').value = entry ? entry.hora : currentLocalTime();
+  if ($('#blog-descripcion')) $('#blog-descripcion').value = entry ? entry.descripcion || '' : '';
+  if ($('#blog-texto')) $('#blog-texto').value = entry ? entry.texto || '' : '';
+  if ($('#blog-gasto-precio')) {
+    $('#blog-gasto-precio').value = entry && entry.tipo === 'gasto'
+      ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR')
+      : '';
+  }
+  if ($('#blog-entry-type-choice')) $('#blog-entry-type-choice').hidden = Boolean(entry);
+  if ($('#blog-entry-fields')) $('#blog-entry-fields').hidden = !entry;
+  renderBlogCountries(entry ? entry.paisId : '');
+  if (entry) {
+    renderBlogCities(entry.ciudadId);
+    setBlogEntryType(entry.tipo);
+    if (entry.tipo === 'imagen' && entry.imageData) {
+      showBlogImage({
+        name: entry.imageName || 'imagen.jpg',
+        type: entry.imageType || 'image/jpeg',
+        size: entry.imageSize || dataUrlToBlob(entry.imageData, entry.imageType || 'image/jpeg').size,
+        data: entry.imageData,
+        width: entry.imageWidth || 0,
+        height: entry.imageHeight || 0
+      });
+    }
+  }
+  if ($('#msg-blog-entry')) setMessage('#msg-blog-entry', '');
+  if ($('#blog-voice-status')) $('#blog-voice-status').textContent = '';
+  const dialog = $('#blog-entry-dialog');
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function readBlobAsDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function loadImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('No se pudo leer la imagen'));
+    };
+    image.src = url;
+  });
+}
+
+function canvasToJpeg(canvas, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo comprimir la imagen')), 'image/jpeg', quality);
+  });
+}
+
+async function compressBlogImage(file) {
+  if (!file || !String(file.type || '').startsWith('image/')) throw new Error('Selecciona un archivo de imagen');
+  if (file.size > BLOG_IMAGE_INPUT_LIMIT) throw new Error('La imagen original no puede superar 6 MB');
+  const image = await loadImageFile(file);
+  let width = image.naturalWidth || image.width;
+  let height = image.naturalHeight || image.height;
+  if (!width || !height) throw new Error('La imagen no tiene dimensiones válidas');
+  const scale = Math.min(1, BLOG_IMAGE_MAX_DIMENSION / Math.max(width, height));
+  width = Math.max(1, Math.round(width * scale));
+  height = Math.max(1, Math.round(height * scale));
+  let blob = null;
+  let outputWidth = width;
+  let outputHeight = height;
+  for (let resizeRound = 0; resizeRound < 4; resizeRound += 1) {
+    outputWidth = width;
+    outputHeight = height;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: false });
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    for (const quality of [0.86, 0.78, 0.68, 0.58]) {
+      blob = await canvasToJpeg(canvas, quality);
+      if (blob.size <= BLOG_IMAGE_TARGET_BYTES) break;
+    }
+    if (blob.size <= BLOG_IMAGE_TARGET_BYTES) break;
+    const longestEdge = Math.max(width, height);
+    if (longestEdge <= 640) break;
+    const resizeScale = Math.max(640 / longestEdge, 0.82);
+    width = Math.max(1, Math.round(width * resizeScale));
+    height = Math.max(1, Math.round(height * resizeScale));
+  }
+  if (!blob || blob.size > 1_500_000) throw new Error('No se pudo reducir suficientemente la imagen');
+  return {
+    name: String(file.name || 'imagen').replace(/\.[^.]+$/, '') + '.jpg',
+    type: 'image/jpeg',
+    size: blob.size,
+    data: await readBlobAsDataUrl(blob),
+    width: outputWidth,
+    height: outputHeight
+  };
+}
+
+async function selectBlogImage(input, otherInput) {
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  if (otherInput) otherInput.value = '';
+  setMessage('#msg-blog-entry', '');
+  if ($('#blog-image-status')) $('#blog-image-status').textContent = 'Comprimiendo imagen...';
+  try {
+    showBlogImage(await compressBlogImage(file));
+  } catch (error) {
+    input.value = '';
+    if (activeBlogImage) showBlogImage(activeBlogImage);
+    else if ($('#blog-image-status')) $('#blog-image-status').textContent = 'Ninguna imagen seleccionada.';
+    setMessage('#msg-blog-entry', error.message || String(error), true);
+  }
+}
+
+function startBlogDictation() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    setMessage('#blog-voice-status', 'El dictado no está disponible en este navegador.', true);
+    return;
+  }
+  if (blogSpeechRecognition) {
+    stopBlogDictation();
+    return;
+  }
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'es-ES';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.onstart = () => {
+    if ($('#blog-voice')) $('#blog-voice').textContent = 'Detener dictado';
+    setMessage('#blog-voice-status', 'Escuchando...');
+  };
+  recognition.onresult = event => {
+    let finalText = '';
+    let interimText = '';
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      const text = event.results[index][0].transcript;
+      if (event.results[index].isFinal) finalText += text;
+      else interimText += text;
+    }
+    if (finalText && $('#blog-texto')) {
+      const current = $('#blog-texto').value.trimEnd();
+      $('#blog-texto').value = `${current}${current ? ' ' : ''}${finalText.trim()}`;
+    }
+    setMessage('#blog-voice-status', interimText ? `Escuchando: ${interimText}` : 'Escuchando...');
+  };
+  recognition.onerror = event => {
+    setMessage('#blog-voice-status', event.error === 'not-allowed' ? 'Permiso de micrófono denegado.' : 'No se pudo continuar el dictado.', true);
+  };
+  recognition.onend = () => {
+    blogSpeechRecognition = null;
+    if ($('#blog-voice')) $('#blog-voice').textContent = 'Dictar por voz';
+  };
+  blogSpeechRecognition = recognition;
+  recognition.start();
+}
+
+async function saveBlogEntryForm() {
+  const trip = selectedBlogTrip();
+  if (!trip) throw new Error('El viaje seleccionado ha cambiado');
+  const type = activeBlogEntryType;
+  const description = String($('#blog-descripcion').value || '').trim();
+  if (!description) throw new Error('Escribe una descripción');
+  const current = activeBlogEntryId ? state.blogEntries.find(entry => Number(entry.id) === activeBlogEntryId) : null;
+  const values = {
+    viajeId: trip.id,
+    fecha: $('#blog-fecha').value || currentLocalDate(),
+    hora: $('#blog-hora').value || currentLocalTime(),
+    tipo: type,
+    descripcion: description,
+    paisId: $('#blog-pais').value || null,
+    ciudadId: $('#blog-ciudad').value || null
+  };
+  if (type === 'texto') {
+    values.texto = $('#blog-texto').value;
+    if (!String(values.texto).trim()) throw new Error('Escribe el texto de la entrada');
+  }
+  if (type === 'imagen') {
+    if (!activeBlogImage) throw new Error('Selecciona una imagen o usa la cámara');
+    Object.assign(values, {
+      imageName: activeBlogImage.name,
+      imageType: activeBlogImage.type,
+      imageSize: activeBlogImage.size,
+      imageData: activeBlogImage.data,
+      imageWidth: activeBlogImage.width,
+      imageHeight: activeBlogImage.height
+    });
+  }
+  if (current) {
+    if (type === 'gasto') {
+      Object.assign(values, {
+        sourceGastoId: current.sourceGastoId,
+        gastoImporte: current.gastoImporte,
+        gastoMoneda: current.gastoMoneda,
+        gastoImporteEur: current.gastoImporteEur
+      });
+    }
+    await updateBlogEntry(current.id, values);
+  } else {
+    await addBlogEntry(values);
+  }
+  closeBlogEntryDialog();
+  await loadAll();
+  setTab('blog');
+}
+
+function expenseBlogDescription(gasto) {
+  if (String(gasto.desc || '').trim()) return String(gasto.desc).trim();
+  const category = state.categorias.find(item => Number(item.id) === Number(gasto.subcatId || gasto.catId));
+  return category ? category.nombre : 'Gasto';
+}
+
+function expenseBlogTime(gasto) {
+  const date = new Date(gasto.createdAt || '');
+  if (Number.isNaN(date.getTime())) return currentLocalTime();
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+async function addExpenseToBlog(gasto) {
+  if (!gasto.viajeId) throw new Error('Este gasto no pertenece a ningún viaje');
+  const existing = state.blogEntries.find(entry => entry.tipo === 'gasto' && Number(entry.sourceGastoId) === Number(gasto.id));
+  const snapshot = {
+    viajeId: Number(gasto.viajeId),
+    tipo: 'gasto',
+    descripcion: expenseBlogDescription(gasto),
+    paisId: gasto.paisId || null,
+    ciudadId: gasto.ciudadId || null,
+    sourceGastoId: Number(gasto.id),
+    gastoImporte: numberValue(gasto.importe),
+    gastoMoneda: gasto.moneda || 'EUR',
+    gastoImporteEur: toEur(gasto.importe, gasto.moneda)
+  };
+  if (existing) {
+    if (!confirm('Este gasto ya existe en el blog. ¿Quieres reemplazar sus datos manteniendo la fecha y hora editadas en el blog?')) return false;
+    await updateBlogEntry(existing.id, {
+      ...snapshot,
+      fecha: existing.fecha,
+      hora: existing.hora
+    });
+  } else {
+    await addBlogEntry({
+      ...snapshot,
+      fecha: gasto.fecha || currentLocalDate(),
+      hora: expenseBlogTime(gasto)
+    });
+  }
+  setSelectedTrips([Number(gasto.viajeId)]);
+  await loadAll();
+  setTab('blog');
+  return true;
+}
+
+function blogPrintEntryHtml(entry) {
+  const place = [blogPlaceName(entry.paisId), blogPlaceName(entry.ciudadId)].filter(value => value && value !== '-').join(' · ');
+  const price = entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '';
+  const text = entry.tipo === 'texto' && entry.texto
+    ? `<div class="blog-print-text">${escapeHtml(entry.texto).replace(/\r?\n/g, '<br>')}</div>`
+    : '';
+  const imageClass = Number(entry.imageWidth) > Number(entry.imageHeight) ? 'landscape' : 'portrait';
+  const image = entry.tipo === 'imagen' && entry.imageData
+    ? `<img class="blog-print-image ${imageClass}" src="${escapeHtml(entry.imageData)}" alt="${escapeHtml(entry.descripcion || 'Imagen')}">`
+    : '';
+  return `<article class="blog-print-entry">
+    <div class="blog-print-meta"><strong>${summaryDocumentDate(entry.fecha, true)} · ${escapeHtml(entry.hora || '')}</strong><span>${escapeHtml(place)}</span><span>${escapeHtml(blogTypeLabel(entry.tipo))}${price ? ` · ${price}` : ''}</span></div>
+    <h2>${escapeHtml(entry.descripcion || '')}</h2>
+    ${text}${image}
+  </article>`;
+}
+
+function printBlog() {
+  const trip = selectedBlogTrip();
+  if (!trip) {
+    alert('Selecciona exactamente un viaje para ver su blog.');
+    return;
+  }
+  const entries = blogEntriesForTrip(trip.id);
+  if (!entries.length) {
+    alert('Este viaje todavía no tiene entradas en el blog.');
+    return;
+  }
+  const body = entries.map(blogPrintEntryHtml).join('');
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blog · ${escapeHtml(trip.nombre)}</title><style>
+    @page { size: A4; margin: 12mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color: #1f2937; }
+    h1 { margin: 0 0 6mm; font-size: 22px; }
+    h2 { margin: 3mm 0; font-size: 16px; }
+    .blog-print-entry { break-inside: avoid; page-break-inside: avoid; padding: 0 0 7mm; margin: 0 0 7mm; border-bottom: 1px solid #dbe3ef; }
+    .blog-print-meta { display: flex; flex-wrap: wrap; gap: 3mm 7mm; color: #64748b; font-size: 11px; }
+    .blog-print-text { margin-top: 3mm; font-size: 12px; line-height: 1.5; white-space: normal; }
+    .blog-print-image { display: block; height: auto; max-height: 245mm; margin: 4mm auto 0; object-fit: contain; }
+    .blog-print-image.landscape { width: 100%; }
+    .blog-print-image.portrait { width: 35%; min-width: 50mm; }
+    @media screen { body { max-width: 210mm; margin: 0 auto; padding: 12mm; } }
+  </style></head><body><h1>Blog · ${escapeHtml(trip.nombre)}</h1>${body}<script>
+    Promise.all(Array.from(document.images).map(function(img){return img.complete ? Promise.resolve() : new Promise(function(resolve){img.onload=resolve;img.onerror=resolve;});})).then(function(){setTimeout(function(){window.print();},150);});
+  </script></body></html>`;
+  const win = window.open('', '_blank');
+  if (!win) {
+    alert('El navegador ha bloqueado la ventana del PDF. Permite ventanas emergentes.');
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
 }
 
 async function seedIfEmpty() {
@@ -4242,12 +4871,14 @@ function scrollToGastosStart() {
 }
 
 function setTab(id) {
+  if (id === 'blog' && !selectedBlogTrip()) return;
   state.activeTab = id;
-  ['viajes', 'gastos', 'resumen', 'config'].forEach(tab => {
+  ['viajes', 'gastos', 'blog', 'resumen', 'config'].forEach(tab => {
     $(`#tab-${tab}`).classList.toggle('active', tab === id);
     $(`#view-${tab}`).style.display = tab === id ? 'block' : 'none';
   });
   if (id === 'resumen') renderResumen();
+  if (id === 'blog') renderBlog();
   if (id === 'gastos') scrollToGastosStart();
 }
 
@@ -4412,6 +5043,7 @@ function inferLocalDataUpdatedAt() {
     ...state.gastos,
     ...state.viajes,
     ...state.viajeDocumentos,
+    ...state.blogEntries,
     ...state.monedas,
     ...state.transferencias
   ].flatMap(item => [item && item.updatedAt, item && item.createdAt]).filter(Boolean).sort();
@@ -4443,6 +5075,7 @@ function hasMeaningfulLocalData() {
     || state.transferencias.length
     || state.lugares.length
     || state.viajeDocumentos.length
+    || state.blogEntries.length
     || state.monedas.some(item => item.codigo !== 'EUR')
   );
 }
@@ -5082,18 +5715,19 @@ function formDialogValues() {
 async function resetDataValue(option) {
   const value = String(option || '').trim().toLowerCase();
   const map = {
-    todo: ['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'tripDocuments', 'monedas', 'transferencias'],
+    todo: ['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'tripDocuments', 'blogEntries', 'monedas', 'transferencias'],
     categorias: ['categorias'],
     lugares: ['lugares'],
     monedas: ['monedas'],
     cuentas: ['cuentas'],
-    viajes: ['viajes', 'tripDocuments'],
+    viajes: ['viajes', 'tripDocuments', 'blogEntries'],
     gastos: ['gastos'],
+    blog: ['blogEntries'],
     transferencias: ['transferencias']
   };
   const stores = map[value];
   if (!stores) {
-    alert('Opción no reconocida. Usa: todo, categorías, monedas, cuentas, viajes, gastos o transferencias.');
+    alert('Opción no reconocida. Usa: todo, categorías, monedas, cuentas, viajes, gastos, blog o transferencias.');
     return;
   }
   if (!confirm(`Se borrará: ${value}. ¿Continuar?`)) return;
@@ -5121,7 +5755,7 @@ async function resetDataValue(option) {
 async function resetDataPrompt() {
   openFormDialog({
     title: 'Resetear datos',
-    fields: [{ name: 'opcion', label: 'Escribe: todo, categorías, monedas, cuentas, viajes, gastos o transferencias', value: 'todo' }],
+    fields: [{ name: 'opcion', label: 'Escribe: todo, categorías, monedas, cuentas, viajes, gastos, blog o transferencias', value: 'todo' }],
     onSubmit: values => resetDataValue(values.opcion)
   });
 }
@@ -5131,6 +5765,8 @@ async function handleGastoAction(id, action) {
   if (!gasto) return;
   if (action === 'ticket') {
     openTicket(gasto.id);
+  } else if (action === 'blog') {
+    await addExpenseToBlog(gasto);
   } else if (action === 'edit') {
     openEditGasto(gasto);
   } else if (action === 'dup') {
@@ -5145,6 +5781,7 @@ async function handleGastoAction(id, action) {
 function bindEvents() {
   $('#tab-viajes').onclick = () => setTab('viajes');
   $('#tab-gastos').onclick = () => setTab('gastos');
+  $('#tab-blog').onclick = () => setTab('blog');
   $('#tab-resumen').onclick = () => setTab('resumen');
   $('#tab-config').onclick = () => setTab('config');
   $('#btn-clear-trip').onclick = () => {
@@ -5153,6 +5790,27 @@ function bindEvents() {
   };
   $('#btn-open-add-gasto').onclick = openAddGasto;
   $('#btn-open-add-gasto-bottom').onclick = openAddGasto;
+  $('#btn-blog-add').onclick = () => openBlogEntryDialog();
+  $('#btn-blog-pdf').onclick = printBlog;
+  $('#blog-entry-close').onclick = closeBlogEntryDialog;
+  $('#blog-entry-cancel').onclick = closeBlogEntryDialog;
+  $('#blog-entry-dialog').oncancel = stopBlogDictation;
+  $('#blog-entry-dialog').onclose = stopBlogDictation;
+  $('#blog-entry-form').onsubmit = async event => {
+    event.preventDefault();
+    try {
+      await saveBlogEntryForm();
+    } catch (error) {
+      setMessage('#msg-blog-entry', error.message || String(error), true);
+    }
+  };
+  $$('[data-blog-type]').forEach(button => {
+    button.onclick = () => setBlogEntryType(button.dataset.blogType);
+  });
+  $('#blog-pais').onchange = () => renderBlogCities();
+  $('#blog-image-file').onchange = () => selectBlogImage($('#blog-image-file'), $('#blog-image-camera'));
+  $('#blog-image-camera').onchange = () => selectBlogImage($('#blog-image-camera'), $('#blog-image-file'));
+  $('#blog-voice').onclick = startBlogDictation;
   $('#btn-open-filters').onclick = openFiltersPanel;
   $('#filters-close').onclick = closeFiltersPanel;
   $('#add-gasto-close').onclick = closeAddGasto;
@@ -5614,6 +6272,20 @@ function bindEvents() {
   document.addEventListener('click', event => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    const editBlogButton = target.closest('[data-edit-blog]');
+    if (editBlogButton) {
+      const entry = state.blogEntries.find(item => Number(item.id) === Number(editBlogButton.dataset.editBlog));
+      if (entry) openBlogEntryDialog(entry);
+      return;
+    }
+    const deleteBlogButton = target.closest('[data-delete-blog]');
+    if (deleteBlogButton) {
+      if (!confirm('¿Eliminar esta entrada del blog?')) return;
+      delBlogEntry(deleteBlogButton.dataset.deleteBlog)
+        .then(loadAll)
+        .catch(error => alert(error.message || String(error)));
+      return;
+    }
     const suggestion = target.closest('[data-currency-code]');
     if (suggestion) {
       selectCurrencySuggestion(suggestion.dataset.currencyCode);

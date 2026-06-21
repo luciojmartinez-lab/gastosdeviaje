@@ -101,6 +101,15 @@ nav button.active {
   font-weight: 600;
 }
 
+nav button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.mobile-label {
+  display: none;
+}
+
 main {
   max-width: 1080px;
   margin: 0 auto;
@@ -812,6 +821,68 @@ input[type="checkbox"] {
   overflow: auto;
 }
 
+.blog-entry-modal {
+  width: min(760px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+}
+
+.blog-type-choice {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.blog-type-choice p {
+  margin-top: 0;
+}
+
+.blog-text-fields textarea {
+  width: 100%;
+  min-height: 220px;
+  max-height: 48vh;
+  resize: vertical;
+  overflow: auto;
+  font: inherit;
+  line-height: 1.45;
+}
+
+.blog-image-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  margin: 10px auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.blog-expense-fields,
+.blog-image-fields,
+.blog-text-fields {
+  margin-top: 12px;
+}
+
+#tabla-blog {
+  min-width: 940px;
+}
+
+#tabla-blog td:nth-child(6) {
+  max-width: 300px;
+  overflow-wrap: anywhere;
+}
+
+.blog-entry-actions {
+  white-space: nowrap;
+}
+
+.blog-empty {
+  padding: 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
 .trip-document-add {
   padding: 12px;
   border: 1px solid var(--line);
@@ -1329,6 +1400,7 @@ footer {
   nav {
     order: 3;
     width: 100%;
+    gap: 4px;
   }
 
   .nav-help {
@@ -1377,7 +1449,36 @@ footer {
   }
 
   nav button {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 7px 3px;
+    font-size: 11px;
+  }
+
+  .desktop-label {
+    display: none;
+  }
+
+  .mobile-label {
+    display: inline;
+  }
+
+  .blog-head {
+    align-items: stretch;
+  }
+
+  .blog-head .section-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .blog-entry-modal form {
+    padding: 12px;
+  }
+
+  .blog-text-fields textarea {
+    min-height: 260px;
   }
 
   main {

@@ -16,11 +16,12 @@
   <nav>
     <button id="tab-viajes" class="active">Viajes</button>
     <button id="tab-gastos">Gastos</button>
+    <button id="tab-blog" disabled>Blog</button>
     <button id="tab-resumen">Resumen</button>
-    <button id="tab-config">Configuración</button>
+    <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v87</div>
+  <div class="app-version">700v88</div>
 </header>
 
 <main>
@@ -87,6 +88,27 @@
       </div>
       <div class="actions expenses-bottom-actions">
         <button class="btn" id="btn-open-add-gasto-bottom">Añadir gastos</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-blog" style="display:none">
+    <div class="card">
+      <div class="section-head blog-head">
+        <div>
+          <h2 id="blog-title">Blog</h2>
+          <p id="blog-status" class="small"></p>
+        </div>
+        <div class="section-actions">
+          <button class="btn" id="btn-blog-add" type="button">Añadir entrada</button>
+          <button class="btn ghost" id="btn-blog-pdf" type="button">Ver en PDF</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="tabla-blog">
+          <thead><tr><th>Fecha</th><th>Hora</th><th>País</th><th>Ciudad</th><th>Tipo</th><th>Descripción</th><th>Precio</th><th>Acciones</th></tr></thead>
+          <tbody></tbody>
+        </table>
       </div>
     </div>
   </section>
@@ -485,6 +507,63 @@
   </form>
 </dialog>
 
+<dialog id="blog-entry-dialog" class="modal blog-entry-modal">
+  <form method="dialog" id="blog-entry-form">
+    <div class="modal-head">
+      <h2 id="blog-entry-title">Añadir entrada al blog</h2>
+      <button type="button" class="ghost icon-btn" id="blog-entry-close" aria-label="Cerrar">x</button>
+    </div>
+    <input type="hidden" id="blog-entry-id">
+    <div id="blog-entry-type-choice" class="blog-type-choice">
+      <p>Elige el tipo de entrada:</p>
+      <button type="button" class="btn" data-blog-type="texto">Texto</button>
+      <button type="button" class="btn ghost" data-blog-type="imagen">Imagen</button>
+    </div>
+    <div id="blog-entry-fields" hidden>
+      <div class="row3">
+        <div><label>Fecha</label><input type="date" id="blog-fecha"></div>
+        <div><label>Hora</label><input type="time" id="blog-hora"></div>
+        <div><label>Tipo de entrada</label><input id="blog-tipo" readonly></div>
+      </div>
+      <div class="row">
+        <div><label>País</label><select id="blog-pais"></select></div>
+        <div><label>Ciudad</label><select id="blog-ciudad"></select></div>
+      </div>
+      <label>Descripción</label>
+      <input id="blog-descripcion" maxlength="240" placeholder="Breve descripción de la entrada">
+      <div id="blog-expense-fields" class="blog-expense-fields" hidden>
+        <label>Gasto asociado</label>
+        <input id="blog-gasto-precio" readonly>
+      </div>
+      <div id="blog-image-fields" class="blog-image-fields" hidden>
+        <label>Imagen</label>
+        <div class="trip-document-picker-actions">
+          <label class="btn ghost trip-document-picker">Elegir imagen
+            <input type="file" id="blog-image-file" accept="image/*">
+          </label>
+          <label class="btn ghost trip-document-picker">Cámara
+            <input type="file" id="blog-image-camera" accept="image/*" capture="environment">
+          </label>
+        </div>
+        <p id="blog-image-status" class="small">Ninguna imagen seleccionada.</p>
+        <img id="blog-image-preview" class="blog-image-preview" alt="Vista previa" hidden>
+        <p class="small">Se aceptan originales de hasta 6 MB. La aplicación los comprime antes de guardarlos.</p>
+      </div>
+      <div id="blog-text-fields" class="blog-text-fields" hidden>
+        <label for="blog-texto">Texto</label>
+        <textarea id="blog-texto" placeholder="Escribe el comentario del viaje..."></textarea>
+        <button type="button" class="btn ghost" id="blog-voice">Dictar por voz</button>
+        <span id="blog-voice-status" class="small"></span>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn">Guardar entrada</button>
+        <button type="button" class="ghost" id="blog-entry-cancel">Cancelar</button>
+        <span id="msg-blog-entry" class="small"></span>
+      </div>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="print-dialog" class="modal">
   <form method="dialog" id="print-dialog-form">
     <div class="modal-head">
@@ -570,7 +649,7 @@
       </div>
     </div>
     <p id="sync-message" class="sync-message small"></p>
-    <p class="small">Los tickets y documentos de viaje se identifican por su huella. Si ya existen en Netlify no se vuelven a subir.</p>
+    <p class="small">Los tickets, documentos e imágenes del blog se identifican por su huella. Si ya existen en Netlify no se vuelven a subir.</p>
     <div class="actions sync-actions">
       <button type="button" class="btn ghost" id="sync-refresh">Comprobar de nuevo</button>
       <button type="button" class="btn" id="sync-download" style="display:none">Actualizar desde la nube</button>
@@ -589,10 +668,10 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v87"></script>
+<script src="app.bundle.js?v=700v88"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v87';
+    const pageVersion = '700v88';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -619,7 +698,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v87', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v88', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
