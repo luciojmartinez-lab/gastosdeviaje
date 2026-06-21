@@ -432,20 +432,11 @@ h2 {
   margin: 0;
 }
 
-.mobile-action-select {
-  display: none;
-}
-
-.desktop-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.desktop-actions button.ghost {
-  padding: 6px 8px;
-  border-radius: 8px;
+.expense-action-select {
+  display: block;
+  min-width: 132px;
+  margin: 0;
+  padding: 7px 9px;
 }
 
 .trip-home-actions {
@@ -2048,10 +2039,6 @@ footer {
     display: none;
   }
 
-  .desktop-actions {
-    display: none;
-  }
-
   .trip-home-actions {
     white-space: normal;
   }
@@ -2061,8 +2048,8 @@ footer {
     white-space: normal;
   }
 
-  .mobile-action-select {
-    display: block;
+  .expense-action-select {
+    width: 100%;
     min-width: 112px;
     padding: 8px 10px;
   }
@@ -2166,8 +2153,7 @@ footer {
   .filters-card,
   .row4,
   .action-col,
-  .desktop-actions,
-  .mobile-action-select {
+  .expense-action-select {
     display: none !important;
   }
 
@@ -2184,6 +2170,11 @@ footer {
   }
 
   body.print-todo #view-gastos {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  #resumen-mapa {
     break-after: page;
     page-break-after: always;
   }

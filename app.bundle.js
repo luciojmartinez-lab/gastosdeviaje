@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 8;
-const APP_VERSION = '700v85';
+const APP_VERSION = '700v86';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -2837,7 +2837,7 @@ function renderGastosTabla() {
     const title = `${fmtDate(date)}${chips ? ` ${chips}` : ''}`;
     const header = document.createElement('tr');
     header.className = 'group-row';
-    header.innerHTML = `<td colspan="10"><b>${title}</b></td>`;
+    header.innerHTML = `<td colspan="9"><b>${title}</b></td>`;
     tbody.appendChild(header);
     let subtotalEur = 0;
     byGroup[key].forEach(g => {
@@ -2849,12 +2849,15 @@ function renderGastosTabla() {
       totalEur += eur;
       const tr = document.createElement('tr');
       tr.className = 'expense-row';
-      tr.innerHTML = `<td data-label="Ciudad">${escapeHtml(gastoCiudadLabel(g))}</td><td data-label="Categoría">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? accountLabel(cta) : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripción">${escapeHtml(g.desc || '')}</td><td data-label="Ticket">${ticketLink(g)}</td><td class="action-col" data-label="Acciones"><span class="desktop-actions"><button class="ghost" data-edit-gasto="${g.id}">Editar</button> <button class="ghost" data-dup-gasto="${g.id}">Duplicar</button> <button class="ghost" data-del-gasto="${g.id}">Eliminar</button></span><select class="mobile-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Acciones</option><option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
+      const ticketOption = g.ticketData
+        ? '<option value="ticket">Abrir ticket</option>'
+        : '<option value="ticket" disabled>Abrir ticket (no disponible)</option>';
+      tr.innerHTML = `<td data-label="Ciudad">${escapeHtml(gastoCiudadLabel(g))}</td><td data-label="Categoría">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? accountLabel(cta) : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripción">${escapeHtml(g.desc || '')}</td><td class="action-col" data-label="Acciones"><select class="expense-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Acciones</option>${ticketOption}<option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
     subtotal.className = 'subtotal-row';
-    subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="3"></td>`;
+    subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="2"></td>`;
     tbody.appendChild(subtotal);
   });
   $('#tg-total').textContent = fmtCurrency(totalEur, 'EUR');
@@ -4847,7 +4850,9 @@ function printableSectionHtml(id) {
     el.removeAttribute('loading');
     el.setAttribute('decoding', 'sync');
   });
-  clone.querySelectorAll('.section-head, .filters-card, .row4, .action-col, .desktop-actions, .mobile-action-select, button, input, select, label').forEach(el => el.remove());
+  clone.querySelectorAll('.section-head, .filters-card, .row4, .action-col, .expense-action-select, button, input, select, label').forEach(el => el.remove());
+  clone.querySelectorAll('#tabla-gastos .group-row td[colspan="9"]').forEach(el => el.setAttribute('colspan', '8'));
+  clone.querySelectorAll('#tabla-gastos .subtotal-row td:last-child, #tabla-gastos tfoot td:last-child').forEach(el => el.setAttribute('colspan', '1'));
   clone.querySelectorAll('[style]').forEach(el => {
     if (el.closest('.trip-map')) return;
     if (el instanceof HTMLElement) el.removeAttribute('style');
@@ -4883,6 +4888,7 @@ function printableDocument(section) {
     body.desktop-print .card:has(.chart) { padding: 6px 8px; }
     body.mobile-print .chart { width: 100%; }
     #resumen-cuentas, #resumen-mapa { break-before: page; page-break-before: always; }
+    #resumen-mapa { break-after: page; page-break-after: always; }
     #resumen-mapa, .trip-map, .trip-map-shell, .trip-map-frame { break-inside: avoid; page-break-inside: avoid; }
     .trip-map { min-height: 0; margin-top: 6px; border: 1px solid #dbe3ef; border-radius: 6px; background: #dbeafe; overflow: hidden; }
     .trip-map-shell { position: relative; }
@@ -5090,7 +5096,9 @@ async function resetDataPrompt() {
 async function handleGastoAction(id, action) {
   const gasto = state.gastos.find(item => item.id === Number(id));
   if (!gasto) return;
-  if (action === 'edit') {
+  if (action === 'ticket') {
+    openTicket(gasto.id);
+  } else if (action === 'edit') {
     openEditGasto(gasto);
   } else if (action === 'dup') {
     await addGasto({ ...gasto, id: undefined, desc: `${gasto.desc || ''}`.trim(), fecha: gasto.fecha || todayIso() });
