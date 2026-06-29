@@ -864,6 +864,34 @@ input[type="checkbox"] {
   margin-top: 12px;
 }
 
+.blog-wordpress-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.check-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.check-option[hidden] {
+  display: none !important;
+}
+
+.check-option input {
+  width: 18px;
+  height: 18px;
+}
+
 .blog-filters {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -888,6 +916,22 @@ input[type="checkbox"] {
   overflow-wrap: anywhere;
 }
 
+.blog-day-row th {
+  padding: 12px 14px;
+  background: #e8f1ff;
+  color: #174a7c;
+  font-size: 16px;
+  text-align: left;
+}
+
+.blog-entry-note {
+  display: block;
+  margin-top: 3px;
+  color: #9a3412;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .blog-entry-actions {
   white-space: nowrap;
 }
@@ -896,6 +940,36 @@ input[type="checkbox"] {
   padding: 20px;
   color: var(--muted);
   text-align: center;
+}
+
+.wordpress-export-modal {
+  width: min(760px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+}
+
+.wordpress-export-day {
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.wordpress-export-day label:not(.check-option) {
+  margin-top: 9px;
+}
+
+.wordpress-importer-help {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
 }
 
 .trip-document-add {
@@ -1484,8 +1558,16 @@ footer {
 
   .blog-head .section-actions {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
+  }
+
+  .blog-head .section-actions .btn,
+  .blog-head .section-actions .ghost {
+    min-width: 0;
+    padding: 8px 5px;
+    font-size: 12px;
+    white-space: normal;
   }
 
   .blog-filters {

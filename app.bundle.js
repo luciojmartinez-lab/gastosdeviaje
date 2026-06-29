@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v91';
+const APP_VERSION = '700v92';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1981,6 +1981,8 @@ async function addBlogEntry(data) {
     gastoImporte: type === 'gasto' ? numberValue(data.gastoImporte) : 0,
     gastoMoneda: type === 'gasto' ? String(data.gastoMoneda || 'EUR') : '',
     gastoImporteEur: type === 'gasto' ? numberValue(data.gastoImporteEur) : 0,
+    wordpressIncluded: data.wordpressIncluded !== false,
+    featuredImage: type === 'imagen' && Boolean(data.featuredImage),
     createdAt: data.createdAt || now,
     updatedAt: now
   });
@@ -2024,6 +2026,8 @@ function normalizeImportedBlogEntry(entry = {}) {
     gastoImporte: numberValue(entry.gastoImporte),
     gastoMoneda: String(entry.gastoMoneda || ''),
     gastoImporteEur: numberValue(entry.gastoImporteEur),
+    wordpressIncluded: entry.wordpressIncluded !== false,
+    featuredImage: type === 'imagen' && Boolean(entry.featuredImage),
     createdAt: entry.createdAt || now,
     updatedAt: entry.updatedAt || now
   };
@@ -4404,6 +4408,7 @@ function syncBlogAvailability() {
   }
   if ($('#btn-blog-add')) $('#btn-blog-add').disabled = !trip;
   if ($('#btn-blog-pdf')) $('#btn-blog-pdf').disabled = !trip;
+  if ($('#btn-blog-wordpress')) $('#btn-blog-wordpress').disabled = !trip;
 }
 
 function blogTypeLabel(type) {
@@ -4419,6 +4424,31 @@ function blogEntriesForTrip(tripId) {
     .filter(entry => Number(entry.viajeId) === Number(tripId))
     .slice()
     .sort(compareBlogEntries);
+}
+
+function blogDayDateLabel(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return String(value || 'Sin fecha');
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' });
+}
+
+function blogDayHeading(date, entries = []) {
+  const cities = [...new Set(entries.map(entry => blogPlaceName(entry.ciudadId)).filter(name => name && name !== '-'))];
+  const countries = [...new Set(entries.map(entry => blogPlaceName(entry.paisId)).filter(name => name && name !== '-'))];
+  const places = cities.length ? cities : countries;
+  return `Día ${blogDayDateLabel(date)}${places.length ? ` — ${places.join(' / ')}` : ''}`;
+}
+
+function groupBlogEntriesByDay(entries) {
+  const groups = new Map();
+  for (const entry of entries || []) {
+    const date = entry.fecha || '';
+    if (!groups.has(date)) groups.set(date, []);
+    groups.get(date).push(entry);
+  }
+  return Array.from(groups.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, dayEntries]) => ({ date, entries: dayEntries.slice().sort(compareBlogEntries) }));
 }
 
 function resetBlogFilterControls() {
@@ -4448,7 +4478,7 @@ function syncBlogFilterOptions(trip, entries) {
   }
   const dates = [...new Set(entries.map(entry => entry.fecha).filter(Boolean))]
     .sort()
-    .map(value => ({ value, label: summaryDocumentDate(value, true) }));
+    .map(value => ({ value, label: blogDayHeading(value, entries.filter(entry => entry.fecha === value)) }));
   const countryIds = [...new Set(entries.map(entry => Number(entry.paisId)).filter(Boolean))];
   const countries = countryIds
     .map(id => ({ value: String(id), label: blogPlaceName(id) }))
@@ -4489,7 +4519,7 @@ function renderBlog() {
   if (!trip) {
     syncBlogFilterOptions(null, []);
     if ($('#blog-status')) $('#blog-status').textContent = 'Selecciona exactamente un viaje para consultar su blog.';
-    tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">El Blog solo está disponible con un único viaje seleccionado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="blog-empty">El Blog solo está disponible con un único viaje seleccionado.</td></tr>';
     return;
   }
   const entries = blogEntriesForTrip(trip.id);
@@ -4501,23 +4531,27 @@ function renderBlog() {
       : `${filteredEntries.length} de ${entries.length} entradas coinciden con los filtros.`;
   }
   if (!entries.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">Todavía no hay entradas en este blog.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="blog-empty">Todavía no hay entradas en este blog.</td></tr>';
     return;
   }
   if (!filteredEntries.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">No hay entradas que coincidan con estos filtros.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="blog-empty">No hay entradas que coincidan con estos filtros.</td></tr>';
     return;
   }
-  tbody.innerHTML = filteredEntries.map(entry => `<tr>
-    <td>${summaryDocumentDate(entry.fecha, true)}</td>
-    <td>${escapeHtml(entry.hora || '-')}</td>
-    <td>${escapeHtml(blogPlaceName(entry.paisId))}</td>
-    <td>${escapeHtml(blogPlaceName(entry.ciudadId))}</td>
-    <td>${escapeHtml(blogTypeLabel(entry.tipo))}</td>
-    <td>${escapeHtml(entry.descripcion || '')}</td>
-    <td>${entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '-'}</td>
-    <td class="blog-entry-actions"><button type="button" class="ghost" data-edit-blog="${entry.id}">Editar</button> <button type="button" class="ghost danger-text" data-delete-blog="${entry.id}">Eliminar</button></td>
-  </tr>`).join('');
+  tbody.innerHTML = groupBlogEntriesByDay(filteredEntries).map(group => `
+    <tr class="blog-day-row"><th colspan="9">${escapeHtml(blogDayHeading(group.date, group.entries))}</th></tr>
+    ${group.entries.map(entry => `<tr>
+      <td></td>
+      <td>${escapeHtml(entry.hora || '-')}</td>
+      <td>${escapeHtml(blogPlaceName(entry.paisId))}</td>
+      <td>${escapeHtml(blogPlaceName(entry.ciudadId))}</td>
+      <td>${escapeHtml(blogTypeLabel(entry.tipo))}${entry.featuredImage ? '<span class="blog-entry-note">Destacada</span>' : ''}</td>
+      <td>${escapeHtml(entry.descripcion || '')}</td>
+      <td>${entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '-'}</td>
+      <td>${entry.wordpressIncluded !== false ? '<span class="badge">Sí</span>' : 'No'}</td>
+      <td class="blog-entry-actions"><button type="button" class="ghost" data-edit-blog="${entry.id}">Editar</button> <button type="button" class="ghost danger-text" data-delete-blog="${entry.id}">Eliminar</button></td>
+    </tr>`).join('')}
+  `).join('');
 }
 
 function blogCountryOptions(trip) {
@@ -4578,6 +4612,7 @@ function setBlogEntryType(type) {
   if ($('#blog-expense-fields')) $('#blog-expense-fields').hidden = type !== 'gasto';
   if ($('#blog-image-fields')) $('#blog-image-fields').hidden = type !== 'imagen';
   if ($('#blog-text-fields')) $('#blog-text-fields').hidden = type !== 'texto';
+  if ($('#blog-featured-option')) $('#blog-featured-option').hidden = type !== 'imagen';
 }
 
 function stopBlogDictation() {
@@ -4653,6 +4688,8 @@ function openBlogEntryDialog(entry = null) {
   if ($('#blog-hora')) $('#blog-hora').value = entry ? entry.hora : currentLocalTime();
   if ($('#blog-descripcion')) $('#blog-descripcion').value = entry ? entry.descripcion || '' : '';
   if ($('#blog-texto')) $('#blog-texto').value = entry ? entry.texto || '' : '';
+  if ($('#blog-wordpress')) $('#blog-wordpress').checked = entry ? entry.wordpressIncluded !== false : true;
+  if ($('#blog-featured')) $('#blog-featured').checked = Boolean(entry && entry.tipo === 'imagen' && entry.featuredImage);
   if ($('#blog-gasto-precio')) {
     $('#blog-gasto-precio').value = entry && entry.tipo === 'gasto'
       ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR')
@@ -4844,7 +4881,9 @@ async function saveBlogEntryForm() {
     tipo: type,
     descripcion: description,
     paisId: $('#blog-pais').value || null,
-    ciudadId: $('#blog-ciudad').value || null
+    ciudadId: $('#blog-ciudad').value || null,
+    wordpressIncluded: Boolean($('#blog-wordpress') && $('#blog-wordpress').checked),
+    featuredImage: type === 'imagen' && Boolean($('#blog-featured') && $('#blog-featured').checked)
   };
   if (type === 'texto') {
     values.texto = $('#blog-texto').value;
@@ -4860,6 +4899,18 @@ async function saveBlogEntryForm() {
       imageWidth: activeBlogImage.width,
       imageHeight: activeBlogImage.height
     });
+    if (values.featuredImage) values.wordpressIncluded = true;
+    const previousFeatured = state.blogEntries.find(entry =>
+      entry.tipo === 'imagen' && entry.featuredImage &&
+      Number(entry.viajeId) === Number(trip.id) && entry.fecha === values.fecha &&
+      Number(entry.id) !== Number(current && current.id)
+    );
+    if (previousFeatured) {
+      if (!confirm('Ya existe una imagen destacada para este día. ¿Quieres sustituirla y conservar la anterior como imagen normal?')) {
+        throw new Error('Se mantiene la imagen destacada anterior.');
+      }
+      await updateBlogEntry(previousFeatured.id, { featuredImage: false });
+    }
   }
   if (current) {
     if (type === 'gasto') {
@@ -4894,6 +4945,7 @@ function expenseBlogTime(gasto) {
 async function addExpenseToBlog(gasto) {
   if (!gasto.viajeId) throw new Error('Este gasto no pertenece a ningún viaje');
   const existing = state.blogEntries.find(entry => entry.tipo === 'gasto' && Number(entry.sourceGastoId) === Number(gasto.id));
+  const wordpressIncluded = confirm('¿Quieres incluir este gasto en el post de WordPress correspondiente a ese día?');
   const snapshot = {
     viajeId: Number(gasto.viajeId),
     tipo: 'gasto',
@@ -4903,7 +4955,9 @@ async function addExpenseToBlog(gasto) {
     sourceGastoId: Number(gasto.id),
     gastoImporte: numberValue(gasto.importe),
     gastoMoneda: gasto.moneda || 'EUR',
-    gastoImporteEur: toEur(gasto.importe, gasto.moneda)
+    gastoImporteEur: toEur(gasto.importe, gasto.moneda),
+    wordpressIncluded,
+    featuredImage: false
   };
   if (existing) {
     if (!confirm('Este gasto ya existe en el blog. ¿Quieres reemplazar sus datos manteniendo la fecha y hora editadas en el blog?')) return false;
@@ -4942,6 +4996,125 @@ function blogPrintEntryHtml(entry) {
   </article>`;
 }
 
+function blogPrintFeaturedHtml(entry) {
+  if (!entry || !entry.imageData) return '';
+  const imageClass = Number(entry.imageWidth) > Number(entry.imageHeight) ? 'landscape' : 'portrait';
+  return `<figure class="blog-print-featured">
+    <img class="blog-print-image ${imageClass}" src="${escapeHtml(entry.imageData)}" alt="${escapeHtml(entry.descripcion || 'Imagen destacada')}">
+    <figcaption>${escapeHtml(entry.descripcion || '')}</figcaption>
+  </figure>`;
+}
+
+function blogPrintDayHtml(group) {
+  const featured = group.entries.find(entry => entry.tipo === 'imagen' && entry.featuredImage && entry.imageData) || null;
+  const timeline = group.entries.filter(entry => !featured || Number(entry.id) !== Number(featured.id));
+  return `<section class="blog-print-day">
+    <h1>${escapeHtml(blogDayHeading(group.date, group.entries))}</h1>
+    ${blogPrintFeaturedHtml(featured)}
+    ${timeline.map(blogPrintEntryHtml).join('')}
+  </section>`;
+}
+
+function wordpressExportEntry(entry, trip) {
+  const imageKey = entry.tipo === 'imagen'
+    ? `${entry.id}-${entry.imageName || 'imagen'}-${entry.imageSize || 0}`
+    : `${entry.id}-${entry.updatedAt || entry.createdAt || ''}`;
+  return {
+    sourceKey: `${slugFilePart(trip.nombre)}-${entry.fecha}-${imageKey}`,
+    id: entry.id,
+    fecha: entry.fecha,
+    hora: entry.hora || '',
+    tipo: entry.tipo,
+    descripcion: entry.descripcion || '',
+    pais: blogPlaceName(entry.paisId) === '-' ? '' : blogPlaceName(entry.paisId),
+    ciudad: blogPlaceName(entry.ciudadId) === '-' ? '' : blogPlaceName(entry.ciudadId),
+    texto: entry.texto || '',
+    gastoImporte: numberValue(entry.gastoImporte),
+    gastoMoneda: entry.gastoMoneda || 'EUR',
+    imageName: entry.imageName || '',
+    imageType: entry.imageType || '',
+    imageData: entry.imageData || '',
+    featuredImage: Boolean(entry.tipo === 'imagen' && entry.featuredImage)
+  };
+}
+
+function wordpressDayGroups(trip) {
+  return groupBlogEntriesByDay(blogEntriesForTrip(trip.id).filter(entry => entry.wordpressIncluded !== false));
+}
+
+function renderWordPressExportDays(trip) {
+  const container = $('#wordpress-export-days');
+  if (!container) return;
+  const groups = wordpressDayGroups(trip);
+  if (!groups.length) {
+    container.innerHTML = '<p class="small">No hay entradas marcadas para WordPress.</p>';
+    return;
+  }
+  container.innerHTML = groups.map(group => {
+    const featured = group.entries.find(entry => entry.tipo === 'imagen' && entry.featuredImage);
+    const title = blogDayHeading(group.date, group.entries);
+    return `<div class="wordpress-export-day">
+      <label class="check-option"><input type="checkbox" data-wordpress-day="${escapeHtml(group.date)}" checked> Exportar este día</label>
+      <label>Título del post<input data-wordpress-title="${escapeHtml(group.date)}" value="${escapeHtml(title)}"></label>
+      <p class="small">${group.entries.length} entrada(s) · ${featured ? `Imagen destacada: ${escapeHtml(featured.descripcion || featured.imageName || 'Imagen')}` : 'Sin imagen destacada'}</p>
+    </div>`;
+  }).join('');
+}
+
+function openWordPressExportDialog() {
+  const trip = selectedBlogTrip();
+  if (!trip) {
+    alert('Selecciona exactamente un viaje para exportarlo a WordPress.');
+    return;
+  }
+  if ($('#wordpress-export-title')) $('#wordpress-export-title').textContent = `Exportar a WordPress · ${trip.nombre}`;
+  renderWordPressExportDays(trip);
+  const dialog = $('#wordpress-export-dialog');
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeWordPressExportDialog() {
+  const dialog = $('#wordpress-export-dialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function exportBlogToWordPress() {
+  const trip = selectedBlogTrip();
+  if (!trip) throw new Error('El viaje seleccionado ha cambiado');
+  const selectedDates = new Set($$('[data-wordpress-day]:checked').map(field => field.dataset.wordpressDay));
+  const groups = wordpressDayGroups(trip).filter(group => selectedDates.has(group.date));
+  if (!groups.length) throw new Error('Selecciona al menos un día para exportar');
+  const titleByDate = new Map($$('[data-wordpress-title]').map(field => [field.dataset.wordpressTitle, String(field.value || '').trim()]));
+  const payload = {
+    format: 'gastos-viaje-wordpress-v1',
+    appVersion: APP_VERSION,
+    generatedAt: new Date().toISOString(),
+    trip: {
+      sourceKey: slugFilePart(trip.nombre),
+      nombre: trip.nombre,
+      fechaInicio: trip.fechaInicio || '',
+      fechaFin: trip.fechaFin || ''
+    },
+    days: groups.map(group => ({
+      sourceKey: `${slugFilePart(trip.nombre)}-${group.date}`,
+      date: group.date,
+      title: titleByDate.get(group.date) || blogDayHeading(group.date, group.entries),
+      countries: [...new Set(group.entries.map(entry => blogPlaceName(entry.paisId)).filter(value => value && value !== '-'))],
+      cities: [...new Set(group.entries.map(entry => blogPlaceName(entry.ciudadId)).filter(value => value && value !== '-'))],
+      entries: group.entries.map(entry => wordpressExportEntry(entry, trip))
+    }))
+  };
+  downloadText(
+    `wordpress-${slugFilePart(trip.nombre)}-${currentLocalDate()}.json`,
+    JSON.stringify(payload),
+    'application/json;charset=utf-8'
+  );
+  closeWordPressExportDialog();
+}
+
 function printBlog() {
   const trip = selectedBlogTrip();
   if (!trip) {
@@ -4953,19 +5126,23 @@ function printBlog() {
     alert('Este viaje todavía no tiene entradas en el blog.');
     return;
   }
-  const body = entries.map(blogPrintEntryHtml).join('');
+  const body = groupBlogEntriesByDay(entries).map(blogPrintDayHtml).join('');
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blog · ${escapeHtml(trip.nombre)}</title><style>
     @page { size: A4; margin: 12mm; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color: #1f2937; }
     h1 { margin: 0 0 6mm; font-size: 22px; }
     h2 { margin: 3mm 0; font-size: 16px; }
+    .blog-print-day { break-before: page; page-break-before: always; }
+    .blog-print-day:first-of-type { break-before: auto; page-break-before: auto; }
     .blog-print-entry { break-inside: avoid; page-break-inside: avoid; padding: 0 0 7mm; margin: 0 0 7mm; border-bottom: 1px solid #dbe3ef; }
     .blog-print-meta { display: flex; flex-wrap: wrap; gap: 3mm 7mm; color: #64748b; font-size: 11px; }
     .blog-print-text { margin-top: 3mm; font-size: 12px; line-height: 1.5; white-space: normal; }
     .blog-print-image { display: block; height: auto; max-height: 245mm; margin: 4mm auto 0; object-fit: contain; }
     .blog-print-image.landscape { width: 100%; }
     .blog-print-image.portrait { width: 35%; min-width: 50mm; }
+    .blog-print-featured { margin: 0 0 8mm; text-align: center; }
+    .blog-print-featured figcaption { margin-top: 2mm; color: #64748b; font-size: 11px; }
     @media screen { body { max-width: 210mm; margin: 0 auto; padding: 12mm; } }
   </style></head><body><h1>Blog · ${escapeHtml(trip.nombre)}</h1>${body}<script>
     Promise.all(Array.from(document.images).map(function(img){return img.complete ? Promise.resolve() : new Promise(function(resolve){img.onload=resolve;img.onerror=resolve;});})).then(function(){setTimeout(function(){window.print();},150);});
@@ -5915,6 +6092,16 @@ function bindEvents() {
   $('#btn-open-add-gasto-bottom').onclick = openAddGasto;
   $('#btn-blog-add').onclick = () => openBlogEntryDialog();
   $('#btn-blog-pdf').onclick = printBlog;
+  $('#btn-blog-wordpress').onclick = openWordPressExportDialog;
+  $('#wordpress-export-close').onclick = closeWordPressExportDialog;
+  $('#wordpress-export-cancel').onclick = closeWordPressExportDialog;
+  $('#wordpress-export-download').onclick = () => {
+    try {
+      exportBlogToWordPress();
+    } catch (error) {
+      setMessage('#msg-wordpress-export', error.message || String(error), true);
+    }
+  };
   $('#blog-filter-date').onchange = renderBlog;
   $('#blog-filter-country').onchange = () => {
     if ($('#blog-filter-city')) $('#blog-filter-city').value = '';
@@ -5937,6 +6124,12 @@ function bindEvents() {
     button.onclick = () => setBlogEntryType(button.dataset.blogType);
   });
   $('#blog-pais').onchange = () => renderBlogCities();
+  $('#blog-featured').onchange = () => {
+    if ($('#blog-featured').checked) $('#blog-wordpress').checked = true;
+  };
+  $('#blog-wordpress').onchange = () => {
+    if (!$('#blog-wordpress').checked) $('#blog-featured').checked = false;
+  };
   $('#blog-image-file').onchange = () => selectBlogImage($('#blog-image-file'), $('#blog-image-camera'));
   $('#blog-image-camera').onchange = () => selectBlogImage($('#blog-image-camera'), $('#blog-image-file'));
   $('#blog-voice').onclick = startBlogDictation;

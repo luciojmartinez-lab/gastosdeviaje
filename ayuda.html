@@ -418,7 +418,7 @@
 <body>
   <header class="topbar">
     <a href="index.html">Volver</a>
-    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v91</span></h1>
+    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v92</span></h1>
   </header>
 
   <main>
@@ -616,8 +616,12 @@
         <li>El Blog solo se activa cuando hay exactamente un viaje seleccionado.</li>
         <li>Admite entradas de gasto, imagen y texto, ordenadas por fecha y hora.</li>
         <li>El listado puede filtrarse mediante desplegables por día, país y ciudad. El PDF continúa incluyendo el blog completo del viaje.</li>
+        <li>Las entradas se agrupan automáticamente por día y ciudad. En el PDF, cada día comienza en una página nueva.</li>
         <li>Los gastos se incorporan desde su lista de acciones y conservan una referencia interna que evita duplicados.</li>
         <li>Las imágenes pueden elegirse o fotografiarse. La foto original puede superar 6 MB: se redimensiona y comprime automáticamente, con un objetivo aproximado de 900 KB antes de guardarse.</li>
+        <li>Cada entrada puede marcarse para WordPress. Cada día se exporta como un post independiente y inicialmente se importa como borrador.</li>
+        <li>Una imagen puede marcarse como destacada del día. Aparecerá en la parte superior del post y no se repetirá en el orden cronológico. Al sustituirla, la anterior se conserva como imagen normal.</li>
+        <li>La primera vez, descarga e instala el complemento desde WordPress → Plugins → Añadir plugin → Subir plugin. Después encontrarás el importador en Herramientas → Importar Gastos de Viaje.</li>
         <li>Las entradas de texto admiten dictado por voz en navegadores compatibles. Las hipótesis parciales del reconocimiento se sustituyen para evitar palabras o frases repetidas.</li>
         <li>Ver en PDF genera el relato completo del viaje con textos, importes e imágenes.</li>
       </ul>
@@ -669,7 +673,7 @@
       </div>
     </section>
 
-    <p class="footer-note">Gastos de Viaje 700v91. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
+    <p class="footer-note">Gastos de Viaje 700v92. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
   </main>
 </body>
 </html>

@@ -21,7 +21,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v91</div>
+  <div class="app-version">700v92</div>
 </header>
 
 <main>
@@ -102,6 +102,7 @@
         <div class="section-actions">
           <button class="btn" id="btn-blog-add" type="button">Añadir entrada</button>
           <button class="btn ghost" id="btn-blog-pdf" type="button">Ver en PDF</button>
+          <button class="btn ghost" id="btn-blog-wordpress" type="button">Exportar WordPress</button>
         </div>
       </div>
       <div class="blog-filters" aria-label="Filtros del blog">
@@ -111,7 +112,7 @@
       </div>
       <div class="table-wrap">
         <table id="tabla-blog">
-          <thead><tr><th>Fecha</th><th>Hora</th><th>País</th><th>Ciudad</th><th>Tipo</th><th>Descripción</th><th>Precio</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Hora</th><th>País</th><th>Ciudad</th><th>Tipo</th><th>Descripción</th><th>Precio</th><th>WordPress</th><th>Acciones</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -536,6 +537,10 @@
       </div>
       <label>Descripción</label>
       <input id="blog-descripcion" maxlength="240" placeholder="Breve descripción de la entrada">
+      <div class="blog-wordpress-options">
+        <label class="check-option"><input type="checkbox" id="blog-wordpress" checked> Incluir en el post de WordPress de este día</label>
+        <label class="check-option" id="blog-featured-option" hidden><input type="checkbox" id="blog-featured"> Usar como imagen destacada</label>
+      </div>
       <div id="blog-expense-fields" class="blog-expense-fields" hidden>
         <label>Gasto asociado</label>
         <input id="blog-gasto-precio" readonly>
@@ -565,6 +570,26 @@
         <button type="button" class="ghost" id="blog-entry-cancel">Cancelar</button>
         <span id="msg-blog-entry" class="small"></span>
       </div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="wordpress-export-dialog" class="modal wordpress-export-modal">
+  <form method="dialog">
+    <div class="modal-head">
+      <h2 id="wordpress-export-title">Exportar a WordPress</h2>
+      <button type="button" class="ghost icon-btn" id="wordpress-export-close" aria-label="Cerrar">x</button>
+    </div>
+    <p>Se creará un archivo con un post por día. WordPress los importará inicialmente como borradores.</p>
+    <div id="wordpress-export-days"></div>
+    <div class="wordpress-importer-help">
+      <strong>Primer uso:</strong> descarga el complemento, instálalo desde WordPress → Plugins → Añadir plugin → Subir plugin y después importa el archivo desde Herramientas → Importar Gastos de Viaje.
+      <a class="btn ghost" href="wordpress-gastos-viaje-importer.zip" download>Descargar importador WordPress</a>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" id="wordpress-export-download">Descargar entradas</button>
+      <button type="button" class="ghost" id="wordpress-export-cancel">Cancelar</button>
+      <span id="msg-wordpress-export" class="small"></span>
     </div>
   </form>
 </dialog>
@@ -673,10 +698,10 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v91"></script>
+<script src="app.bundle.js?v=700v92"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v91';
+    const pageVersion = '700v92';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -703,7 +728,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v91', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v92', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
