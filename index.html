@@ -21,7 +21,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v92</div>
+  <div class="app-version">700v93</div>
 </header>
 
 <main>
@@ -80,10 +80,10 @@
       <div class="table-wrap">
         <table id="tabla-gastos">
           <thead>
-            <tr><th>Ciudad</th><th>Categoría</th><th>Subcat.</th><th>Cuenta</th><th>Moneda</th><th>Importe</th><th>EUR</th><th>Descripción</th><th class="action-col">Acciones</th></tr>
+            <tr><th>Hora</th><th>Ciudad</th><th>Categoría</th><th>Subcat.</th><th>Cuenta</th><th>Moneda</th><th>Importe</th><th>EUR</th><th>Descripción</th><th class="action-col">Acciones</th></tr>
           </thead>
           <tbody></tbody>
-          <tfoot><tr><td colspan="6">Total (filtro)</td><td id="tg-total"></td><td colspan="2"></td></tr></tfoot>
+          <tfoot><tr><td colspan="7">Total (filtro)</td><td id="tg-total"></td><td colspan="2"></td></tr></tfoot>
         </table>
       </div>
       <div class="actions expenses-bottom-actions">
@@ -362,6 +362,7 @@
     </div>
     <div class="row add-top-fields">
       <div><label>Fecha</label><input type="date" id="g-fecha"></div>
+      <div><label>Hora</label><input type="time" id="g-hora"></div>
       <div><label>Viaje</label><select id="g-viaje"></select></div>
     </div>
     <div class="row add-account-fields">
@@ -393,6 +394,18 @@
       </div>
       <p id="g-ticket-selected" class="small">Ningún ticket seleccionado.</p>
     </div>
+    <div class="expense-ticket-field expense-extra-images-field">
+      <label>Imágenes adicionales</label>
+      <div class="expense-ticket-actions">
+        <label class="btn ghost trip-document-picker">Elegir imágenes
+          <input type="file" accept="image/*" multiple id="g-extra-images">
+        </label>
+        <label class="btn ghost trip-document-picker">Cámara
+          <input type="file" accept="image/*" capture="environment" id="g-extra-images-camera">
+        </label>
+      </div>
+      <p id="g-extra-images-selected" class="small">Ninguna imagen adicional seleccionada.</p>
+    </div>
     <div class="actions">
       <button type="button" class="btn" id="btn-add-gasto">Añadir y salir</button>
       <button type="button" class="ghost" id="btn-add-gasto-continue">Añadir y seguir</button>
@@ -411,6 +424,7 @@
     <input type="hidden" id="edit-gasto-id">
     <div class="row edit-top-fields">
       <div><label>Fecha</label><input type="date" id="edit-gasto-fecha"></div>
+      <div><label>Hora</label><input type="time" id="edit-gasto-hora"></div>
       <div><label>Viaje</label><select id="edit-gasto-viaje"></select></div>
     </div>
     <div class="row edit-account-fields">
@@ -445,11 +459,35 @@
       </div>
       <div><label><input type="checkbox" id="edit-gasto-ticket-remove"> Quitar ticket actual</label><p id="edit-gasto-ticket-current" class="small"></p></div>
     </div>
+    <div class="expense-ticket-field expense-extra-images-field">
+      <label>Añadir imágenes</label>
+      <div class="expense-ticket-actions">
+        <label class="btn ghost trip-document-picker">Elegir imágenes
+          <input type="file" accept="image/*" multiple id="edit-gasto-extra-images">
+        </label>
+        <label class="btn ghost trip-document-picker">Cámara
+          <input type="file" accept="image/*" capture="environment" id="edit-gasto-extra-images-camera">
+        </label>
+      </div>
+      <p id="edit-gasto-extra-images-selected" class="small">Ninguna imagen nueva seleccionada.</p>
+      <div id="edit-gasto-extra-images-current" class="expense-current-images"></div>
+    </div>
     <div class="actions">
       <button type="submit" class="btn">Guardar cambios</button>
       <button type="button" class="ghost" id="edit-gasto-cancel">Cancelar</button>
       <span id="msg-edit-gasto" class="small"></span>
     </div>
+  </form>
+</dialog>
+
+<dialog id="expense-files-dialog" class="modal trip-documents-modal">
+  <form method="dialog">
+    <div class="modal-head">
+      <h2 id="expense-files-title">Archivos del gasto</h2>
+      <button type="button" class="ghost icon-btn" id="expense-files-close" aria-label="Cerrar">x</button>
+    </div>
+    <div id="expense-files-list"></div>
+    <div class="actions"><button type="button" class="ghost" id="expense-files-done">Cerrar</button></div>
   </form>
 </dialog>
 
@@ -698,10 +736,10 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v92"></script>
+<script src="app.bundle.js?v=700v93"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v92';
+    const pageVersion = '700v93';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -728,7 +766,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v92', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v93', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

@@ -539,6 +539,76 @@ input[type="checkbox"] {
   grid-template-columns: minmax(80px, 0.32fr) minmax(90px, 0.34fr) minmax(280px, 1.7fr);
 }
 
+.expense-dialog-form .add-top-fields,
+.expense-dialog-form .edit-top-fields {
+  grid-template-columns: minmax(140px, 1fr) minmax(100px, 0.6fr) minmax(210px, 1.35fr);
+}
+
+#tabla-gastos {
+  min-width: 1080px;
+}
+
+#tabla-gastos th:nth-child(1),
+#tabla-gastos td:nth-child(1) {
+  width: 66px;
+  white-space: nowrap;
+}
+
+#tabla-gastos th:nth-child(9),
+#tabla-gastos td:nth-child(9) {
+  width: 30%;
+  min-width: 260px;
+}
+
+.expense-description-cell {
+  overflow-wrap: anywhere;
+}
+
+.expense-description-cell > span {
+  display: block;
+}
+
+.expense-attachment-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 5px;
+  padding: 3px 7px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.expense-current-images {
+  margin-top: 7px;
+}
+
+.expense-current-image-list {
+  display: grid;
+  gap: 5px;
+  margin: 5px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.expense-current-image-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.expense-current-image-list label {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -1779,6 +1849,16 @@ footer {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .expense-dialog-form .add-top-fields,
+  .expense-dialog-form .edit-top-fields {
+    grid-template-columns: minmax(0, 1.25fr) minmax(110px, 0.75fr);
+  }
+
+  .expense-dialog-form .add-top-fields > div:nth-child(3),
+  .expense-dialog-form .edit-top-fields > div:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
   .expense-dialog-form .add-account-fields,
   .expense-dialog-form .edit-account-fields {
     grid-template-columns: minmax(0, 2fr) minmax(86px, 0.8fr);
@@ -2133,6 +2213,8 @@ footer {
   #tabla-gastos td:nth-child(6),
   #tabla-gastos th:nth-child(7),
   #tabla-gastos td:nth-child(7),
+  #tabla-gastos th:nth-child(8),
+  #tabla-gastos td:nth-child(8),
   #tabla-cuenta th:nth-child(3),
   #tabla-cuenta td:nth-child(3),
   #tabla-cuenta th:nth-child(4),
@@ -2385,6 +2467,11 @@ footer {
   body.print-todo #view-gastos {
     break-after: page;
     page-break-after: always;
+  }
+
+  #tabla-gastos.cards-mode .expense-row td:nth-child(9) {
+    min-width: 0;
+    width: 100%;
   }
 
   #resumen-mapa {

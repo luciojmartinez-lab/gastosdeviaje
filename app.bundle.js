@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v92';
+const APP_VERSION = '700v93';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -362,6 +362,34 @@ const currentLocalTime = () => {
   const date = new Date();
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 };
+const normalizeExpenseTime = value => {
+  const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return '';
+  const hour = Math.min(23, Math.max(0, Number(match[1])));
+  const minute = Math.min(59, Math.max(0, Number(match[2])));
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+function expenseTimeValue(gasto) {
+  const explicit = normalizeExpenseTime(gasto && gasto.hora);
+  if (explicit) return explicit;
+  const created = new Date(gasto && gasto.createdAt || '');
+  if (Number.isNaN(created.getTime())) return '';
+  return `${String(created.getHours()).padStart(2, '0')}:${String(created.getMinutes()).padStart(2, '0')}`;
+}
+function compareExpensesChronologically(a, b) {
+  return (a.fecha || '').localeCompare(b.fecha || '')
+    || expenseTimeValue(a).localeCompare(expenseTimeValue(b))
+    || (a.createdAt || '').localeCompare(b.createdAt || '')
+    || Number(a.id || 0) - Number(b.id || 0);
+}
+function expenseExtraImages(gasto) {
+  return Array.isArray(gasto && gasto.extraImages)
+    ? gasto.extraImages.filter(image => image && (image.data || image.fileRef))
+    : [];
+}
+function expenseAttachmentCount(gasto) {
+  return (gasto && gasto.ticketData ? 1 : 0) + expenseExtraImages(gasto).length;
+}
 const numberValue = value => {
   const n = parseFloat(String(value || '').replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
@@ -998,6 +1026,61 @@ function clearExpenseTicketSelection(prefix) {
   }
 }
 
+function expenseExtraImageInputs(prefix) {
+  return {
+    file: $(`#${prefix}-extra-images`),
+    camera: $(`#${prefix}-extra-images-camera`),
+    status: $(`#${prefix}-extra-images-selected`)
+  };
+}
+
+function selectedExpenseExtraImageFiles(prefix) {
+  const inputs = expenseExtraImageInputs(prefix);
+  return [
+    ...(inputs.file && inputs.file.files ? Array.from(inputs.file.files) : []),
+    ...(inputs.camera && inputs.camera.files ? Array.from(inputs.camera.files) : [])
+  ];
+}
+
+function clearExpenseExtraImageSelection(prefix) {
+  const inputs = expenseExtraImageInputs(prefix);
+  if (inputs.file) inputs.file.value = '';
+  if (inputs.camera) inputs.camera.value = '';
+  if (inputs.status) {
+    inputs.status.textContent = prefix === 'edit-gasto'
+      ? 'Ninguna imagen nueva seleccionada.'
+      : 'Ninguna imagen adicional seleccionada.';
+  }
+}
+
+function syncExpenseExtraImageSelection(prefix) {
+  const inputs = expenseExtraImageInputs(prefix);
+  const files = selectedExpenseExtraImageFiles(prefix);
+  if (!inputs.status) return;
+  inputs.status.textContent = files.length
+    ? `${files.length} ${files.length === 1 ? 'imagen seleccionada' : 'imágenes seleccionadas'}.`
+    : (prefix === 'edit-gasto' ? 'Ninguna imagen nueva seleccionada.' : 'Ninguna imagen adicional seleccionada.');
+}
+
+async function readSelectedExpenseExtraImages(prefix) {
+  const inputs = expenseExtraImageInputs(prefix);
+  const files = [
+    ...(inputs.file && inputs.file.files ? Array.from(inputs.file.files) : []),
+    ...(inputs.camera && inputs.camera.files ? Array.from(inputs.camera.files) : [])
+  ];
+  const images = [];
+  for (let index = 0; index < files.length; index += 1) {
+    if (inputs.status) inputs.status.textContent = `Preparando imagen ${index + 1} de ${files.length}...`;
+    const image = await compressBlogImage(files[index]);
+    images.push({
+      ...image,
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      createdAt: new Date().toISOString()
+    });
+  }
+  return images;
+}
+
 function syncExpenseTicketSelection(prefix, source) {
   const file = $(`#${prefix}-ticket`);
   const camera = $(`#${prefix}-ticket-camera`);
@@ -1111,6 +1194,22 @@ async function prepareCloudBackupData(sourceData) {
     } else {
       delete next.ticketRef;
     }
+    const sourceExtraImages = Array.isArray(gasto.extraImages) ? gasto.extraImages : [];
+    next.extraImages = [];
+    for (let imageIndex = 0; imageIndex < sourceExtraImages.length; imageIndex += 1) {
+      const image = sourceExtraImages[imageIndex];
+      const nextImage = { ...image };
+      if (image && image.data) {
+        setSyncMessage(`Preparando imágenes de gastos: ${imageIndex + 1} de ${sourceExtraImages.length}`);
+        nextImage.fileRef = await addAttachment({
+          data: image.data,
+          name: image.name || 'imagen-gasto.jpg',
+          mime: image.type || 'image/jpeg'
+        });
+        delete nextImage.data;
+      }
+      next.extraImages.push(nextImage);
+    }
     gastos.push(next);
   }
   const viajeDocumentos = [];
@@ -1152,7 +1251,7 @@ async function prepareCloudBackupData(sourceData) {
   return {
     data: {
       ...sourceData,
-      cloudFormat: 4,
+      cloudFormat: 5,
       gastos,
       viajeDocumentos,
       blogEntries,
@@ -1236,6 +1335,13 @@ async function localAttachmentDataById() {
     const ticket = ticketDataInfo(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
     result.set(await sha256Hex(ticket.blob), ticket.data);
   }
+  const expenseImages = state.gastos.flatMap(gasto => expenseExtraImages(gasto));
+  for (let index = 0; index < expenseImages.length; index += 1) {
+    const image = expenseImages[index];
+    if (!image.data) continue;
+    const file = ticketDataInfo(image.data, image.type || 'image/jpeg');
+    result.set(await sha256Hex(file.blob), file.data);
+  }
   const documents = state.viajeDocumentos.filter(document => document.fileData);
   for (let index = 0; index < documents.length; index += 1) {
     const document = documents[index];
@@ -1291,7 +1397,11 @@ async function hydrateCloudBackupData(sourceData) {
     ...sourceData,
     gastos: (sourceData.gastos || []).map(gasto => ({
       ...gasto,
-      ticketData: gasto.ticketRef ? (downloaded.get(gasto.ticketRef) || '') : (gasto.ticketData || '')
+      ticketData: gasto.ticketRef ? (downloaded.get(gasto.ticketRef) || '') : (gasto.ticketData || ''),
+      extraImages: (Array.isArray(gasto.extraImages) ? gasto.extraImages : []).map(image => ({
+        ...image,
+        data: image.fileRef ? (downloaded.get(image.fileRef) || '') : (image.data || '')
+      }))
     })),
     viajeDocumentos: (sourceData.viajeDocumentos || []).map(document => ({
       ...document,
@@ -1311,6 +1421,57 @@ function openTicket(gastoId) {
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
   setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function openExpenseImage(gastoId, imageIndex) {
+  const gasto = state.gastos.find(g => Number(g.id) === Number(gastoId));
+  const image = expenseExtraImages(gasto)[Number(imageIndex)];
+  if (!image || !image.data) throw new Error('No se encuentra la imagen');
+  const blob = dataUrlToBlob(image.data, image.type || 'image/jpeg');
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function renderExpenseFilesDialog(gasto) {
+  const list = $('#expense-files-list');
+  if (!list || !gasto) return;
+  const items = [];
+  if (gasto.ticketData) {
+    items.push(`<li><span class="trip-document-info"><strong>Ticket principal</strong><span>${escapeHtml(gasto.ticketName || 'Ticket')}</span></span><button type="button" class="ghost" data-open-ticket="${gasto.id}">Abrir</button></li>`);
+  }
+  expenseExtraImages(gasto).forEach((image, index) => {
+    items.push(`<li><span class="trip-document-info"><strong>Imagen adicional ${index + 1}</strong><span>${escapeHtml(image.name || 'Imagen')}</span></span><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir</button></li>`);
+  });
+  list.innerHTML = items.length
+    ? `<ul class="trip-document-list expense-file-list">${items.join('')}</ul>`
+    : '<p class="small">Este gasto no tiene archivos asociados.</p>';
+}
+
+function openExpenseFilesDialog(gastoId) {
+  const gasto = state.gastos.find(g => Number(g.id) === Number(gastoId));
+  if (!gasto) throw new Error('No se encuentra el gasto');
+  if ($('#expense-files-title')) $('#expense-files-title').textContent = `Archivos · ${gasto.desc || 'Gasto'}`;
+  renderExpenseFilesDialog(gasto);
+  const dialog = $('#expense-files-dialog');
+  if (dialog && dialog.showModal) dialog.showModal();
+  else if (dialog) dialog.setAttribute('open', 'open');
+}
+
+function closeExpenseFilesDialog() {
+  const dialog = $('#expense-files-dialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function renderEditExpenseImages(gasto) {
+  const container = $('#edit-gasto-extra-images-current');
+  if (!container) return;
+  const images = expenseExtraImages(gasto);
+  container.innerHTML = images.length
+    ? `<p class="small"><strong>Imágenes actuales</strong></p><ul class="expense-current-image-list">${images.map((image, index) => `<li><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir ${escapeHtml(image.name || `imagen ${index + 1}`)}</button><label><input type="checkbox" data-remove-expense-image="${index}"> Quitar</label></li>`).join('')}</ul>`
+    : '<p class="small">No hay imágenes adicionales.</p>';
 }
 
 function formatFileSize(value) {
@@ -1598,7 +1759,7 @@ function csvCell(value) {
 
 function exportCurrentCsv() {
   const rows = filteredGastos();
-  const header = ['Fecha', 'Viaje', 'Categoría', 'Subcategoría', 'Cuenta', 'Moneda', 'Importe', 'EUR', 'Descripción', 'Ticket'];
+  const header = ['Fecha', 'Hora', 'Viaje', 'Categoría', 'Subcategoría', 'Cuenta', 'Moneda', 'Importe', 'EUR', 'Descripción', 'Archivos'];
   const lines = [header.map(csvCell).join(',')];
   const monthly = {};
   rows.forEach(g => {
@@ -1611,6 +1772,7 @@ function exportCurrentCsv() {
     monthly[month] = (monthly[month] || 0) + eur;
     lines.push([
       g.fecha,
+      expenseTimeValue(g),
       trip ? trip.nombre : '',
       cat ? cat.nombre : '',
       sub ? sub.nombre : '',
@@ -1619,7 +1781,7 @@ function exportCurrentCsv() {
       numberValue(g.importe).toFixed(2),
       eur.toFixed(2),
       g.desc || '',
-      g.ticketName || ''
+      [g.ticketName || '', ...expenseExtraImages(g).map(image => image.name || 'Imagen')].filter(Boolean).join(' | ')
     ].map(csvCell).join(','));
   });
   lines.push('');
@@ -2150,7 +2312,7 @@ async function delMoneda(codigo) {
   return deleteRecord('monedas', String(codigo).toUpperCase());
 }
 
-async function addGasto({ fecha, viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '' }) {
+async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', extraImages = [] }) {
   if (!hasValidCurrency(moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   const account = state.cuentas.find(c => c.id === Number(cuentaId));
   if (account && account.moneda !== moneda) throw new Error('La moneda del gasto debe coincidir con la cuenta');
@@ -2160,6 +2322,7 @@ async function addGasto({ fecha, viajeId, cuentaId, moneda, catId, subcatId = nu
   const now = new Date().toISOString();
   const id = await addRecord('gastos', {
     fecha,
+    hora: normalizeExpenseTime(hora) || currentLocalTime(),
     viajeId: viajeId ? Number(viajeId) : null,
     cuentaId: Number(cuentaId),
     moneda,
@@ -2173,6 +2336,7 @@ async function addGasto({ fecha, viajeId, cuentaId, moneda, catId, subcatId = nu
     ticketName,
     ticketType,
     ticketData,
+    extraImages: Array.isArray(extraImages) ? extraImages : [],
     createdAt: now,
     updatedAt: now
   });
@@ -2192,6 +2356,8 @@ async function updateGasto(id, patch) {
   next.subcatId = next.subcatId ? Number(next.subcatId) : null;
   next.paisId = next.paisId ? Number(next.paisId) : null;
   next.ciudadId = next.ciudadId ? Number(next.ciudadId) : null;
+  next.hora = normalizeExpenseTime(next.hora) || expenseTimeValue(current) || currentLocalTime();
+  next.extraImages = Array.isArray(next.extraImages) ? next.extraImages : [];
   const account = state.cuentas.find(c => c.id === next.cuentaId) || await getOne('cuentas', next.cuentaId);
   if (!account) throw new Error('La cuenta seleccionada no existe');
   if (account.viajeId && Number(next.viajeId) !== Number(account.viajeId)) throw new Error('Esa cuenta pertenece a otro viaje');
@@ -2284,7 +2450,12 @@ async function loadAll() {
   state.cuentas = cuentas.sort(byName);
   state.categorias = sortCategoriasHierarchical(categorias);
   state.lugares = sortLugaresHierarchical(lugares);
-  state.gastos = gastos.map(g => ({ ...g, importeEur: g.importeEur ?? toEur(g.importe, g.moneda) }));
+  state.gastos = gastos.map(g => ({
+    ...g,
+    hora: normalizeExpenseTime(g.hora) || expenseTimeValue(g),
+    extraImages: Array.isArray(g.extraImages) ? g.extraImages : [],
+    importeEur: g.importeEur ?? toEur(g.importe, g.moneda)
+  }));
   state.viajes = viajes.sort((a, b) => (a.fechaInicio || '').localeCompare(b.fechaInicio || '') || byName(a, b));
   state.viajeDocumentos = viajeDocumentos.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   state.blogEntries = blogEntries.sort(compareBlogEntries);
@@ -2320,6 +2491,7 @@ function renderAll() {
   syncBlogAvailability();
   renderBlog();
   if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
+  if ($('#g-hora') && !$('#g-hora').value) $('#g-hora').value = currentLocalTime();
   if ($('#t-fecha') && !$('#t-fecha').value) $('#t-fecha').value = todayIso();
 }
 
@@ -2359,7 +2531,7 @@ function applyDefaultTripCountryToExpense() {
   if (paisIds.length === 1) {
     $('#g-pais').value = String(paisIds[0]);
     renderCiudades();
-  } else if (!paisIds.length) {
+  } else if (!paisIds.length || !paisIds.includes(Number($('#g-pais').value))) {
     $('#g-pais').value = '';
     renderCiudades();
   }
@@ -2373,11 +2545,50 @@ function tripCountryScopeForSelector(selector) {
 
 function cityOptionsForScope(paisSelector, tripSelector) {
   const selectedPais = Number($(paisSelector) ? $(paisSelector).value : 0);
+  const tripId = Number($(tripSelector) ? $(tripSelector).value : 0);
+  const trip = state.viajes.find(v => Number(v.id) === tripId);
   const tripPaisIds = tripCountryScopeForSelector(tripSelector);
   const allowedPaisIds = selectedPais ? [selectedPais] : tripPaisIds;
+  const allowedCityIds = new Set(tripCityIds(trip));
+  if (tripId) {
+    state.gastos
+      .filter(gasto => Number(gasto.viajeId) === tripId && gasto.ciudadId)
+      .forEach(gasto => allowedCityIds.add(Number(gasto.ciudadId)));
+  }
   return state.lugares
     .filter(l => l.parentId && (!allowedPaisIds.length || allowedPaisIds.includes(Number(l.parentId))))
+    .filter(l => !tripId || allowedCityIds.has(Number(l.id)))
     .map(l => ({ value: String(l.id), label: l.nombre }));
+}
+
+function latestExpenseLocationForDate(tripId, fecha) {
+  const limitDate = fecha || currentLocalDate();
+  const candidates = state.gastos
+    .filter(gasto => Number(gasto.viajeId) === Number(tripId) && gasto.ciudadId && (!limitDate || (gasto.fecha || '') <= limitDate));
+  const mostRecentlyEntered = (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || Number(b.id || 0) - Number(a.id || 0);
+  const sameDay = candidates.filter(gasto => (gasto.fecha || '') === limitDate).sort(mostRecentlyEntered);
+  if (sameDay.length) return sameDay[0];
+  return candidates
+    .filter(gasto => (gasto.fecha || '') < limitDate)
+    .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || mostRecentlyEntered(a, b))[0] || null;
+}
+
+function applyDefaultExpenseLocation() {
+  if (!$('#g-viaje') || !$('#g-pais') || !$('#g-ciudad')) return;
+  const tripId = Number($('#g-viaje').value);
+  const latest = tripId ? latestExpenseLocationForDate(tripId, $('#g-fecha').value) : null;
+  if (!latest) {
+    applyDefaultTripCountryToExpense();
+    $('#g-ciudad').value = '';
+    return;
+  }
+  const city = state.lugares.find(lugar => Number(lugar.id) === Number(latest.ciudadId));
+  const countryId = Number(latest.paisId || (city && city.parentId));
+  if (countryId) $('#g-pais').value = String(countryId);
+  renderCiudades();
+  if ([...$('#g-ciudad').options].some(option => Number(option.value) === Number(latest.ciudadId))) {
+    $('#g-ciudad').value = String(latest.ciudadId);
+  }
 }
 
 function gastosForSelectorTripScope(tripSelector) {
@@ -2924,7 +3135,7 @@ function filteredGastos() {
     .filter(g => !fDesde || g.fecha >= fDesde)
     .filter(g => !fHasta || g.fecha <= fHasta)
     .filter(g => !fDesc || (g.desc || '').toLowerCase().includes(fDesc))
-    .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+    .sort(compareExpensesChronologically);
 }
 
 function hasActiveGastoFilters() {
@@ -2982,10 +3193,10 @@ function renderGastosTabla() {
     const title = `${fmtDate(date)}${chips ? ` ${chips}` : ''}`;
     const header = document.createElement('tr');
     header.className = 'group-row';
-    header.innerHTML = `<td colspan="9"><b>${title}</b></td>`;
+    header.innerHTML = `<td colspan="10"><b>${title}</b></td>`;
     tbody.appendChild(header);
     let subtotalEur = 0;
-    byGroup[key].forEach(g => {
+    byGroup[key].sort(compareExpensesChronologically).forEach(g => {
       const cat = state.categorias.find(c => c.id === g.catId);
       const sub = state.categorias.find(c => c.id === g.subcatId);
       const cta = state.cuentas.find(c => c.id === g.cuentaId);
@@ -2994,18 +3205,22 @@ function renderGastosTabla() {
       totalEur += eur;
       const tr = document.createElement('tr');
       tr.className = 'expense-row';
-      const ticketOption = g.ticketData
-        ? '<option value="ticket">Abrir ticket</option>'
-        : '<option value="ticket" disabled>Abrir ticket (no disponible)</option>';
+      const attachmentCount = expenseAttachmentCount(g);
+      const filesOption = attachmentCount
+        ? `<option value="files">Ver archivos (${attachmentCount})</option>`
+        : '<option value="files" disabled>Ver archivos (ninguno)</option>';
       const blogOption = g.viajeId
         ? '<option value="blog">Añadir al blog</option>'
         : '<option value="blog" disabled>Añadir al blog (sin viaje)</option>';
-      tr.innerHTML = `<td data-label="Ciudad">${escapeHtml(gastoCiudadLabel(g))}</td><td data-label="Categoría">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? accountLabel(cta) : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${fmtCurrency(eur, 'EUR')}</td><td data-label="Descripción">${escapeHtml(g.desc || '')}</td><td class="action-col" data-label="Acciones"><select class="expense-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Acciones</option>${ticketOption}${blogOption}<option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
+      const attachmentIndicator = attachmentCount
+        ? `<button type="button" class="expense-attachment-indicator" data-expense-files="${g.id}" title="${attachmentCount} archivo(s) adjunto(s)" aria-label="Ver ${attachmentCount} archivo(s) adjunto(s)">📎 ${attachmentCount}</button>`
+        : '';
+      tr.innerHTML = `<td data-label="Hora">${escapeHtml(expenseTimeValue(g) || '-')}</td><td data-label="Ciudad">${escapeHtml(gastoCiudadLabel(g))}</td><td data-label="Categoría">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? accountLabel(cta) : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${g.moneda === 'EUR' ? '' : fmtCurrency(eur, 'EUR')}</td><td class="expense-description-cell" data-label="Descripción"><span>${escapeHtml(g.desc || '')}</span>${attachmentIndicator}</td><td class="action-col" data-label="Acciones"><select class="expense-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Acciones</option>${filesOption}${blogOption}<option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
     subtotal.className = 'subtotal-row';
-    subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="2"></td>`;
+    subtotal.innerHTML = `<td colspan="7" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="2"></td>`;
     tbody.appendChild(subtotal);
   });
   $('#tg-total').textContent = fmtCurrency(totalEur, 'EUR');
@@ -3928,15 +4143,21 @@ function renderSummaryDocuments() {
     : emptyRow('No hay documentos de viaje para la selección actual.');
 
   const expenseDocuments = state.gastos
-    .filter(gasto => gasto.ticketData && includedTripIds.has(Number(gasto.viajeId)))
-    .sort((a, b) => (b.fecha || b.createdAt || '').localeCompare(a.fecha || a.createdAt || ''));
+    .filter(gasto => includedTripIds.has(Number(gasto.viajeId)))
+    .flatMap(gasto => [
+      ...(gasto.ticketData ? [{ gasto, kind: 'ticket', name: gasto.ticketName || 'Ticket' }] : []),
+      ...expenseExtraImages(gasto).map((image, index) => ({ gasto, kind: 'image', image, index, name: image.name || `Imagen ${index + 1}` }))
+    ])
+    .sort((a, b) => compareExpensesChronologically(b.gasto, a.gasto));
   expenseBody.innerHTML = expenseDocuments.length
-    ? expenseDocuments.map(gasto => `<tr>
-      <td>${summaryDocumentDate(gasto.fecha || gasto.createdAt, Boolean(gasto.fecha))}</td>
-      <td>${descriptionCell(gasto.desc || gasto.ticketName || 'Ticket', gasto.viajeId)}</td>
-      <td><button type="button" class="ghost summary-document-link" data-open-ticket="${gasto.id}">Abrir archivo</button></td>
+    ? expenseDocuments.map(item => `<tr>
+      <td>${summaryDocumentDate(item.gasto.fecha || item.gasto.createdAt, Boolean(item.gasto.fecha))}</td>
+      <td>${descriptionCell(`${item.gasto.desc || 'Gasto'} · ${item.name}`, item.gasto.viajeId)}</td>
+      <td>${item.kind === 'ticket'
+        ? `<button type="button" class="ghost summary-document-link" data-open-ticket="${item.gasto.id}">Abrir archivo</button>`
+        : `<button type="button" class="ghost summary-document-link" data-open-expense-image="${item.gasto.id}" data-expense-image-index="${item.index}">Abrir archivo</button>`}</td>
     </tr>`).join('')
-    : emptyRow('No hay tickets de gastos para la selección actual.');
+    : emptyRow('No hay tickets ni imágenes de gastos para la selección actual.');
 }
 
 function renderResumen() {
@@ -4937,9 +5158,7 @@ function expenseBlogDescription(gasto) {
 }
 
 function expenseBlogTime(gasto) {
-  const date = new Date(gasto.createdAt || '');
-  if (Number.isNaN(date.getTime())) return currentLocalTime();
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  return expenseTimeValue(gasto) || currentLocalTime();
 }
 
 async function addExpenseToBlog(gasto) {
@@ -5200,6 +5419,7 @@ function openEditGasto(gasto) {
   if (!dialog || !gasto) return;
   $('#edit-gasto-id').value = gasto.id;
   $('#edit-gasto-fecha').value = gasto.fecha || todayIso();
+  $('#edit-gasto-hora').value = expenseTimeValue(gasto) || currentLocalTime();
   $('#edit-gasto-viaje').value = gasto.viajeId ? String(gasto.viajeId) : '';
   renderEditGastoAccountSelector();
   $('#edit-gasto-cuenta').value = String(gasto.cuentaId || '');
@@ -5216,8 +5436,10 @@ function openEditGasto(gasto) {
   $('#edit-gasto-importe').value = Math.abs(currentAmount);
   $('#edit-gasto-desc').value = gasto.desc || '';
   clearExpenseTicketSelection('edit-gasto');
+  clearExpenseExtraImageSelection('edit-gasto');
   $('#edit-gasto-ticket-remove').checked = false;
   $('#edit-gasto-ticket-current').innerHTML = gasto.ticketData ? `Ticket actual: ${ticketLink(gasto)}` : 'Sin ticket asociado.';
+  renderEditExpenseImages(gasto);
   setMessage('#msg-edit-gasto', '');
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute('open', 'open');
@@ -5235,11 +5457,13 @@ function openAddGasto() {
   if (!dialog) return;
   setMessage('#msg-gasto', '');
   clearExpenseTicketSelection('g');
+  clearExpenseExtraImageSelection('g');
   if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
+  $('#g-hora').value = currentLocalTime();
   const ids = selectedTripIds();
   if (ids.length === 1 && $('#g-viaje')) $('#g-viaje').value = String(ids[0]);
   renderGastoAccountSelector();
-  applyDefaultTripCountryToExpense();
+  applyDefaultExpenseLocation();
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute('open', 'open');
 }
@@ -5817,7 +6041,7 @@ function printableSectionHtml(id) {
     el.setAttribute('decoding', 'sync');
   });
   clone.querySelectorAll('.section-head, .filters-card, .row4, .action-col, .expense-action-select, button, input, select, label').forEach(el => el.remove());
-  clone.querySelectorAll('#tabla-gastos .group-row td[colspan="9"]').forEach(el => el.setAttribute('colspan', '8'));
+  clone.querySelectorAll('#tabla-gastos .group-row td[colspan="10"]').forEach(el => el.setAttribute('colspan', '9'));
   clone.querySelectorAll('#tabla-gastos .subtotal-row td:last-child, #tabla-gastos tfoot td:last-child').forEach(el => el.setAttribute('colspan', '1'));
   clone.querySelectorAll('[style]').forEach(el => {
     if (el.closest('.trip-map')) return;
@@ -6063,7 +6287,9 @@ async function resetDataPrompt() {
 async function handleGastoAction(id, action) {
   const gasto = state.gastos.find(item => item.id === Number(id));
   if (!gasto) return;
-  if (action === 'ticket') {
+  if (action === 'files') {
+    openExpenseFilesDialog(gasto.id);
+  } else if (action === 'ticket') {
     openTicket(gasto.id);
   } else if (action === 'blog') {
     await addExpenseToBlog(gasto);
@@ -6154,12 +6380,17 @@ function bindEvents() {
   $('#edit-gasto-cat').onchange = renderEditSubcategories;
   $('#g-ticket').onchange = () => syncExpenseTicketSelection('g', 'file');
   $('#g-ticket-camera').onchange = () => syncExpenseTicketSelection('g', 'camera');
+  $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g');
+  $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g');
   $('#edit-gasto-ticket').onchange = () => syncExpenseTicketSelection('edit-gasto', 'file');
   $('#edit-gasto-ticket-camera').onchange = () => syncExpenseTicketSelection('edit-gasto', 'camera');
+  $('#edit-gasto-extra-images').onchange = () => syncExpenseExtraImageSelection('edit-gasto');
+  $('#edit-gasto-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('edit-gasto');
   $('#edit-gasto-ticket-remove').onchange = () => {
     if ($('#edit-gasto-ticket-remove').checked) clearExpenseTicketSelection('edit-gasto');
   };
   $('#g-pais').onchange = renderCiudades;
+  $('#g-fecha').onchange = applyDefaultExpenseLocation;
   $('#edit-gasto-pais').onchange = renderEditCiudades;
   $('#edit-gasto-cuenta').onchange = () => {
     const account = state.cuentas.find(c => c.id === Number($('#edit-gasto-cuenta').value));
@@ -6171,6 +6402,8 @@ function bindEvents() {
   };
   $('#edit-gasto-close').onclick = closeEditGasto;
   $('#edit-gasto-cancel').onclick = closeEditGasto;
+  $('#expense-files-close').onclick = closeExpenseFilesDialog;
+  $('#expense-files-done').onclick = closeExpenseFilesDialog;
   $('#form-dialog-close').onclick = closeFormDialog;
   $('#form-dialog-cancel').onclick = closeFormDialog;
   $('#form-dialog-form').onsubmit = async event => {
@@ -6205,6 +6438,11 @@ function bindEvents() {
       if (!cuentaId || !catId || importe === 0) throw new Error('Completa cuenta, categoría e importe');
       const current = state.gastos.find(g => g.id === id);
       const ticket = await readFileData(selectedFileInput('#edit-gasto-ticket', '#edit-gasto-ticket-camera'));
+      const newExtraImages = await readSelectedExpenseExtraImages('edit-gasto');
+      const removedExtraImageIndexes = new Set($$('[data-remove-expense-image]:checked').map(input => Number(input.dataset.removeExpenseImage)));
+      const extraImages = expenseExtraImages(current)
+        .filter((image, index) => !removedExtraImageIndexes.has(index))
+        .concat(newExtraImages);
       const ticketPatch = $('#edit-gasto-ticket-remove').checked
         ? { ticketName: '', ticketType: '', ticketData: '' }
         : ticket
@@ -6212,6 +6450,7 @@ function bindEvents() {
           : { ticketName: current ? current.ticketName : '', ticketType: current ? current.ticketType : '', ticketData: current ? current.ticketData : '' };
       await updateGasto(id, {
         fecha: $('#edit-gasto-fecha').value || todayIso(),
+        hora: $('#edit-gasto-hora').value || currentLocalTime(),
         viajeId: $('#edit-gasto-viaje').value || null,
         cuentaId,
         catId,
@@ -6220,6 +6459,7 @@ function bindEvents() {
         ciudadId: $('#edit-gasto-ciudad').value || null,
         importe,
         desc: $('#edit-gasto-desc').value.trim(),
+        extraImages,
         ...ticketPatch
       });
       closeEditGasto();
@@ -6234,7 +6474,7 @@ function bindEvents() {
   };
   $('#g-viaje').onchange = () => {
     renderGastoAccountSelector();
-    applyDefaultTripCountryToExpense();
+    applyDefaultExpenseLocation();
   };
   $('#g-moneda').onchange = () => {
     const account = state.cuentas.find(c => c.id === Number($('#g-cuenta').value));
@@ -6319,8 +6559,10 @@ function bindEvents() {
       const importe = $('#g-tipo')?.value === 'ingreso' ? -Math.abs(rawImporte) : Math.abs(rawImporte);
       if (!cuentaId || !catId || importe === 0) throw new Error('Completa cuenta, categoría e importe');
       const ticket = await readFileData(selectedFileInput('#g-ticket', '#g-ticket-camera'));
+      const extraImages = await readSelectedExpenseExtraImages('g');
       await addGasto({
         fecha,
+        hora: $('#g-hora').value || currentLocalTime(),
         viajeId: $('#g-viaje').value || null,
         cuentaId,
         moneda,
@@ -6332,11 +6574,14 @@ function bindEvents() {
         desc: $('#g-desc').value.trim(),
         ticketName: ticket ? ticket.name : '',
         ticketType: ticket ? ticket.type : '',
-        ticketData: ticket ? ticket.data : ''
+        ticketData: ticket ? ticket.data : '',
+        extraImages
       });
       $('#g-importe').value = '';
       $('#g-desc').value = '';
       clearExpenseTicketSelection('g');
+      clearExpenseExtraImageSelection('g');
+      $('#g-hora').value = currentLocalTime();
       setMessage('#msg-gasto', keepOpen ? 'Gasto añadido. Puedes seguir.' : 'Gasto añadido');
       if (!keepOpen) closeAddGasto();
       await loadAll();
@@ -6716,6 +6961,21 @@ function bindEvents() {
         await downloadStoredLocalBackup(localBackupButton.dataset.downloadLocalBackup);
         return;
       }
+      const expenseFilesButton = target.closest('[data-expense-files]');
+      if (expenseFilesButton) {
+        openExpenseFilesDialog(expenseFilesButton.dataset.expenseFiles);
+        return;
+      }
+      const expenseImageButton = target.closest('[data-open-expense-image]');
+      if (expenseImageButton) {
+        openExpenseImage(expenseImageButton.dataset.openExpenseImage, expenseImageButton.dataset.expenseImageIndex);
+        return;
+      }
+      const openTicketButton = target.closest('[data-open-ticket]');
+      if (openTicketButton) {
+        openTicket(openTicketButton.dataset.openTicket);
+        return;
+      }
       const tripDocumentsButton = target.closest('[data-trip-documents]');
       if (tripDocumentsButton) {
         openTripDocumentsDialog(tripDocumentsButton.dataset.tripDocuments);
@@ -6781,10 +7041,7 @@ function bindEvents() {
         renderTripMap();
         return;
       }
-      if (target.dataset.openTicket) {
-        openTicket(target.dataset.openTicket);
-        return;
-      } else if (target.dataset.delCuenta) {
+      if (target.dataset.delCuenta) {
         if (confirm('Eliminar esta cuenta?')) await delCuenta(target.dataset.delCuenta);
       } else if (target.dataset.migrateCuenta) {
         const trip = state.viajes.find(v => v.id === Number(target.dataset.migrateViaje));

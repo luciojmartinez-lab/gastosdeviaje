@@ -418,7 +418,7 @@
 <body>
   <header class="topbar">
     <a href="index.html">Volver</a>
-    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v92</span></h1>
+    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v93</span></h1>
   </header>
 
   <main>
@@ -590,9 +590,11 @@
 
       <h3>Gastos</h3>
       <ul>
-        <li>Las acciones de cada gasto se agrupan en una lista desplegable: abrir ticket, añadir al blog, editar, duplicar o eliminar.</li>
-        <li>Cada gasto admite un ticket o justificante, seleccionado como archivo o fotografiado directamente con la cámara.</li>
-        <li>Alta rápida de gastos con fecha, viaje, cuenta, moneda, categoría, subcategoría, país, ciudad, importe, tipo y descripción.</li>
+        <li>Las acciones de cada gasto se agrupan en una lista desplegable: ver archivos, añadir al blog, editar, duplicar o eliminar.</li>
+        <li>Cada gasto admite un ticket o justificante principal y varias imágenes adicionales. Todos pueden seleccionarse como archivo o fotografiarse directamente con la cámara.</li>
+        <li>Alta rápida de gastos con fecha y hora, viaje, cuenta, moneda, categoría, subcategoría, país, ciudad, importe, tipo y descripción.</li>
+        <li>La hora actual se propone al crear el gasto; la ciudad reutiliza la última del mismo día o, si es el primer gasto, la última del día anterior.</li>
+        <li>El selector de ciudad se limita a las ciudades planificadas o ya utilizadas en el viaje.</li>
         <li>Tipo de movimiento: gasto o ingreso/devolución. Las devoluciones se guardan como importes negativos.</li>
         <li>Tickets y fotos asociados cuando el navegador lo permite.</li>
         <li>Filtros por moneda, cuenta, viaje, país, ciudad, categoría, fechas y texto.</li>
@@ -608,7 +610,7 @@
         <li>Desglose por categoría y subcategoría.</li>
         <li>Resumen por cuentas, con presupuesto de cuenta y presupuesto del viaje.</li>
         <li>Mapa del viaje con paradas planificadas, puntos con gasto, rutas y filtro por país. El modo Solo destino omite la primera y la última parada para ampliar la zona central del viaje.</li>
-        <li>El acceso Documentos reúne al final del resumen dos tablas: documentos del viaje y tickets de gastos. Cada fila muestra fecha, descripción y un enlace para abrir el archivo.</li>
+        <li>El acceso Documentos reúne al final del resumen dos tablas: documentos del viaje y archivos de gastos. Cada fila muestra fecha, descripción y un enlace para abrir el archivo.</li>
       </ul>
 
       <h3>Blog</h3>
@@ -660,7 +662,7 @@
         <article class="mini-card">
           <h3>Sincronización</h3>
           <p>Sincronizar muestra por separado la fecha real de la última copia local, la fecha de la copia en Netlify y cuándo se modificaron los datos de cada versión. La comparación utiliza la fecha de modificación de los datos para no reemplazar cambios por una copia más nueva que contenga información más antigua. Nunca reemplaza datos sin permiso. Antes de sincronizar crea una copia local y, al terminar, otra cuyo nombre acaba en <b>-2</b>.</p>
-          <p>Los datos, tickets, documentos de viaje e imágenes del blog se guardan por separado. Cada archivo se identifica mediante una huella digital: la app consulta primero Netlify y solo sube los que todavía no existen. Los archivos grandes se dividen en fragmentos y se reconstruyen automáticamente al recuperarlos desde la nube.</p>
+          <p>Los datos, tickets, imágenes adicionales de gastos, documentos de viaje e imágenes del blog se guardan por separado. Cada archivo se identifica mediante una huella digital: la app consulta primero Netlify y solo sube los que todavía no existen. Los archivos grandes se dividen en fragmentos y se reconstruyen automáticamente al recuperarlos desde la nube.</p>
           <p>Los tickets creados con versiones antiguas se conservan aunque utilicen un formato diferente. Un ticket heredado o incompleto no impide sincronizar el resto de la copia.</p>
         </article>
         <article class="mini-card">
@@ -673,7 +675,7 @@
       </div>
     </section>
 
-    <p class="footer-note">Gastos de Viaje 700v92. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
+    <p class="footer-note">Gastos de Viaje 700v93. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
   </main>
 </body>
 </html>
