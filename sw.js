@@ -1,21 +1,10 @@
-const CACHE_NAME = 'gastosdeviaje-700v99-1';
+const CACHE_NAME = 'gastosdeviaje-700v99-2';
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css?v=700v99-1',
   './app.bundle.js?v=700v99',
   './ticket-ocr.js?v=700v99',
-  './vendor/tesseract/tesseract.esm.min.js',
-  './vendor/tesseract/worker.min.js',
-  './vendor/tesseract/core/tesseract-core-lstm.wasm.js',
-  './vendor/tesseract/core/tesseract-core-lstm.wasm',
-  './vendor/tesseract/core/tesseract-core-simd-lstm.wasm.js',
-  './vendor/tesseract/core/tesseract-core-simd-lstm.wasm',
-  './vendor/tesseract/core/tesseract-core-relaxedsimd-lstm.wasm.js',
-  './vendor/tesseract/core/tesseract-core-relaxedsimd-lstm.wasm',
-  './vendor/tesseract/lang/spa.traineddata.gz',
-  './vendor/pdfjs/pdf.min.mjs',
-  './vendor/pdfjs/pdf.worker.min.mjs',
   './ayuda.html',
   './manifest.webmanifest',
   './icon.svg',
