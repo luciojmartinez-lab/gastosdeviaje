@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Importador de Gastos de Viaje
  * Description: Importa el Blog de Gastos de Viaje como un post de WordPress por día.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: Lucio J Martínez
  */
 
@@ -177,7 +177,7 @@ final class Gastos_Viaje_Importer {
                 }
                 $content .= '</figure>';
             } elseif (count($rendered_images) > 1) {
-                $content .= '<figure class="wp-block-gallery has-nested-images columns-2">';
+                $content .= '<figure class="wp-block-gallery has-nested-images columns-3">';
                 foreach ($rendered_images as $image) {
                     $content .= '<figure class="wp-block-image"><img src="' . esc_url($image['url']) . '" alt="' . esc_attr($image['description']) . '">';
                     if ($image['description'] !== '') {

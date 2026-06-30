@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v95';
+const APP_VERSION = '700v96';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -5243,6 +5243,30 @@ function cleanSpeechText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+function formatSpeechPunctuation(value) {
+  const paragraphMarker = '__BLOG_SPEECH_PARAGRAPH__';
+  let text = cleanSpeechText(value);
+  if (!text) return '';
+  text = text
+    .replace(/\bpunto\s+y\s+aparte\b/gi, paragraphMarker)
+    .replace(/\bpuntos?\s+y\s+coma\b/gi, ';')
+    .replace(/\bdos\s+puntos\b/gi, ':')
+    .replace(/\bpunto\b/gi, '.')
+    .replace(/\bcoma\b/gi, ',')
+    .replace(new RegExp(paragraphMarker, 'g'), '.\n\n')
+    .replace(/[ \t]+([,;:.!?])/g, '$1')
+    .replace(/([,;:])(?=[^\s\n])/g, '$1 ')
+    .replace(/([.!?])(?=[^\s\n])/g, '$1 ')
+    .replace(/([.!?])\s*\n\s*/g, '$1\n\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return text.replace(/(^|[.!?]\s+|\n+)([a-záéíóúüñ])/g, (match, prefix, letter) =>
+    `${prefix}${letter.toLocaleUpperCase('es-ES')}`
+  );
+}
+
 function compactSpeechSegments(values) {
   const compact = [];
   for (const value of values || []) {
@@ -5266,7 +5290,7 @@ function compactSpeechSegments(values) {
 }
 
 function capitalizeSpeechText(value) {
-  const text = cleanSpeechText(value);
+  const text = formatSpeechPunctuation(value);
   return text ? text.charAt(0).toLocaleUpperCase('es-ES') + text.slice(1) : '';
 }
 
@@ -5275,12 +5299,13 @@ function composeBlogDictationText(baseValue, transcriptValue) {
   const transcript = capitalizeSpeechText(transcriptValue);
   if (!base) return transcript;
   if (!transcript) return base;
-  return `${base}${/\s$/.test(base) ? '' : ' '}${transcript}`;
+  const separator = /^[,;:.!?]/.test(transcript) || /\s$/.test(base) ? '' : ' ';
+  return `${base}${separator}${transcript}`;
 }
 
 function ensureSpeechTerminalPunctuation(value) {
   const text = String(value || '').trimEnd();
-  return text && !/[.!?…]$/.test(text) ? `${text}.` : text;
+  return text && !/[.!?…,:;]$/.test(text) ? `${text}.` : text;
 }
 
 function finishBlogDictation(message = 'Dictado finalizado.', isError = false) {
@@ -5932,9 +5957,9 @@ function printBlog() {
     .blog-print-image { display: block; height: auto; max-height: 245mm; margin: 4mm auto 0; object-fit: contain; }
     .blog-print-image.landscape { width: 100%; }
     .blog-print-image.portrait { width: 35%; min-width: 50mm; }
-    .blog-print-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4mm; margin-top: 4mm; }
+    .blog-print-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; margin-top: 4mm; }
     .blog-print-gallery figure { break-inside: avoid; page-break-inside: avoid; margin: 0; }
-    .blog-print-gallery .blog-print-image { width: 100%; min-width: 0; max-height: 115mm; margin: 0; }
+    .blog-print-gallery .blog-print-image { width: 100%; min-width: 0; max-height: 78mm; margin: 0; }
     .blog-print-point { display: flex; flex-wrap: wrap; gap: 3mm 7mm; align-items: center; margin-top: 4mm; padding: 4mm; border: 1px solid #c4b5fd; border-radius: 3mm; background: #f5f3ff; font-size: 11px; }
     .blog-print-point a { color: #5b21b6; }
     .blog-print-map { break-before: page; page-break-before: always; }
