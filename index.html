@@ -21,7 +21,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v93</div>
+  <div class="app-version">700v94</div>
 </header>
 
 <main>
@@ -102,7 +102,7 @@
         <div class="section-actions">
           <button class="btn" id="btn-blog-add" type="button">Añadir entrada</button>
           <button class="btn ghost" id="btn-blog-pdf" type="button">Ver en PDF</button>
-          <button class="btn ghost" id="btn-blog-wordpress" type="button">Exportar WordPress</button>
+          <button class="btn ghost" id="btn-blog-wordpress" type="button">WordPress</button>
         </div>
       </div>
       <div class="blog-filters" aria-label="Filtros del blog">
@@ -112,9 +112,13 @@
       </div>
       <div class="table-wrap">
         <table id="tabla-blog">
-          <thead><tr><th>Fecha</th><th>Hora</th><th>País</th><th>Ciudad</th><th>Tipo</th><th>Descripción</th><th>Precio</th><th>WordPress</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Hora</th><th>País</th><th>Ciudad</th><th>Tipo</th><th>Descripción</th><th>Precio</th><th>WordPress</th><th>Acciones</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+      <div class="actions blog-bottom-actions">
+        <button class="btn" id="btn-blog-add-bottom" type="button">Añadir entrada</button>
+        <button class="btn ghost" id="btn-blog-pdf-bottom" type="button">Ver en PDF</button>
       </div>
     </div>
   </section>
@@ -564,12 +568,12 @@
       <button type="button" class="btn ghost" data-blog-type="imagen">Imagen</button>
     </div>
     <div id="blog-entry-fields" hidden>
-      <div class="row3">
+      <div class="row3 blog-entry-core-fields">
         <div><label>Fecha</label><input type="date" id="blog-fecha"></div>
         <div><label>Hora</label><input type="time" id="blog-hora"></div>
         <div><label>Tipo de entrada</label><input id="blog-tipo" readonly></div>
       </div>
-      <div class="row">
+      <div class="row blog-entry-location-fields">
         <div><label>País</label><select id="blog-pais"></select></div>
         <div><label>Ciudad</label><select id="blog-ciudad"></select></div>
       </div>
@@ -585,9 +589,12 @@
       </div>
       <div id="blog-image-fields" class="blog-image-fields" hidden>
         <label>Imagen</label>
-        <div class="trip-document-picker-actions">
+        <div class="trip-document-picker-actions blog-image-picker-actions">
           <label class="btn ghost trip-document-picker">Elegir imagen
             <input type="file" id="blog-image-file" accept="image/*">
+          </label>
+          <label class="btn ghost trip-document-picker">Galería
+            <input type="file" id="blog-image-gallery" accept="image/*" multiple>
           </label>
           <label class="btn ghost trip-document-picker">Cámara
             <input type="file" id="blog-image-camera" accept="image/*" capture="environment">
@@ -595,6 +602,7 @@
         </div>
         <p id="blog-image-status" class="small">Ninguna imagen seleccionada.</p>
         <img id="blog-image-preview" class="blog-image-preview" alt="Vista previa" hidden>
+        <div id="blog-gallery-preview" class="blog-gallery-preview" hidden></div>
         <p class="small">La foto original puede superar 6 MB. La aplicación intenta reducirla aproximadamente a 900 KB antes de guardarla.</p>
       </div>
       <div id="blog-text-fields" class="blog-text-fields" hidden>
@@ -736,10 +744,10 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v93"></script>
+<script src="app.bundle.js?v=700v94"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v93';
+    const pageVersion = '700v94';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -766,7 +774,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v93', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v94', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

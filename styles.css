@@ -897,6 +897,15 @@ input[type="checkbox"] {
   overflow: auto;
 }
 
+.blog-entry-modal .row,
+.blog-entry-modal .row3 {
+  gap: 10px;
+}
+
+.blog-entry-modal label {
+  margin-top: 8px;
+}
+
 .blog-type-choice {
   padding: 14px;
   border: 1px solid var(--line);
@@ -926,6 +935,44 @@ input[type="checkbox"] {
   border: 1px solid var(--line);
   border-radius: 8px;
   object-fit: contain;
+}
+
+.blog-gallery-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.blog-gallery-preview[hidden] {
+  display: none;
+}
+
+.blog-gallery-preview figure {
+  margin: 0;
+  min-width: 0;
+}
+
+.blog-gallery-preview img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  object-fit: contain;
+  background: #f8fafc;
+}
+
+.blog-image-picker-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.blog-image-picker-actions .btn {
+  width: 100%;
+  min-width: 0;
+  text-align: center;
 }
 
 .blog-expense-fields,
@@ -977,11 +1024,23 @@ input[type="checkbox"] {
   margin-top: 0;
 }
 
-#tabla-blog {
-  min-width: 940px;
+.blog-head .section-actions .btn,
+.blog-head .section-actions .ghost,
+.blog-bottom-actions .btn,
+.blog-bottom-actions .ghost {
+  padding: 7px 10px;
 }
 
-#tabla-blog td:nth-child(6) {
+.blog-bottom-actions {
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+#tabla-blog {
+  min-width: 860px;
+}
+
+#tabla-blog td:nth-child(5) {
   max-width: 300px;
   overflow-wrap: anywhere;
 }
@@ -992,6 +1051,37 @@ input[type="checkbox"] {
   color: #174a7c;
   font-size: 16px;
   text-align: left;
+}
+
+.blog-day-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.blog-day-toggle span {
+  display: inline-grid;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid #91b6d8;
+  border-radius: 50%;
+  background: #fff;
+  line-height: 1;
+}
+
+.blog-day-entry[hidden] {
+  display: none;
 }
 
 .blog-entry-note {
@@ -1635,14 +1725,28 @@ footer {
   .blog-head .section-actions .btn,
   .blog-head .section-actions .ghost {
     min-width: 0;
-    padding: 8px 5px;
-    font-size: 12px;
-    white-space: normal;
+    min-height: 32px;
+    padding: 5px 4px;
+    font-size: 11px;
+    line-height: 1.1;
+    white-space: nowrap;
   }
 
   .blog-filters {
-    grid-template-columns: 1fr;
-    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    padding: 7px;
+  }
+
+  .blog-filters label {
+    margin-bottom: 3px;
+    font-size: 10px;
+  }
+
+  .blog-filters select {
+    min-width: 0;
+    padding: 7px 3px;
+    font-size: 11px;
   }
 
   .blog-entry-modal form {
@@ -1650,7 +1754,7 @@ footer {
   }
 
   .blog-text-fields textarea {
-    min-height: 260px;
+    min-height: 180px;
   }
 
   main {
@@ -1663,6 +1767,47 @@ footer {
   .filters,
   .section-head {
     grid-template-columns: 1fr;
+  }
+
+  .blog-entry-modal .blog-entry-core-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .blog-entry-modal .blog-entry-location-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .blog-entry-modal label {
+    margin-top: 6px;
+    font-size: 11px;
+  }
+
+  .blog-entry-modal input,
+  .blog-entry-modal select {
+    min-width: 0;
+    padding: 8px 6px;
+  }
+
+  .blog-wordpress-options {
+    gap: 6px 12px;
+    margin-top: 8px;
+    padding: 7px 8px;
+  }
+
+  .blog-image-picker-actions {
+    gap: 5px;
+  }
+
+  .blog-image-picker-actions .btn {
+    padding: 7px 3px;
+    font-size: 11px;
+  }
+
+  .blog-bottom-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   #resumen-totales.kpi {

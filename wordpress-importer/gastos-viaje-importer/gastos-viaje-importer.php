@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Importador de Gastos de Viaje
  * Description: Importa el Blog de Gastos de Viaje como un post de WordPress por día.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Lucio J Martínez
  */
 
@@ -110,35 +110,66 @@ final class Gastos_Viaje_Importer {
                 sanitize_text_field($entry['ciudad'] ?? '')
             )));
             $meta = implode(' · ', array_filter(array($time, $place)));
-            if ($type === 'imagen' && !empty($entry['imageData'])) {
-                $attachment_id = $this->import_image($entry);
+            $entry_images = array();
+            if (!empty($entry['images']) && is_array($entry['images'])) {
+                $entry_images = $entry['images'];
+            } elseif (!empty($entry['imageData'])) {
+                $entry_images = array($entry);
+            }
+            $rendered_images = array();
+            foreach ($entry_images as $image_index => $image) {
+                if (!is_array($image) || empty($image['imageData'])) {
+                    continue;
+                }
+                $image['descripcion'] = $description;
+                if (empty($image['sourceKey'])) {
+                    $image['sourceKey'] = sanitize_text_field(($entry['sourceKey'] ?? 'entry') . '-image-' . ($image_index + 1));
+                }
+                $attachment_id = $this->import_image($image);
                 if (is_wp_error($attachment_id)) {
                     $this->errors[] = $attachment_id->get_error_message();
                     continue;
                 }
                 $attachment_ids[] = $attachment_id;
-                if (!empty($entry['featuredImage'])) {
+                if (!empty($entry['featuredImage']) && $image_index === 0) {
                     $featured_id = $attachment_id;
                     continue;
                 }
                 $url = wp_get_attachment_url($attachment_id);
-                $content .= '<figure class="wp-block-image"><img src="' . esc_url($url) . '" alt="' . esc_attr($description) . '">';
-                if ($description !== '') {
-                    $content .= '<figcaption>' . esc_html($description) . '</figcaption>';
+                if ($url) {
+                    $rendered_images[] = array('url' => $url, 'description' => $description);
                 }
-                $content .= '</figure>';
-            } elseif ($type === 'gasto') {
+            }
+            if ($type === 'gasto') {
                 $amount = number_format_i18n((float) ($entry['gastoImporte'] ?? 0), 2);
                 $currency = sanitize_text_field($entry['gastoMoneda'] ?? 'EUR');
                 $content .= '<div class="gastos-viaje-entry gastos-viaje-expense">';
                 if ($meta !== '') $content .= '<p><small>' . esc_html($meta) . '</small></p>';
                 $content .= '<p><strong>' . esc_html($description ?: 'Gasto') . '</strong> — ' . esc_html($amount . ' ' . $currency) . '</p></div>';
-            } else {
+            } elseif ($type === 'texto') {
                 $text = (string) ($entry['texto'] ?? '');
                 $content .= '<section class="gastos-viaje-entry gastos-viaje-text">';
                 if ($meta !== '') $content .= '<p><small>' . esc_html($meta) . '</small></p>';
                 if ($description !== '') $content .= '<h2>' . esc_html($description) . '</h2>';
                 $content .= wpautop(esc_html($text)) . '</section>';
+            }
+            if (count($rendered_images) === 1) {
+                $image = $rendered_images[0];
+                $content .= '<figure class="wp-block-image"><img src="' . esc_url($image['url']) . '" alt="' . esc_attr($image['description']) . '">';
+                if ($image['description'] !== '') {
+                    $content .= '<figcaption>' . esc_html($image['description']) . '</figcaption>';
+                }
+                $content .= '</figure>';
+            } elseif (count($rendered_images) > 1) {
+                $content .= '<figure class="wp-block-gallery has-nested-images columns-2">';
+                foreach ($rendered_images as $image) {
+                    $content .= '<figure class="wp-block-image"><img src="' . esc_url($image['url']) . '" alt="' . esc_attr($image['description']) . '">';
+                    if ($image['description'] !== '') {
+                        $content .= '<figcaption>' . esc_html($image['description']) . '</figcaption>';
+                    }
+                    $content .= '</figure>';
+                }
+                $content .= '</figure>';
             }
         }
 

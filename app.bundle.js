@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v93';
+const APP_VERSION = '700v94';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -27,7 +27,11 @@ let activeTripDocumentsId = null;
 let activeBlogEntryId = null;
 let activeBlogEntryType = '';
 let activeBlogImage = null;
+let activeBlogGalleryImages = [];
 let blogSpeechRecognition = null;
+let blogDictationSession = null;
+let openBlogDays = new Set();
+let openBlogDaysScope = '';
 let blogFilterTripId = null;
 const routeEditorState = {
   tripId: null,
@@ -1246,12 +1250,28 @@ async function prepareCloudBackupData(sourceData) {
     } else {
       delete next.imageRef;
     }
+    const sourceGalleryImages = Array.isArray(entry.galleryImages) ? entry.galleryImages : [];
+    next.galleryImages = [];
+    for (let imageIndex = 0; imageIndex < sourceGalleryImages.length; imageIndex += 1) {
+      const image = sourceGalleryImages[imageIndex];
+      const nextImage = { ...image };
+      if (image && image.data) {
+        setSyncMessage(`Preparando galerías del blog: ${imageIndex + 1} de ${sourceGalleryImages.length}`);
+        nextImage.fileRef = await addAttachment({
+          data: image.data,
+          name: image.name || 'galeria-blog.jpg',
+          mime: image.type || 'image/jpeg'
+        });
+        delete nextImage.data;
+      }
+      next.galleryImages.push(nextImage);
+    }
     blogEntries.push(next);
   }
   return {
     data: {
       ...sourceData,
-      cloudFormat: 5,
+      cloudFormat: 6,
       gastos,
       viajeDocumentos,
       blogEntries,
@@ -1354,6 +1374,13 @@ async function localAttachmentDataById() {
     const file = ticketDataInfo(entry.imageData, entry.imageType || 'image/jpeg');
     result.set(await sha256Hex(file.blob), file.data);
   }
+  const blogGalleryFiles = state.blogEntries.flatMap(entry => blogGalleryImages(entry));
+  for (let index = 0; index < blogGalleryFiles.length; index += 1) {
+    const image = blogGalleryFiles[index];
+    if (!image.data) continue;
+    const file = ticketDataInfo(image.data, image.type || 'image/jpeg');
+    result.set(await sha256Hex(file.blob), file.data);
+  }
   return result;
 }
 
@@ -1409,7 +1436,11 @@ async function hydrateCloudBackupData(sourceData) {
     })),
     blogEntries: (sourceData.blogEntries || []).map(entry => ({
       ...entry,
-      imageData: entry.imageRef ? (downloaded.get(entry.imageRef) || '') : (entry.imageData || '')
+      imageData: entry.imageRef ? (downloaded.get(entry.imageRef) || '') : (entry.imageData || ''),
+      galleryImages: (Array.isArray(entry.galleryImages) ? entry.galleryImages : []).map(image => ({
+        ...image,
+        data: image.fileRef ? (downloaded.get(image.fileRef) || '') : (image.data || '')
+      }))
     }))
   };
 }
@@ -2114,6 +2145,45 @@ async function delTripDocument(id) {
   return deleteRecord('tripDocuments', Number(id));
 }
 
+function normalizeBlogImageRecord(image = {}) {
+  return {
+    id: image.id || '',
+    name: String(image.name || image.imageName || 'imagen.jpg'),
+    type: String(image.type || image.imageType || 'image/jpeg'),
+    size: Math.max(0, Number(image.size || image.imageSize) || 0),
+    data: image.data || image.imageData || '',
+    fileRef: image.fileRef || '',
+    width: Math.max(0, Number(image.width || image.imageWidth) || 0),
+    height: Math.max(0, Number(image.height || image.imageHeight) || 0),
+    createdAt: image.createdAt || ''
+  };
+}
+
+function blogGalleryImages(entry) {
+  return Array.isArray(entry && entry.galleryImages)
+    ? entry.galleryImages.map(normalizeBlogImageRecord).filter(image => image.data || image.fileRef)
+    : [];
+}
+
+function blogEntryImages(entry) {
+  const images = [];
+  if (entry && (entry.imageData || entry.imageRef)) {
+    images.push(normalizeBlogImageRecord({
+      id: `primary-${entry.id || ''}`,
+      name: entry.imageName,
+      type: entry.imageType,
+      size: entry.imageSize,
+      data: entry.imageData,
+      fileRef: entry.imageRef,
+      width: entry.imageWidth,
+      height: entry.imageHeight,
+      createdAt: entry.createdAt
+    }));
+  }
+  images.push(...blogGalleryImages(entry));
+  return images;
+}
+
 async function addBlogEntry(data) {
   const tripId = Number(data.viajeId);
   if (!state.viajes.some(v => Number(v.id) === tripId)) throw new Error('El viaje no existe');
@@ -2122,7 +2192,8 @@ async function addBlogEntry(data) {
   const description = String(data.descripcion || '').trim();
   if (!description) throw new Error('Escribe una descripción');
   if (type === 'texto' && !String(data.texto || '').trim()) throw new Error('Escribe el texto de la entrada');
-  if (type === 'imagen' && !data.imageData) throw new Error('Selecciona una imagen o usa la cámara');
+  const galleryImages = Array.isArray(data.galleryImages) ? data.galleryImages.map(normalizeBlogImageRecord).filter(image => image.data) : [];
+  if (type === 'imagen' && !data.imageData && !galleryImages.length) throw new Error('Selecciona una imagen, una galería o usa la cámara');
   const now = new Date().toISOString();
   return addRecord('blogEntries', {
     viajeId: tripId,
@@ -2139,6 +2210,7 @@ async function addBlogEntry(data) {
     imageData: type === 'imagen' ? data.imageData : '',
     imageWidth: type === 'imagen' ? Math.max(0, Number(data.imageWidth) || 0) : 0,
     imageHeight: type === 'imagen' ? Math.max(0, Number(data.imageHeight) || 0) : 0,
+    galleryImages,
     sourceGastoId: type === 'gasto' && data.sourceGastoId ? Number(data.sourceGastoId) : null,
     gastoImporte: type === 'gasto' ? numberValue(data.gastoImporte) : 0,
     gastoMoneda: type === 'gasto' ? String(data.gastoMoneda || 'EUR') : '',
@@ -2184,6 +2256,9 @@ function normalizeImportedBlogEntry(entry = {}) {
     imageData: entry.imageData || '',
     imageWidth: Math.max(0, Number(entry.imageWidth) || 0),
     imageHeight: Math.max(0, Number(entry.imageHeight) || 0),
+    galleryImages: Array.isArray(entry.galleryImages)
+      ? entry.galleryImages.map(normalizeBlogImageRecord).filter(image => image.data || image.fileRef)
+      : [],
     sourceGastoId: entry.sourceGastoId ? Number(entry.sourceGastoId) : null,
     gastoImporte: numberValue(entry.gastoImporte),
     gastoMoneda: String(entry.gastoMoneda || ''),
@@ -4628,7 +4703,9 @@ function syncBlogAvailability() {
     button.title = trip ? `Blog de ${trip.nombre}` : 'Selecciona exactamente un viaje para abrir el Blog';
   }
   if ($('#btn-blog-add')) $('#btn-blog-add').disabled = !trip;
+  if ($('#btn-blog-add-bottom')) $('#btn-blog-add-bottom').disabled = !trip;
   if ($('#btn-blog-pdf')) $('#btn-blog-pdf').disabled = !trip;
+  if ($('#btn-blog-pdf-bottom')) $('#btn-blog-pdf-bottom').disabled = !trip;
   if ($('#btn-blog-wordpress')) $('#btn-blog-wordpress').disabled = !trip;
 }
 
@@ -4731,6 +4808,17 @@ function filteredBlogEntries(entries) {
   );
 }
 
+function syncOpenBlogDays(trip, entries) {
+  const dates = [...new Set(entries.map(entry => entry.fecha || ''))].sort();
+  const scope = `${trip ? trip.id : ''}|${dates.join(',')}`;
+  if (openBlogDaysScope !== scope) {
+    openBlogDaysScope = scope;
+    openBlogDays = new Set(dates.length ? [dates[dates.length - 1]] : []);
+  }
+  const filteredDate = $('#blog-filter-date') ? $('#blog-filter-date').value : '';
+  if (filteredDate) openBlogDays.add(filteredDate);
+}
+
 function renderBlog() {
   const tbody = $('#tabla-blog tbody');
   if (!tbody) return;
@@ -4740,11 +4828,12 @@ function renderBlog() {
   if (!trip) {
     syncBlogFilterOptions(null, []);
     if ($('#blog-status')) $('#blog-status').textContent = 'Selecciona exactamente un viaje para consultar su blog.';
-    tbody.innerHTML = '<tr><td colspan="9" class="blog-empty">El Blog solo está disponible con un único viaje seleccionado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">El Blog solo está disponible con un único viaje seleccionado.</td></tr>';
     return;
   }
   const entries = blogEntriesForTrip(trip.id);
   syncBlogFilterOptions(trip, entries);
+  syncOpenBlogDays(trip, entries);
   const filteredEntries = filteredBlogEntries(entries);
   if ($('#blog-status')) {
     $('#blog-status').textContent = filteredEntries.length === entries.length
@@ -4752,27 +4841,32 @@ function renderBlog() {
       : `${filteredEntries.length} de ${entries.length} entradas coinciden con los filtros.`;
   }
   if (!entries.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="blog-empty">Todavía no hay entradas en este blog.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">Todavía no hay entradas en este blog.</td></tr>';
     return;
   }
   if (!filteredEntries.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="blog-empty">No hay entradas que coincidan con estos filtros.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">No hay entradas que coincidan con estos filtros.</td></tr>';
     return;
   }
-  tbody.innerHTML = groupBlogEntriesByDay(filteredEntries).map(group => `
-    <tr class="blog-day-row"><th colspan="9">${escapeHtml(blogDayHeading(group.date, group.entries))}</th></tr>
-    ${group.entries.map(entry => `<tr>
-      <td></td>
+  tbody.innerHTML = groupBlogEntriesByDay(filteredEntries).map(group => {
+    const isOpen = openBlogDays.has(group.date);
+    return `
+    <tr class="blog-day-row"><th colspan="8"><button type="button" class="blog-day-toggle" data-blog-day-toggle="${escapeHtml(group.date)}" aria-expanded="${isOpen}"><span>${isOpen ? '−' : '+'}</span>${escapeHtml(blogDayHeading(group.date, group.entries))}</button></th></tr>
+    ${group.entries.map(entry => {
+      const imageCount = blogEntryImages(entry).length;
+      return `<tr class="blog-day-entry" data-blog-day-entry="${escapeHtml(group.date)}"${isOpen ? '' : ' hidden'}>
       <td>${escapeHtml(entry.hora || '-')}</td>
       <td>${escapeHtml(blogPlaceName(entry.paisId))}</td>
       <td>${escapeHtml(blogPlaceName(entry.ciudadId))}</td>
-      <td>${escapeHtml(blogTypeLabel(entry.tipo))}${entry.featuredImage ? '<span class="blog-entry-note">Destacada</span>' : ''}</td>
+      <td>${escapeHtml(blogTypeLabel(entry.tipo))}${imageCount ? `<span class="blog-entry-note">${imageCount} ${imageCount === 1 ? 'imagen' : 'imágenes'}</span>` : ''}${entry.featuredImage ? '<span class="blog-entry-note">Destacada</span>' : ''}</td>
       <td>${escapeHtml(entry.descripcion || '')}</td>
       <td>${entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '-'}</td>
       <td>${entry.wordpressIncluded !== false ? '<span class="badge">Sí</span>' : 'No'}</td>
       <td class="blog-entry-actions"><button type="button" class="ghost" data-edit-blog="${entry.id}">Editar</button> <button type="button" class="ghost danger-text" data-delete-blog="${entry.id}">Eliminar</button></td>
-    </tr>`).join('')}
-  `).join('');
+    </tr>`;
+    }).join('')}
+  `;
+  }).join('');
 }
 
 function blogCountryOptions(trip) {
@@ -4805,24 +4899,42 @@ function renderBlogCities(selected = '') {
 
 function clearBlogImageSelection() {
   activeBlogImage = null;
+  activeBlogGalleryImages = [];
   if ($('#blog-image-file')) $('#blog-image-file').value = '';
+  if ($('#blog-image-gallery')) $('#blog-image-gallery').value = '';
   if ($('#blog-image-camera')) $('#blog-image-camera').value = '';
   if ($('#blog-image-status')) $('#blog-image-status').textContent = 'Ninguna imagen seleccionada.';
   if ($('#blog-image-preview')) {
     $('#blog-image-preview').hidden = true;
     $('#blog-image-preview').removeAttribute('src');
   }
+  if ($('#blog-gallery-preview')) {
+    $('#blog-gallery-preview').hidden = true;
+    $('#blog-gallery-preview').innerHTML = '';
+  }
+}
+
+function showBlogImages(images = []) {
+  const normalized = images.map(normalizeBlogImageRecord).filter(image => image.data);
+  activeBlogImage = normalized[0] || null;
+  activeBlogGalleryImages = normalized.slice(1);
+  if ($('#blog-image-status')) {
+    $('#blog-image-status').textContent = normalized.length === 1
+      ? `${normalized[0].name} · ${formatFileSize(normalized[0].size)} · ${normalized[0].width} × ${normalized[0].height}`
+      : `${normalized.length} imágenes preparadas para la galería.`;
+  }
+  if ($('#blog-image-preview')) {
+    $('#blog-image-preview').src = normalized[0] ? normalized[0].data : '';
+    $('#blog-image-preview').hidden = normalized.length !== 1;
+  }
+  if ($('#blog-gallery-preview')) {
+    $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"><figcaption>${escapeHtml(image.name)}</figcaption></figure>`).join('');
+    $('#blog-gallery-preview').hidden = normalized.length <= 1;
+  }
 }
 
 function showBlogImage(image) {
-  activeBlogImage = image;
-  if ($('#blog-image-status')) {
-    $('#blog-image-status').textContent = `${image.name} · ${formatFileSize(image.size)} · ${image.width} × ${image.height}`;
-  }
-  if ($('#blog-image-preview')) {
-    $('#blog-image-preview').src = image.data;
-    $('#blog-image-preview').hidden = false;
-  }
+  showBlogImages(image ? [image] : []);
 }
 
 function setBlogEntryType(type) {
@@ -4834,14 +4946,6 @@ function setBlogEntryType(type) {
   if ($('#blog-image-fields')) $('#blog-image-fields').hidden = type !== 'imagen';
   if ($('#blog-text-fields')) $('#blog-text-fields').hidden = type !== 'texto';
   if ($('#blog-featured-option')) $('#blog-featured-option').hidden = type !== 'imagen';
-}
-
-function stopBlogDictation() {
-  if (blogSpeechRecognition) {
-    try { blogSpeechRecognition.stop(); } catch {}
-  }
-  blogSpeechRecognition = null;
-  if ($('#blog-voice')) $('#blog-voice').textContent = 'Dictar por voz';
 }
 
 function cleanSpeechText(value) {
@@ -4883,11 +4987,46 @@ function composeBlogDictationText(baseValue, transcriptValue) {
   return `${base}${/\s$/.test(base) ? '' : ' '}${transcript}`;
 }
 
+function ensureSpeechTerminalPunctuation(value) {
+  const text = String(value || '').trimEnd();
+  return text && !/[.!?…]$/.test(text) ? `${text}.` : text;
+}
+
+function finishBlogDictation(message = 'Dictado finalizado.', isError = false) {
+  const session = blogDictationSession;
+  if (session) {
+    session.active = false;
+    clearTimeout(session.idleTimer);
+    clearTimeout(session.restartTimer);
+    const transcript = compactSpeechSegments([...(session.segments || []), session.current || '']);
+    const textField = $('#blog-texto');
+    if (textField && transcript) {
+      textField.value = ensureSpeechTerminalPunctuation(composeBlogDictationText(session.baseText, transcript));
+    }
+  }
+  const recognition = blogSpeechRecognition;
+  blogDictationSession = null;
+  blogSpeechRecognition = null;
+  if (recognition) {
+    recognition.onend = null;
+    try { recognition.stop(); } catch {}
+  }
+  if ($('#blog-voice')) $('#blog-voice').textContent = 'Dictar por voz';
+  setMessage('#blog-voice-status', message, isError);
+}
+
+function stopBlogDictation() {
+  const session = blogDictationSession;
+  const hasTranscript = Boolean(session && compactSpeechSegments([...(session.segments || []), session.current || '']));
+  finishBlogDictation(hasTranscript ? 'Dictado finalizado.' : '');
+}
+
 function closeBlogEntryDialog() {
   stopBlogDictation();
   activeBlogEntryId = null;
   activeBlogEntryType = '';
   activeBlogImage = null;
+  activeBlogGalleryImages = [];
   const dialog = $('#blog-entry-dialog');
   if (!dialog) return;
   if (dialog.close) dialog.close();
@@ -4918,20 +5057,17 @@ function openBlogEntryDialog(entry = null) {
   }
   if ($('#blog-entry-type-choice')) $('#blog-entry-type-choice').hidden = Boolean(entry);
   if ($('#blog-entry-fields')) $('#blog-entry-fields').hidden = !entry;
-  renderBlogCountries(entry ? entry.paisId : '');
+  const lastEntry = !entry
+    ? blogEntriesForTrip(trip.id).slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || Number(b.id || 0) - Number(a.id || 0))[0]
+    : null;
+  const locationSource = entry || lastEntry;
+  renderBlogCountries(locationSource ? locationSource.paisId : '');
   if (entry) {
     renderBlogCities(entry.ciudadId);
     setBlogEntryType(entry.tipo);
-    if (entry.tipo === 'imagen' && entry.imageData) {
-      showBlogImage({
-        name: entry.imageName || 'imagen.jpg',
-        type: entry.imageType || 'image/jpeg',
-        size: entry.imageSize || dataUrlToBlob(entry.imageData, entry.imageType || 'image/jpeg').size,
-        data: entry.imageData,
-        width: entry.imageWidth || 0,
-        height: entry.imageHeight || 0
-      });
-    }
+    if (entry.tipo === 'imagen') showBlogImages(blogEntryImages(entry));
+  } else if (lastEntry) {
+    renderBlogCities(lastEntry.ciudadId);
   }
   if ($('#msg-blog-entry')) setMessage('#msg-blog-entry', '');
   if ($('#blog-voice-status')) $('#blog-voice-status').textContent = '';
@@ -5020,7 +5156,7 @@ async function compressBlogImage(file) {
 async function selectBlogImage(input, otherInput) {
   const file = input && input.files && input.files[0];
   if (!file) return;
-  if (otherInput) otherInput.value = '';
+  [otherInput, $('#blog-image-gallery')].filter(Boolean).forEach(field => { field.value = ''; });
   setMessage('#msg-blog-entry', '');
   if ($('#blog-image-status')) $('#blog-image-status').textContent = 'Comprimiendo imagen...';
   try {
@@ -5033,59 +5169,124 @@ async function selectBlogImage(input, otherInput) {
   }
 }
 
+async function selectBlogGallery(input) {
+  const files = input && input.files ? Array.from(input.files) : [];
+  if (!files.length) return;
+  if ($('#blog-image-file')) $('#blog-image-file').value = '';
+  if ($('#blog-image-camera')) $('#blog-image-camera').value = '';
+  setMessage('#msg-blog-entry', '');
+  const images = [];
+  try {
+    for (let index = 0; index < files.length; index += 1) {
+      if ($('#blog-image-status')) $('#blog-image-status').textContent = `Comprimiendo imagen ${index + 1} de ${files.length}...`;
+      images.push(await compressBlogImage(files[index]));
+    }
+    showBlogImages(images);
+  } catch (error) {
+    input.value = '';
+    if (activeBlogImage) showBlogImages([activeBlogImage, ...activeBlogGalleryImages]);
+    else clearBlogImageSelection();
+    setMessage('#msg-blog-entry', error.message || String(error), true);
+  }
+}
+
 function startBlogDictation() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
     setMessage('#blog-voice-status', 'El dictado no está disponible en este navegador.', true);
     return;
   }
-  if (blogSpeechRecognition) {
+  if (blogDictationSession) {
     stopBlogDictation();
     return;
   }
-  const recognition = new SpeechRecognition();
   const textField = $('#blog-texto');
-  const baseText = textField ? textField.value : '';
-  const sessionResults = new Map();
-  let lastTranscript = '';
-  recognition.lang = 'es-ES';
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.onstart = () => {
-    if ($('#blog-voice')) $('#blog-voice').textContent = 'Detener dictado';
-    setMessage('#blog-voice-status', 'Escuchando...');
+  const session = {
+    active: true,
+    baseText: ensureSpeechTerminalPunctuation(textField ? textField.value : ''),
+    segments: [],
+    current: '',
+    lastActivity: Date.now(),
+    idleTimer: null,
+    restartTimer: null
   };
-  recognition.onresult = event => {
-    for (let index = event.resultIndex; index < event.results.length; index += 1) {
-      sessionResults.set(index, {
-        text: event.results[index][0].transcript,
-        final: Boolean(event.results[index].isFinal)
-      });
+  blogDictationSession = session;
+  if ($('#blog-voice')) $('#blog-voice').textContent = 'Detener dictado';
+
+  const renderSessionText = () => {
+    const transcript = compactSpeechSegments([...session.segments, session.current]);
+    if (textField) textField.value = composeBlogDictationText(session.baseText, transcript);
+  };
+  const scheduleSilenceStop = () => {
+    clearTimeout(session.idleTimer);
+    const remaining = Math.max(0, 10000 - (Date.now() - session.lastActivity));
+    session.idleTimer = setTimeout(() => {
+      if (!session.active) return;
+      if (Date.now() - session.lastActivity < 10000) {
+        scheduleSilenceStop();
+        return;
+      }
+      finishBlogDictation('Dictado finalizado tras 10 segundos de silencio.');
+    }, remaining + 25);
+  };
+  const launchRecognition = () => {
+    if (!session.active || blogDictationSession !== session) return;
+    const recognition = new SpeechRecognition();
+    const sessionResults = new Map();
+    recognition.lang = 'es-ES';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onstart = () => setMessage('#blog-voice-status', 'Escuchando...');
+    recognition.onresult = event => {
+      session.lastActivity = Date.now();
+      scheduleSilenceStop();
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        sessionResults.set(index, {
+          text: event.results[index][0].transcript,
+          final: Boolean(event.results[index].isFinal)
+        });
+      }
+      const ordered = Array.from(sessionResults.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(item => item[1]);
+      session.current = compactSpeechSegments(ordered.map(item => item.text));
+      const interimText = compactSpeechSegments(ordered.filter(item => !item.final).map(item => item.text));
+      renderSessionText();
+      setMessage('#blog-voice-status', interimText ? `Escuchando: ${interimText}` : 'Escuchando...');
+    };
+    recognition.onerror = event => {
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        finishBlogDictation('Permiso de micrófono denegado.', true);
+      } else if (event.error !== 'no-speech' && session.active) {
+        setMessage('#blog-voice-status', 'Reconectando el dictado...');
+      }
+    };
+    recognition.onend = () => {
+      if (blogSpeechRecognition === recognition) blogSpeechRecognition = null;
+      if (session.current) {
+        session.segments.push(session.current);
+        session.segments = [compactSpeechSegments(session.segments)];
+        session.current = '';
+        renderSessionText();
+      }
+      if (!session.active || blogDictationSession !== session) return;
+      if (Date.now() - session.lastActivity >= 10000) {
+        finishBlogDictation('Dictado finalizado tras 10 segundos de silencio.');
+        return;
+      }
+      clearTimeout(session.restartTimer);
+      session.restartTimer = setTimeout(launchRecognition, 200);
+    };
+    blogSpeechRecognition = recognition;
+    try {
+      recognition.start();
+    } catch {
+      session.restartTimer = setTimeout(launchRecognition, 350);
     }
-    const ordered = Array.from(sessionResults.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(item => item[1]);
-    lastTranscript = compactSpeechSegments(ordered.map(item => item.text));
-    const finalTranscript = compactSpeechSegments(ordered.filter(item => item.final).map(item => item.text));
-    const interimText = compactSpeechSegments(ordered.filter(item => !item.final).map(item => item.text));
-    if (textField) textField.value = composeBlogDictationText(baseText, lastTranscript);
-    setMessage('#blog-voice-status', interimText ? `Escuchando: ${interimText}` : 'Escuchando...');
   };
-  recognition.onerror = event => {
-    setMessage('#blog-voice-status', event.error === 'not-allowed' ? 'Permiso de micrófono denegado.' : 'No se pudo continuar el dictado.', true);
-  };
-  recognition.onend = () => {
-    const ordered = Array.from(sessionResults.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(item => item[1]);
-    const finalTranscript = compactSpeechSegments(ordered.filter(item => item.final).map(item => item.text));
-    if (textField) textField.value = composeBlogDictationText(baseText, finalTranscript || lastTranscript);
-    blogSpeechRecognition = null;
-    if ($('#blog-voice')) $('#blog-voice').textContent = 'Dictar por voz';
-    setMessage('#blog-voice-status', finalTranscript || lastTranscript ? 'Dictado finalizado.' : '');
-  };
-  blogSpeechRecognition = recognition;
-  recognition.start();
+
+  scheduleSilenceStop();
+  launchRecognition();
 }
 
 async function saveBlogEntryForm() {
@@ -5111,14 +5312,15 @@ async function saveBlogEntryForm() {
     if (!String(values.texto).trim()) throw new Error('Escribe el texto de la entrada');
   }
   if (type === 'imagen') {
-    if (!activeBlogImage) throw new Error('Selecciona una imagen o usa la cámara');
+    if (!activeBlogImage) throw new Error('Selecciona una imagen, una galería o usa la cámara');
     Object.assign(values, {
       imageName: activeBlogImage.name,
       imageType: activeBlogImage.type,
       imageSize: activeBlogImage.size,
       imageData: activeBlogImage.data,
       imageWidth: activeBlogImage.width,
-      imageHeight: activeBlogImage.height
+      imageHeight: activeBlogImage.height,
+      galleryImages: activeBlogGalleryImages.map(normalizeBlogImageRecord)
     });
     if (values.featuredImage) values.wordpressIncluded = true;
     const previousFeatured = state.blogEntries.find(entry =>
@@ -5175,6 +5377,7 @@ async function addExpenseToBlog(gasto) {
     gastoImporte: numberValue(gasto.importe),
     gastoMoneda: gasto.moneda || 'EUR',
     gastoImporteEur: toEur(gasto.importe, gasto.moneda),
+    galleryImages: expenseExtraImages(gasto).map(image => normalizeBlogImageRecord({ ...image })),
     wordpressIncluded,
     featuredImage: false
   };
@@ -5198,16 +5401,28 @@ async function addExpenseToBlog(gasto) {
   return true;
 }
 
-function blogPrintEntryHtml(entry) {
+function blogPrintImagesHtml(images, description) {
+  const normalized = (images || []).map(normalizeBlogImageRecord).filter(image => image.data);
+  if (!normalized.length) return '';
+  if (normalized.length === 1) {
+    const image = normalized[0];
+    const imageClass = Number(image.width) > Number(image.height) ? 'landscape' : 'portrait';
+    return `<img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(description || 'Imagen')}">`;
+  }
+  return `<div class="blog-print-gallery">${normalized.map(image => {
+    const imageClass = Number(image.width) > Number(image.height) ? 'landscape' : 'portrait';
+    return `<figure><img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(description || 'Imagen')}"></figure>`;
+  }).join('')}</div>`;
+}
+
+function blogPrintEntryHtml(entry, options = {}) {
   const place = [blogPlaceName(entry.paisId), blogPlaceName(entry.ciudadId)].filter(value => value && value !== '-').join(' · ');
   const price = entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '';
   const text = entry.tipo === 'texto' && entry.texto
     ? `<div class="blog-print-text">${escapeHtml(entry.texto).replace(/\r?\n/g, '<br>')}</div>`
     : '';
-  const imageClass = Number(entry.imageWidth) > Number(entry.imageHeight) ? 'landscape' : 'portrait';
-  const image = entry.tipo === 'imagen' && entry.imageData
-    ? `<img class="blog-print-image ${imageClass}" src="${escapeHtml(entry.imageData)}" alt="${escapeHtml(entry.descripcion || 'Imagen')}">`
-    : '';
+  const images = blogEntryImages(entry).slice(options.skipFirstImage ? 1 : 0);
+  const image = blogPrintImagesHtml(images, entry.descripcion);
   return `<article class="blog-print-entry">
     <div class="blog-print-meta"><strong>${summaryDocumentDate(entry.fecha, true)} · ${escapeHtml(entry.hora || '')}</strong><span>${escapeHtml(place)}</span><span>${escapeHtml(blogTypeLabel(entry.tipo))}${price ? ` · ${price}` : ''}</span></div>
     <h2>${escapeHtml(entry.descripcion || '')}</h2>
@@ -5216,27 +5431,39 @@ function blogPrintEntryHtml(entry) {
 }
 
 function blogPrintFeaturedHtml(entry) {
-  if (!entry || !entry.imageData) return '';
-  const imageClass = Number(entry.imageWidth) > Number(entry.imageHeight) ? 'landscape' : 'portrait';
+  const image = entry ? blogEntryImages(entry)[0] : null;
+  if (!image || !image.data) return '';
+  const imageClass = Number(image.width) > Number(image.height) ? 'landscape' : 'portrait';
   return `<figure class="blog-print-featured">
-    <img class="blog-print-image ${imageClass}" src="${escapeHtml(entry.imageData)}" alt="${escapeHtml(entry.descripcion || 'Imagen destacada')}">
+    <img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(entry.descripcion || 'Imagen destacada')}">
     <figcaption>${escapeHtml(entry.descripcion || '')}</figcaption>
   </figure>`;
 }
 
 function blogPrintDayHtml(group) {
-  const featured = group.entries.find(entry => entry.tipo === 'imagen' && entry.featuredImage && entry.imageData) || null;
-  const timeline = group.entries.filter(entry => !featured || Number(entry.id) !== Number(featured.id));
+  const featured = group.entries.find(entry => entry.tipo === 'imagen' && entry.featuredImage && blogEntryImages(entry).length) || null;
+  const timeline = group.entries.filter(entry => !featured || Number(entry.id) !== Number(featured.id) || blogEntryImages(entry).length > 1);
   return `<section class="blog-print-day">
     <h1>${escapeHtml(blogDayHeading(group.date, group.entries))}</h1>
     ${blogPrintFeaturedHtml(featured)}
-    ${timeline.map(blogPrintEntryHtml).join('')}
+    ${timeline.map(entry => blogPrintEntryHtml(entry, { skipFirstImage: Boolean(featured && Number(entry.id) === Number(featured.id)) })).join('')}
   </section>`;
 }
 
 function wordpressExportEntry(entry, trip) {
-  const imageKey = entry.tipo === 'imagen'
-    ? `${entry.id}-${entry.imageName || 'imagen'}-${entry.imageSize || 0}`
+  const images = blogEntryImages(entry).map((image, index) => ({
+    sourceKey: `${slugFilePart(trip.nombre)}-${entry.fecha}-${entry.id}-image-${index + 1}-${image.name || 'imagen'}-${image.size || 0}`,
+    imageName: image.name || `imagen-${index + 1}.jpg`,
+    imageType: image.type || 'image/jpeg',
+    imageSize: Number(image.size || 0),
+    imageData: image.data || '',
+    imageWidth: Number(image.width || 0),
+    imageHeight: Number(image.height || 0),
+    descripcion: entry.descripcion || ''
+  }));
+  const primaryImage = images[0] || {};
+  const imageKey = images.length
+    ? `${entry.id}-${images.map(image => `${image.imageName}-${image.imageSize}`).join('-')}`
     : `${entry.id}-${entry.updatedAt || entry.createdAt || ''}`;
   return {
     sourceKey: `${slugFilePart(trip.nombre)}-${entry.fecha}-${imageKey}`,
@@ -5250,9 +5477,13 @@ function wordpressExportEntry(entry, trip) {
     texto: entry.texto || '',
     gastoImporte: numberValue(entry.gastoImporte),
     gastoMoneda: entry.gastoMoneda || 'EUR',
-    imageName: entry.imageName || '',
-    imageType: entry.imageType || '',
-    imageData: entry.imageData || '',
+    imageName: primaryImage.imageName || '',
+    imageType: primaryImage.imageType || '',
+    imageSize: primaryImage.imageSize || 0,
+    imageData: primaryImage.imageData || '',
+    imageWidth: primaryImage.imageWidth || 0,
+    imageHeight: primaryImage.imageHeight || 0,
+    images,
     featuredImage: Boolean(entry.tipo === 'imagen' && entry.featuredImage)
   };
 }
@@ -5360,6 +5591,9 @@ function printBlog() {
     .blog-print-image { display: block; height: auto; max-height: 245mm; margin: 4mm auto 0; object-fit: contain; }
     .blog-print-image.landscape { width: 100%; }
     .blog-print-image.portrait { width: 35%; min-width: 50mm; }
+    .blog-print-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4mm; margin-top: 4mm; }
+    .blog-print-gallery figure { break-inside: avoid; page-break-inside: avoid; margin: 0; }
+    .blog-print-gallery .blog-print-image { width: 100%; min-width: 0; max-height: 115mm; margin: 0; }
     .blog-print-featured { margin: 0 0 8mm; text-align: center; }
     .blog-print-featured figcaption { margin-top: 2mm; color: #64748b; font-size: 11px; }
     @media screen { body { max-width: 210mm; margin: 0 auto; padding: 12mm; } }
@@ -6318,6 +6552,8 @@ function bindEvents() {
   $('#btn-open-add-gasto-bottom').onclick = openAddGasto;
   $('#btn-blog-add').onclick = () => openBlogEntryDialog();
   $('#btn-blog-pdf').onclick = printBlog;
+  $('#btn-blog-add-bottom').onclick = () => openBlogEntryDialog();
+  $('#btn-blog-pdf-bottom').onclick = printBlog;
   $('#btn-blog-wordpress').onclick = openWordPressExportDialog;
   $('#wordpress-export-close').onclick = closeWordPressExportDialog;
   $('#wordpress-export-cancel').onclick = closeWordPressExportDialog;
@@ -6357,6 +6593,7 @@ function bindEvents() {
     if (!$('#blog-wordpress').checked) $('#blog-featured').checked = false;
   };
   $('#blog-image-file').onchange = () => selectBlogImage($('#blog-image-file'), $('#blog-image-camera'));
+  $('#blog-image-gallery').onchange = () => selectBlogGallery($('#blog-image-gallery'));
   $('#blog-image-camera').onchange = () => selectBlogImage($('#blog-image-camera'), $('#blog-image-file'));
   $('#blog-voice').onclick = startBlogDictation;
   $('#btn-open-filters').onclick = openFiltersPanel;
@@ -6839,6 +7076,14 @@ function bindEvents() {
   document.addEventListener('click', event => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    const blogDayToggle = target.closest('[data-blog-day-toggle]');
+    if (blogDayToggle) {
+      const date = blogDayToggle.dataset.blogDayToggle;
+      if (openBlogDays.has(date)) openBlogDays.delete(date);
+      else openBlogDays.add(date);
+      renderBlog();
+      return;
+    }
     const editBlogButton = target.closest('[data-edit-blog]');
     if (editBlogButton) {
       const entry = state.blogEntries.find(item => Number(item.id) === Number(editBlogButton.dataset.editBlog));
