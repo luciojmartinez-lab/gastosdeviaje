@@ -2934,6 +2934,7 @@ footer {
     min-width: 0;
     padding: 7px 5px;
     font-size: 12px;
+    line-height: 12px;
   }
 
   .edit-ticket-fields {

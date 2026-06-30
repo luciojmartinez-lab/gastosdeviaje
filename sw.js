@@ -1,8 +1,8 @@
-const CACHE_NAME = 'gastosdeviaje-700v99';
+const CACHE_NAME = 'gastosdeviaje-700v99-1';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=700v99',
+  './styles.css?v=700v99-1',
   './app.bundle.js?v=700v99',
   './ticket-ocr.js?v=700v99',
   './vendor/tesseract/tesseract.esm.min.js',
