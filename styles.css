@@ -1294,6 +1294,20 @@ input[type="checkbox"] {
   margin: 6px 0 0;
 }
 
+.ticket-ocr-button {
+  min-width: 112px;
+}
+
+.ticket-ocr-status {
+  min-height: 18px;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.ticket-ocr-status.error {
+  color: #b91c1c;
+}
+
 .trip-document-picker {
   display: inline-flex;
   align-items: center;
@@ -2900,7 +2914,7 @@ footer {
 
   .expense-ticket-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
     margin-top: 5px;
   }
@@ -2912,6 +2926,12 @@ footer {
   }
 
   .expense-ticket-field .trip-document-picker {
+    padding: 7px 5px;
+    font-size: 12px;
+  }
+
+  .expense-ticket-field .ticket-ocr-button {
+    min-width: 0;
     padding: 7px 5px;
     font-size: 12px;
   }

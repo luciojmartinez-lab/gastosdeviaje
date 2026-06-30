@@ -1,9 +1,12 @@
 {
   "name": "gastosdeviaje",
   "private": true,
-  "version": "700.98.0",
+  "version": "700.99.0",
   "type": "module",
   "dependencies": {
-    "@netlify/blobs": "^9.1.0"
+    "@netlify/blobs": "^9.1.0",
+    "@tesseract.js-data/spa": "^1.0.0",
+    "pdfjs-dist": "^5.4.530",
+    "tesseract.js": "^7.0.0"
   }
 }

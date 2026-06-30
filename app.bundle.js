@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v98';
+const APP_VERSION = '700v99';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -361,6 +361,9 @@ const state = {
 };
 
 let latestCurrencyQuote = null;
+const TICKET_OCR_LEARNING_KEY = 'cuaderno_bitacora_ticket_categories_v1';
+const pendingTicketOcr = { g: null, 'edit-gasto': null };
+let ticketOcrModulePromise = null;
 
 const collator = new Intl.Collator('es', { sensitivity: 'base' });
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -1034,6 +1037,9 @@ function clearExpenseTicketSelection(prefix) {
       ? 'Ningún ticket nuevo seleccionado.'
       : 'Ningún ticket seleccionado.';
   }
+  pendingTicketOcr[prefix] = null;
+  setTicketOcrStatus(prefix, '');
+  syncTicketOcrAvailability(prefix);
 }
 
 function expenseExtraImageInputs(prefix) {
@@ -1103,6 +1109,222 @@ function syncExpenseTicketSelection(prefix, source) {
     $('#edit-gasto-ticket-remove').checked = false;
   }
   if (status) status.textContent = selected.files[0].name || (source === 'camera' ? 'Foto de cámara' : 'Ticket seleccionado');
+  pendingTicketOcr[prefix] = null;
+  setTicketOcrStatus(prefix, 'Listo para leer en este dispositivo.');
+  syncTicketOcrAvailability(prefix);
+}
+
+function normalizeTicketMerchantKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\b(s\.?a\.?u?|s\.?l\.?u?|sociedad|limitada|anonima)\b/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function ticketCategoryMemory() {
+  try {
+    const value = JSON.parse(localStorage.getItem(TICKET_OCR_LEARNING_KEY) || '{}');
+    return value && typeof value === 'object' ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function rememberTicketCategory(prefix) {
+  const result = pendingTicketOcr[prefix];
+  if (!result?.merchant) return;
+  const key = normalizeTicketMerchantKey(result.merchant);
+  if (!key) return;
+  const catId = Number($(`#${prefix}-cat`)?.value);
+  const subcatId = Number($(`#${prefix}-subcat`)?.value);
+  const category = state.categorias.find(item => Number(item.id) === catId);
+  const subcategory = state.categorias.find(item => Number(item.id) === subcatId);
+  if (!category) return;
+  const memory = ticketCategoryMemory();
+  memory[key] = {
+    catId,
+    catName: category.nombre,
+    subcatId: subcategory ? subcatId : null,
+    subcatName: subcategory?.nombre || '',
+    updatedAt: new Date().toISOString()
+  };
+  localStorage.setItem(TICKET_OCR_LEARNING_KEY, JSON.stringify(memory));
+}
+
+function normalizedTicketSearch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function findCategoryByNames(names, parentId = null) {
+  const wanted = names.map(normalizedTicketSearch);
+  return state.categorias.find(item => {
+    if (parentId === null && item.parentId) return false;
+    if (parentId !== null && Number(item.parentId) !== Number(parentId)) return false;
+    const name = normalizedTicketSearch(item.nombre);
+    return wanted.some(value => name === value || name.includes(value) || value.includes(name));
+  }) || null;
+}
+
+function learnedTicketCategory(merchant) {
+  const key = normalizeTicketMerchantKey(merchant);
+  const saved = ticketCategoryMemory()[key];
+  if (!saved) return null;
+  const category = state.categorias.find(item => !item.parentId && (
+    Number(item.id) === Number(saved.catId)
+    || normalizedTicketSearch(item.nombre) === normalizedTicketSearch(saved.catName)
+  ));
+  if (!category) return null;
+  const subcategory = state.categorias.find(item => Number(item.parentId) === Number(category.id) && (
+    Number(item.id) === Number(saved.subcatId)
+    || (saved.subcatName && normalizedTicketSearch(item.nombre) === normalizedTicketSearch(saved.subcatName))
+  ));
+  return { category, subcategory: subcategory || null, learned: true };
+}
+
+function suggestTicketCategory(text, merchant) {
+  const learned = learnedTicketCategory(merchant);
+  if (learned) return learned;
+  const haystack = normalizedTicketSearch(`${merchant || ''}\n${text || ''}`);
+  const rules = [
+    { words: ['mercadona', 'carrefour', 'alcampo', 'lidl', 'aldi', 'supermercado', 'hipermercado', 'alimentacion'], categories: ['Comida', 'Alimentación'], subcategories: ['Super', 'Supermercado'] },
+    { words: ['restaurante', 'cafeteria', 'cafe ', 'bar ', 'tapas', 'menu', 'hamburgues', 'pizzeria', 'comida'], categories: ['Comida', 'Alimentación'], subcategories: ['Restaurante', 'Bar', 'Cafetería'] },
+    { words: ['renfe', 'iryo', 'ouigo', 'ferrocarril', 'tren'], categories: ['Transporte'], subcategories: ['Tren'] },
+    { words: ['taxi', 'uber', 'cabify'], categories: ['Transporte'], subcategories: ['Taxi'] },
+    { words: ['metro', 'autobus', 'bus ', 'transporte urbano'], categories: ['Transporte'], subcategories: ['Metro', 'Autobús', 'Bus'] },
+    { words: ['gasolina', 'gasoleo', 'combustible', 'repsol', 'cepsa', 'bp '], categories: ['Transporte'], subcategories: ['Combustible', 'Gasolina'] },
+    { words: ['parking', 'aparcamiento'], categories: ['Transporte'], subcategories: ['Parking', 'Aparcamiento'] },
+    { words: ['hotel', 'hostal', 'apartamento', 'alojamiento', 'residencia', 'booking'], categories: ['Alojamiento'], subcategories: ['Hotel', 'Residencia', 'Apartamento'] },
+    { words: ['museo', 'entrada', 'cine', 'teatro', 'espectaculo', 'visita'], categories: ['Ocio'], subcategories: ['Museos', 'Entradas', 'Visitas'] }
+  ];
+  const rule = rules.find(item => item.words.some(word => haystack.includes(word)));
+  if (!rule) {
+    const direct = state.categorias
+      .filter(item => !item.parentId)
+      .find(item => haystack.includes(normalizedTicketSearch(item.nombre)));
+    return direct ? { category: direct, subcategory: null, learned: false } : null;
+  }
+  const category = findCategoryByNames(rule.categories);
+  if (!category) return null;
+  const subcategory = findCategoryByNames(rule.subcategories, category.id);
+  return { category, subcategory, learned: false };
+}
+
+function setTicketOcrStatus(prefix, text, isError = false) {
+  const status = $(`#${prefix}-ticket-ocr-status`);
+  if (!status) return;
+  status.textContent = text;
+  status.classList.toggle('error', isError);
+}
+
+function currentEditTicket() {
+  const id = Number($('#edit-gasto-id')?.value);
+  return state.gastos.find(item => Number(item.id) === id) || null;
+}
+
+function ticketOcrSource(prefix) {
+  const input = selectedFileInput(`#${prefix}-ticket`, `#${prefix}-ticket-camera`);
+  const file = input?.files?.[0];
+  if (file) return { source: file, type: file.type, name: file.name };
+  if (prefix === 'edit-gasto' && !$('#edit-gasto-ticket-remove')?.checked) {
+    const gasto = currentEditTicket();
+    if (gasto?.ticketData) return { source: normalizeTicketDataValue(gasto.ticketData), type: gasto.ticketType, name: gasto.ticketName };
+  }
+  return null;
+}
+
+function syncTicketOcrAvailability(prefix) {
+  const button = $(`#${prefix}-ticket-read`);
+  if (button && !button.dataset.busy) button.disabled = !ticketOcrSource(prefix);
+}
+
+function ticketOcrProgressLabel(message) {
+  const labels = {
+    'loading tesseract core': 'Preparando el lector local',
+    'initializing tesseract': 'Iniciando el lector',
+    'loading language traineddata': 'Cargando el idioma español',
+    'initializing api': 'Preparando el idioma',
+    'recognizing text': 'Leyendo el ticket'
+  };
+  const label = labels[message?.status] || message?.status || 'Leyendo el ticket';
+  const progress = Number(message?.progress);
+  return Number.isFinite(progress) && progress > 0
+    ? `${label}… ${Math.min(100, Math.round(progress * 100))}%`
+    : `${label}…`;
+}
+
+function applyTicketOcrFields(prefix, result) {
+  const fields = result.fields || {};
+  if (fields.date) $(`#${prefix}-fecha`).value = fields.date;
+  if (fields.time) $(`#${prefix}-hora`).value = fields.time;
+  if (Number.isFinite(fields.total) && fields.total > 0) $(`#${prefix}-importe`).value = fields.total.toFixed(2);
+  if (fields.merchant) $(`#${prefix}-desc`).value = fields.merchant;
+  const suggestion = suggestTicketCategory(result.text, fields.merchant);
+  if (suggestion?.category) {
+    $(`#${prefix}-cat`).value = String(suggestion.category.id);
+    if (prefix === 'g') renderSubcategories();
+    else renderEditSubcategories();
+    if (suggestion.subcategory) $(`#${prefix}-subcat`).value = String(suggestion.subcategory.id);
+  }
+  pendingTicketOcr[prefix] = {
+    merchant: fields.merchant || '',
+    text: result.text || ''
+  };
+  const found = [
+    fields.date ? 'fecha' : '',
+    fields.time ? 'hora' : '',
+    fields.merchant ? 'establecimiento' : '',
+    Number.isFinite(fields.total) && fields.total > 0 ? 'total' : '',
+    suggestion?.category ? `categoría${suggestion.learned ? ' aprendida' : ''}` : ''
+  ].filter(Boolean);
+  if (!found.length) throw new Error('No se han podido reconocer datos claros en este ticket. Puedes introducirlos manualmente.');
+  return `Detectado: ${found.join(', ')}. Revisa los datos antes de guardar.${result.pdfFirstPageOnly ? ' En PDF se ha leído la primera página.' : ''}`;
+}
+
+async function readExpenseTicket(prefix) {
+  const source = ticketOcrSource(prefix);
+  if (!source) {
+    setTicketOcrStatus(prefix, 'Selecciona o fotografía primero un ticket.', true);
+    return;
+  }
+  const button = $(`#${prefix}-ticket-read`);
+  try {
+    button.dataset.busy = '1';
+    button.disabled = true;
+    button.textContent = 'Leyendo…';
+    setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v99');
+    const ocr = await ticketOcrModulePromise;
+    const result = await ocr.recognizeTicket(source.source, {
+      type: source.type,
+      name: source.name,
+      onProgress: message => setTicketOcrStatus(prefix, ticketOcrProgressLabel(message))
+    });
+    if (prefix === 'edit-gasto') {
+      const fields = result.fields || {};
+      const changesExisting = (fields.date && fields.date !== $('#edit-gasto-fecha').value)
+        || (fields.time && fields.time !== $('#edit-gasto-hora').value)
+        || (fields.merchant && fields.merchant !== $('#edit-gasto-desc').value)
+        || (Number.isFinite(fields.total) && Math.abs(fields.total - numberValue($('#edit-gasto-importe').value)) > 0.001);
+      if (changesExisting && !window.confirm('Los datos detectados sustituirán la fecha, hora, descripción o importe actuales. ¿Continuar?')) {
+        setTicketOcrStatus(prefix, 'Lectura terminada sin modificar el gasto.');
+        return;
+      }
+    }
+    setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result));
+  } catch (error) {
+    console.error(error);
+    setTicketOcrStatus(prefix, error?.message || 'No se ha podido leer el ticket.', true);
+  } finally {
+    delete button.dataset.busy;
+    button.textContent = 'Leer ticket';
+    syncTicketOcrAvailability(prefix);
+  }
 }
 
 function ticketLink(gasto) {
@@ -6086,6 +6308,7 @@ function openEditGasto(gasto) {
   clearExpenseExtraImageSelection('edit-gasto');
   $('#edit-gasto-ticket-remove').checked = false;
   $('#edit-gasto-ticket-current').innerHTML = gasto.ticketData ? `Ticket actual: ${ticketLink(gasto)}` : 'Sin ticket asociado.';
+  syncTicketOcrAvailability('edit-gasto');
   renderEditExpenseImages(gasto);
   setMessage('#msg-edit-gasto', '');
   if (dialog.showModal) dialog.showModal();
@@ -6095,6 +6318,8 @@ function openEditGasto(gasto) {
 function closeEditGasto() {
   const dialog = $('#edit-gasto-dialog');
   if (!dialog) return;
+  pendingTicketOcr['edit-gasto'] = null;
+  setTicketOcrStatus('edit-gasto', '');
   if (dialog.close) dialog.close();
   else dialog.removeAttribute('open');
 }
@@ -6118,6 +6343,8 @@ function openAddGasto() {
 function closeAddGasto() {
   const dialog = $('#add-gasto-dialog');
   if (!dialog) return;
+  pendingTicketOcr.g = null;
+  setTicketOcrStatus('g', '');
   if (dialog.close) dialog.close();
   else dialog.removeAttribute('open');
 }
@@ -7084,14 +7311,17 @@ function bindEvents() {
   $('#edit-gasto-cat').onchange = renderEditSubcategories;
   $('#g-ticket').onchange = () => syncExpenseTicketSelection('g', 'file');
   $('#g-ticket-camera').onchange = () => syncExpenseTicketSelection('g', 'camera');
+  $('#g-ticket-read').onclick = () => readExpenseTicket('g');
   $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g');
   $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g');
   $('#edit-gasto-ticket').onchange = () => syncExpenseTicketSelection('edit-gasto', 'file');
   $('#edit-gasto-ticket-camera').onchange = () => syncExpenseTicketSelection('edit-gasto', 'camera');
+  $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
   $('#edit-gasto-extra-images').onchange = () => syncExpenseExtraImageSelection('edit-gasto');
   $('#edit-gasto-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('edit-gasto');
   $('#edit-gasto-ticket-remove').onchange = () => {
     if ($('#edit-gasto-ticket-remove').checked) clearExpenseTicketSelection('edit-gasto');
+    syncTicketOcrAvailability('edit-gasto');
   };
   $('#g-pais').onchange = renderCiudades;
   $('#g-fecha').onchange = applyDefaultExpenseLocation;
@@ -7166,6 +7396,7 @@ function bindEvents() {
         extraImages,
         ...ticketPatch
       });
+      rememberTicketCategory('edit-gasto');
       closeEditGasto();
       await loadAll();
     } catch (err) {
@@ -7281,6 +7512,7 @@ function bindEvents() {
         ticketData: ticket ? ticket.data : '',
         extraImages
       });
+      rememberTicketCategory('g');
       $('#g-importe').value = '';
       $('#g-desc').value = '';
       clearExpenseTicketSelection('g');

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=700v98">
+  <link rel="stylesheet" href="styles.css?v=700v99">
   <meta name="theme-color" content="#1976d2">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
@@ -21,7 +21,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v98</div>
+  <div class="app-version">700v99</div>
 </header>
 
 <main>
@@ -401,8 +401,10 @@
         <label class="btn ghost trip-document-picker">Cámara
           <input type="file" accept="image/*" capture="environment" id="g-ticket-camera">
         </label>
+        <button type="button" class="btn ghost ticket-ocr-button" id="g-ticket-read" disabled>Leer ticket</button>
       </div>
       <p id="g-ticket-selected" class="small">Ningún ticket seleccionado.</p>
+      <p id="g-ticket-ocr-status" class="small ticket-ocr-status" aria-live="polite"></p>
     </div>
     <div class="expense-ticket-field expense-extra-images-field">
       <label>Imágenes adicionales</label>
@@ -464,8 +466,10 @@
           <label class="btn ghost trip-document-picker">Cámara
             <input type="file" accept="image/*" capture="environment" id="edit-gasto-ticket-camera">
           </label>
+          <button type="button" class="btn ghost ticket-ocr-button" id="edit-gasto-ticket-read" disabled>Leer ticket</button>
         </div>
         <p id="edit-gasto-ticket-selected" class="small">Ningún ticket nuevo seleccionado.</p>
+        <p id="edit-gasto-ticket-ocr-status" class="small ticket-ocr-status" aria-live="polite"></p>
       </div>
       <div><label><input type="checkbox" id="edit-gasto-ticket-remove"> Quitar ticket actual</label><p id="edit-gasto-ticket-current" class="small"></p></div>
     </div>
@@ -770,10 +774,10 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v98"></script>
+<script src="app.bundle.js?v=700v99"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v98';
+    const pageVersion = '700v99';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -800,7 +804,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v98', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v99', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
