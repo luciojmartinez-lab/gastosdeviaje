@@ -448,6 +448,13 @@ h2 {
   padding: 7px 9px;
 }
 
+.trip-config-action-select {
+  display: block;
+  min-width: 132px;
+  margin: 0;
+  padding: 7px 9px;
+}
+
 .trip-home-actions {
   white-space: nowrap;
 }
@@ -977,8 +984,59 @@ input[type="checkbox"] {
 
 .blog-expense-fields,
 .blog-image-fields,
-.blog-text-fields {
+.blog-text-fields,
+.blog-point-fields {
   margin-top: 12px;
+}
+
+.blog-point-actions {
+  align-items: center;
+  margin-top: 8px;
+}
+
+.blog-point-map {
+  margin-top: 8px;
+}
+
+.blog-point-map-frame {
+  position: relative;
+  width: 100%;
+  height: 280px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #cfe8f3;
+  cursor: crosshair;
+}
+
+.blog-point-map-frame .map-tiles {
+  position: absolute;
+  inset: 0;
+}
+
+.blog-point-picker-marker {
+  position: absolute;
+  z-index: 3;
+  width: 18px;
+  height: 18px;
+  border: 3px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  background: #dc2626;
+  box-shadow: 0 2px 6px #0008;
+  transform: translate(-50%, -100%) rotate(-45deg);
+  pointer-events: none;
+}
+
+.blog-point-picker-marker::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.blog-point-map-frame .map-attribution {
+  z-index: 4;
 }
 
 .blog-wordpress-options {
@@ -1034,6 +1092,43 @@ input[type="checkbox"] {
 .blog-bottom-actions {
   justify-content: flex-end;
   margin-top: 14px;
+}
+
+.blog-points-overview {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.blog-points-overview[hidden] {
+  display: none;
+}
+
+.blog-points-overview h3 {
+  margin: 0 0 9px;
+}
+
+.blog-points-map-frame {
+  position: relative;
+  width: 100%;
+  min-height: 300px;
+  aspect-ratio: 2 / 1;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #cfe8f3;
+}
+
+.blog-points-map-frame .map-tiles,
+.blog-points-map-frame .trip-map-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.blog-points-map-frame .map-attribution {
+  z-index: 4;
 }
 
 #tabla-blog {
@@ -1572,6 +1667,10 @@ tfoot td { font-weight: 700; }
   fill: #2563eb;
 }
 
+.map-marker-point circle {
+  fill: #7c3aed;
+}
+
 .map-marker text {
   fill: #111827;
   font-size: 15px;
@@ -1806,9 +1905,30 @@ footer {
     font-size: 11px;
   }
 
+  .blog-point-map-frame {
+    height: 300px;
+  }
+
+  .blog-point-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 38px 38px;
+    gap: 5px;
+  }
+
+  .blog-point-actions .btn {
+    min-width: 0;
+    padding: 7px 4px;
+    font-size: 11px;
+  }
+
   .blog-bottom-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .blog-points-map-frame {
+    min-height: 0;
+    aspect-ratio: 1 / 1;
   }
 
   #resumen-totales.kpi {
@@ -2485,8 +2605,14 @@ footer {
   }
 
   .trip-actions-inline {
-    flex-wrap: wrap;
-    white-space: normal;
+    flex-wrap: nowrap;
+    gap: 3px;
+    white-space: nowrap;
+  }
+
+  .trip-actions-inline .ghost {
+    padding: 6px 7px;
+    font-size: 11px;
   }
 
   .expense-action-select {
@@ -2613,6 +2739,12 @@ footer {
   body.print-todo #view-gastos {
     break-after: page;
     page-break-after: always;
+  }
+
+  .trip-config-action-select {
+    width: 100%;
+    min-width: 112px;
+    padding: 8px 10px;
   }
 
   #tabla-gastos.cards-mode .expense-row td:nth-child(9) {

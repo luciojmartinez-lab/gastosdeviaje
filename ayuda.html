@@ -418,7 +418,7 @@
 <body>
   <header class="topbar">
     <a href="index.html">Volver</a>
-    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v94</span></h1>
+    <h1>Ayuda de Gastos de Viaje <span>Actualizada para 700v95</span></h1>
   </header>
 
   <main>
@@ -609,14 +609,16 @@
         <li>Media diaria, presupuesto usado, restante y porcentaje de gasto.</li>
         <li>Desglose por categoría y subcategoría.</li>
         <li>Resumen por cuentas, con presupuesto de cuenta y presupuesto del viaje.</li>
-        <li>Mapa del viaje con paradas planificadas, puntos con gasto, rutas y filtro por país. El modo Solo destino omite la primera y la última parada para ampliar la zona central del viaje.</li>
-        <li>El acceso Documentos reúne al final del resumen dos tablas: documentos del viaje y archivos de gastos. Cada fila muestra fecha, descripción y un enlace para abrir el archivo.</li>
+        <li>Mapa del viaje con paradas planificadas, puntos con gasto, puntos geolocalizados del Blog, rutas y filtro por país. Los puntos concretos no se unen a la ruta. El modo Solo destino omite la primera y la última parada para ampliar la zona central del viaje.</li>
+        <li>El acceso Documentos reúne al final del resumen dos tablas: documentos del viaje y archivos de gastos, ordenados desde los más antiguos hasta los más recientes. Cada fila muestra fecha, descripción y un enlace para abrir el archivo.</li>
+        <li>En el resumen por cuentas, la columna EUR solo muestra equivalencia cuando la moneda original es distinta de EUR.</li>
       </ul>
 
       <h3>Blog</h3>
       <ul>
         <li>El Blog solo se activa cuando hay exactamente un viaje seleccionado.</li>
-        <li>Admite entradas de gasto, imagen y texto, ordenadas por fecha y hora.</li>
+        <li>Admite entradas de gasto, imagen, texto y punto geolocalizado, ordenadas por fecha y hora.</li>
+        <li>Los puntos geolocalizados pueden marcarse sobre el mapa, obtenerse de la ubicación actual o buscarse a partir de la descripción. Se evita guardar otro punto del mismo viaje a menos de 30 metros.</li>
         <li>El listado puede filtrarse mediante desplegables por día, país y ciudad. Sus entradas se agrupan en días plegables: el último queda abierto inicialmente y los anteriores, cerrados. El PDF continúa incluyendo el blog completo del viaje.</li>
         <li>Las entradas se agrupan automáticamente por día y ciudad. En el PDF, cada día comienza en una página nueva.</li>
         <li>Los gastos se incorporan desde su lista de acciones y conservan una referencia interna que evita duplicados. Si tienen imágenes adicionales, pasan al Blog; el ticket no se incorpora.</li>
@@ -626,7 +628,7 @@
         <li>La primera vez, descarga e instala el complemento desde WordPress → Plugins → Añadir plugin → Subir plugin. Después encontrarás el importador en Herramientas → Importar Gastos de Viaje.</li>
         <li>Las entradas nuevas recuerdan el país y la ciudad de la última entrada del viaje.</li>
         <li>Las entradas de texto admiten dictado por voz en navegadores compatibles. Las hipótesis parciales se sustituyen para evitar repeticiones, el dictado se reconecta durante las pausas y finaliza tras diez segundos de silencio, añadiendo la puntuación final cuando falta.</li>
-        <li>Ver en PDF genera el relato completo del viaje con textos, importes e imágenes.</li>
+        <li>Ver en PDF genera el relato completo del viaje con textos, importes, imágenes y un mapa final de puntos geolocalizados. WordPress recibe también las coordenadas y el enlace de cada punto.</li>
       </ul>
 
       <h3>Configuración</h3>
@@ -644,7 +646,8 @@
         <li>Países y ciudades pueden guardarse con coordenadas para el mapa.</li>
         <li>Las monedas extranjeras guardan cambio en ambos sentidos: 1 moneda = EUR y 1 EUR = moneda.</li>
         <li>Las cuentas globales funcionan como plantillas; las cuentas de viaje son específicas del viaje.</li>
-        <li>Las transferencias mueven dinero entre cuentas y permiten cambio cuando las monedas son distintas.</li>
+        <li>Las acciones de los viajes creados se reúnen en un desplegable compacto.</li>
+        <li>Las transferencias mueven dinero entre cuentas y permiten cambio cuando las monedas son distintas. Con viajes seleccionados, tanto las cuentas como el listado se limitan a esos viajes.</li>
         <li>Las categorías y subcategorías organizan el gasto y alimentan los informes.</li>
       </ul>
     </section>
@@ -676,7 +679,7 @@
       </div>
     </section>
 
-    <p class="footer-note">Gastos de Viaje 700v94. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
+    <p class="footer-note">Gastos de Viaje 700v95. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
   </main>
 </body>
 </html>

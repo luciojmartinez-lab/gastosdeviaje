@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Importador de Gastos de Viaje
  * Description: Importa el Blog de Gastos de Viaje como un post de WordPress por día.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Lucio J Martínez
  */
 
@@ -146,6 +146,22 @@ final class Gastos_Viaje_Importer {
                 $content .= '<div class="gastos-viaje-entry gastos-viaje-expense">';
                 if ($meta !== '') $content .= '<p><small>' . esc_html($meta) . '</small></p>';
                 $content .= '<p><strong>' . esc_html($description ?: 'Gasto') . '</strong> — ' . esc_html($amount . ' ' . $currency) . '</p></div>';
+            } elseif ($type === 'punto') {
+                $latitude = isset($entry['latitude']) ? (float) $entry['latitude'] : null;
+                $longitude = isset($entry['longitude']) ? (float) $entry['longitude'] : null;
+                $map_url = esc_url_raw($entry['mapUrl'] ?? '');
+                if ($map_url === '' && $latitude !== null && $longitude !== null) {
+                    $map_url = 'https://www.openstreetmap.org/?mlat=' . rawurlencode((string) $latitude) . '&mlon=' . rawurlencode((string) $longitude) . '#map=18/' . rawurlencode((string) $latitude) . '/' . rawurlencode((string) $longitude);
+                }
+                $content .= '<section class="gastos-viaje-entry gastos-viaje-point">';
+                if ($meta !== '') $content .= '<p><small>' . esc_html($meta) . '</small></p>';
+                if ($description !== '') $content .= '<h2>' . esc_html($description) . '</h2>';
+                if ($latitude !== null && $longitude !== null) {
+                    $content .= '<p><strong>📍 ' . esc_html(number_format($latitude, 6, '.', '') . ', ' . number_format($longitude, 6, '.', '')) . '</strong>';
+                    if ($map_url !== '') $content .= ' · <a href="' . esc_url($map_url) . '">Abrir en OpenStreetMap</a>';
+                    $content .= '</p>';
+                }
+                $content .= '</section>';
             } elseif ($type === 'texto') {
                 $text = (string) ($entry['texto'] ?? '');
                 $content .= '<section class="gastos-viaje-entry gastos-viaje-text">';
