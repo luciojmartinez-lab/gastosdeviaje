@@ -1,7 +1,7 @@
 {
-  "name": "Gastos de Viaje",
-  "short_name": "Gastos",
-  "description": "Control local de viajes, gastos y divisas",
+  "name": "Cuaderno de Bitácora",
+  "short_name": "Bitácora",
+  "description": "Cuaderno local de viajes, blog, documentos y gastos",
   "lang": "es-ES",
   "start_url": "./index.html",
   "scope": "./",

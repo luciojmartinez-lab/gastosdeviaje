@@ -1812,12 +1812,13 @@ footer {
   }
 
   .blog-head {
-    align-items: flex-start;
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .blog-head .section-actions {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     width: 100%;
     align-self: flex-start;
   }

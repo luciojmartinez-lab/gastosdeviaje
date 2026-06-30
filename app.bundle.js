@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v96';
+const APP_VERSION = '700v97';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -3164,7 +3164,7 @@ function renderViajesHome() {
       const tr = document.createElement('tr');
       if (remaining !== null && remaining < 0) tr.className = 'warning-row';
       const documentCount = tripDocumentsFor(v.id).length;
-      tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><span class="trip-actions-inline"><button class="ghost" data-trip-gastos="${v.id}">Gastos</button> <button class="ghost" data-trip-resumen="${v.id}">Resumen</button> <button class="ghost" data-trip-documents="${v.id}" title="${documentCount} documento(s)">Documentos viaje</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button></span></td>`;
+      tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><span class="trip-actions-inline"><button class="ghost" data-trip-documents="${v.id}" title="${documentCount} documento(s)">Documentos viaje</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button></span></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
@@ -3292,6 +3292,7 @@ function renderGastosTabla() {
   applyExpenseViewMode();
   updateMobileClearFilters();
   const rows = filteredGastos();
+  if ($('#btn-last-expense')) $('#btn-last-expense').disabled = !rows.length;
   const byGroup = {};
   rows.forEach(g => {
     const key = `${g.fecha || ''}|${g.viajeId || ''}`;
@@ -5008,6 +5009,7 @@ function renderBlogPointsOverview(trip, entries = []) {
 function renderBlog() {
   const tbody = $('#tabla-blog tbody');
   if (!tbody) return;
+  if ($('#btn-blog-last')) $('#btn-blog-last').disabled = true;
   const trip = selectedBlogTrip();
   syncBlogAvailability();
   if ($('#blog-title')) $('#blog-title').textContent = trip ? `Blog · ${trip.nombre}` : 'Blog';
@@ -5023,6 +5025,7 @@ function renderBlog() {
   syncBlogFilterOptions(trip, entries);
   syncOpenBlogDays(trip, entries);
   const filteredEntries = filteredBlogEntries(entries);
+  if ($('#btn-blog-last')) $('#btn-blog-last').disabled = !filteredEntries.length;
   if ($('#blog-status')) {
     $('#blog-status').textContent = filteredEntries.length === entries.length
       ? `${entries.length} ${entries.length === 1 ? 'entrada' : 'entradas'} en este viaje.`
@@ -5991,13 +5994,43 @@ async function seedIfEmpty() {
   await seedDefaults();
 }
 
-function scrollToGastosStart() {
-  const view = $('#view-gastos');
+function scrollElementBelowHeader(element, behavior = 'smooth') {
+  if (!element) return;
+  const header = $('header');
+  const headerHeight = header ? header.offsetHeight : 0;
+  const top = Math.max(0, element.getBoundingClientRect().top + window.scrollY - headerHeight - 12);
+  window.scrollTo({ top, behavior });
+}
+
+function scrollToSectionStart(id) {
+  const view = $(`#view-${id}`);
   if (!view) return;
   requestAnimationFrame(() => {
-    const top = Math.max(0, view.getBoundingClientRect().top + window.scrollY - 12);
-    window.scrollTo({ top, behavior: 'smooth' });
+    scrollElementBelowHeader(view, 'auto');
   });
+}
+
+function scrollToLastExpense() {
+  const rows = $$('#tabla-gastos tbody .expense-row');
+  if (!rows.length) return;
+  scrollElementBelowHeader(rows[rows.length - 1]);
+}
+
+function scrollToLastBlogEntry() {
+  const rows = $$('#tabla-blog tbody .blog-day-entry');
+  if (!rows.length) return;
+  const target = rows[rows.length - 1];
+  const date = target.dataset.blogDayEntry || '';
+  if (target.hidden && date) {
+    openBlogDays.add(date);
+    renderBlog();
+    requestAnimationFrame(() => {
+      const refreshedRows = $$('#tabla-blog tbody .blog-day-entry');
+      scrollElementBelowHeader(refreshedRows[refreshedRows.length - 1]);
+    });
+    return;
+  }
+  scrollElementBelowHeader(target);
 }
 
 function setTab(id) {
@@ -6009,7 +6042,7 @@ function setTab(id) {
   });
   if (id === 'resumen') renderResumen();
   if (id === 'blog') renderBlog();
-  if (id === 'gastos') scrollToGastosStart();
+  if (id === 'gastos' || id === 'blog') scrollToSectionStart(id);
 }
 
 function applySelectedTrip(id) {
@@ -6670,7 +6703,7 @@ function printableDocument(section) {
   const sections = section === 'todo' ? ['gastos', 'resumen'] : [section];
   const body = sections.map(printableSectionHtml).filter(Boolean).join('<div class="page-break"></div>');
   const printClass = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'mobile-print' : 'desktop-print';
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gastos de Viaje - ${APP_VERSION}</title><style>
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cuaderno de Bitácora - ${APP_VERSION}</title><style>
     @page { size: A4; margin: 10mm; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1f2937; background: #fff; }
@@ -6929,7 +6962,9 @@ function bindEvents() {
   };
   $('#btn-open-add-gasto').onclick = openAddGasto;
   $('#btn-open-add-gasto-bottom').onclick = openAddGasto;
+  $('#btn-last-expense').onclick = scrollToLastExpense;
   $('#btn-blog-add').onclick = () => openBlogEntryDialog();
+  $('#btn-blog-last').onclick = scrollToLastBlogEntry;
   $('#btn-blog-pdf').onclick = printBlog;
   $('#btn-blog-add-bottom').onclick = () => openBlogEntryDialog();
   $('#btn-blog-pdf-bottom').onclick = printBlog;
@@ -7813,14 +7848,6 @@ function bindEvents() {
         return;
       } else if (target.dataset.delTransfer) {
         if (confirm('Eliminar esta transferencia y deshacer el movimiento de saldo?')) await delTransferencia(target.dataset.delTransfer);
-      } else if (target.dataset.tripGastos) {
-        applySelectedTrip(target.dataset.tripGastos);
-        setTab('gastos');
-        return;
-      } else if (target.dataset.tripResumen) {
-        applySelectedTrip(target.dataset.tripResumen);
-        setTab('resumen');
-        return;
       } else {
         return;
       }

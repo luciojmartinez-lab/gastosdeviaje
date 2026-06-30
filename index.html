@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Gastos de Viaje por Lucio J Martínez</title>
+  <title>Cuaderno de Bitácora por Lucio J Martínez</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=700v96">
+  <link rel="stylesheet" href="styles.css?v=700v97">
   <meta name="theme-color" content="#1976d2">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
 <body>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
-  <h1>Gastos de Viaje <span>por Lucio J Martínez</span></h1>
+  <h1>Cuaderno de Bitácora <span>por Lucio J Martínez</span></h1>
   <nav>
     <button id="tab-viajes" class="active">Viajes</button>
     <button id="tab-gastos">Gastos</button>
@@ -21,7 +21,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v96</div>
+  <div class="app-version">700v97</div>
 </header>
 
 <main>
@@ -48,6 +48,7 @@
         <h2>Gastos</h2>
         <div class="section-actions">
           <button class="btn" id="btn-open-add-gasto">Añadir gastos</button>
+          <button class="btn ghost" id="btn-last-expense" type="button">Último gasto</button>
           <button class="btn ghost mobile-only" id="btn-open-filters">Filtros</button>
           <select class="mobile-only compact-select view-mode-control" id="f-view-mobile" aria-label="Vista de gastos"><option value="table">Tabla</option><option value="cards">Tarjetas</option></select>
           <button class="btn ghost mobile-only" id="f-clear-mobile" style="display:none">Quitar filtros</button>
@@ -101,6 +102,7 @@
         </div>
         <div class="section-actions">
           <button class="btn" id="btn-blog-add" type="button">Añadir entrada</button>
+          <button class="btn ghost" id="btn-blog-last" type="button">Última entrada</button>
           <button class="btn ghost" id="btn-blog-pdf" type="button">Ver en PDF</button>
           <button class="btn ghost" id="btn-blog-wordpress" type="button">WordPress</button>
         </div>
@@ -764,10 +766,10 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v96"></script>
+<script src="app.bundle.js?v=700v97"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v96';
+    const pageVersion = '700v97';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -794,7 +796,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v96', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v97', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
