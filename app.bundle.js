@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v97';
+const APP_VERSION = '700v98';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -32,6 +32,7 @@ let blogSpeechRecognition = null;
 let blogDictationSession = null;
 let openBlogDays = new Set();
 let openBlogDaysScope = '';
+let backupCloudUploadInProgress = false;
 let blogFilterTripId = null;
 const blogPointPickerState = {
   centerLat: 40.4168,
@@ -6353,11 +6354,11 @@ function renderSyncComparison(metadata) {
   if (uploadButton) uploadButton.style.display = !metadata || (hasMeaningfulLocalData() && localTime > cloudTime) ? '' : 'none';
 
   if (!metadata) {
-    setSyncMessage('No hay una versión en la nube. Puedes guardar la versión local.');
+    setSyncMessage('No hay una versión en la nube. Puedes guardar la versión local; la subida puede tardar un poco si contiene fotos o documentos.');
   } else if (cloudIsPreferred) {
     setSyncMessage('La versión de la nube es más reciente. ¿Quieres actualizar este dispositivo?');
   } else if (localTime > cloudTime) {
-    setSyncMessage('La versión local es más reciente. ¿Quieres guardarla en la nube?');
+    setSyncMessage('La versión local es más reciente. ¿Quieres guardarla en la nube? La subida puede tardar un poco si contiene fotos o documentos.');
   } else {
     setSyncMessage('La versión local y la versión en la nube están sincronizadas.');
   }
@@ -6456,7 +6457,7 @@ async function performCloudDownload() {
 }
 
 async function performCloudUpload() {
-  setSyncMessage('Guardando la versión local...');
+  setSyncMessage('Subiendo copia a la nube… Puede tardar un poco si contiene fotos o documentos.');
   await createSyncBackup('before-sync');
   const saved = await uploadCloudSnapshot();
   await createSyncBackup('after-sync');
@@ -6634,6 +6635,21 @@ function showBackupResultSoon(title, detail = '') {
   setTimeout(() => showBackupResult(title, detail), 900);
 }
 
+function setBackupUploadState(active) {
+  backupCloudUploadInProgress = Boolean(active);
+  const status = $('#backup-upload-status');
+  if (status) status.hidden = !backupCloudUploadInProgress;
+  const downloadButton = $('#backup-download');
+  const closeButton = $('#backup-close');
+  if (downloadButton) downloadButton.disabled = backupCloudUploadInProgress;
+  if (closeButton) closeButton.disabled = backupCloudUploadInProgress;
+  const dialog = $('#backup-dialog');
+  if (dialog) {
+    if (backupCloudUploadInProgress) dialog.setAttribute('aria-busy', 'true');
+    else dialog.removeAttribute('aria-busy');
+  }
+}
+
 async function handleBackupDownload() {
   try {
     const result = await prepareJsonBackup({
@@ -6653,7 +6669,8 @@ async function handleBackupDownload() {
         : `Copia local creada: ${filename}`;
     setMessage('#msg-backup', localDetail);
     setMessage('#msg-export', localDetail);
-    if (confirm('¿Quieres guardar también esta copia en la nube para que esté disponible al sincronizar?')) {
+    if (confirm('La subida a la nube puede tardar un poco, especialmente si la copia contiene fotos o documentos. Mientras se realiza verás el aviso “Subiendo copia a la nube…”. ¿Quieres continuar?')) {
+      setBackupUploadState(true);
       try {
         const saved = await uploadCloudSnapshot({ backupData: data, backupName: filename });
         const stats = saved.attachmentStats || {};
@@ -6663,6 +6680,8 @@ async function handleBackupDownload() {
         showBackupResult('Copias creadas', `${localDetail}. También se guardó una copia en Netlify.${detail}`);
       } catch (cloudError) {
         showBackupResult('Copia local creada', `${localDetail}. No se pudo guardar la copia en la nube: ${cloudError.message || cloudError}`);
+      } finally {
+        setBackupUploadState(false);
       }
     } else showBackupResultSoon('Copia local creada', localDetail);
   } catch (err) {
@@ -7882,6 +7901,9 @@ function bindEvents() {
     event.preventDefault();
   };
   $('#backup-close').onclick = closeBackupDialog;
+  $('#backup-dialog').oncancel = event => {
+    if (backupCloudUploadInProgress) event.preventDefault();
+  };
   $('#backup-exit').onclick = closeBackupResultDialog;
   $('#backup-export-scope').onchange = () => {
     syncBackupExportTripVisibility();
