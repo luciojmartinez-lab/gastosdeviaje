@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v102';
+const APP_VERSION = '700v103';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1347,7 +1347,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v102');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v103');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -7820,11 +7820,16 @@ function bindEvents() {
       return;
     }
     if (!(target instanceof HTMLSelectElement) || !target.value) return;
+    const gastoActionId = target.dataset.gastoAction;
+    const tripConfigActionId = target.dataset.tripConfigAction;
+    // Este controlador pertenece solo a los menús "Acciones". No debe vaciar
+    // los desplegables normales de los formularios (categoría, ciudad, etc.).
+    if (!gastoActionId && !tripConfigActionId) return;
     try {
       const action = target.value;
       target.value = '';
-      if (target.dataset.gastoAction) await handleGastoAction(target.dataset.gastoAction, action);
-      else if (target.dataset.tripConfigAction) await handleTripConfigAction(target.dataset.tripConfigAction, action);
+      if (gastoActionId) await handleGastoAction(gastoActionId, action);
+      else await handleTripConfigAction(tripConfigActionId, action);
     } catch (err) {
       alert(err.message || String(err));
     }
