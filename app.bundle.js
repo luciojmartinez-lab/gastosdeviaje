@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v100';
+const APP_VERSION = '700v101';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1135,7 +1135,7 @@ function ticketCategoryMemory() {
 
 function rememberTicketCategory(prefix) {
   const result = pendingTicketOcr[prefix];
-  if (!result?.merchant) return;
+  if (!result?.merchant || !result.categoryEdited) return;
   const key = normalizeTicketMerchantKey(result.merchant);
   if (!key) return;
   const catId = Number($(`#${prefix}-cat`)?.value);
@@ -1149,6 +1149,7 @@ function rememberTicketCategory(prefix) {
     catName: category.nombre,
     subcatId: subcategory ? subcatId : null,
     subcatName: subcategory?.nombre || '',
+    confirmed: true,
     updatedAt: new Date().toISOString()
   };
   localStorage.setItem(TICKET_OCR_LEARNING_KEY, JSON.stringify(memory));
@@ -1163,18 +1164,26 @@ function normalizedTicketSearch(value) {
 
 function findCategoryByNames(names, parentId = null) {
   const wanted = names.map(normalizedTicketSearch);
-  return state.categorias.find(item => {
+  const candidates = state.categorias.filter(item => {
     if (parentId === null && item.parentId) return false;
     if (parentId !== null && Number(item.parentId) !== Number(parentId)) return false;
-    const name = normalizedTicketSearch(item.nombre);
-    return wanted.some(value => name === value || name.includes(value) || value.includes(name));
-  }) || null;
+    return true;
+  });
+  for (const value of wanted) {
+    const exact = candidates.find(item => normalizedTicketSearch(item.nombre) === value);
+    if (exact) return exact;
+  }
+  for (const value of wanted) {
+    const partial = candidates.find(item => normalizedTicketSearch(item.nombre).startsWith(value));
+    if (partial) return partial;
+  }
+  return null;
 }
 
 function learnedTicketCategory(merchant) {
   const key = normalizeTicketMerchantKey(merchant);
   const saved = ticketCategoryMemory()[key];
-  if (!saved) return null;
+  if (!saved?.confirmed) return null;
   const category = state.categorias.find(item => !item.parentId && (
     Number(item.id) === Number(saved.catId)
     || normalizedTicketSearch(item.nombre) === normalizedTicketSearch(saved.catName)
@@ -1192,7 +1201,7 @@ function suggestTicketCategory(text, merchant) {
   if (learned) return learned;
   const haystack = normalizedTicketSearch(`${merchant || ''}\n${text || ''}`);
   const rules = [
-    { words: ['mercadona', 'carrefour', 'alcampo', 'lidl', 'aldi', 'supermercado', 'hipermercado', 'alimentacion'], categories: ['Comida', 'Alimentación'], subcategories: ['Super', 'Supermercado'] },
+    { words: ['mercadona', 'carrefour', 'alcampo', 'lidl', 'aldi', 'supermercado', 'hipermercado', 'alimentacion'], categories: ['Comida', 'Alimentación'], subcategories: ['Supermercado', 'Super'] },
     { words: ['restaurante', 'cafeteria', 'cafe ', 'bar ', 'tapas', 'menu', 'hamburgues', 'pizzeria', 'comida'], categories: ['Comida', 'Alimentación'], subcategories: ['Restaurante', 'Bar', 'Cafetería'] },
     { words: ['renfe', 'iryo', 'ouigo', 'ferrocarril', 'tren'], categories: ['Transporte'], subcategories: ['Tren'] },
     { words: ['taxi', 'uber', 'cabify'], categories: ['Transporte'], subcategories: ['Taxi'] },
@@ -1273,7 +1282,8 @@ function applyTicketOcrFields(prefix, result) {
   }
   pendingTicketOcr[prefix] = {
     merchant: fields.merchant || '',
-    text: result.text || ''
+    text: result.text || '',
+    categoryEdited: false
   };
   const found = [
     fields.date ? 'fecha' : '',
@@ -1283,7 +1293,13 @@ function applyTicketOcrFields(prefix, result) {
     suggestion?.category ? `categoría${suggestion.learned ? ' aprendida' : ''}` : ''
   ].filter(Boolean);
   if (!found.length) throw new Error('No se han podido reconocer datos claros en este ticket. Puedes introducirlos manualmente.');
-  return `Detectado: ${found.join(', ')}. Revisa los datos antes de guardar.${result.pdfFirstPageOnly ? ' En PDF se ha leído la primera página.' : ''}`;
+  return `Detectado: ${found.join(', ')}. Son propuestas: puedes cambiar categoría y subcategoría antes de guardar.${result.pdfFirstPageOnly ? ' En PDF se ha leído la primera página.' : ''}`;
+}
+
+function markTicketCategoryEdited(prefix) {
+  if (!pendingTicketOcr[prefix]) return;
+  pendingTicketOcr[prefix].categoryEdited = true;
+  setTicketOcrStatus(prefix, 'Categoría modificada manualmente. Al guardar se recordará esta corrección para el establecimiento.');
 }
 
 async function readExpenseTicket(prefix) {
@@ -1298,7 +1314,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v100');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v101');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3073,7 +3089,7 @@ function renderCategorySelectors() {
 function renderSubcategories() {
   const catId = Number($('#g-cat').value);
   const options = state.categorias
-    .filter(c => c.parentId === catId)
+    .filter(c => Number(c.parentId) === catId)
     .map(c => ({ value: String(c.id), label: c.nombre }));
   fillSelect('#g-subcat', options, '(sin subcategoría)');
 }
@@ -3093,7 +3109,7 @@ function renderFilterSubcategories() {
 function renderEditSubcategories() {
   const catId = Number($('#edit-gasto-cat').value);
   const options = state.categorias
-    .filter(c => c.parentId === catId)
+    .filter(c => Number(c.parentId) === catId)
     .map(c => ({ value: String(c.id), label: c.nombre }));
   fillSelect('#edit-gasto-subcat', options, '(sin subcategoría)');
 }
@@ -7307,8 +7323,16 @@ function bindEvents() {
   $('#f-view-mobile').onchange = () => {
     setExpenseViewMode($('#f-view-mobile').value);
   };
-  $('#g-cat').onchange = renderSubcategories;
-  $('#edit-gasto-cat').onchange = renderEditSubcategories;
+  $('#g-cat').onchange = () => {
+    renderSubcategories();
+    markTicketCategoryEdited('g');
+  };
+  $('#g-subcat').onchange = () => markTicketCategoryEdited('g');
+  $('#edit-gasto-cat').onchange = () => {
+    renderEditSubcategories();
+    markTicketCategoryEdited('edit-gasto');
+  };
+  $('#edit-gasto-subcat').onchange = () => markTicketCategoryEdited('edit-gasto');
   $('#g-ticket').onchange = () => syncExpenseTicketSelection('g', 'file');
   $('#g-ticket-camera').onchange = () => syncExpenseTicketSelection('g', 'camera');
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
