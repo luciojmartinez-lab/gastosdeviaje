@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v104';
+const APP_VERSION = '700v105';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1202,7 +1202,7 @@ function suggestTicketCategory(text, merchant) {
   const haystack = normalizedTicketSearch(`${merchant || ''}\n${text || ''}`);
   const rules = [
     { words: ['mercadona', 'carrefour', 'alcampo', 'lidl', 'aldi', 'supermercado', 'hipermercado', 'alimentacion'], categories: ['Comida', 'Alimentación'], subcategories: ['Supermercado', 'Super'] },
-    { words: ['restaurante', 'cafeteria', 'cafe ', 'bar ', 'tapas', 'menu', 'hamburgues', 'pizzeria', 'comida'], categories: ['Comida', 'Alimentación'], subcategories: ['Restaurante', 'Bar', 'Cafetería'] },
+    { words: ['restaurante', 'cafeteria', 'cafe ', 'bar ', 'heladeria', 'helados', 'tapas', 'menu', 'hamburgues', 'pizzeria', 'comida'], categories: ['Comida', 'Alimentación'], subcategories: ['Heladería', 'Cafetería', 'Bar', 'Restaurante'] },
     { words: ['renfe', 'iryo', 'ouigo', 'ferrocarril', 'tren'], categories: ['Transporte'], subcategories: ['Tren'] },
     { words: ['taxi', 'uber', 'cabify'], categories: ['Transporte'], subcategories: ['Taxi'] },
     { words: ['metro', 'autobus', 'bus ', 'transporte urbano'], categories: ['Transporte'], subcategories: ['Metro', 'Autobús', 'Bus'] },
@@ -1347,7 +1347,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v104');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v105');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
