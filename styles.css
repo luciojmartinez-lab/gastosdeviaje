@@ -655,6 +655,16 @@ input[type="checkbox"] {
   margin: 0;
 }
 
+.photo-map-option {
+  width: fit-content;
+  margin-top: 7px;
+  padding: 7px 9px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -1722,6 +1732,112 @@ tfoot td { font-weight: 700; }
 
 .map-marker-point circle {
   fill: #7c3aed;
+}
+
+.map-marker-photo {
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.map-marker-photo > circle:first-child {
+  fill: #0f766e;
+  stroke-width: 2;
+}
+
+.map-marker .map-marker-photo-plus {
+  fill: #fff;
+  stroke: none;
+  font-size: 11px;
+  font-weight: 900;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.map-marker .map-marker-photo-badge {
+  fill: #f97316;
+  stroke: #fff;
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.map-marker .map-marker-photo-count {
+  fill: #fff;
+  stroke: none;
+  font-size: 7px;
+  font-weight: 900;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.map-photo-popup {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 6;
+  width: min(310px, calc(100% - 20px));
+  max-height: calc(100% - 40px);
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #fffffff2;
+  box-shadow: 0 8px 26px #0f172a40;
+  overflow: auto;
+  cursor: default;
+  touch-action: pan-y;
+  user-select: text;
+}
+
+.map-photo-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.map-photo-popup-list {
+  display: grid;
+  gap: 8px;
+}
+
+.map-photo-popup-item {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+}
+
+.map-photo-popup-item + .map-photo-popup-item {
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.map-photo-thumbnail {
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: #e2e8f0;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.map-photo-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.map-photo-popup-item strong,
+.map-photo-popup-item span {
+  display: block;
+}
+
+.map-photo-popup-item span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .map-marker text {

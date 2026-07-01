@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v105';
+const APP_VERSION = '700v106';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -28,6 +28,9 @@ let activeBlogEntryId = null;
 let activeBlogEntryType = '';
 let activeBlogImage = null;
 let activeBlogGalleryImages = [];
+let imageLocationModulePromise = null;
+const imageGpsCache = new WeakMap();
+const tripMapPhotoLookup = new Map();
 let blogSpeechRecognition = null;
 let blogDictationSession = null;
 let openBlogDays = new Set();
@@ -52,6 +55,7 @@ const tripMapState = {
   panX: 0,
   panY: 0,
   showPlanned: true,
+  showPhotos: true,
   destinationOnly: false,
   printMode: false
 };
@@ -395,9 +399,38 @@ function compareExpensesChronologically(a, b) {
     || (a.createdAt || '').localeCompare(b.createdAt || '')
     || Number(a.id || 0) - Number(b.id || 0);
 }
+function storedImageCoordinate(value, min, max) {
+  if (value == null || String(value).trim() === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= min && number <= max ? number : null;
+}
+function normalizeStoredImageRecord(image = {}) {
+  const latitude = storedImageCoordinate(image.latitude ?? image.lat, -90, 90);
+  const longitude = storedImageCoordinate(image.longitude ?? image.lng ?? image.lon, -180, 180);
+  return {
+    id: image.id || '',
+    name: String(image.name || image.imageName || 'imagen.jpg'),
+    type: String(image.type || image.imageType || 'image/jpeg'),
+    size: Math.max(0, Number(image.size || image.imageSize) || 0),
+    data: image.data || image.imageData || '',
+    fileRef: image.fileRef || '',
+    width: Math.max(0, Number(image.width || image.imageWidth) || 0),
+    height: Math.max(0, Number(image.height || image.imageHeight) || 0),
+    latitude,
+    longitude,
+    mapEnabled: latitude != null && longitude != null && image.mapEnabled === true,
+    createdAt: image.createdAt || ''
+  };
+}
+function storedImageCoordinates(image) {
+  const normalized = normalizeStoredImageRecord(image);
+  return normalized.latitude == null || normalized.longitude == null
+    ? null
+    : { latitude: normalized.latitude, longitude: normalized.longitude };
+}
 function expenseExtraImages(gasto) {
   return Array.isArray(gasto && gasto.extraImages)
-    ? gasto.extraImages.filter(image => image && (image.data || image.fileRef))
+    ? gasto.extraImages.map(normalizeStoredImageRecord).filter(image => image.data || image.fileRef)
     : [];
 }
 function expenseAttachmentCount(gasto) {
@@ -761,6 +794,7 @@ function syncTripSelectsFromSelection() {
 function setSelectedTrips(ids) {
   state.selectedViajeIds = [...new Set((ids || []).map(Number).filter(Boolean))];
   tripMapState.showPlanned = true;
+  tripMapState.showPhotos = true;
   tripMapState.destinationOnly = false;
   resetTripMapView();
   syncTripSelectsFromSelection();
@@ -1026,6 +1060,21 @@ function selectedFileInput(fileSelector, cameraSelector) {
   return $(fileSelector);
 }
 
+async function imageGpsForFile(file) {
+  if (!file) return null;
+  if (imageGpsCache.has(file)) return imageGpsCache.get(file);
+  let point = null;
+  try {
+    imageLocationModulePromise ||= import('./image-location.js?v=700v106');
+    const locationReader = await imageLocationModulePromise;
+    point = await locationReader.extractImageGps(file);
+  } catch (error) {
+    console.warn('No se pudo leer la ubicación EXIF de la imagen', error);
+  }
+  imageGpsCache.set(file, point);
+  return point;
+}
+
 function clearExpenseTicketSelection(prefix) {
   const file = $(`#${prefix}-ticket`);
   const camera = $(`#${prefix}-ticket-camera`);
@@ -1046,7 +1095,9 @@ function expenseExtraImageInputs(prefix) {
   return {
     file: $(`#${prefix}-extra-images`),
     camera: $(`#${prefix}-extra-images-camera`),
-    status: $(`#${prefix}-extra-images-selected`)
+    status: $(`#${prefix}-extra-images-selected`),
+    mapOption: $(`#${prefix}-extra-images-map-option`),
+    mapCheckbox: $(`#${prefix}-extra-images-map`)
   };
 }
 
@@ -1067,15 +1118,26 @@ function clearExpenseExtraImageSelection(prefix) {
       ? 'Ninguna imagen nueva seleccionada.'
       : 'Ninguna imagen adicional seleccionada.';
   }
+  if (inputs.mapOption) inputs.mapOption.hidden = true;
+  if (inputs.mapCheckbox) inputs.mapCheckbox.checked = false;
 }
 
-function syncExpenseExtraImageSelection(prefix) {
+async function syncExpenseExtraImageSelection(prefix) {
   const inputs = expenseExtraImageInputs(prefix);
   const files = selectedExpenseExtraImageFiles(prefix);
   if (!inputs.status) return;
-  inputs.status.textContent = files.length
-    ? `${files.length} ${files.length === 1 ? 'imagen seleccionada' : 'imágenes seleccionadas'}.`
-    : (prefix === 'edit-gasto' ? 'Ninguna imagen nueva seleccionada.' : 'Ninguna imagen adicional seleccionada.');
+  if (!files.length) {
+    inputs.status.textContent = prefix === 'edit-gasto' ? 'Ninguna imagen nueva seleccionada.' : 'Ninguna imagen adicional seleccionada.';
+    if (inputs.mapOption) inputs.mapOption.hidden = true;
+    if (inputs.mapCheckbox) inputs.mapCheckbox.checked = false;
+    return;
+  }
+  inputs.status.textContent = `Comprobando ubicación de ${files.length} ${files.length === 1 ? 'imagen' : 'imágenes'}...`;
+  const points = await Promise.all(files.map(imageGpsForFile));
+  const locatedCount = points.filter(Boolean).length;
+  inputs.status.textContent = `${files.length} ${files.length === 1 ? 'imagen seleccionada' : 'imágenes seleccionadas'} · ${locatedCount} con ubicación.`;
+  if (inputs.mapOption) inputs.mapOption.hidden = locatedCount === 0;
+  if (inputs.mapCheckbox && locatedCount === 0) inputs.mapCheckbox.checked = false;
 }
 
 async function readSelectedExpenseExtraImages(prefix) {
@@ -1090,6 +1152,7 @@ async function readSelectedExpenseExtraImages(prefix) {
     const image = await compressBlogImage(files[index]);
     images.push({
       ...image,
+      mapEnabled: Boolean(inputs.mapCheckbox && inputs.mapCheckbox.checked && storedImageCoordinates(image)),
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
       createdAt: new Date().toISOString()
     });
@@ -1347,7 +1410,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v105');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v106');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -1778,7 +1841,13 @@ function renderEditExpenseImages(gasto) {
   if (!container) return;
   const images = expenseExtraImages(gasto);
   container.innerHTML = images.length
-    ? `<p class="small"><strong>Imágenes actuales</strong></p><ul class="expense-current-image-list">${images.map((image, index) => `<li><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir ${escapeHtml(image.name || `imagen ${index + 1}`)}</button><label><input type="checkbox" data-remove-expense-image="${index}"> Quitar</label></li>`).join('')}</ul>`
+    ? `<p class="small"><strong>Imágenes actuales</strong></p><ul class="expense-current-image-list">${images.map((image, index) => {
+      const point = storedImageCoordinates(image);
+      const mapControl = point
+        ? `<label><input type="checkbox" data-map-expense-image="${index}"${image.mapEnabled ? ' checked' : ''}> Mapa</label>`
+        : '<span class="small">Sin GPS</span>';
+      return `<li><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir ${escapeHtml(image.name || `imagen ${index + 1}`)}</button>${mapControl}<label><input type="checkbox" data-remove-expense-image="${index}"> Quitar</label></li>`;
+    }).join('')}</ul>`
     : '<p class="small">No hay imágenes adicionales.</p>';
 }
 
@@ -2423,17 +2492,7 @@ async function delTripDocument(id) {
 }
 
 function normalizeBlogImageRecord(image = {}) {
-  return {
-    id: image.id || '',
-    name: String(image.name || image.imageName || 'imagen.jpg'),
-    type: String(image.type || image.imageType || 'image/jpeg'),
-    size: Math.max(0, Number(image.size || image.imageSize) || 0),
-    data: image.data || image.imageData || '',
-    fileRef: image.fileRef || '',
-    width: Math.max(0, Number(image.width || image.imageWidth) || 0),
-    height: Math.max(0, Number(image.height || image.imageHeight) || 0),
-    createdAt: image.createdAt || ''
-  };
+  return normalizeStoredImageRecord(image);
 }
 
 function blogGalleryImages(entry) {
@@ -2446,7 +2505,7 @@ function blogEntryImages(entry) {
   const images = [];
   if (entry && (entry.imageData || entry.imageRef)) {
     images.push(normalizeBlogImageRecord({
-      id: `primary-${entry.id || ''}`,
+      id: entry.imageId || `primary-${entry.id || ''}`,
       name: entry.imageName,
       type: entry.imageType,
       size: entry.imageSize,
@@ -2454,6 +2513,9 @@ function blogEntryImages(entry) {
       fileRef: entry.imageRef,
       width: entry.imageWidth,
       height: entry.imageHeight,
+      latitude: entry.imageLatitude,
+      longitude: entry.imageLongitude,
+      mapEnabled: entry.imageMapEnabled,
       createdAt: entry.createdAt
     }));
   }
@@ -2520,6 +2582,10 @@ async function addBlogEntry(data) {
     imageData: type === 'imagen' ? data.imageData : '',
     imageWidth: type === 'imagen' ? Math.max(0, Number(data.imageWidth) || 0) : 0,
     imageHeight: type === 'imagen' ? Math.max(0, Number(data.imageHeight) || 0) : 0,
+    imageId: type === 'imagen' ? String(data.imageId || '') : '',
+    imageLatitude: type === 'imagen' ? storedImageCoordinate(data.imageLatitude, -90, 90) : null,
+    imageLongitude: type === 'imagen' ? storedImageCoordinate(data.imageLongitude, -180, 180) : null,
+    imageMapEnabled: type === 'imagen' && data.imageMapEnabled === true,
     galleryImages,
     sourceGastoId: type === 'gasto' && data.sourceGastoId ? Number(data.sourceGastoId) : null,
     gastoImporte: type === 'gasto' ? numberValue(data.gastoImporte) : 0,
@@ -2568,6 +2634,10 @@ function normalizeImportedBlogEntry(entry = {}) {
     imageData: entry.imageData || '',
     imageWidth: Math.max(0, Number(entry.imageWidth) || 0),
     imageHeight: Math.max(0, Number(entry.imageHeight) || 0),
+    imageId: String(entry.imageId || ''),
+    imageLatitude: type === 'imagen' ? storedImageCoordinate(entry.imageLatitude, -90, 90) : null,
+    imageLongitude: type === 'imagen' ? storedImageCoordinate(entry.imageLongitude, -180, 180) : null,
+    imageMapEnabled: type === 'imagen' && entry.imageMapEnabled === true,
     galleryImages: Array.isArray(entry.galleryImages)
       ? entry.galleryImages.map(normalizeBlogImageRecord).filter(image => image.data || image.fileRef)
       : [],
@@ -4167,6 +4237,89 @@ async function saveRouteDialog() {
   renderMapAfterTripChange();
 }
 
+function photoMapRecordKey(image, fallback) {
+  return String(image && image.id || fallback || '').trim();
+}
+
+function photoMapMatchesCountry(record, paisId) {
+  if (!paisId) return true;
+  const city = state.lugares.find(item => Number(item.id) === Number(record.ciudadId));
+  return Number(record.paisId || (city && city.parentId)) === Number(paisId);
+}
+
+function photoMapRecordsForScope(scopedTripIds, paisId) {
+  const records = [];
+  const seen = new Set();
+  const append = record => {
+    if (!record || !record.image || !record.image.mapEnabled) return;
+    const point = storedImageCoordinates(record.image);
+    if (!point || !photoMapMatchesCountry(record, paisId)) return;
+    const key = photoMapRecordKey(record.image, record.fallbackKey);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    records.push({
+      ...record,
+      key,
+      latitude: point.latitude,
+      longitude: point.longitude
+    });
+  };
+
+  state.blogEntries
+    .filter(entry => scopedTripIds.has(Number(entry.viajeId)))
+    .forEach(entry => {
+      blogEntryImages(entry).forEach((image, index) => append({
+        image,
+        fallbackKey: `blog-${entry.id}-${index}`,
+        descripcion: entry.descripcion || 'Foto',
+        fecha: entry.fecha || '',
+        hora: entry.hora || '',
+        paisId: entry.paisId || null,
+        ciudadId: entry.ciudadId || null,
+        viajeId: entry.viajeId,
+        source: 'blog'
+      }));
+    });
+
+  state.gastos
+    .filter(gasto => scopedTripIds.has(Number(gasto.viajeId)))
+    .forEach(gasto => {
+      expenseExtraImages(gasto).forEach((image, index) => append({
+        image,
+        fallbackKey: `gasto-${gasto.id}-${index}`,
+        descripcion: gasto.desc || 'Foto del gasto',
+        fecha: gasto.fecha || '',
+        hora: expenseTimeValue(gasto),
+        paisId: gasto.paisId || null,
+        ciudadId: gasto.ciudadId || null,
+        viajeId: gasto.viajeId,
+        source: 'gasto'
+      }));
+    });
+  return records;
+}
+
+function photoMapItems(records) {
+  return records.map(record => ({
+    ciudad: {
+      id: `photo-point-${record.key}`,
+      nombre: record.descripcion || 'Foto',
+      lat: record.latitude,
+      lng: record.longitude
+    },
+    pais: state.lugares.find(item => Number(item.id) === Number(record.paisId)) || null,
+    firstDate: record.fecha || '',
+    firstOrder: Number.POSITIVE_INFINITY,
+    routeOrder: Number.POSITIVE_INFINITY,
+    count: 0,
+    totalEur: 0,
+    configuredOnly: true,
+    plannedOnly: false,
+    photoPoint: true,
+    photoRecord: record
+  }));
+}
+
 function tripMapItemsForCurrentScope() {
   const paisId = Number($('#map-pais') ? $('#map-pais').value : 0);
   const gastos = gastosForSelectorTripScope('#r-viaje');
@@ -4203,7 +4356,9 @@ function tripMapItemsForCurrentScope() {
         pointEntry: entry
       };
     });
-  const mapItems = [...cities, ...points];
+  const allPhotoRecords = photoMapRecordsForScope(scopedTripIds, paisId);
+  const photos = tripMapState.showPhotos ? photoMapItems(allPhotoRecords) : [];
+  const mapItems = [...cities, ...points, ...photos];
   return {
     paisId,
     cities: mapItems,
@@ -4211,7 +4366,9 @@ function tripMapItemsForCurrentScope() {
     shouldDrawRoute: scopedTripIds.size <= 1,
     destinationOnlyAvailable,
     destinationOnlyApplied,
-    pointCount: points.length
+    pointCount: points.length,
+    photoCount: photos.length,
+    availablePhotoCount: allPhotoRecords.length
   };
 }
 
@@ -4285,11 +4442,48 @@ function zoomTripMapAtClient(frame, clientX, clientY, delta = 1) {
 function zoomTripMapAt(event) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
-  if (target.closest('.map-controls')) return;
+  if (target.closest('.map-controls, .map-photo-popup')) return;
   const frame = target.closest('.trip-map-frame');
   if (!frame) return;
   event.preventDefault();
   zoomTripMapAtClient(frame, event.clientX, event.clientY, 1);
+}
+
+function groupNearbyPhotoMapItems(items, maximumDistance = 30, maximumScreenDistance = 18) {
+  const groups = [];
+  items.forEach(item => {
+    const group = groups.find(existing =>
+      geographicDistanceMeters(existing[0].photoRecord, item.photoRecord) < maximumDistance
+      || Math.hypot(existing[0].point.x - item.point.x, existing[0].point.y - item.point.y) < maximumScreenDistance
+    );
+    if (group) group.push(item);
+    else groups.push([item]);
+  });
+  return groups;
+}
+
+function closeTripMapPhotoPopup() {
+  const popup = $('#trip-map-photo-popup');
+  if (popup) popup.hidden = true;
+}
+
+function openTripMapPhotoPopup(encodedKeys) {
+  const popup = $('#trip-map-photo-popup');
+  if (!popup) return;
+  const keys = decodeURIComponent(String(encodedKeys || '')).split('|').filter(Boolean);
+  const records = keys.map(key => tripMapPhotoLookup.get(key)).filter(Boolean);
+  if (!records.length) return;
+  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${records.length === 1 ? 'Foto' : `${records.length} fotos`}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-photo-popup-list">${records.map(record => `<article class="map-photo-popup-item"><button type="button" class="map-photo-thumbnail" data-open-map-photo="${escapeHtml(record.key)}" aria-label="Abrir foto"><img src="${escapeHtml(record.image.data || '')}" alt="${escapeHtml(record.descripcion || 'Foto')}"></button><div><strong>${escapeHtml(record.descripcion || 'Foto')}</strong><span>${escapeHtml(summaryDocumentDate(record.fecha, true))}${record.hora ? ` · ${escapeHtml(record.hora)}` : ''}</span></div></article>`).join('')}</div>`;
+  popup.hidden = false;
+}
+
+function openTripMapPhoto(key) {
+  const record = tripMapPhotoLookup.get(String(key || ''));
+  if (!record || !record.image || !record.image.data) throw new Error('No se encuentra la foto');
+  const blob = dataUrlToBlob(record.image.data, record.image.type || 'image/jpeg');
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function renderTripMap() {
@@ -4302,7 +4496,9 @@ function renderTripMap() {
     withCoords,
     shouldDrawRoute,
     destinationOnlyAvailable,
-    destinationOnlyApplied
+    destinationOnlyApplied,
+    photoCount,
+    availablePhotoCount
   } = tripMapItemsForCurrentScope();
   const missing = cities.filter(item => !lugarHasCoords(item.ciudad));
   if (!cities.length) {
@@ -4364,13 +4560,15 @@ function renderTripMap() {
     };
   };
   const projectedItems = withCoords.map((item, index) => ({ ...item, index, point: project(item) }));
+  const standardItems = projectedItems.filter(item => !item.photoPoint);
+  const photoItems = projectedItems.filter(item => item.photoPoint);
   const pointGroups = new Map();
-  projectedItems.forEach(item => {
+  standardItems.forEach(item => {
     const key = `${Math.round(item.point.x / 4)}:${Math.round(item.point.y / 4)}`;
     if (!pointGroups.has(key)) pointGroups.set(key, []);
     pointGroups.get(key).push(item);
   });
-  const routeItems = projectedItems.filter(item => !item.configuredOnly);
+  const routeItems = standardItems.filter(item => !item.configuredOnly);
   const routePoints = routeItems.map(item => item.point).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const markers = [...pointGroups.values()].map(group => {
     const item = group[0];
@@ -4395,12 +4593,26 @@ function renderTripMap() {
         : `${cityNames.join(' / ')} · sin gastos en este viaje`);
     return `<g class="map-marker${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="8"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text><text x="${labelX.toFixed(1)}" y="${(p.y - 10).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(markerLabel)}</text><title>${escapeHtml(title)}</title></g>`;
   }).join('');
+  tripMapPhotoLookup.clear();
+  photoItems.forEach(item => tripMapPhotoLookup.set(item.photoRecord.key, item.photoRecord));
+  const photoMarkers = groupNearbyPhotoMapItems(photoItems).map(group => {
+    const x = group.reduce((sum, item) => sum + item.point.x, 0) / group.length;
+    const y = group.reduce((sum, item) => sum + item.point.y, 0) / group.length;
+    const records = group.map(item => item.photoRecord);
+    const keys = encodeURIComponent(records.map(record => record.key).join('|'));
+    const title = records.map(record => `${record.descripcion || 'Foto'} · ${summaryDocumentDate(record.fecha, true)} ${record.hora || ''}`.trim()).join('\n');
+    const badge = records.length > 1
+      ? `<circle class="map-marker-photo-badge" cx="${(x + 7).toFixed(1)}" cy="${(y - 7).toFixed(1)}" r="6"></circle><text class="map-marker-photo-count" x="${(x + 7).toFixed(1)}" y="${(y - 4.8).toFixed(1)}">${records.length}</text>`
+      : '';
+    return `<g class="map-marker map-marker-photo" role="button" tabindex="0" data-map-photo-keys="${keys}" aria-label="${escapeHtml(records.length === 1 ? records[0].descripcion || 'Foto' : `${records.length} fotos`)}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="6"></circle><text class="map-marker-photo-plus" x="${x.toFixed(1)}" y="${(y + 3.6).toFixed(1)}">+</text>${badge}<title>${escapeHtml(title)}</title></g>`;
+  }).join('');
   const zoomLabel = tripMapState.zoomDelta === 0 ? 'auto' : `${tripMapState.zoomDelta > 0 ? '+' : ''}${tripMapState.zoomDelta}`;
   container.innerHTML = `<div class="trip-map-shell">
     <div class="map-controls" aria-label="Controles del mapa">
       <div class="map-controls-actions">
         <button type="button" data-map-zoom="reset" title="Volver al encuadre automático">Centrar</button>
         <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
+        <button type="button" data-map-photos="1" class="${tripMapState.showPhotos ? 'active' : ''}" aria-pressed="${tripMapState.showPhotos}" title="Mostrar u ocultar fotos geolocalizadas"${availablePhotoCount ? '' : ' disabled'}>Fotos${availablePhotoCount ? ` (${availablePhotoCount})` : ''}</button>
         <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar el viaje completo' : (destinationOnlyAvailable ? 'Omitir la primera y la última parada para ampliar el destino' : 'Disponible en viajes con al menos tres paradas')}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destino</button>
         <button type="button" data-map-add-stop="1" title="Añadir, borrar o reordenar paradas del viaje">Añadir / modificar parada</button>
         <button type="button" data-map-refresh="1" title="Actualizar con las coordenadas guardadas en Configuración">Actualizar</button>
@@ -4417,20 +4629,34 @@ function renderTripMap() {
       <svg class="trip-map-overlay" viewBox="0 0 ${width} ${height}" role="img" aria-label="Mapa del viaje">
         ${shouldDrawRoute && routePoints && routeItems.length > 1 ? `<polyline points="${routePoints}" class="map-route"></polyline>` : ''}
         ${markers}
+        ${photoMarkers}
       </svg>
+      <div id="trip-map-photo-popup" class="map-photo-popup" hidden></div>
       <div class="map-attribution">© OpenStreetMap · © CARTO</div>
     </div>
   </div>`;
+  container.querySelectorAll('[data-map-photo-keys]').forEach(marker => {
+    const open = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openTripMapPhotoPopup(marker.getAttribute('data-map-photo-keys'));
+    };
+    marker.addEventListener('click', open);
+    marker.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') open(event);
+    });
+  });
   const missingText = missing.length ? ` Faltan coordenadas: ${missing.map(item => item.ciudad.nombre).join(', ')}.` : '';
   const route = withCoords.filter(item => !item.configuredOnly).map(item => item.ciudad.nombre).join(' → ');
-  const configuredStops = withCoords.filter(item => item.configuredOnly && !item.blogPoint).map(item => item.ciudad.nombre);
+  const configuredStops = withCoords.filter(item => item.configuredOnly && !item.blogPoint && !item.photoPoint).map(item => item.ciudad.nombre);
   const configuredText = configuredStops.length ? ` Paradas configuradas sin gasto: ${configuredStops.join(', ')}.` : '';
-  const cityCount = withCoords.filter(item => !item.blogPoint).length;
+  const cityCount = withCoords.filter(item => !item.blogPoint && !item.photoPoint).length;
   const visiblePointCount = withCoords.filter(item => item.blogPoint).length;
   const pointText = visiblePointCount ? ` ${visiblePointCount} ${visiblePointCount === 1 ? 'punto geolocalizado' : 'puntos geolocalizados'}.` : '';
+  const photoText = photoCount ? ` ${photoCount} ${photoCount === 1 ? 'foto geolocalizada' : 'fotos geolocalizadas'}.` : '';
   const routeLabel = shouldDrawRoute ? `Ruta: ${route || 'sin gastos con ciudad'}.` : `Ciudades: ${route || 'sin gastos con ciudad'}.`;
   const destinationText = destinationOnlyApplied ? ' Modo solo destino: se omiten la salida y el regreso.' : '';
-  info.textContent = `${cityCount} ciudades en el mapa.${pointText} ${routeLabel}${destinationText}${configuredText}${missingText}`;
+  info.textContent = `${cityCount} ciudades en el mapa.${pointText}${photoText} ${routeLabel}${destinationText}${configuredText}${missingText}`;
 }
 
 function mapGesturePoints() {
@@ -4476,7 +4702,7 @@ function setMapDragTransform(dx, dy) {
 function startTripMapDrag(event) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
-  if (target.closest('.map-controls')) return;
+  if (target.closest('.map-controls, .map-photo-popup')) return;
   const frame = target.closest('.trip-map-frame');
   if (!frame) return;
   try {
@@ -5476,25 +5702,45 @@ function clearBlogImageSelection() {
     $('#blog-gallery-preview').hidden = true;
     $('#blog-gallery-preview').innerHTML = '';
   }
+  if ($('#blog-images-map-option')) $('#blog-images-map-option').hidden = true;
+  if ($('#blog-images-map')) {
+    $('#blog-images-map').checked = false;
+    $('#blog-images-map').indeterminate = false;
+  }
 }
 
 function showBlogImages(images = []) {
   const normalized = images.map(normalizeBlogImageRecord).filter(image => image.data);
   activeBlogImage = normalized[0] || null;
   activeBlogGalleryImages = normalized.slice(1);
+  const located = normalized.filter(storedImageCoordinates);
+  const enabledCount = located.filter(image => image.mapEnabled).length;
   if ($('#blog-image-status')) {
     $('#blog-image-status').textContent = normalized.length === 1
-      ? `${normalized[0].name} · ${formatFileSize(normalized[0].size)} · ${normalized[0].width} × ${normalized[0].height}`
-      : `${normalized.length} imágenes preparadas para la galería.`;
+      ? `${normalized[0].name} · ${formatFileSize(normalized[0].size)} · ${normalized[0].width} × ${normalized[0].height} · ${located.length ? 'con ubicación' : 'sin ubicación'}`
+      : `${normalized.length} imágenes preparadas para la galería · ${located.length} con ubicación.`;
   }
   if ($('#blog-image-preview')) {
     $('#blog-image-preview').src = normalized[0] ? normalized[0].data : '';
     $('#blog-image-preview').hidden = normalized.length !== 1;
   }
   if ($('#blog-gallery-preview')) {
-    $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"><figcaption>${escapeHtml(image.name)}</figcaption></figure>`).join('');
+    $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"><figcaption>${escapeHtml(image.name)} · ${storedImageCoordinates(image) ? 'GPS' : 'sin GPS'}</figcaption></figure>`).join('');
     $('#blog-gallery-preview').hidden = normalized.length <= 1;
   }
+  if ($('#blog-images-map-option')) $('#blog-images-map-option').hidden = located.length === 0;
+  if ($('#blog-images-map')) {
+    $('#blog-images-map').checked = located.length > 0 && enabledCount === located.length;
+    $('#blog-images-map').indeterminate = enabledCount > 0 && enabledCount < located.length;
+  }
+}
+
+function setActiveBlogImagesMapEnabled(enabled) {
+  const images = [activeBlogImage, ...activeBlogGalleryImages].filter(Boolean).map(image => ({
+    ...image,
+    mapEnabled: Boolean(enabled && storedImageCoordinates(image))
+  }));
+  showBlogImages(images);
 }
 
 function showBlogImage(image) {
@@ -5701,6 +5947,7 @@ function canvasToJpeg(canvas, quality) {
 
 async function compressBlogImage(file) {
   if (!file || !String(file.type || '').startsWith('image/')) throw new Error('Selecciona un archivo de imagen');
+  const gps = await imageGpsForFile(file);
   const image = await loadImageFile(file);
   let width = image.naturalWidth || image.width;
   let height = image.naturalHeight || image.height;
@@ -5736,12 +5983,16 @@ async function compressBlogImage(file) {
     throw new Error('El navegador no pudo reducir suficientemente la imagen. Prueba con otra foto o recórtala antes.');
   }
   return {
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
     name: String(file.name || 'imagen').replace(/\.[^.]+$/, '') + '.jpg',
     type: 'image/jpeg',
     size: blob.size,
     data: await readBlobAsDataUrl(blob),
     width: outputWidth,
-    height: outputHeight
+    height: outputHeight,
+    latitude: gps ? gps.latitude : null,
+    longitude: gps ? gps.longitude : null,
+    mapEnabled: false
   };
 }
 
@@ -5912,6 +6163,10 @@ async function saveBlogEntryForm() {
       imageData: activeBlogImage.data,
       imageWidth: activeBlogImage.width,
       imageHeight: activeBlogImage.height,
+      imageId: activeBlogImage.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`),
+      imageLatitude: activeBlogImage.latitude,
+      imageLongitude: activeBlogImage.longitude,
+      imageMapEnabled: activeBlogImage.mapEnabled === true,
       galleryImages: activeBlogGalleryImages.map(normalizeBlogImageRecord)
     });
     if (values.featuredImage) values.wordpressIncluded = true;
@@ -7312,6 +7567,7 @@ function bindEvents() {
   $('#blog-image-file').onchange = () => selectBlogImage($('#blog-image-file'), $('#blog-image-camera'));
   $('#blog-image-gallery').onchange = () => selectBlogGallery($('#blog-image-gallery'));
   $('#blog-image-camera').onchange = () => selectBlogImage($('#blog-image-camera'), $('#blog-image-file'));
+  $('#blog-images-map').onchange = () => setActiveBlogImagesMapEnabled($('#blog-images-map').checked);
   $('#blog-voice').onclick = startBlogDictation;
   $('#blog-point-current').onclick = useCurrentBlogPointLocation;
   $('#blog-point-search').onclick = async () => {
@@ -7428,6 +7684,10 @@ function bindEvents() {
       const newExtraImages = await readSelectedExpenseExtraImages('edit-gasto');
       const removedExtraImageIndexes = new Set($$('[data-remove-expense-image]:checked').map(input => Number(input.dataset.removeExpenseImage)));
       const extraImages = expenseExtraImages(current)
+        .map((image, index) => ({
+          ...image,
+          mapEnabled: Boolean(storedImageCoordinates(image) && $(`[data-map-expense-image="${index}"]`)?.checked)
+        }))
         .filter((image, index) => !removedExtraImageIndexes.has(index))
         .concat(newExtraImages);
       const ticketPatch = $('#edit-gasto-ticket-remove').checked
@@ -7973,7 +8233,7 @@ function bindEvents() {
 
   document.addEventListener('click', async event => {
     const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
+    if (!(target instanceof Element)) return;
     try {
       const localBackupButton = target.closest('[data-download-local-backup]');
       if (localBackupButton) {
@@ -8015,6 +8275,21 @@ function bindEvents() {
         renderViajesHome();
         return;
       }
+      const mapPhotoMarker = target.closest('[data-map-photo-keys]');
+      if (mapPhotoMarker) {
+        openTripMapPhotoPopup(mapPhotoMarker.getAttribute('data-map-photo-keys'));
+        return;
+      }
+      const mapPhotoClose = target.closest('[data-map-photo-close]');
+      if (mapPhotoClose) {
+        closeTripMapPhotoPopup();
+        return;
+      }
+      const mapPhotoOpen = target.closest('[data-open-map-photo]');
+      if (mapPhotoOpen) {
+        openTripMapPhoto(mapPhotoOpen.dataset.openMapPhoto);
+        return;
+      }
       const mapZoomButton = target.closest('[data-map-zoom]');
       if (mapZoomButton) {
         const action = mapZoomButton.dataset.mapZoom;
@@ -8047,6 +8322,13 @@ function bindEvents() {
       const mapPlannedButton = target.closest('[data-map-planned]');
       if (mapPlannedButton) {
         tripMapState.showPlanned = !tripMapState.showPlanned;
+        resetTripMapView();
+        renderTripMap();
+        return;
+      }
+      const mapPhotosButton = target.closest('[data-map-photos]');
+      if (mapPhotosButton) {
+        tripMapState.showPhotos = !tripMapState.showPhotos;
         resetTripMapView();
         renderTripMap();
         return;
