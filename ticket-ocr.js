@@ -192,7 +192,8 @@ async function preparePdf(source, onProgress) {
 async function getWorker(onProgress) {
   progressListener = onProgress;
   if (!workerPromise) {
-    workerPromise = import('./vendor/tesseract/tesseract.esm.min.js').then(async Tesseract => {
+    workerPromise = import('./vendor/tesseract/tesseract.esm.min.js').then(async module => {
+      const Tesseract = module.default || module;
       const worker = await Tesseract.createWorker('spa', Tesseract.OEM.LSTM_ONLY, {
         workerPath: new URL('./vendor/tesseract/worker.min.js', import.meta.url).href,
         corePath: new URL('./vendor/tesseract/core', import.meta.url).href,
@@ -231,4 +232,3 @@ export async function recognizeTicket(source, options = {}) {
     pdfFirstPageOnly: isPdf
   };
 }
-
