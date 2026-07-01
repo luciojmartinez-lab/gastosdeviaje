@@ -41,9 +41,14 @@ export function extractTicketTime(text) {
     const regex = /\b([01]?\d|2[0-3])[:.]([0-5]\d)(?::[0-5]\d)?\b/g;
     let match;
     while ((match = regex.exec(line))) {
+      const beforeMatch = normalized.slice(Math.max(0, match.index - 10), match.index);
+      const explicitlyLabeled = /hora\s*[:.-]?\s*$/.test(beforeMatch);
+      const sharesLineWithDate = /\b(0?[1-9]|[12]\d|3[01])[\/.-](0?[1-9]|1[0-2])[\/.-](\d{2}|\d{4})\b/.test(normalized);
       candidates.push({
         value: `${String(Number(match[1])).padStart(2, '0')}:${match[2]}`,
-        score: (normalized.includes('hora') ? 10 : 0) - index * 0.05
+        score: (explicitlyLabeled ? 25 : (normalized.includes('hora') ? 5 : 0))
+          - (sharesLineWithDate && !explicitlyLabeled ? 20 : 0)
+          - index * 0.05
       });
     }
   });
@@ -85,31 +90,44 @@ export function extractTicketTotal(text) {
     if (/total\s+(a\s+)?pagar|importe\s+total|total\s+(eur|€)/.test(normalized)) score += 30;
     else if (/\ba\s+pagar\b/.test(normalized)) score += 25;
     else if (/\btotal\b/.test(normalized)) score += 20;
+    if (/\beur\b|\u20ac/i.test(line)) score += 20;
+    if (/^\s*(?:\d{1,3}(?:[.\s]\d{3})+|\d+)[,.]\d{2}\s*(?:eur|\u20ac)\s*$/i.test(line)) score += 10;
     if (/subtotal|base\s+imponible|\biva\b|i\.v\.a|cambio|entregado|efectivo|tarjeta|descuento/.test(normalized)) score -= 25;
+    if (/\bfecha\b|\b(0?[1-9]|[12]\d|3[01])[\/.-](0?[1-9]|1[0-2])[\/.-](\d{2}|\d{4})\b/.test(normalized)) score -= 40;
+    if (/\bhora\b|\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/.test(normalized)) score -= 30;
     if (/total/.test(normalized) && /iva incl|impuestos incl/.test(normalized)) score += 5;
     score += index / Math.max(lines.length, 1);
     candidates.push({ value: amounts.at(-1), score });
   });
   const strong = candidates.filter(item => item.score >= 15).sort((a, b) => b.score - a.score);
   if (strong.length) return strong[0].value;
-  const fallback = candidates.filter(item => item.value > 0).sort((a, b) => b.value - a.value);
+  const fallback = candidates.filter(item => item.value > 0 && item.score > -20).sort((a, b) => b.value - a.value);
   return fallback[0]?.value ?? null;
 }
 
 const MERCHANT_EXCLUSIONS = /^(ticket|factura|simplificada|copia|cliente|fecha|hora|mesa|caja|cajero|nif|cif|n\.i\.f|tel|telefono|www\.|https?|gracias|iva|total|subtotal|importe|direccion|domicilio|articulo|descripcion|unidades)/i;
 const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|cp\s*\d|codigo postal|tlf|telefono|madrid|barcelona)\b/i;
+const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|redsys|servired)$/i;
+const PAYMENT_TERMINAL_LINE = /^(?:venta\b|compra\b|visa\b|mastercard\b|contactless\b|aut(?:orizacion)?[:.\s]|op(?:eracion)?[:.\s]|tran(?:saccion)?[:.\s]|terminal[:.\s]|app\s+(?:bbva|santander|caixabank|sabadell))/i;
 
 export function extractTicketMerchant(text) {
   const lines = String(text || '').split(/\r?\n/).map(cleanLine).filter(Boolean).slice(0, 18);
+  const bankHeaderIndex = lines.findIndex(line => BANK_BRAND_LINE.test(line));
   const candidates = lines.map((line, index) => {
     const letters = line.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g) || [];
     const uppercase = line.match(/[A-ZÁÉÍÓÚÜÑ]/g) || [];
     let score = Math.max(0, 10 - index * 0.6);
     if (letters.length < 3 || line.length > 70 || MERCHANT_EXCLUSIONS.test(line)) score -= 30;
+    if (BANK_BRAND_LINE.test(line)) score -= 60;
+    if (PAYMENT_TERMINAL_LINE.test(line)) score -= 35;
     if (/\b\d{5}\b|@|\.com\b|\b(es|com|net)\b$/i.test(line) || ADDRESS_WORDS.test(line)) score -= 12;
     if (/\b(sa|s\.a\.|sl|s\.l\.|s\.l\.u\.|sociedad|restaurante|hotel|bar|cafeteria|supermercado)\b/i.test(line)) score += 7;
     if (letters.length && uppercase.length / letters.length > 0.65) score += 5;
     if (/\d{2}[\/.-]\d{2}/.test(line) || /\d{1,2}:\d{2}/.test(line)) score -= 15;
+    if (bankHeaderIndex >= 0 && index > bankHeaderIndex && index <= bankHeaderIndex + 4
+      && !BANK_BRAND_LINE.test(line) && !PAYMENT_TERMINAL_LINE.test(line)) {
+      score += 21 - (index - bankHeaderIndex) * 3;
+    }
     return { value: line.replace(/^[^\p{L}\d]+|[^\p{L}\d.)]+$/gu, ''), score };
   }).filter(item => item.value);
   return candidates.sort((a, b) => b.score - a.score)[0]?.value || '';
