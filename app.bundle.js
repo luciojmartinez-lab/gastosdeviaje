@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v101';
+const APP_VERSION = '700v102';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1276,6 +1276,7 @@ function applyTicketOcrFields(prefix, result) {
   const suggestion = suggestTicketCategory(result.text, fields.merchant);
   if (suggestion?.category) {
     $(`#${prefix}-cat`).value = String(suggestion.category.id);
+    rememberLastValidExpenseCategory(prefix);
     if (prefix === 'g') renderSubcategories();
     else renderEditSubcategories();
     if (suggestion.subcategory) $(`#${prefix}-subcat`).value = String(suggestion.subcategory.id);
@@ -1293,13 +1294,45 @@ function applyTicketOcrFields(prefix, result) {
     suggestion?.category ? `categoría${suggestion.learned ? ' aprendida' : ''}` : ''
   ].filter(Boolean);
   if (!found.length) throw new Error('No se han podido reconocer datos claros en este ticket. Puedes introducirlos manualmente.');
-  return `Detectado: ${found.join(', ')}. Son propuestas: puedes cambiar categoría y subcategoría antes de guardar.${result.pdfFirstPageOnly ? ' En PDF se ha leído la primera página.' : ''}`;
+  return `Propuesta aplicada: ${found.join(', ')}. Revisa y modifica cualquier campo; no se guardará hasta que pulses ${prefix === 'edit-gasto' ? 'Guardar cambios' : 'Añadir'}.${result.pdfFirstPageOnly ? ' En PDF se ha leído la primera página.' : ''}`;
 }
 
 function markTicketCategoryEdited(prefix) {
   if (!pendingTicketOcr[prefix]) return;
   pendingTicketOcr[prefix].categoryEdited = true;
   setTicketOcrStatus(prefix, 'Categoría modificada manualmente. Al guardar se recordará esta corrección para el establecimiento.');
+}
+
+function rememberLastValidExpenseCategory(prefix) {
+  const category = $(`#${prefix}-cat`);
+  if (category?.value) category.dataset.lastValidValue = category.value;
+}
+
+function handleExpenseCategoryChange(prefix) {
+  const category = $(`#${prefix}-cat`);
+  if (!category) return;
+  if (!category.value && category.dataset.lastValidValue
+    && [...category.options].some(option => option.value === category.dataset.lastValidValue)) {
+    category.value = category.dataset.lastValidValue;
+  }
+  rememberLastValidExpenseCategory(prefix);
+  if (prefix === 'g') renderSubcategories();
+  else renderEditSubcategories();
+  markTicketCategoryEdited(prefix);
+}
+
+function handleExpenseSubcategoryChange(prefix) {
+  const category = $(`#${prefix}-cat`);
+  const subcategory = $(`#${prefix}-subcat`);
+  const selected = state.categorias.find(item => Number(item.id) === Number(subcategory?.value));
+  if (category && selected?.parentId && Number(category.value) !== Number(selected.parentId)) {
+    category.value = String(selected.parentId);
+    rememberLastValidExpenseCategory(prefix);
+    if (prefix === 'g') renderSubcategories();
+    else renderEditSubcategories();
+    subcategory.value = String(selected.id);
+  }
+  markTicketCategoryEdited(prefix);
 }
 
 async function readExpenseTicket(prefix) {
@@ -1314,7 +1347,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v101');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v102');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -1327,7 +1360,7 @@ async function readExpenseTicket(prefix) {
         || (fields.time && fields.time !== $('#edit-gasto-hora').value)
         || (fields.merchant && fields.merchant !== $('#edit-gasto-desc').value)
         || (Number.isFinite(fields.total) && Math.abs(fields.total - numberValue($('#edit-gasto-importe').value)) > 0.001);
-      if (changesExisting && !window.confirm('Los datos detectados sustituirán la fecha, hora, descripción o importe actuales. ¿Continuar?')) {
+      if (changesExisting && !window.confirm('Se copiarán al formulario los datos detectados como una propuesta. Podrás revisarlos y cambiarlos antes de guardar; todavía no se modificará el gasto. ¿Mostrar la propuesta?')) {
         setTicketOcrStatus(prefix, 'Lectura terminada sin modificar el gasto.');
         return;
       }
@@ -6311,6 +6344,7 @@ function openEditGasto(gasto) {
   const account = state.cuentas.find(c => c.id === Number(gasto.cuentaId));
   $('#edit-gasto-moneda').value = account ? account.moneda : gasto.moneda;
   $('#edit-gasto-cat').value = String(gasto.catId || '');
+  rememberLastValidExpenseCategory('edit-gasto');
   renderEditSubcategories();
   $('#edit-gasto-subcat').value = gasto.subcatId ? String(gasto.subcatId) : '';
   $('#edit-gasto-pais').value = gasto.paisId ? String(gasto.paisId) : '';
@@ -6352,6 +6386,7 @@ function openAddGasto() {
   if (ids.length === 1 && $('#g-viaje')) $('#g-viaje').value = String(ids[0]);
   renderGastoAccountSelector();
   applyDefaultExpenseLocation();
+  rememberLastValidExpenseCategory('g');
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute('open', 'open');
 }
@@ -7323,16 +7358,10 @@ function bindEvents() {
   $('#f-view-mobile').onchange = () => {
     setExpenseViewMode($('#f-view-mobile').value);
   };
-  $('#g-cat').onchange = () => {
-    renderSubcategories();
-    markTicketCategoryEdited('g');
-  };
-  $('#g-subcat').onchange = () => markTicketCategoryEdited('g');
-  $('#edit-gasto-cat').onchange = () => {
-    renderEditSubcategories();
-    markTicketCategoryEdited('edit-gasto');
-  };
-  $('#edit-gasto-subcat').onchange = () => markTicketCategoryEdited('edit-gasto');
+  $('#g-cat').onchange = () => handleExpenseCategoryChange('g');
+  $('#g-subcat').onchange = () => handleExpenseSubcategoryChange('g');
+  $('#edit-gasto-cat').onchange = () => handleExpenseCategoryChange('edit-gasto');
+  $('#edit-gasto-subcat').onchange = () => handleExpenseSubcategoryChange('edit-gasto');
   $('#g-ticket').onchange = () => syncExpenseTicketSelection('g', 'file');
   $('#g-ticket-camera').onchange = () => syncExpenseTicketSelection('g', 'camera');
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
