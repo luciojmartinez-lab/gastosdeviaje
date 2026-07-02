@@ -418,7 +418,7 @@
 <body>
   <header class="topbar">
     <a href="index.html">Volver</a>
-    <h1>Ayuda de Cuaderno de Bitácora <span>Actualizada para 700v106</span></h1>
+    <h1>Ayuda de Cuaderno de Bitácora <span>Actualizada para 700v107</span></h1>
   </header>
 
   <main>
@@ -593,7 +593,7 @@
       <ul>
         <li>Las acciones de cada gasto se agrupan en una lista desplegable: ver archivos, añadir al blog, editar, duplicar o eliminar.</li>
         <li>Cada gasto admite un ticket o justificante principal y varias imágenes adicionales. Todos pueden seleccionarse como archivo o fotografiarse directamente con la cámara.</li>
-        <li>Si una imagen adicional conserva coordenadas GPS, aparece la opción de añadirla al mapa. Al editar el gasto puede activarse, desactivarse o quitarse individualmente.</li>
+        <li>Si una imagen adicional conserva coordenadas GPS, aparece la opción de añadirla al mapa. La aplicación lee esas coordenadas del archivo original antes de reducir la foto y las conserva junto a la copia comprimida. Al usar Cámara, si Android elimina el EXIF, la aplicación intenta guardar la ubicación actual del móvil. Las imágenes que el sistema entregue sin GPS no se añaden al mapa. Al editar el gasto puede activarse, desactivarse o quitarse individualmente.</li>
         <li>Leer ticket analiza localmente una fotografía, imagen o la primera página de un PDF y copia al formulario una propuesta de fecha, hora, establecimiento, importe total con IVA, categoría y subcategoría. Todos los campos pueden revisarse y cambiarse; el gasto no se modifica hasta pulsar Guardar cambios o Añadir. Nada del ticket se envía a un servicio de reconocimiento: el proceso se realiza en el dispositivo. La primera lectura descarga el lector y el idioma español desde la propia aplicación; después quedan almacenados para usos posteriores.</li>
         <li>Cuando corriges y guardas la categoría de un ticket leído, la aplicación recuerda en ese dispositivo la categoría elegida para el establecimiento y la propone en futuras lecturas.</li>
         <li>Alta rápida de gastos con fecha y hora, viaje, cuenta, moneda, categoría, subcategoría, país, ciudad, importe, tipo y descripción.</li>
@@ -615,7 +615,7 @@
         <li>Media diaria, presupuesto usado, restante y porcentaje de gasto.</li>
         <li>Desglose por categoría y subcategoría.</li>
         <li>Resumen por cuentas, con presupuesto de cuenta y presupuesto del viaje.</li>
-        <li>Mapa del viaje con paradas planificadas, puntos con gasto, puntos geolocalizados del Blog, fotos geolocalizadas, rutas y filtro por país. Las fotos usan un signo + pequeño, pueden ocultarse con el control Fotos y se agrupan cuando están próximas. Al pulsarlas se muestran miniatura, fecha, hora y descripción. Los puntos concretos no se unen a la ruta. El modo Solo destino omite la primera y la última parada para ampliar la zona central del viaje.</li>
+        <li>Mapa del viaje con paradas planificadas, puntos con gasto, puntos geolocalizados del Blog, fotos con GPS, rutas y filtro por país. Las fotos usan un signo + pequeño, pueden ocultarse con el control Fotos y se agrupan cuando están próximas. Al pulsarlas se muestran miniatura, fecha, hora y descripción. Los puntos concretos no se unen a la ruta. El modo Solo destino omite la primera y la última parada para ampliar la zona central del viaje.</li>
         <li>El acceso Documentos reúne al final del resumen dos tablas: documentos del viaje y archivos de gastos, ordenados desde los más antiguos hasta los más recientes. Cada fila muestra fecha, descripción y un enlace para abrir el archivo.</li>
         <li>En el resumen por cuentas, la columna EUR solo muestra equivalencia cuando la moneda original es distinta de EUR.</li>
         <li>En móvil, los seis filtros del desglose se presentan en dos filas compactas de tres columnas.</li>
@@ -631,7 +631,7 @@
         <li>Las entradas se agrupan automáticamente por día y ciudad. En el PDF, cada día comienza en una página nueva.</li>
         <li>Los gastos se incorporan desde su lista de acciones y conservan una referencia interna que evita duplicados. Si tienen imágenes adicionales, pasan al Blog; el ticket no se incorpora.</li>
         <li>Las imágenes pueden elegirse, fotografiarse o seleccionarse varias a la vez como galería. Se muestran con un máximo de tres imágenes por fila. Cada foto se redimensiona y comprime automáticamente, con un objetivo aproximado de 900 KB antes de guardarse.</li>
-        <li>La ubicación GPS se lee antes de comprimir la imagen. Cuando existe, puede decidirse si la foto se añade al mapa; pulsar su miniatura en el mapa abre la imagen completa.</li>
+        <li>La ubicación GPS se lee del archivo original antes de comprimir la imagen y se conserva junto a la copia reducida. Al usar Cámara, la app solicita además la ubicación actual para evitar que se pierda si Android entrega la foto sin EXIF. Los archivos que el sistema entregue sin coordenadas no se añaden al mapa. Pulsar una miniatura en el mapa abre la imagen completa.</li>
         <li>Cada entrada puede marcarse para WordPress. Cada día se exporta como un post independiente y inicialmente se importa como borrador.</li>
         <li>Una imagen puede marcarse como destacada del día. Aparecerá en la parte superior del post y no se repetirá en el orden cronológico. Al sustituirla, la anterior se conserva como imagen normal.</li>
         <li>La primera vez, descarga e instala el complemento desde WordPress → Plugins → Añadir plugin → Subir plugin. Después encontrarás el importador en Herramientas → Importar Gastos de Viaje.</li>
@@ -688,7 +688,7 @@
       </div>
     </section>
 
-    <p class="footer-note">Cuaderno de Bitácora 700v106. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
+    <p class="footer-note">Cuaderno de Bitácora 700v107. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
   </main>
 </body>
 </html>

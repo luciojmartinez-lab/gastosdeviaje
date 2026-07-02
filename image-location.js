@@ -118,8 +118,7 @@ export async function extractImageGps(file) {
   const name = String(file.name || '').toLowerCase();
   if (type && !/jpe?g/.test(type) && !/\.jpe?g$/.test(name)) return null;
   try {
-    const source = typeof file.slice === 'function' ? file.slice(0, Math.min(Number(file.size) || 1048576, 1048576)) : file;
-    return extractImageGpsFromArrayBuffer(await source.arrayBuffer());
+    return extractImageGpsFromArrayBuffer(await file.arrayBuffer());
   } catch {
     return null;
   }

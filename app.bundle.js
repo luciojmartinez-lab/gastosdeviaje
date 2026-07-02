@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v106';
+const APP_VERSION = '700v107';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -30,6 +30,8 @@ let activeBlogImage = null;
 let activeBlogGalleryImages = [];
 let imageLocationModulePromise = null;
 const imageGpsCache = new WeakMap();
+let currentImageLocationPromise = null;
+let lastCurrentImageLocation = null;
 const tripMapPhotoLookup = new Map();
 let blogSpeechRecognition = null;
 let blogDictationSession = null;
@@ -407,6 +409,7 @@ function storedImageCoordinate(value, min, max) {
 function normalizeStoredImageRecord(image = {}) {
   const latitude = storedImageCoordinate(image.latitude ?? image.lat, -90, 90);
   const longitude = storedImageCoordinate(image.longitude ?? image.lng ?? image.lon, -180, 180);
+  const hasExactPoint = latitude != null && longitude != null;
   return {
     id: image.id || '',
     name: String(image.name || image.imageName || 'imagen.jpg'),
@@ -418,7 +421,8 @@ function normalizeStoredImageRecord(image = {}) {
     height: Math.max(0, Number(image.height || image.imageHeight) || 0),
     latitude,
     longitude,
-    mapEnabled: latitude != null && longitude != null && image.mapEnabled === true,
+    locationSource: String(image.locationSource || ''),
+    mapEnabled: image.mapEnabled === true && hasExactPoint,
     createdAt: image.createdAt || ''
   };
 }
@@ -1060,18 +1064,58 @@ function selectedFileInput(fileSelector, cameraSelector) {
   return $(fileSelector);
 }
 
-async function imageGpsForFile(file) {
-  if (!file) return null;
-  if (imageGpsCache.has(file)) return imageGpsCache.get(file);
-  let point = null;
-  try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v106');
-    const locationReader = await imageLocationModulePromise;
-    point = await locationReader.extractImageGps(file);
-  } catch (error) {
-    console.warn('No se pudo leer la ubicación EXIF de la imagen', error);
+async function currentDeviceImageLocation() {
+  if (lastCurrentImageLocation && Date.now() - lastCurrentImageLocation.capturedAt < 60_000) {
+    return lastCurrentImageLocation;
   }
-  imageGpsCache.set(file, point);
+  if (currentImageLocationPromise) return currentImageLocationPromise;
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return null;
+  currentImageLocationPromise = new Promise(resolve => {
+    navigator.geolocation.getCurrentPosition(position => {
+      const latitude = storedImageCoordinate(position && position.coords && position.coords.latitude, -90, 90);
+      const longitude = storedImageCoordinate(position && position.coords && position.coords.longitude, -180, 180);
+      if (latitude == null || longitude == null) {
+        resolve(null);
+        return;
+      }
+      lastCurrentImageLocation = {
+        latitude,
+        longitude,
+        accuracy: Math.max(0, Number(position.coords.accuracy) || 0),
+        source: 'device',
+        capturedAt: Date.now()
+      };
+      resolve(lastCurrentImageLocation);
+    }, () => resolve(null), {
+      enableHighAccuracy: true,
+      timeout: 12_000,
+      maximumAge: 30_000
+    });
+  }).finally(() => {
+    currentImageLocationPromise = null;
+  });
+  return currentImageLocationPromise;
+}
+
+async function imageGpsForFile(file, options = {}) {
+  if (!file) return null;
+  let point = imageGpsCache.has(file) ? imageGpsCache.get(file) : undefined;
+  if (point === undefined) {
+    point = null;
+    try {
+      imageLocationModulePromise ||= import('./image-location.js?v=700v107');
+      const locationReader = await imageLocationModulePromise;
+      const exifPoint = await locationReader.extractImageGps(file);
+      point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
+    } catch (error) {
+      console.warn('No se pudo leer la ubicación EXIF de la imagen', error);
+    }
+    imageGpsCache.set(file, point);
+  }
+  if (!point && options.useCurrentLocation) {
+    point = await currentDeviceImageLocation();
+    if (point) imageGpsCache.set(file, point);
+  }
   return point;
 }
 
@@ -1101,11 +1145,22 @@ function expenseExtraImageInputs(prefix) {
   };
 }
 
+function setMapOptionText(label, text) {
+  if (!label) return;
+  const textNode = Array.from(label.childNodes).find(node => node.nodeType === 3);
+  if (textNode) textNode.textContent = ` ${text}`;
+  else label.append(document.createTextNode(` ${text}`));
+}
+
 function selectedExpenseExtraImageFiles(prefix) {
+  return selectedExpenseExtraImageRecords(prefix).map(record => record.file);
+}
+
+function selectedExpenseExtraImageRecords(prefix) {
   const inputs = expenseExtraImageInputs(prefix);
   return [
-    ...(inputs.file && inputs.file.files ? Array.from(inputs.file.files) : []),
-    ...(inputs.camera && inputs.camera.files ? Array.from(inputs.camera.files) : [])
+    ...(inputs.file && inputs.file.files ? Array.from(inputs.file.files).map(file => ({ file, useCurrentLocation: false })) : []),
+    ...(inputs.camera && inputs.camera.files ? Array.from(inputs.camera.files).map(file => ({ file, useCurrentLocation: true })) : [])
   ];
 }
 
@@ -1133,26 +1188,40 @@ async function syncExpenseExtraImageSelection(prefix) {
     return;
   }
   inputs.status.textContent = `Comprobando ubicación de ${files.length} ${files.length === 1 ? 'imagen' : 'imágenes'}...`;
-  const points = await Promise.all(files.map(imageGpsForFile));
+  const records = selectedExpenseExtraImageRecords(prefix);
+  const points = await Promise.all(records.map(record => imageGpsForFile(record.file, { useCurrentLocation: record.useCurrentLocation })));
   const locatedCount = points.filter(Boolean).length;
-  inputs.status.textContent = `${files.length} ${files.length === 1 ? 'imagen seleccionada' : 'imágenes seleccionadas'} · ${locatedCount} con ubicación.`;
-  if (inputs.mapOption) inputs.mapOption.hidden = locatedCount === 0;
+  const exifCount = points.filter(point => point && point.source === 'exif').length;
+  const currentCount = points.filter(point => point && point.source === 'device').length;
+  if (locatedCount) {
+    const locationParts = [
+      exifCount ? `${exifCount} con GPS del archivo` : '',
+      currentCount ? `${currentCount} con ubicación actual del móvil` : '',
+      locatedCount < files.length ? `${files.length - locatedCount} sin GPS` : ''
+    ].filter(Boolean).join(' · ');
+    inputs.status.textContent = `${files.length} ${files.length === 1 ? 'imagen seleccionada' : 'imágenes seleccionadas'} · ${locationParts}.`;
+  } else {
+    inputs.status.textContent = `${files.length} ${files.length === 1 ? 'imagen seleccionada' : 'imágenes seleccionadas'} · el archivo recibido no contiene coordenadas GPS.`;
+  }
+  if (inputs.mapOption) {
+    inputs.mapOption.hidden = locatedCount === 0;
+    setMapOptionText(inputs.mapOption, locatedCount === files.length ? 'Añadir al mapa' : 'Añadir al mapa las imágenes con GPS');
+  }
   if (inputs.mapCheckbox && locatedCount === 0) inputs.mapCheckbox.checked = false;
 }
 
 async function readSelectedExpenseExtraImages(prefix) {
   const inputs = expenseExtraImageInputs(prefix);
-  const files = [
-    ...(inputs.file && inputs.file.files ? Array.from(inputs.file.files) : []),
-    ...(inputs.camera && inputs.camera.files ? Array.from(inputs.camera.files) : [])
-  ];
+  const records = selectedExpenseExtraImageRecords(prefix);
   const images = [];
-  for (let index = 0; index < files.length; index += 1) {
-    if (inputs.status) inputs.status.textContent = `Preparando imagen ${index + 1} de ${files.length}...`;
-    const image = await compressBlogImage(files[index]);
+  for (let index = 0; index < records.length; index += 1) {
+    if (inputs.status) inputs.status.textContent = `Preparando imagen ${index + 1} de ${records.length}...`;
+    const image = await compressBlogImage(records[index].file, { useCurrentLocation: records[index].useCurrentLocation });
+    const hasExactPoint = Boolean(storedImageCoordinates(image));
+    const addToMap = Boolean(inputs.mapCheckbox && inputs.mapCheckbox.checked && hasExactPoint);
     images.push({
       ...image,
-      mapEnabled: Boolean(inputs.mapCheckbox && inputs.mapCheckbox.checked && storedImageCoordinates(image)),
+      mapEnabled: addToMap,
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
       createdAt: new Date().toISOString()
     });
@@ -1410,7 +1479,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v106');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v107');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -1843,8 +1912,9 @@ function renderEditExpenseImages(gasto) {
   container.innerHTML = images.length
     ? `<p class="small"><strong>Imágenes actuales</strong></p><ul class="expense-current-image-list">${images.map((image, index) => {
       const point = storedImageCoordinates(image);
+      const checked = image.mapEnabled && point ? ' checked' : '';
       const mapControl = point
-        ? `<label><input type="checkbox" data-map-expense-image="${index}"${image.mapEnabled ? ' checked' : ''}> Mapa</label>`
+        ? `<label><input type="checkbox" data-map-expense-image="${index}"${checked}> Mapa</label>`
         : '<span class="small">Sin GPS</span>';
       return `<li><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir ${escapeHtml(image.name || `imagen ${index + 1}`)}</button>${mapControl}<label><input type="checkbox" data-remove-expense-image="${index}"> Quitar</label></li>`;
     }).join('')}</ul>`
@@ -2515,6 +2585,7 @@ function blogEntryImages(entry) {
       height: entry.imageHeight,
       latitude: entry.imageLatitude,
       longitude: entry.imageLongitude,
+      locationSource: entry.imageLocationSource,
       mapEnabled: entry.imageMapEnabled,
       createdAt: entry.createdAt
     }));
@@ -2585,6 +2656,7 @@ async function addBlogEntry(data) {
     imageId: type === 'imagen' ? String(data.imageId || '') : '',
     imageLatitude: type === 'imagen' ? storedImageCoordinate(data.imageLatitude, -90, 90) : null,
     imageLongitude: type === 'imagen' ? storedImageCoordinate(data.imageLongitude, -180, 180) : null,
+    imageLocationSource: type === 'imagen' ? String(data.imageLocationSource || '') : '',
     imageMapEnabled: type === 'imagen' && data.imageMapEnabled === true,
     galleryImages,
     sourceGastoId: type === 'gasto' && data.sourceGastoId ? Number(data.sourceGastoId) : null,
@@ -2637,6 +2709,7 @@ function normalizeImportedBlogEntry(entry = {}) {
     imageId: String(entry.imageId || ''),
     imageLatitude: type === 'imagen' ? storedImageCoordinate(entry.imageLatitude, -90, 90) : null,
     imageLongitude: type === 'imagen' ? storedImageCoordinate(entry.imageLongitude, -180, 180) : null,
+    imageLocationSource: type === 'imagen' ? String(entry.imageLocationSource || '') : '',
     imageMapEnabled: type === 'imagen' && entry.imageMapEnabled === true,
     galleryImages: Array.isArray(entry.galleryImages)
       ? entry.galleryImages.map(normalizeBlogImageRecord).filter(image => image.data || image.fileRef)
@@ -5714,11 +5787,23 @@ function showBlogImages(images = []) {
   activeBlogImage = normalized[0] || null;
   activeBlogGalleryImages = normalized.slice(1);
   const located = normalized.filter(storedImageCoordinates);
-  const enabledCount = located.filter(image => image.mapEnabled).length;
+  const enabledCount = normalized.filter(image => image.mapEnabled && storedImageCoordinates(image)).length;
   if ($('#blog-image-status')) {
-    $('#blog-image-status').textContent = normalized.length === 1
-      ? `${normalized[0].name} · ${formatFileSize(normalized[0].size)} · ${normalized[0].width} × ${normalized[0].height} · ${located.length ? 'con ubicación' : 'sin ubicación'}`
-      : `${normalized.length} imágenes preparadas para la galería · ${located.length} con ubicación.`;
+    if (normalized.length === 1) {
+      const locationText = located.length
+        ? (normalized[0].locationSource === 'device' ? 'con ubicación actual del móvil' : 'con GPS del archivo')
+        : 'sin GPS';
+      $('#blog-image-status').textContent = `${normalized[0].name} · ${formatFileSize(normalized[0].size)} · ${normalized[0].width} × ${normalized[0].height} · ${locationText}`;
+    } else {
+      const deviceCount = located.filter(image => image.locationSource === 'device').length;
+      const exifCount = located.length - deviceCount;
+      const locationParts = [
+        exifCount ? `${exifCount} con GPS del archivo` : '',
+        deviceCount ? `${deviceCount} con ubicación actual del móvil` : '',
+        normalized.length > located.length ? `${normalized.length - located.length} sin GPS` : ''
+      ].filter(Boolean).join(' · ');
+      $('#blog-image-status').textContent = `${normalized.length} imágenes preparadas para la galería${locationParts ? ` · ${locationParts}` : ''}.`;
+    }
   }
   if ($('#blog-image-preview')) {
     $('#blog-image-preview').src = normalized[0] ? normalized[0].data : '';
@@ -5728,10 +5813,14 @@ function showBlogImages(images = []) {
     $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"><figcaption>${escapeHtml(image.name)} · ${storedImageCoordinates(image) ? 'GPS' : 'sin GPS'}</figcaption></figure>`).join('');
     $('#blog-gallery-preview').hidden = normalized.length <= 1;
   }
-  if ($('#blog-images-map-option')) $('#blog-images-map-option').hidden = located.length === 0;
+  if ($('#blog-images-map-option')) {
+    $('#blog-images-map-option').hidden = located.length === 0;
+    setMapOptionText($('#blog-images-map-option'), located.length === normalized.length ? 'Añadir al mapa' : 'Añadir al mapa las imágenes con GPS');
+  }
   if ($('#blog-images-map')) {
-    $('#blog-images-map').checked = located.length > 0 && enabledCount === located.length;
-    $('#blog-images-map').indeterminate = enabledCount > 0 && enabledCount < located.length;
+    const mappableCount = located.length;
+    $('#blog-images-map').checked = mappableCount > 0 && enabledCount === mappableCount;
+    $('#blog-images-map').indeterminate = enabledCount > 0 && enabledCount < mappableCount;
   }
 }
 
@@ -5945,9 +6034,9 @@ function canvasToJpeg(canvas, quality) {
   });
 }
 
-async function compressBlogImage(file) {
+async function compressBlogImage(file, options = {}) {
   if (!file || !String(file.type || '').startsWith('image/')) throw new Error('Selecciona un archivo de imagen');
-  const gps = await imageGpsForFile(file);
+  const gps = await imageGpsForFile(file, options);
   const image = await loadImageFile(file);
   let width = image.naturalWidth || image.width;
   let height = image.naturalHeight || image.height;
@@ -5992,18 +6081,19 @@ async function compressBlogImage(file) {
     height: outputHeight,
     latitude: gps ? gps.latitude : null,
     longitude: gps ? gps.longitude : null,
+    locationSource: gps ? gps.source || 'exif' : '',
     mapEnabled: false
   };
 }
 
-async function selectBlogImage(input, otherInput) {
+async function selectBlogImage(input, otherInput, options = {}) {
   const file = input && input.files && input.files[0];
   if (!file) return;
   [otherInput, $('#blog-image-gallery')].filter(Boolean).forEach(field => { field.value = ''; });
   setMessage('#msg-blog-entry', '');
   if ($('#blog-image-status')) $('#blog-image-status').textContent = 'Comprimiendo imagen...';
   try {
-    showBlogImage(await compressBlogImage(file));
+    showBlogImage(await compressBlogImage(file, options));
   } catch (error) {
     input.value = '';
     if (activeBlogImage) showBlogImage(activeBlogImage);
@@ -6166,6 +6256,7 @@ async function saveBlogEntryForm() {
       imageId: activeBlogImage.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`),
       imageLatitude: activeBlogImage.latitude,
       imageLongitude: activeBlogImage.longitude,
+      imageLocationSource: activeBlogImage.locationSource || '',
       imageMapEnabled: activeBlogImage.mapEnabled === true,
       galleryImages: activeBlogGalleryImages.map(normalizeBlogImageRecord)
     });
@@ -7554,9 +7645,11 @@ function bindEvents() {
   $('#blog-pais').onchange = () => {
     renderBlogCities();
     if (activeBlogEntryType === 'punto' && !blogPointFieldCoordinates()) resetBlogPointPicker();
+    if (activeBlogEntryType === 'imagen' && activeBlogImage) showBlogImages([activeBlogImage, ...activeBlogGalleryImages]);
   };
   $('#blog-ciudad').onchange = () => {
     if (activeBlogEntryType === 'punto' && !blogPointFieldCoordinates()) resetBlogPointPicker();
+    if (activeBlogEntryType === 'imagen' && activeBlogImage) showBlogImages([activeBlogImage, ...activeBlogGalleryImages]);
   };
   $('#blog-featured').onchange = () => {
     if ($('#blog-featured').checked) $('#blog-wordpress').checked = true;
@@ -7566,7 +7659,7 @@ function bindEvents() {
   };
   $('#blog-image-file').onchange = () => selectBlogImage($('#blog-image-file'), $('#blog-image-camera'));
   $('#blog-image-gallery').onchange = () => selectBlogGallery($('#blog-image-gallery'));
-  $('#blog-image-camera').onchange = () => selectBlogImage($('#blog-image-camera'), $('#blog-image-file'));
+  $('#blog-image-camera').onchange = () => selectBlogImage($('#blog-image-camera'), $('#blog-image-file'), { useCurrentLocation: true });
   $('#blog-images-map').onchange = () => setActiveBlogImagesMapEnabled($('#blog-images-map').checked);
   $('#blog-voice').onclick = startBlogDictation;
   $('#blog-point-current').onclick = useCurrentBlogPointLocation;
@@ -7632,9 +7725,23 @@ function bindEvents() {
     if ($('#edit-gasto-ticket-remove').checked) clearExpenseTicketSelection('edit-gasto');
     syncTicketOcrAvailability('edit-gasto');
   };
-  $('#g-pais').onchange = renderCiudades;
+  $('#g-pais').onchange = () => {
+    renderCiudades();
+    syncExpenseExtraImageSelection('g');
+  };
+  $('#g-ciudad').onchange = () => syncExpenseExtraImageSelection('g');
   $('#g-fecha').onchange = applyDefaultExpenseLocation;
-  $('#edit-gasto-pais').onchange = renderEditCiudades;
+  $('#edit-gasto-pais').onchange = () => {
+    renderEditCiudades();
+    syncExpenseExtraImageSelection('edit-gasto');
+    const current = state.gastos.find(gasto => Number(gasto.id) === Number($('#edit-gasto-id').value));
+    if (current) renderEditExpenseImages(current);
+  };
+  $('#edit-gasto-ciudad').onchange = () => {
+    syncExpenseExtraImageSelection('edit-gasto');
+    const current = state.gastos.find(gasto => Number(gasto.id) === Number($('#edit-gasto-id').value));
+    if (current) renderEditExpenseImages(current);
+  };
   $('#edit-gasto-cuenta').onchange = () => {
     const account = state.cuentas.find(c => c.id === Number($('#edit-gasto-cuenta').value));
     if (account) $('#edit-gasto-moneda').value = account.moneda;
@@ -7684,10 +7791,15 @@ function bindEvents() {
       const newExtraImages = await readSelectedExpenseExtraImages('edit-gasto');
       const removedExtraImageIndexes = new Set($$('[data-remove-expense-image]:checked').map(input => Number(input.dataset.removeExpenseImage)));
       const extraImages = expenseExtraImages(current)
-        .map((image, index) => ({
-          ...image,
-          mapEnabled: Boolean(storedImageCoordinates(image) && $(`[data-map-expense-image="${index}"]`)?.checked)
-        }))
+        .map((image, index) => {
+          const hasExactPoint = Boolean(storedImageCoordinates(image));
+          const checked = Boolean($(`[data-map-expense-image="${index}"]`)?.checked);
+          const mapEnabled = Boolean(checked && hasExactPoint);
+          return {
+            ...image,
+            mapEnabled
+          };
+        })
         .filter((image, index) => !removedExtraImageIndexes.has(index))
         .concat(newExtraImages);
       const ticketPatch = $('#edit-gasto-ticket-remove').checked

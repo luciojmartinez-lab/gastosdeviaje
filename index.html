@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=700v106">
+  <link rel="stylesheet" href="styles.css?v=700v107">
   <meta name="theme-color" content="#1976d2">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
@@ -21,7 +21,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v106</div>
+  <div class="app-version">700v107</div>
 </header>
 
 <main>
@@ -417,7 +417,7 @@
         </label>
       </div>
       <p id="g-extra-images-selected" class="small">Ninguna imagen adicional seleccionada.</p>
-      <label class="check-option photo-map-option" id="g-extra-images-map-option" hidden><input type="checkbox" id="g-extra-images-map"> Añadir las fotos con ubicación al mapa</label>
+      <label class="check-option photo-map-option" id="g-extra-images-map-option" hidden><input type="checkbox" id="g-extra-images-map"> Añadir las fotos al mapa</label>
     </div>
     <div class="actions">
       <button type="button" class="btn" id="btn-add-gasto">Añadir y salir</button>
@@ -485,7 +485,7 @@
         </label>
       </div>
       <p id="edit-gasto-extra-images-selected" class="small">Ninguna imagen nueva seleccionada.</p>
-      <label class="check-option photo-map-option" id="edit-gasto-extra-images-map-option" hidden><input type="checkbox" id="edit-gasto-extra-images-map"> Añadir las fotos nuevas con ubicación al mapa</label>
+      <label class="check-option photo-map-option" id="edit-gasto-extra-images-map-option" hidden><input type="checkbox" id="edit-gasto-extra-images-map"> Añadir las fotos nuevas al mapa</label>
       <div id="edit-gasto-extra-images-current" class="expense-current-images"></div>
     </div>
     <div class="actions">
@@ -616,7 +616,7 @@
         <p id="blog-image-status" class="small">Ninguna imagen seleccionada.</p>
         <img id="blog-image-preview" class="blog-image-preview" alt="Vista previa" hidden>
         <div id="blog-gallery-preview" class="blog-gallery-preview" hidden></div>
-        <label class="check-option photo-map-option" id="blog-images-map-option" hidden><input type="checkbox" id="blog-images-map"> Añadir las fotos con ubicación al mapa</label>
+        <label class="check-option photo-map-option" id="blog-images-map-option" hidden><input type="checkbox" id="blog-images-map"> Añadir las fotos al mapa</label>
         <p class="small">La foto original puede superar 6 MB. La aplicación intenta reducirla aproximadamente a 900 KB antes de guardarla.</p>
       </div>
       <div id="blog-text-fields" class="blog-text-fields" hidden>
@@ -777,10 +777,10 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v106"></script>
+<script src="app.bundle.js?v=700v107"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v106';
+    const pageVersion = '700v107';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -807,7 +807,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v106', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v107', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
