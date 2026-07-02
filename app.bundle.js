@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v107';
+const APP_VERSION = '700v108';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1103,7 +1103,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v107');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v108');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1479,7 +1479,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v107');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v108');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6035,7 +6035,10 @@ function canvasToJpeg(canvas, quality) {
 }
 
 async function compressBlogImage(file, options = {}) {
-  if (!file || !String(file.type || '').startsWith('image/')) throw new Error('Selecciona un archivo de imagen');
+  const fileName = String(file && file.name || '');
+  const supportedByType = String(file && file.type || '').startsWith('image/');
+  const supportedByName = /\.(?:jpe?g|png|webp|gif)$/i.test(fileName);
+  if (!file || (!supportedByType && !supportedByName)) throw new Error('Selecciona un archivo de imagen');
   const gps = await imageGpsForFile(file, options);
   const image = await loadImageFile(file);
   let width = image.naturalWidth || image.width;

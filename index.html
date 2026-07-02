@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=700v107">
+  <link rel="stylesheet" href="styles.css?v=700v108">
   <meta name="theme-color" content="#1976d2">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
@@ -21,7 +21,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v107</div>
+  <div class="app-version">700v108</div>
 </header>
 
 <main>
@@ -409,13 +409,14 @@
     <div class="expense-ticket-field expense-extra-images-field">
       <label>Imágenes adicionales</label>
       <div class="expense-ticket-actions">
-        <label class="btn ghost trip-document-picker">Elegir imágenes
-          <input type="file" accept="image/*" multiple id="g-extra-images">
+        <label class="btn ghost trip-document-picker">Archivos (con GPS)
+          <input type="file" multiple id="g-extra-images">
         </label>
         <label class="btn ghost trip-document-picker">Cámara
           <input type="file" accept="image/*" capture="environment" id="g-extra-images-camera">
         </label>
       </div>
+      <p class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
       <p id="g-extra-images-selected" class="small">Ninguna imagen adicional seleccionada.</p>
       <label class="check-option photo-map-option" id="g-extra-images-map-option" hidden><input type="checkbox" id="g-extra-images-map"> Añadir las fotos al mapa</label>
     </div>
@@ -477,13 +478,14 @@
     <div class="expense-ticket-field expense-extra-images-field">
       <label>Añadir imágenes</label>
       <div class="expense-ticket-actions">
-        <label class="btn ghost trip-document-picker">Elegir imágenes
-          <input type="file" accept="image/*" multiple id="edit-gasto-extra-images">
+        <label class="btn ghost trip-document-picker">Archivos (con GPS)
+          <input type="file" multiple id="edit-gasto-extra-images">
         </label>
         <label class="btn ghost trip-document-picker">Cámara
           <input type="file" accept="image/*" capture="environment" id="edit-gasto-extra-images-camera">
         </label>
       </div>
+      <p class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
       <p id="edit-gasto-extra-images-selected" class="small">Ninguna imagen nueva seleccionada.</p>
       <label class="check-option photo-map-option" id="edit-gasto-extra-images-map-option" hidden><input type="checkbox" id="edit-gasto-extra-images-map"> Añadir las fotos nuevas al mapa</label>
       <div id="edit-gasto-extra-images-current" class="expense-current-images"></div>
@@ -603,16 +605,17 @@
       <div id="blog-image-fields" class="blog-image-fields" hidden>
         <label>Imagen</label>
         <div class="trip-document-picker-actions blog-image-picker-actions">
-          <label class="btn ghost trip-document-picker">Elegir imagen
-            <input type="file" id="blog-image-file" accept="image/*">
+          <label class="btn ghost trip-document-picker">Archivo (con GPS)
+            <input type="file" id="blog-image-file">
           </label>
-          <label class="btn ghost trip-document-picker">Galería
-            <input type="file" id="blog-image-gallery" accept="image/*" multiple>
+          <label class="btn ghost trip-document-picker">Varios archivos
+            <input type="file" id="blog-image-gallery" multiple>
           </label>
           <label class="btn ghost trip-document-picker">Cámara
             <input type="file" id="blog-image-camera" accept="image/*" capture="environment">
           </label>
         </div>
+        <p class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
         <p id="blog-image-status" class="small">Ninguna imagen seleccionada.</p>
         <img id="blog-image-preview" class="blog-image-preview" alt="Vista previa" hidden>
         <div id="blog-gallery-preview" class="blog-gallery-preview" hidden></div>
@@ -777,10 +780,10 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v107"></script>
+<script src="app.bundle.js?v=700v108"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v107';
+    const pageVersion = '700v108';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -807,7 +810,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v107', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v108', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
