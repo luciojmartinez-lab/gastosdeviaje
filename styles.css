@@ -1715,6 +1715,7 @@ body.map-fullscreen-open {
   inset: 0;
   width: 100%;
   height: 100%;
+  will-change: transform;
 }
 
 .map-tile {
@@ -1867,10 +1868,14 @@ body.map-fullscreen-open {
   stroke-width: 2;
 }
 
+.map-marker-daily.map-marker-photo > circle:first-child {
+  fill: #0f766e;
+}
+
 .map-marker .map-marker-photo-plus {
   fill: #fff;
   stroke: none;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 900;
   text-anchor: middle;
   pointer-events: none;
@@ -1886,7 +1891,7 @@ body.map-fullscreen-open {
 .map-marker .map-marker-photo-count {
   fill: #fff;
   stroke: none;
-  font-size: 7px;
+  font-size: 8px;
   font-weight: 900;
   text-anchor: middle;
   pointer-events: none;

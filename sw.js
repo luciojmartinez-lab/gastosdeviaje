@@ -1,13 +1,13 @@
-const CACHE_NAME = 'gastosdeviaje-700v110';
+const CACHE_NAME = 'gastosdeviaje-700v111';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname;
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=700v110',
-  './app.bundle.js?v=700v110',
-  './ticket-ocr.js?v=700v110',
-  './image-location.js?v=700v110',
+  './styles.css?v=700v111',
+  './app.bundle.js?v=700v111',
+  './ticket-ocr.js?v=700v111',
+  './image-location.js?v=700v111',
   './ayuda.html',
   './manifest.webmanifest',
   './icon.svg',
