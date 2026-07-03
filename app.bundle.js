@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v114';
+const APP_VERSION = '700v115';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1129,7 +1129,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v114');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v115');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1161,7 +1161,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v114');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v115');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1532,7 +1532,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v114');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v115');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5026,22 +5026,33 @@ function renderTripMap() {
   const centerY = (minY + maxY) / 2;
   const startX = centerX - width / 2 - tripMapState.panX;
   const startY = centerY - height / 2 - tripMapState.panY;
-  const maxTile = (2 ** tileZoom) - 1;
-  const tileMinX = Math.max(0, Math.floor((startX / tileScale) / 256));
-  const tileMaxX = Math.min(maxTile, Math.floor(((startX + width) / tileScale) / 256));
-  const tileMinY = Math.max(0, Math.floor((startY / tileScale) / 256));
-  const tileMaxY = Math.min(maxTile, Math.floor(((startY + height) / tileScale) / 256));
-  const tiles = [];
-  for (let x = tileMinX; x <= tileMaxX; x += 1) {
-    for (let y = tileMinY; y <= tileMaxY; y += 1) {
-      const left = ((x * 256 * tileScale - startX) / width) * 100;
-      const top = ((y * 256 * tileScale - startY) / height) * 100;
-      const tileW = ((256 * tileScale) / width) * 100;
-      const tileH = ((256 * tileScale) / height) * 100;
-      const primary = `https://a.basemaps.cartocdn.com/rastertiles/voyager/${tileZoom}/${x}/${y}.png`;
-      const fallback = `https://tile.openstreetmap.org/${tileZoom}/${x}/${y}.png`;
-      tiles.push(`<img class="map-tile" src="${primary}" onerror="this.onerror=null;this.src='${fallback}'" alt="" loading="lazy" decoding="async" draggable="false" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${tileW.toFixed(3)}%;height:${tileH.toFixed(3)}%;">`);
+  const tileLevelHtml = (sourceZoom, sourceScale, opacity, allowFallback) => {
+    const maxTile = (2 ** sourceZoom) - 1;
+    const tileMinX = Math.max(0, Math.floor((startX / sourceScale) / 256));
+    const tileMaxX = Math.min(maxTile, Math.floor(((startX + width) / sourceScale) / 256));
+    const tileMinY = Math.max(0, Math.floor((startY / sourceScale) / 256));
+    const tileMaxY = Math.min(maxTile, Math.floor(((startY + height) / sourceScale) / 256));
+    const result = [];
+    for (let x = tileMinX; x <= tileMaxX; x += 1) {
+      for (let y = tileMinY; y <= tileMaxY; y += 1) {
+        const left = ((x * 256 * sourceScale - startX) / width) * 100;
+        const top = ((y * 256 * sourceScale - startY) / height) * 100;
+        const tileW = ((256 * sourceScale) / width) * 100;
+        const tileH = ((256 * sourceScale) / height) * 100;
+        const primary = `https://a.basemaps.cartocdn.com/rastertiles/voyager/${sourceZoom}/${x}/${y}.png`;
+        const fallback = `https://tile.openstreetmap.org/${sourceZoom}/${x}/${y}.png`;
+        const errorAction = allowFallback
+          ? `this.onerror=null;this.src='${fallback}'`
+          : 'this.remove()';
+        result.push(`<img class="map-tile" src="${primary}" onerror="${errorAction}" alt="" loading="lazy" decoding="async" draggable="false" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${tileW.toFixed(3)}%;height:${tileH.toFixed(3)}%;opacity:${opacity.toFixed(3)};">`);
+      }
     }
+    return result;
+  };
+  const zoomFraction = zoom - tileZoom;
+  const tiles = tileLevelHtml(tileZoom, tileScale, 1, true);
+  if (zoomFraction > 0.02 && tileZoom < TRIP_MAP_MAX_ZOOM) {
+    tiles.push(...tileLevelHtml(tileZoom + 1, tileScale / 2, zoomFraction, false));
   }
   const project = item => {
     const point = mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom);
