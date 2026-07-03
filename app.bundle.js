@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v113';
+const APP_VERSION = '700v114';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1129,7 +1129,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v113');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v114');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1161,7 +1161,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v113');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v114');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1532,7 +1532,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v113');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v114');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5198,6 +5198,11 @@ function clearMapGestureFrame(frame) {
       el.style.transform = '';
       el.style.transformOrigin = '';
     });
+    frame.querySelectorAll('.trip-map-overlay .map-marker').forEach(marker => {
+      marker.style.transform = '';
+      marker.style.transformOrigin = '';
+      marker.style.transformBox = '';
+    });
   }
   tripMapGesture.frame = null;
   tripMapGesture.pinch = false;
@@ -5228,9 +5233,20 @@ function setMapPinchTransform(frame, scale, clientX, clientY) {
   const rect = frame.getBoundingClientRect();
   const originX = clientX - rect.left;
   const originY = clientY - rect.top;
-  frame.querySelectorAll('.map-tiles, .trip-map-overlay').forEach(el => {
+  const transformedLayers = frame.querySelectorAll('.map-tiles, .trip-map-overlay');
+  transformedLayers.forEach(el => {
     el.style.transformOrigin = `${originX}px ${originY}px`;
     el.style.transform = `scale(${scale})`;
+  });
+  const inverseScale = 1 / scale;
+  frame.querySelectorAll('.trip-map-overlay .map-marker').forEach(marker => {
+    const anchor = marker.querySelector('circle');
+    const centerX = Number(anchor && anchor.getAttribute('cx'));
+    const centerY = Number(anchor && anchor.getAttribute('cy'));
+    if (!Number.isFinite(centerX) || !Number.isFinite(centerY)) return;
+    marker.style.transformBox = 'view-box';
+    marker.style.transformOrigin = `${centerX}px ${centerY}px`;
+    marker.style.transform = `scale(${inverseScale})`;
   });
 }
 
