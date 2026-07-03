@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v115';
+const APP_VERSION = '700v116';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -39,6 +39,10 @@ let lastCurrentImageLocation = null;
 let pendingSharedImagesPayload = null;
 let sharedImagePreviewUrls = [];
 const tripMapPhotoLookup = new Map();
+let tripVectorMap = null;
+let tripVectorMarkers = [];
+let tripVectorPhotoMarkers = [];
+let tripVectorMapFailed = false;
 let blogSpeechRecognition = null;
 let blogDictationSession = null;
 let openBlogDays = new Set();
@@ -66,7 +70,9 @@ const tripMapState = {
   showPhotos: true,
   destinationOnly: false,
   day: '',
-  printMode: false
+  printMode: false,
+  vectorCenter: null,
+  vectorZoom: null
 };
 const tripMapDrag = {
   active: false,
@@ -91,6 +97,8 @@ function resetTripMapView() {
   tripMapState.zoomDelta = 0;
   tripMapState.panX = 0;
   tripMapState.panY = 0;
+  tripMapState.vectorCenter = null;
+  tripMapState.vectorZoom = null;
 }
 
 function tripMapSize() {
@@ -1129,7 +1137,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v115');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v116');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1161,7 +1169,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v115');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v116');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1532,7 +1540,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v115');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v116');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4739,6 +4747,7 @@ function zoomTripMapAtClient(frame, clientX, clientY, delta = 1) {
 function zoomTripMapAt(event) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
+  if (target.closest('.maplibregl-map')) return;
   if (target.closest('.map-controls, .map-photo-popup')) return;
   const frame = target.closest('.trip-map-frame');
   if (!frame) return;
@@ -4969,6 +4978,218 @@ async function copyDailyMapToBlog() {
   }
 }
 
+function destroyTripVectorMap() {
+  tripVectorPhotoMarkers.forEach(marker => {
+    try { marker.remove(); } catch {}
+  });
+  tripVectorMarkers.forEach(marker => {
+    try { marker.remove(); } catch {}
+  });
+  tripVectorPhotoMarkers = [];
+  tripVectorMarkers = [];
+  if (tripVectorMap) {
+    try { tripVectorMap.remove(); } catch {}
+    tripVectorMap = null;
+  }
+}
+
+function tripVectorMarkerElement(item, index, dailyMode) {
+  const element = document.createElement('div');
+  const dailyRecord = dailyMode ? item.dailyRecord : null;
+  const routePoint = !item.configuredOnly;
+  const pointMarker = Boolean(item.blogPoint);
+  element.className = `trip-vector-marker${item.configuredOnly ? ' configured' : ''}${pointMarker ? ' point' : ''}${dailyRecord ? ' daily' : ''}`;
+  const dot = document.createElement('span');
+  dot.className = 'trip-vector-marker-dot';
+  dot.textContent = dailyRecord ? String(index + 1) : (routePoint ? String(index + 1) : (pointMarker ? '•' : '+'));
+  const label = document.createElement('span');
+  label.className = 'trip-vector-marker-label';
+  label.textContent = dailyRecord
+    ? dailyMapDateTimeLabel(dailyRecord)
+    : (item.ciudad.nombre || 'Punto');
+  element.append(dot, label);
+  element.title = dailyRecord
+    ? `${dailyRecord.descripcion || 'Punto'} · ${dailyMapDateTimeLabel(dailyRecord)}`
+    : (item.ciudad.nombre || 'Punto');
+  return element;
+}
+
+function tripVectorPhotoElement(records) {
+  const element = document.createElement('button');
+  element.type = 'button';
+  element.className = 'trip-vector-photo-marker';
+  element.setAttribute('aria-label', records.length === 1 ? records[0].descripcion || 'Foto' : `${records.length} fotos`);
+  element.innerHTML = `<span>+</span>${records.length > 1 ? `<b>${records.length}</b>` : ''}`;
+  const encodedKeys = encodeURIComponent(records.map(record => record.key).join('|'));
+  element.addEventListener('click', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    openTripMapPhotoPopup(encodedKeys);
+  });
+  return element;
+}
+
+function renderTripVectorPhotoMarkers(map, photoItems) {
+  tripVectorPhotoMarkers.forEach(marker => {
+    try { marker.remove(); } catch {}
+  });
+  tripVectorPhotoMarkers = [];
+  if (!map || !photoItems.length) return;
+  const projected = photoItems.map(item => {
+    const point = map.project([Number(item.ciudad.lng), Number(item.ciudad.lat)]);
+    return { ...item, point: { x: point.x, y: point.y } };
+  });
+  groupNearbyPhotoMapItems(projected).forEach(group => {
+    const records = group.map(item => item.photoRecord).filter(Boolean);
+    if (!records.length) return;
+    const longitude = group.reduce((sum, item) => sum + Number(item.ciudad.lng), 0) / group.length;
+    const latitude = group.reduce((sum, item) => sum + Number(item.ciudad.lat), 0) / group.length;
+    const marker = new window.maplibregl.Marker({
+      element: tripVectorPhotoElement(records),
+      anchor: 'center'
+    }).setLngLat([longitude, latitude]).addTo(map);
+    tripVectorPhotoMarkers.push(marker);
+  });
+}
+
+function updateTripVectorZoomLabel(map, baseZoom) {
+  const label = document.querySelector('#trip-map .map-controls-zoom span');
+  if (!label || !map) return;
+  const zoom = map.getZoom();
+  const delta = zoom - baseZoom;
+  const roundedZoom = Math.round(zoom * 10) / 10;
+  const roundedDelta = Math.round(delta * 10) / 10;
+  label.textContent = `Z ${roundedZoom} ${Math.abs(roundedDelta) < 0.05 ? 'auto' : `${roundedDelta > 0 ? '+' : ''}${roundedDelta}`}`;
+}
+
+function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawRoute, baseZoom }) {
+  if (!container || !window.maplibregl || !withCoords.length) return false;
+  if (typeof window.maplibregl.supported === 'function' && !window.maplibregl.supported()) {
+    tripVectorMapFailed = true;
+    return false;
+  }
+  const frame = container.querySelector('.trip-map-frame');
+  if (!frame) return false;
+  destroyTripVectorMap();
+  frame.classList.add('trip-map-vector-frame');
+  frame.removeAttribute('data-map-pan');
+  frame.querySelector('.map-tiles')?.remove();
+  frame.querySelector('.trip-map-overlay')?.remove();
+  frame.querySelector('.map-attribution')?.remove();
+  const host = document.createElement('div');
+  host.className = 'trip-vector-map';
+  host.innerHTML = '<div class="trip-vector-loading">Cargando mapa vectorial…</div>';
+  frame.prepend(host);
+
+  const coordinates = withCoords.map(item => [Number(item.ciudad.lng), Number(item.ciudad.lat)]);
+  const storedCenter = Array.isArray(tripMapState.vectorCenter) && tripMapState.vectorCenter.length === 2
+    ? tripMapState.vectorCenter
+    : null;
+  const storedZoom = Number.isFinite(tripMapState.vectorZoom) ? tripMapState.vectorZoom : null;
+  const center = storedCenter || [
+    coordinates.reduce((sum, point) => sum + point[0], 0) / coordinates.length,
+    coordinates.reduce((sum, point) => sum + point[1], 0) / coordinates.length
+  ];
+  let map;
+  try {
+    map = new window.maplibregl.Map({
+      container: host,
+      style: 'https://tiles.openfreemap.org/styles/positron',
+      center,
+      zoom: storedZoom == null ? baseZoom : storedZoom,
+      minZoom: TRIP_MAP_MIN_ZOOM,
+      maxZoom: TRIP_MAP_MAX_ZOOM,
+      attributionControl: true,
+      dragRotate: false,
+      pitchWithRotate: false,
+      touchPitch: false
+    });
+  } catch (error) {
+    console.warn('El dispositivo no pudo iniciar el mapa vectorial', error);
+    tripVectorMapFailed = true;
+    host.remove();
+    window.setTimeout(renderTripMap, 0);
+    return false;
+  }
+  tripVectorMap = map;
+  if (map.touchZoomRotate && typeof map.touchZoomRotate.disableRotation === 'function') {
+    map.touchZoomRotate.disableRotation();
+  }
+
+  const standardItems = withCoords.filter(item => !item.photoPoint);
+  const photoItems = withCoords.filter(item => item.photoPoint);
+  standardItems.forEach((item, index) => {
+    const marker = new window.maplibregl.Marker({
+      element: tripVectorMarkerElement(item, index, dailyMode),
+      anchor: 'center'
+    }).setLngLat([Number(item.ciudad.lng), Number(item.ciudad.lat)]).addTo(map);
+    tripVectorMarkers.push(marker);
+  });
+
+  let loaded = false;
+  const startupTimer = window.setTimeout(() => {
+    if (tripVectorMap !== map || loaded) return;
+    tripVectorMapFailed = true;
+    destroyTripVectorMap();
+    renderTripMap();
+  }, 15_000);
+  map.on('load', () => {
+    loaded = true;
+    window.clearTimeout(startupTimer);
+    host.querySelector('.trip-vector-loading')?.remove();
+    const routeItems = dailyMode ? [] : standardItems.filter(item => !item.configuredOnly);
+    if (shouldDrawRoute && routeItems.length > 1) {
+      map.addSource('trip-route', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: routeItems.map(item => [Number(item.ciudad.lng), Number(item.ciudad.lat)])
+          }
+        }
+      });
+      map.addLayer({
+        id: 'trip-route-line',
+        type: 'line',
+        source: 'trip-route',
+        paint: {
+          'line-color': '#1d4ed8',
+          'line-width': 4,
+          'line-opacity': 0.82
+        }
+      });
+    }
+    if (!storedCenter || storedZoom == null) {
+      const bounds = coordinates.reduce(
+        (result, point) => result.extend(point),
+        new window.maplibregl.LngLatBounds(coordinates[0], coordinates[0])
+      );
+      const samePoint = bounds.getWest() === bounds.getEast() && bounds.getSouth() === bounds.getNorth();
+      if (samePoint) {
+        map.jumpTo({ center: coordinates[0], zoom: withCoords[0].blogPoint || withCoords[0].photoPoint ? 16 : 13 });
+      } else {
+        map.fitBounds(bounds, { padding: 54, maxZoom: 17, duration: 0 });
+      }
+    }
+    renderTripVectorPhotoMarkers(map, photoItems);
+    updateTripVectorZoomLabel(map, baseZoom);
+    map.resize();
+  });
+  map.on('zoom', () => updateTripVectorZoomLabel(map, baseZoom));
+  map.on('moveend', () => {
+    const currentCenter = map.getCenter();
+    tripMapState.vectorCenter = [currentCenter.lng, currentCenter.lat];
+    tripMapState.vectorZoom = map.getZoom();
+    renderTripVectorPhotoMarkers(map, photoItems);
+  });
+  map.on('error', event => {
+    if (!loaded) console.warn('No se pudo iniciar el mapa vectorial', event && event.error || event);
+  });
+  return true;
+}
+
 function renderTripMap() {
   const container = $('#trip-map');
   const info = $('#trip-map-info');
@@ -4990,11 +5211,13 @@ function renderTripMap() {
   } = tripMapItemsForCurrentScope();
   const missing = cities.filter(item => !lugarHasCoords(item.ciudad));
   if (!cities.length) {
+    destroyTripVectorMap();
     container.innerHTML = '<div class="map-empty">Sin ciudades en este viaje.</div>';
     info.textContent = '';
     return;
   }
   if (!withCoords.length) {
+    destroyTripVectorMap();
     container.innerHTML = '<div class="map-empty">Añade latitud y longitud a las ciudades para ver el mapa.</div>';
     info.textContent = `Faltan coordenadas: ${missing.map(item => item.ciudad.nombre).join(', ')}.`;
     return;
@@ -5012,6 +5235,8 @@ function renderTripMap() {
     tripMapState.zoomDelta = 0;
     tripMapState.panX = 0;
     tripMapState.panY = 0;
+    tripMapState.vectorCenter = null;
+    tripMapState.vectorZoom = null;
   }
   const baseZoom = chooseMapZoom(withCoords, width, height);
   const zoom = Math.max(TRIP_MAP_MIN_ZOOM, Math.min(TRIP_MAP_MAX_ZOOM, baseZoom + tripMapState.zoomDelta));
@@ -5049,9 +5274,15 @@ function renderTripMap() {
     }
     return result;
   };
+  const mapLibreSupported = Boolean(
+    window.maplibregl
+      && (typeof window.maplibregl.supported !== 'function' || window.maplibregl.supported())
+  );
+  const useVectorInteractiveMap = Boolean(mapLibreSupported && !tripVectorMapFailed && !tripMapState.printMode && state.activeTab === 'resumen');
+  if (!useVectorInteractiveMap && tripVectorMap) destroyTripVectorMap();
   const zoomFraction = zoom - tileZoom;
-  const tiles = tileLevelHtml(tileZoom, tileScale, 1, true);
-  if (zoomFraction > 0.02 && tileZoom < TRIP_MAP_MAX_ZOOM) {
+  const tiles = useVectorInteractiveMap ? [] : tileLevelHtml(tileZoom, tileScale, 1, true);
+  if (!useVectorInteractiveMap && zoomFraction > 0.02 && tileZoom < TRIP_MAP_MAX_ZOOM) {
     tiles.push(...tileLevelHtml(tileZoom + 1, tileScale / 2, zoomFraction, false));
   }
   const project = item => {
@@ -5157,6 +5388,15 @@ function renderTripMap() {
       <div class="map-attribution">© OpenStreetMap · © CARTO</div>
     </div>
   </div>`;
+  if (useVectorInteractiveMap) {
+    initializeTripVectorMap({
+      container,
+      withCoords,
+      dailyMode,
+      shouldDrawRoute,
+      baseZoom
+    });
+  }
   container.querySelectorAll('[data-map-photo-keys]').forEach(marker => {
     const open = event => {
       event.preventDefault();
@@ -5264,6 +5504,7 @@ function setMapPinchTransform(frame, scale, clientX, clientY) {
 function startTripMapDrag(event) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
+  if (target.closest('.maplibregl-map')) return;
   if (target.closest('.map-controls, .map-photo-popup')) return;
   const frame = target.closest('.trip-map-frame');
   if (!frame) return;
@@ -7341,6 +7582,7 @@ function scrollToLastBlogEntry() {
 
 function setTab(id) {
   if (id === 'blog' && !selectedBlogTrip()) return;
+  if (id !== 'resumen' && tripVectorMap) destroyTripVectorMap();
   state.activeTab = id;
   ['viajes', 'gastos', 'blog', 'resumen', 'config'].forEach(tab => {
     $(`#tab-${tab}`).classList.toggle('active', tab === id);
@@ -9159,6 +9401,13 @@ function bindEvents() {
       const mapZoomButton = target.closest('[data-map-zoom]');
       if (mapZoomButton) {
         const action = mapZoomButton.dataset.mapZoom;
+        if (tripVectorMap && (action === 'in' || action === 'out')) {
+          tripVectorMap.easeTo({
+            zoom: Math.max(TRIP_MAP_MIN_ZOOM, Math.min(TRIP_MAP_MAX_ZOOM, tripVectorMap.getZoom() + (action === 'in' ? 1 : -1))),
+            duration: 240
+          });
+          return;
+        }
         const { width, height } = tripMapSize();
         if (action === 'in') {
           zoomTripMapAtPoint(width / 2, height / 2, 1);

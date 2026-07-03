@@ -1739,6 +1739,112 @@ body.map-fullscreen-open {
   cursor: grabbing;
 }
 
+.trip-map-vector-frame {
+  cursor: grab;
+}
+
+.trip-vector-map {
+  position: absolute;
+  inset: 0;
+}
+
+.trip-vector-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: #f5f7f4;
+  color: #475569;
+  font-weight: 700;
+}
+
+.trip-vector-map .maplibregl-canvas {
+  outline: none;
+}
+
+.trip-vector-map .maplibregl-ctrl-attrib {
+  font-size: 10px;
+}
+
+.trip-vector-marker {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+
+.trip-vector-marker-dot,
+.trip-vector-photo-marker {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  box-sizing: border-box;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  box-shadow: 0 1px 4px #0006;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.trip-vector-marker.configured .trip-vector-marker-dot {
+  background: #2563eb;
+}
+
+.trip-vector-marker.point .trip-vector-marker-dot,
+.trip-vector-marker.daily .trip-vector-marker-dot {
+  background: #7c3aed;
+}
+
+.trip-vector-marker-label {
+  position: absolute;
+  left: 24px;
+  top: -2px;
+  max-width: 180px;
+  overflow: hidden;
+  color: #172033;
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trip-vector-photo-marker {
+  position: relative;
+  padding: 0;
+  border-width: 2px;
+  background: #0f766e;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.trip-vector-photo-marker > span {
+  transform: translateY(-1px);
+  font-size: 14px;
+}
+
+.trip-vector-photo-marker > b {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1.5px solid #fff;
+  border-radius: 50%;
+  background: #f97316;
+  color: #fff;
+  font-size: 8px;
+  line-height: 1;
+}
+
 .map-tiles,
 .trip-map-overlay {
   position: absolute;
