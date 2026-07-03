@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v111';
+const APP_VERSION = '700v112';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -33,6 +33,7 @@ let activeBlogImage = null;
 let activeBlogGalleryImages = [];
 let imageLocationModulePromise = null;
 const imageGpsCache = new WeakMap();
+const imageDateTimeCache = new WeakMap();
 let currentImageLocationPromise = null;
 let lastCurrentImageLocation = null;
 let pendingSharedImagesPayload = null;
@@ -445,6 +446,8 @@ function normalizeStoredImageRecord(image = {}) {
     longitude,
     locationSource: String(image.locationSource || ''),
     mapEnabled: image.mapEnabled === true && hasExactPoint,
+    capturedDate: String(image.capturedDate || ''),
+    capturedTime: String(image.capturedTime || ''),
     createdAt: image.createdAt || ''
   };
 }
@@ -1126,7 +1129,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v111');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v112');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1140,6 +1143,33 @@ async function imageGpsForFile(file, options = {}) {
     if (point) imageGpsCache.set(file, point);
   }
   return point;
+}
+
+function fileModifiedDateTime(file) {
+  const timestamp = Number(file && file.lastModified);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
+  const value = new Date(timestamp);
+  if (Number.isNaN(value.getTime())) return null;
+  return {
+    date: `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`,
+    time: `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`
+  };
+}
+
+async function imageDateTimeForFile(file) {
+  if (!file) return null;
+  if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
+  let captured = null;
+  try {
+    imageLocationModulePromise ||= import('./image-location.js?v=700v112');
+    const locationReader = await imageLocationModulePromise;
+    captured = await locationReader.extractImageDateTime(file);
+  } catch (error) {
+    console.warn('No se pudo leer la fecha EXIF de la imagen', error);
+  }
+  captured ||= fileModifiedDateTime(file);
+  imageDateTimeCache.set(file, captured);
+  return captured;
 }
 
 function clearExpenseTicketSelection(prefix) {
@@ -1502,7 +1532,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v111');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v112');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4392,6 +4422,30 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
   return records;
 }
 
+function mapRecordMatchesDestination(record, trip) {
+  if (!trip) return true;
+  const scope = destinationRouteScope(tripCityIds(trip));
+  if (!scope.applied) return true;
+  const visibleIds = new Set(scope.visibleIds.map(Number));
+  const recordCityId = Number(record && record.ciudadId);
+  if (recordCityId) return visibleIds.has(recordCityId);
+  const latitude = storedImageCoordinate(record && record.latitude, -90, 90);
+  const longitude = storedImageCoordinate(record && record.longitude, -180, 180);
+  if (latitude == null || longitude == null) return false;
+  const nearest = scope.completeIds
+    .map(id => state.lugares.find(place => Number(place.id) === Number(id)))
+    .filter(city => city && lugarHasCoords(city))
+    .map(city => ({
+      id: Number(city.id),
+      distance: geographicDistanceMeters(
+        { latitude, longitude },
+        { latitude: Number(city.lat), longitude: Number(city.lng) }
+      )
+    }))
+    .sort((a, b) => a.distance - b.distance)[0];
+  return Boolean(nearest && visibleIds.has(nearest.id));
+}
+
 function photoMapItems(records) {
   return records.map(record => ({
     ciudad: {
@@ -4431,6 +4485,8 @@ function dailyMapRecordsForScope(scopedTripIds, paisId) {
         fecha: entry.fecha || '',
         hora: entry.hora || '',
         descripcion: entry.descripcion || 'Punto',
+        paisId: entry.paisId || null,
+        ciudadId: entry.ciudadId || null,
         latitude: point.latitude,
         longitude: point.longitude
       };
@@ -4451,24 +4507,26 @@ function blogEntryMatchesMapCountry(entry, paisId) {
   return Number(entry && entry.paisId || (city && city.parentId)) === Number(paisId);
 }
 
-function dailyMapDatesForScope(scopedTripIds, paisId) {
+function dailyMapDatesForScope(scopedTripIds, paisId, destinationTrip = null) {
   const dates = new Set();
   state.gastos
     .filter(gasto => scopedTripIds.has(Number(gasto.viajeId)))
     .filter(gasto => gastoMatchesLugarFilters(gasto, paisId, ''))
+    .filter(gasto => mapRecordMatchesDestination(gasto, destinationTrip))
     .forEach(gasto => {
       if (gasto.fecha) dates.add(gasto.fecha);
     });
   state.blogEntries
     .filter(entry => scopedTripIds.has(Number(entry.viajeId)))
     .filter(entry => blogEntryMatchesMapCountry(entry, paisId))
+    .filter(entry => mapRecordMatchesDestination(entry, destinationTrip))
     .forEach(entry => {
       if (entry.fecha) dates.add(entry.fecha);
     });
   return [...dates].sort().reverse();
 }
 
-function dailyCityMapRecordsForScope(scopedTripIds, paisId, day) {
+function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip = null) {
   const configuredCityIds = [...new Set(state.viajes
     .filter(trip => scopedTripIds.has(Number(trip.id)))
     .flatMap(tripCityIds)
@@ -4477,6 +4535,7 @@ function dailyCityMapRecordsForScope(scopedTripIds, paisId, day) {
   const defaultCityId = configuredCityIds.length === 1 ? configuredCityIds[0] : 0;
   const byCity = new Map();
   const append = item => {
+    if (!mapRecordMatchesDestination(item, destinationTrip)) return;
     const cityId = Number(item.ciudadId || defaultCityId);
     const city = state.lugares.find(place => Number(place.id) === cityId);
     if (!city || !lugarHasCoords(city) || isTransitPlaceName(city.nombre)) return;
@@ -4541,8 +4600,12 @@ function tripMapItemsForCurrentScope() {
   const gastos = gastosForSelectorTripScope('#r-viaje');
   const scopedTripIds = mapScopedTripIds(gastos);
   const scopedTrips = mapScopedTrips(gastos);
-  const exactDailyRecords = dailyMapRecordsForScope(scopedTripIds, paisId);
-  const dayOptions = dailyMapDatesForScope(scopedTripIds, paisId);
+  const destinationOnlyAvailable = scopedTrips.length === 1 && tripCityIds(scopedTrips[0]).length > 2;
+  const destinationOnlyApplied = tripMapState.destinationOnly && destinationOnlyAvailable;
+  const destinationTrip = destinationOnlyApplied ? scopedTrips[0] : null;
+  const exactDailyRecords = dailyMapRecordsForScope(scopedTripIds, paisId)
+    .filter(record => mapRecordMatchesDestination(record, destinationTrip));
+  const dayOptions = dailyMapDatesForScope(scopedTripIds, paisId, destinationTrip);
   if (tripMapState.day && !dayOptions.includes(tripMapState.day)) tripMapState.day = '';
   const dailyMode = Boolean(tripMapState.day);
   const selectedExactDailyRecords = dailyMode
@@ -4550,12 +4613,11 @@ function tripMapItemsForCurrentScope() {
     : [];
   const dailyRecords = selectedExactDailyRecords.length
     ? selectedExactDailyRecords
-    : (dailyMode ? dailyCityMapRecordsForScope(scopedTripIds, paisId, tripMapState.day) : []);
-  const destinationOnlyAvailable = scopedTrips.length === 1 && tripCityIds(scopedTrips[0]).length > 2;
-  const destinationOnlyApplied = tripMapState.destinationOnly && destinationOnlyAvailable;
+    : (dailyMode ? dailyCityMapRecordsForScope(scopedTripIds, paisId, tripMapState.day, destinationTrip) : []);
   const cities = mapRouteCities(gastos, paisId);
   const points = state.blogEntries
     .filter(entry => entry.tipo === 'punto' && scopedTripIds.has(Number(entry.viajeId)) && blogPointCoordinates(entry))
+    .filter(entry => mapRecordMatchesDestination(entry, destinationTrip))
     .filter(entry => {
       if (!paisId) return true;
       const city = state.lugares.find(item => Number(item.id) === Number(entry.ciudadId));
@@ -4582,7 +4644,8 @@ function tripMapItemsForCurrentScope() {
         pointEntry: entry
       };
     });
-  const allPhotoRecords = photoMapRecordsForScope(scopedTripIds, paisId);
+  const allPhotoRecords = photoMapRecordsForScope(scopedTripIds, paisId)
+    .filter(record => mapRecordMatchesDestination(record, destinationTrip));
   const photos = tripMapState.showPhotos ? photoMapItems(allPhotoRecords) : [];
   const dailyItems = dailyMode ? dailyRecords.map(dailyMapItem) : [];
   const mapItems = dailyMode ? dailyItems : [...cities, ...points, ...photos];
@@ -6439,7 +6502,10 @@ async function compressBlogImage(file, options = {}) {
   const supportedByType = String(file && file.type || '').startsWith('image/');
   const supportedByName = /\.(?:jpe?g|png|webp|gif)$/i.test(fileName);
   if (!file || (!supportedByType && !supportedByName)) throw new Error('Selecciona un archivo de imagen');
-  const gps = await imageGpsForFile(file, options);
+  const [gps, captured] = await Promise.all([
+    imageGpsForFile(file, options),
+    imageDateTimeForFile(file)
+  ]);
   const image = await loadImageFile(file);
   let width = image.naturalWidth || image.width;
   let height = image.naturalHeight || image.height;
@@ -6485,8 +6551,16 @@ async function compressBlogImage(file, options = {}) {
     latitude: gps ? gps.latitude : null,
     longitude: gps ? gps.longitude : null,
     locationSource: gps ? gps.source || 'exif' : '',
-    mapEnabled: false
+    mapEnabled: false,
+    capturedDate: captured ? captured.date : '',
+    capturedTime: captured ? captured.time : ''
   };
+}
+
+function applyBlogImageDateTime(image) {
+  if (activeBlogEntryId || !image) return;
+  if (image.capturedDate && $('#blog-fecha')) $('#blog-fecha').value = image.capturedDate;
+  if (image.capturedTime && $('#blog-hora')) $('#blog-hora').value = image.capturedTime;
 }
 
 async function selectBlogImage(input, otherInput, options = {}) {
@@ -6496,7 +6570,9 @@ async function selectBlogImage(input, otherInput, options = {}) {
   setMessage('#msg-blog-entry', '');
   if ($('#blog-image-status')) $('#blog-image-status').textContent = 'Comprimiendo imagen...';
   try {
-    showBlogImage(await compressBlogImage(file, options));
+    const image = await compressBlogImage(file, options);
+    showBlogImage(image);
+    applyBlogImageDateTime(image);
   } catch (error) {
     input.value = '';
     if (activeBlogImage) showBlogImage(activeBlogImage);
@@ -6518,6 +6594,7 @@ async function selectBlogGallery(input) {
       images.push(await compressBlogImage(files[index]));
     }
     showBlogImages(images);
+    applyBlogImageDateTime(images[0]);
   } catch (error) {
     input.value = '';
     if (activeBlogImage) showBlogImages([activeBlogImage, ...activeBlogGalleryImages]);
@@ -6655,6 +6732,7 @@ async function continueSharedImagesImport() {
     openBlogEntryDialog();
     setBlogEntryType('imagen');
     showBlogImages(images);
+    applyBlogImageDateTime(images[0]);
     if (suggestedDescription && $('#blog-descripcion')) $('#blog-descripcion').value = suggestedDescription;
     return;
   }
@@ -7840,10 +7918,12 @@ function showBackupResultSoon(title, detail = '') {
   setTimeout(() => showBackupResult(title, detail), 900);
 }
 
-function setBackupUploadState(active) {
+function setBackupUploadState(active, title = 'Subiendo copia a la nube…', detail = 'Puede tardar un poco si contiene fotos o documentos.') {
   backupCloudUploadInProgress = Boolean(active);
   const status = $('#backup-upload-status');
   if (status) status.hidden = !backupCloudUploadInProgress;
+  if ($('#backup-progress-title')) $('#backup-progress-title').textContent = title;
+  if ($('#backup-progress-detail')) $('#backup-progress-detail').textContent = detail;
   const downloadButton = $('#backup-download');
   const closeButton = $('#backup-close');
   if (downloadButton) downloadButton.disabled = backupCloudUploadInProgress;
@@ -7856,7 +7936,9 @@ function setBackupUploadState(active) {
 }
 
 async function handleBackupDownload() {
+  setBackupUploadState(true, 'Haciendo backup', 'Preparando y guardando la copia local…');
   try {
+    await new Promise(resolve => window.requestAnimationFrame(resolve));
     const result = await prepareJsonBackup({
       autoDownload: true,
       scope: $('#backup-export-scope').value,
@@ -7874,8 +7956,9 @@ async function handleBackupDownload() {
         : `Copia local creada: ${filename}`;
     setMessage('#msg-backup', localDetail);
     setMessage('#msg-export', localDetail);
+    setBackupUploadState(false);
     if (confirm('La subida a la nube puede tardar un poco, especialmente si la copia contiene fotos o documentos. Mientras se realiza verás el aviso “Subiendo copia a la nube…”. ¿Quieres continuar?')) {
-      setBackupUploadState(true);
+      setBackupUploadState(true, 'Subiendo copia a la nube…', 'Puede tardar un poco si contiene fotos o documentos.');
       try {
         const saved = await uploadCloudSnapshot({ backupData: data, backupName: filename });
         const stats = saved.attachmentStats || {};
@@ -7891,6 +7974,8 @@ async function handleBackupDownload() {
     } else showBackupResultSoon('Copia local creada', localDetail);
   } catch (err) {
     setMessage('#msg-backup', err.message || String(err), true);
+  } finally {
+    setBackupUploadState(false);
   }
 }
 
@@ -9304,28 +9389,40 @@ function bindEvents() {
   };
 }
 
+function finishAppLoading() {
+  const loading = $('#app-loading');
+  if (!loading || loading.classList.contains('is-ready')) return;
+  loading.classList.add('is-ready');
+  window.setTimeout(() => loading.remove(), 220);
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
-  const hasSharedLaunch = new URL(window.location.href).searchParams.has('shared') || new URL(window.location.href).searchParams.has('shared_error');
-  bindEvents();
-  ensureSyncKey();
-  await withDataTrackingPaused(seedIfEmpty);
-  await loadAll();
-  ensureLocalDataUpdatedAt();
-  await refreshLocalBackupHistory();
   try {
-    await createEntryBackup();
-  } catch (error) {
-    console.warn('No se pudo crear la copia local de entrada', error);
-  }
-  renderBackupStatus();
-  if (hasSharedLaunch) {
+    const hasSharedLaunch = new URL(window.location.href).searchParams.has('shared') || new URL(window.location.href).searchParams.has('shared_error');
+    bindEvents();
+    ensureSyncKey();
+    await withDataTrackingPaused(seedIfEmpty);
+    await loadAll();
+    ensureLocalDataUpdatedAt();
+    await refreshLocalBackupHistory();
     try {
-      await consumeSharedImagesLaunch();
+      await createEntryBackup();
     } catch (error) {
-      alert(error.message || String(error));
+      console.warn('No se pudo crear la copia local de entrada', error);
     }
-  } else {
-    await checkCloudOnEntry();
+    renderBackupStatus();
+    finishAppLoading();
+    if (hasSharedLaunch) {
+      try {
+        await consumeSharedImagesLaunch();
+      } catch (error) {
+        alert(error.message || String(error));
+      }
+    } else {
+      await checkCloudOnEntry();
+    }
+  } finally {
+    finishAppLoading();
   }
 });
 
