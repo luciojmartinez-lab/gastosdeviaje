@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v112';
+const APP_VERSION = '700v113';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1129,7 +1129,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v112');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v113');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1161,7 +1161,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v112');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v113');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1532,7 +1532,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v112');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v113');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5015,6 +5015,8 @@ function renderTripMap() {
   }
   const baseZoom = chooseMapZoom(withCoords, width, height);
   const zoom = Math.max(TRIP_MAP_MIN_ZOOM, Math.min(TRIP_MAP_MAX_ZOOM, baseZoom + tripMapState.zoomDelta));
+  const tileZoom = Math.floor(zoom);
+  const tileScale = 2 ** (zoom - tileZoom);
   const worldPoints = withCoords.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom));
   const minX = Math.min(...worldPoints.map(p => p.x));
   const maxX = Math.max(...worldPoints.map(p => p.x));
@@ -5024,20 +5026,20 @@ function renderTripMap() {
   const centerY = (minY + maxY) / 2;
   const startX = centerX - width / 2 - tripMapState.panX;
   const startY = centerY - height / 2 - tripMapState.panY;
-  const maxTile = (2 ** zoom) - 1;
-  const tileMinX = Math.max(0, Math.floor(startX / 256));
-  const tileMaxX = Math.min(maxTile, Math.floor((startX + width) / 256));
-  const tileMinY = Math.max(0, Math.floor(startY / 256));
-  const tileMaxY = Math.min(maxTile, Math.floor((startY + height) / 256));
+  const maxTile = (2 ** tileZoom) - 1;
+  const tileMinX = Math.max(0, Math.floor((startX / tileScale) / 256));
+  const tileMaxX = Math.min(maxTile, Math.floor(((startX + width) / tileScale) / 256));
+  const tileMinY = Math.max(0, Math.floor((startY / tileScale) / 256));
+  const tileMaxY = Math.min(maxTile, Math.floor(((startY + height) / tileScale) / 256));
   const tiles = [];
   for (let x = tileMinX; x <= tileMaxX; x += 1) {
     for (let y = tileMinY; y <= tileMaxY; y += 1) {
-      const left = ((x * 256 - startX) / width) * 100;
-      const top = ((y * 256 - startY) / height) * 100;
-      const tileW = (256 / width) * 100;
-      const tileH = (256 / height) * 100;
-      const primary = `https://a.basemaps.cartocdn.com/rastertiles/voyager/${zoom}/${x}/${y}.png`;
-      const fallback = `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+      const left = ((x * 256 * tileScale - startX) / width) * 100;
+      const top = ((y * 256 * tileScale - startY) / height) * 100;
+      const tileW = ((256 * tileScale) / width) * 100;
+      const tileH = ((256 * tileScale) / height) * 100;
+      const primary = `https://a.basemaps.cartocdn.com/rastertiles/voyager/${tileZoom}/${x}/${y}.png`;
+      const fallback = `https://tile.openstreetmap.org/${tileZoom}/${x}/${y}.png`;
       tiles.push(`<img class="map-tile" src="${primary}" onerror="this.onerror=null;this.src='${fallback}'" alt="" loading="lazy" decoding="async" draggable="false" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${tileW.toFixed(3)}%;height:${tileH.toFixed(3)}%;">`);
     }
   }
@@ -5108,7 +5110,9 @@ function renderTripMap() {
       : '';
     return `<g class="map-marker map-marker-photo" role="button" tabindex="0" data-map-photo-keys="${keys}" aria-label="${escapeHtml(records.length === 1 ? records[0].descripcion || 'Foto' : `${records.length} fotos`)}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="9"></circle><text class="map-marker-photo-plus" x="${x.toFixed(1)}" y="${(y + 4.4).toFixed(1)}">+</text>${badge}<title>${escapeHtml(title)}</title></g>`;
   }).join('');
-  const zoomLabel = tripMapState.zoomDelta === 0 ? 'auto' : `${tripMapState.zoomDelta > 0 ? '+' : ''}${tripMapState.zoomDelta}`;
+  const roundedZoom = Math.round(zoom * 10) / 10;
+  const roundedDelta = Math.round(tripMapState.zoomDelta * 10) / 10;
+  const zoomLabel = Math.abs(roundedDelta) < 0.05 ? 'auto' : `${roundedDelta > 0 ? '+' : ''}${roundedDelta}`;
   const dayOptionsHtml = dayOptions.map(day => `<option value="${escapeHtml(day)}"${tripMapState.day === day ? ' selected' : ''}>${escapeHtml(blogDayDateLabel(day))}</option>`).join('');
   const fullscreen = isTripMapFullscreen();
   const canCopyDailyMap = dailyMode && scopedTrips.length === 1 && dailyRecords.length > 0;
@@ -5127,7 +5131,7 @@ function renderTripMap() {
       </div>
       <div class="map-controls-zoom">
         <button type="button" data-map-zoom="out" title="Reducir mapa">-</button>
-        <span>Z ${zoom} ${zoomLabel}</span>
+        <span>Z ${roundedZoom} ${zoomLabel}</span>
         <button type="button" data-map-zoom="in" title="Ampliar mapa">+</button>
       </div>
     </div>
@@ -5305,9 +5309,7 @@ function endTripMapDrag(event) {
       const scale = tripMapGesture.scale;
       const centerX = tripMapGesture.centerX;
       const centerY = tripMapGesture.centerY;
-      let delta = 0;
-      if (scale > 1.1) delta = Math.min(3, Math.max(1, Math.round(Math.log2(scale) * 2)));
-      else if (scale < 0.9) delta = Math.max(-3, Math.min(-1, Math.round(Math.log2(scale) * 2)));
+      const delta = Math.abs(scale - 1) > 0.015 ? Math.log2(scale) : 0;
       clearMapGestureFrame(frame);
       if (delta) zoomTripMapAtClient(frame, centerX, centerY, delta);
     }
