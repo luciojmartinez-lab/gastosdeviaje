@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="styles.css?v=700v108">
+  <link rel="stylesheet" href="styles.css?v=700v110">
   <meta name="theme-color" content="#1976d2">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
@@ -21,7 +21,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v108</div>
+  <div class="app-version">700v110</div>
 </header>
 
 <main>
@@ -652,6 +652,35 @@
   </form>
 </dialog>
 
+<dialog id="shared-images-dialog" class="modal shared-images-modal">
+  <form id="shared-images-form">
+    <div class="modal-head">
+      <h2>Imágenes recibidas</h2>
+      <button type="button" class="ghost icon-btn" id="shared-images-close" aria-label="Cerrar">x</button>
+    </div>
+    <p>Elige dónde preparar las imágenes compartidas. No se guardará nada hasta que confirmes el formulario correspondiente.</p>
+    <div id="shared-images-preview" class="shared-images-preview"></div>
+    <p id="shared-images-summary" class="small"></p>
+    <div class="row shared-images-options">
+      <div><label for="shared-images-trip">Viaje</label><select id="shared-images-trip" required></select></div>
+      <div><label for="shared-images-destination">Destino</label><select id="shared-images-destination">
+        <option value="blog">Entrada de Blog</option>
+        <option value="expense-existing">Gasto existente</option>
+        <option value="expense-new">Nuevo gasto</option>
+      </select></div>
+    </div>
+    <div id="shared-images-expense-row" hidden>
+      <label for="shared-images-expense">Gasto</label>
+      <select id="shared-images-expense"></select>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn" id="shared-images-continue">Continuar</button>
+      <button type="button" class="ghost" id="shared-images-cancel">Cancelar</button>
+      <span id="msg-shared-images" class="small"></span>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="wordpress-export-dialog" class="modal wordpress-export-modal">
   <form method="dialog">
     <div class="modal-head">
@@ -780,10 +809,10 @@
   </form>
 </dialog>
 
-<script src="app.bundle.js?v=700v108"></script>
+<script src="app.bundle.js?v=700v110"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v108';
+    const pageVersion = '700v110';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -810,7 +839,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v108', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v110', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
