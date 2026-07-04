@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v125';
+const APP_VERSION = '700v126';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1138,7 +1138,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v125');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v126');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1170,7 +1170,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v125');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v126');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1578,7 +1578,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v125');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v126');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4726,11 +4726,37 @@ function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip
     }));
 }
 
-function combineDailyMapRecords(exactRecords = [], cityRecords = []) {
+function tripDailyRouteOrder(trip, day) {
+  const routeIds = tripCityIds(trip).map(Number).filter(Boolean);
+  const arrivalDates = tripRouteArrivalDates(trip, routeIds);
+  const candidatesByCity = new Map();
+  routeIds.forEach((cityId, index) => {
+    if (!candidatesByCity.has(cityId)) candidatesByCity.set(cityId, []);
+    candidatesByCity.get(cityId).push({ index, date: arrivalDates[index] || '' });
+  });
+  const result = new Map();
+  candidatesByCity.forEach((candidates, cityId) => {
+    const exact = candidates.find(candidate => candidate.date === day);
+    const previous = candidates
+      .filter(candidate => candidate.date && candidate.date < day)
+      .sort((a, b) => b.date.localeCompare(a.date) || b.index - a.index)[0];
+    const next = candidates
+      .filter(candidate => candidate.date && candidate.date > day)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.index - b.index)[0];
+    result.set(cityId, (exact || previous || next || candidates[0]).index);
+  });
+  return result;
+}
+
+function combineDailyMapRecords(exactRecords = [], cityRecords = [], routeOrder = new Map()) {
   const exactCityIds = new Set(exactRecords.map(record => Number(record.ciudadId)).filter(Boolean));
   const cityFallbackRecords = cityRecords.filter(record => !exactCityIds.has(Number(record.ciudadId)));
+  const routeIndex = record => routeOrder.has(Number(record.ciudadId))
+    ? Number(routeOrder.get(Number(record.ciudadId)))
+    : Number.POSITIVE_INFINITY;
   const records = [...exactRecords, ...cityFallbackRecords].sort((a, b) =>
-    `${a.fecha || ''}T${a.hora || '00:00'}`.localeCompare(`${b.fecha || ''}T${b.hora || '00:00'}`)
+    routeIndex(a) - routeIndex(b)
+    || `${a.fecha || ''}T${a.hora || '00:00'}`.localeCompare(`${b.fecha || ''}T${b.hora || '00:00'}`)
     || String(a.key || '').localeCompare(String(b.key || ''))
   );
   return { records, usesCityFallback: cityFallbackRecords.length > 0 };
@@ -4776,7 +4802,10 @@ function tripMapItemsForCurrentScope() {
   const dailyCityRecords = dailyMode
     ? dailyCityMapRecordsForScope(scopedTripIds, paisId, tripMapState.day, destinationTrip)
     : [];
-  const combinedDailyRecords = combineDailyMapRecords(selectedExactDailyRecords, dailyCityRecords);
+  const dailyRouteOrder = dailyMode && scopedTrips.length === 1
+    ? tripDailyRouteOrder(scopedTrips[0], tripMapState.day)
+    : new Map();
+  const combinedDailyRecords = combineDailyMapRecords(selectedExactDailyRecords, dailyCityRecords, dailyRouteOrder);
   const dailyRecords = dailyMode ? combinedDailyRecords.records : [];
   const cities = mapRouteCities(gastos, paisId);
   const points = state.blogEntries
