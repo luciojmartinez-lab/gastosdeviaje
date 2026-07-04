@@ -1768,7 +1768,7 @@ body.map-fullscreen-open {
 }
 
 .trip-vector-marker {
-  position: relative;
+  position: absolute;
   width: 20px;
   height: 20px;
   pointer-events: none;
@@ -1816,7 +1816,7 @@ body.map-fullscreen-open {
 }
 
 .trip-vector-photo-marker {
-  position: relative;
+  position: absolute;
   padding: 0;
   border-width: 2px;
   background: #0f766e;
