@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v123';
+const APP_VERSION = '700v124';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1138,7 +1138,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v123');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v124');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1170,7 +1170,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v123');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v124');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1578,7 +1578,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v123');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v124');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5250,9 +5250,17 @@ async function createTripOverviewMapBlogImage(trip) {
   context.fillText('© OpenStreetMap · © CARTO', width - 184, headerHeight + mapHeight - 7);
 
   const listTop = headerHeight + mapHeight;
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, listTop, width, canvas.height - listTop);
+  context.strokeStyle = '#cbd5e1';
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(22, listTop + 12);
+  context.lineTo(width - 22, listTop + 12);
+  context.stroke();
   context.fillStyle = '#0f172a';
   context.font = '800 20px system-ui, sans-serif';
-  context.fillText('Ciudades visitadas', 22, listTop + 32);
+  context.fillText('Ciudades visitadas', 22, listTop + 38);
   context.font = '600 15px system-ui, sans-serif';
   stops.forEach((stop, index) => {
     const date = stop.arrivalDate ? summaryDocumentDate(stop.arrivalDate, true) : 'Fecha no disponible';
@@ -7800,6 +7808,48 @@ function blogPrintDayHtml(group) {
   </section>`;
 }
 
+function isTripOverviewBlogEntry(entry, trip) {
+  if (!entry || !String(entry.dailyMapDate || '').startsWith('trip-overview:')) return false;
+  return !trip || String(entry.dailyMapDate) === `trip-overview:${trip.id}`;
+}
+
+function blogPrintOverviewHtml(entry, trip) {
+  const image = entry ? blogEntryImages(entry)[0] : null;
+  if (!image || !image.data) return '';
+  return `<section class="blog-print-overview" aria-label="Mapa general de ${escapeHtml(trip.nombre || 'viaje')}">
+    <img src="${escapeHtml(image.data)}" alt="Mapa general de ${escapeHtml(trip.nombre || 'viaje')}">
+  </section>`;
+}
+
+function blogPrintPreparationDayHtml(group, index) {
+  const placeNames = [...new Set(group.entries.flatMap(entry => [blogPlaceName(entry.ciudadId), blogPlaceName(entry.paisId)]).filter(name => name && name !== '-'))];
+  return `<div class="blog-print-preparation-day${index ? ' separated' : ''}">
+    <h2>${escapeHtml(blogDayDateLabel(group.date))}${placeNames.length ? ` — ${escapeHtml(placeNames.join(' / '))}` : ''}</h2>
+    ${group.entries.map(entry => blogPrintEntryHtml(entry)).join('')}
+  </div>`;
+}
+
+function blogPrintPreparationsHtml(entries) {
+  const groups = groupBlogEntriesByDay(entries);
+  return `<section class="blog-print-preparations">
+    <h1>Preparativos Viaje</h1>
+    ${groups.length ? groups.map(blogPrintPreparationDayHtml).join('') : '<p class="blog-print-empty">No hay anotaciones anteriores al inicio del viaje.</p>'}
+  </section>`;
+}
+
+function blogPrintBodyHtml(trip, entries) {
+  const overview = entries.find(entry => isTripOverviewBlogEntry(entry, trip)) || null;
+  const timeline = entries.filter(entry => !isTripOverviewBlogEntry(entry, trip));
+  const preparations = trip.fechaInicio ? timeline.filter(entry => String(entry.fecha || '') < trip.fechaInicio) : [];
+  const travelEntries = trip.fechaInicio ? timeline.filter(entry => String(entry.fecha || '') >= trip.fechaInicio) : timeline;
+  return [
+    blogPrintOverviewHtml(overview, trip),
+    blogPrintPreparationsHtml(preparations),
+    groupBlogEntriesByDay(travelEntries).map(blogPrintDayHtml).join(''),
+    blogPrintPointMapHtml(timeline)
+  ].filter(Boolean).join('');
+}
+
 function wordpressExportEntry(entry, trip) {
   const images = blogEntryImages(entry).map((image, index) => ({
     sourceKey: `${slugFilePart(trip.nombre)}-${entry.fecha}-${entry.id}-image-${index + 1}-${image.name || 'imagen'}-${image.size || 0}`,
@@ -7929,15 +7979,21 @@ function printBlog() {
     alert('Este viaje todavía no tiene entradas en el blog.');
     return;
   }
-  const body = groupBlogEntriesByDay(entries).map(blogPrintDayHtml).join('') + blogPrintPointMapHtml(entries);
+  const body = blogPrintBodyHtml(trip, entries);
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blog · ${escapeHtml(trip.nombre)}</title><style>
     @page { size: A4; margin: 12mm; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color: #1f2937; }
     h1 { margin: 0 0 6mm; font-size: 22px; }
     h2 { margin: 3mm 0; font-size: 16px; }
+    .blog-print-overview { display: flex; width: 100%; min-height: 270mm; align-items: flex-start; justify-content: center; break-after: page; page-break-after: always; }
+    .blog-print-overview img { display: block; width: 100%; height: auto; max-height: 270mm; object-fit: contain; }
+    .blog-print-preparations { break-after: page; page-break-after: always; }
+    .blog-print-preparation-day { padding-top: 1mm; }
+    .blog-print-preparation-day.separated { margin-top: 5mm; padding-top: 6mm; border-top: 1px solid #94a3b8; }
+    .blog-print-preparations .blog-print-entry { padding-bottom: 4mm; margin-bottom: 4mm; border-bottom: 0; }
+    .blog-print-empty { color: #64748b; font-style: italic; }
     .blog-print-day { break-before: page; page-break-before: always; }
-    .blog-print-day:first-of-type { break-before: auto; page-break-before: auto; }
     .blog-print-entry { break-inside: avoid; page-break-inside: avoid; padding: 0 0 7mm; margin: 0 0 7mm; border-bottom: 1px solid #dbe3ef; }
     .blog-print-meta { display: flex; flex-wrap: wrap; gap: 3mm 7mm; color: #64748b; font-size: 11px; }
     .blog-print-text { margin-top: 3mm; font-size: 12px; line-height: 1.5; white-space: normal; }
@@ -7961,7 +8017,7 @@ function printBlog() {
     .blog-print-featured { margin: 0 0 8mm; text-align: center; }
     .blog-print-featured figcaption { margin-top: 2mm; color: #64748b; font-size: 11px; }
     @media screen { body { max-width: 210mm; margin: 0 auto; padding: 12mm; } }
-  </style></head><body><h1>Blog · ${escapeHtml(trip.nombre)}</h1>${body}<script>
+  </style></head><body>${body}<script>
     Promise.all(Array.from(document.images).map(function(img){return img.complete ? Promise.resolve() : new Promise(function(resolve){img.onload=resolve;img.onerror=resolve;});})).then(function(){setTimeout(function(){window.print();},150);});
   </script></body></html>`;
   const win = window.open('', '_blank');
