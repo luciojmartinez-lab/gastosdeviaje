@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v120';
+const APP_VERSION = '700v121';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -70,6 +70,7 @@ const tripMapState = {
   showPhotos: true,
   destinationOnly: false,
   day: '',
+  cityId: 0,
   printMode: false,
   vectorCenter: null,
   vectorZoom: null
@@ -1137,7 +1138,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v120');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v121');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1169,7 +1170,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v120');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v121');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1540,7 +1541,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v120');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v121');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4656,23 +4657,74 @@ function tripMapItemsForCurrentScope() {
     });
   const allPhotoRecords = photoMapRecordsForScope(scopedTripIds, paisId)
     .filter(record => mapRecordMatchesDestination(record, destinationTrip));
-  const photos = tripMapState.showPhotos ? photoMapItems(allPhotoRecords) : [];
+  const cityOptionsById = new Map();
+  const appendCityOption = cityId => {
+    const id = Number(cityId);
+    if (!id || cityOptionsById.has(id)) return;
+    const city = state.lugares.find(item => Number(item.id) === id);
+    if (city && !isTransitPlaceName(city.nombre)) cityOptionsById.set(id, city);
+  };
+  cities.forEach(item => appendCityOption(item.ciudad && item.ciudad.id));
+  points.forEach(item => appendCityOption(item.pointEntry && item.pointEntry.ciudadId));
+  allPhotoRecords.forEach(record => appendCityOption(record.ciudadId));
+  const cityOptions = [...cityOptionsById.values()];
+  if (tripMapState.cityId && !cityOptionsById.has(Number(tripMapState.cityId))) tripMapState.cityId = 0;
+  if (dailyMode && tripMapState.cityId) tripMapState.cityId = 0;
+  const cityMode = Boolean(tripMapState.cityId);
+  const selectedCity = cityMode ? cityOptionsById.get(Number(tripMapState.cityId)) || null : null;
+  const visibleCities = cityMode
+    ? cities.filter(item => Number(item.ciudad && item.ciudad.id) === Number(tripMapState.cityId)).slice(0, 1)
+    : cities;
+  const visiblePoints = cityMode
+    ? points.filter(item => Number(item.pointEntry && item.pointEntry.ciudadId) === Number(tripMapState.cityId))
+    : points;
+  const visiblePhotoRecords = cityMode
+    ? allPhotoRecords.filter(record => Number(record.ciudadId) === Number(tripMapState.cityId))
+    : allPhotoRecords;
+  if (cityMode && !visibleCities.length && selectedCity && lugarHasCoords(selectedCity)) {
+    const firstDate = [...visiblePoints.map(item => item.firstDate), ...visiblePhotoRecords.map(record => record.fecha)]
+      .filter(Boolean)
+      .sort()[0] || '';
+    visibleCities.push({
+      ciudad: selectedCity,
+      pais: state.lugares.find(item => Number(item.id) === Number(selectedCity.parentId)) || null,
+      firstDate,
+      firstOrder: 0,
+      routeOrder: 0,
+      count: 0,
+      totalEur: 0,
+      configuredOnly: true,
+      plannedOnly: false
+    });
+  }
+  const photos = tripMapState.showPhotos ? photoMapItems(visiblePhotoRecords) : [];
   const dailyItems = dailyMode ? dailyRecords.map(dailyMapItem) : [];
-  const mapItems = dailyMode ? dailyItems : [...cities, ...points, ...photos];
+  const mapItems = dailyMode ? dailyItems : [...visibleCities, ...visiblePoints, ...photos];
+  const cityDays = cityMode
+    ? new Set([
+      ...visibleCities.map(item => item.firstDate),
+      ...visiblePoints.map(item => item.firstDate),
+      ...visiblePhotoRecords.map(record => record.fecha)
+    ].filter(Boolean))
+    : new Set();
   return {
     paisId,
     cities: mapItems,
     withCoords: mapItems.filter(item => lugarHasCoords(item.ciudad)),
-    shouldDrawRoute: !dailyMode && scopedTripIds.size <= 1,
+    shouldDrawRoute: !dailyMode && !cityMode && scopedTripIds.size <= 1,
     destinationOnlyAvailable,
     destinationOnlyApplied,
-    pointCount: points.length,
+    pointCount: visiblePoints.length,
     photoCount: photos.length,
-    availablePhotoCount: allPhotoRecords.length,
+    availablePhotoCount: visiblePhotoRecords.length,
     dailyMode,
     dailyRecords,
     dailyUsesCityFallback: dailyMode && selectedExactDailyRecords.length === 0 && dailyRecords.length > 0,
     dayOptions,
+    cityMode,
+    cityOptions,
+    selectedCity,
+    cityDayCount: cityDays.size,
     scopedTrips
   };
 }
@@ -5274,12 +5326,17 @@ function renderTripMap() {
     shouldDrawRoute,
     destinationOnlyAvailable,
     destinationOnlyApplied,
+    pointCount,
     photoCount,
     availablePhotoCount,
     dailyMode,
     dailyRecords,
     dailyUsesCityFallback,
     dayOptions,
+    cityMode,
+    cityOptions,
+    selectedCity,
+    cityDayCount,
     scopedTrips
   } = tripMapItemsForCurrentScope();
   const missing = cities.filter(item => !lugarHasCoords(item.ciudad));
@@ -5300,6 +5357,7 @@ function renderTripMap() {
     `${width}x${height}`,
     paisId || 'all',
     tripMapState.day || 'route',
+    tripMapState.cityId ? `city-${tripMapState.cityId}` : 'all-cities',
     destinationOnlyApplied ? 'destination' : 'complete',
     withCoords.map(item => `${item.ciudad.id}:${item.ciudad.lat}:${item.ciudad.lng}`).join(',')
   ].join('|');
@@ -5433,13 +5491,15 @@ function renderTripMap() {
   const roundedDelta = Math.round(tripMapState.zoomDelta * 10) / 10;
   const zoomLabel = Math.abs(roundedDelta) < 0.05 ? 'auto' : `${roundedDelta > 0 ? '+' : ''}${roundedDelta}`;
   const dayOptionsHtml = dayOptions.map(day => `<option value="${escapeHtml(day)}"${tripMapState.day === day ? ' selected' : ''}>${escapeHtml(blogDayDateLabel(day))}</option>`).join('');
+  const cityOptionsHtml = cityOptions.map(city => `<option value="${Number(city.id)}"${Number(tripMapState.cityId) === Number(city.id) ? ' selected' : ''}>${escapeHtml(city.nombre)}</option>`).join('');
   const fullscreen = isTripMapFullscreen();
   const canCopyDailyMap = dailyMode && scopedTrips.length === 1 && dailyRecords.length > 0;
   container.innerHTML = `<div class="trip-map-shell">
     <div class="map-controls" aria-label="Controles del mapa">
       <div class="map-controls-actions">
         <button type="button" data-map-zoom="reset" title="Volver al encuadre automático">Centrar</button>
-        <label class="map-day-control" title="Mostrar solamente los puntos y fotos de un día"><span>Día</span><select data-map-day="1"><option value="">Ruta completa</option>${dayOptionsHtml}</select></label>
+        <label class="map-day-control" title="Mostrar solamente los puntos y fotos de un día"><span>Día</span><select data-map-day="1"><option value="">Todos los días</option>${dayOptionsHtml}</select></label>
+        <label class="map-city-control" title="Mostrar los puntos y fotos de una ciudad durante todo el viaje"><span>Ciudad</span><select data-map-city="1"><option value="">Todas las ciudades</option>${cityOptionsHtml}</select></label>
         <button type="button" data-map-copy-blog="1" class="${dailyMode ? 'active' : ''}" title="Guardar una imagen de este mapa al principio del día en el Blog"${canCopyDailyMap ? '' : ' disabled'}>Copiar al Blog</button>
         <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
         <button type="button" data-map-photos="1" class="${tripMapState.showPhotos ? 'active' : ''}" aria-pressed="${tripMapState.showPhotos}" title="Mostrar u ocultar fotos geolocalizadas"${availablePhotoCount ? '' : ' disabled'}>Fotos${availablePhotoCount ? ` (${availablePhotoCount})` : ''}</button>
@@ -5489,6 +5549,13 @@ function renderTripMap() {
     const fallbackText = dailyUsesCityFallback ? ' Los datos sin GPS exacto se muestran agrupados en su ciudad.' : '';
     const routeText = dailyRoute.length > 1 ? 'con línea entre las ciudades' : 'sin líneas';
     info.textContent = `${dailyRecords.length} ${dailyRecords.length === 1 ? 'punto marcado' : 'puntos marcados'} el ${blogDayDateLabel(tripMapState.day)}, ${routeText}. La hora aparece junto a cada punto.${fallbackText}`;
+    return;
+  }
+  if (cityMode) {
+    const dayText = cityDayCount === 1 ? '1 día' : `${cityDayCount} días`;
+    const pointText = pointCount === 1 ? '1 punto' : `${pointCount} puntos`;
+    const photoText = photoCount === 1 ? '1 foto' : `${photoCount} fotos`;
+    info.textContent = `${selectedCity ? selectedCity.nombre : 'Ciudad'}: ${pointText} y ${photoText} de ${dayText}, sin líneas. Las fechas reúnen todo el periodo pasado en la ciudad.`;
     return;
   }
   const missingText = missing.length ? ` Faltan coordenadas: ${missing.map(item => item.ciudad.nombre).join(', ')}.` : '';
@@ -9297,6 +9364,14 @@ function bindEvents() {
     if (!(target instanceof HTMLElement)) return;
     if (target instanceof HTMLSelectElement && target.dataset.mapDay) {
       tripMapState.day = target.value || '';
+      if (tripMapState.day) tripMapState.cityId = 0;
+      resetTripMapView();
+      renderTripMap();
+      return;
+    }
+    if (target instanceof HTMLSelectElement && target.dataset.mapCity) {
+      tripMapState.cityId = Number(target.value) || 0;
+      if (tripMapState.cityId) tripMapState.day = '';
       resetTripMapView();
       renderTripMap();
       return;

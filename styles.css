@@ -1916,7 +1916,8 @@ body.map-fullscreen-open {
   line-height: 1;
 }
 
-.map-day-control {
+.map-day-control,
+.map-city-control {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -1929,13 +1930,15 @@ body.map-fullscreen-open {
   font-weight: 800;
 }
 
-.map-day-control span {
+.map-day-control span,
+.map-city-control span {
   min-width: 0;
   color: inherit;
   font-size: inherit;
 }
 
-.map-day-control select {
+.map-day-control select,
+.map-city-control select {
   width: 126px;
   min-width: 0;
   height: 27px;
@@ -3130,7 +3133,8 @@ footer {
     gap: 4px;
   }
 
-  .map-day-control {
+  .map-day-control,
+  .map-city-control {
     grid-column: span 2;
     width: 100%;
     height: 30px;
@@ -3139,7 +3143,8 @@ footer {
     font-size: 10px;
   }
 
-  .map-day-control select {
+  .map-day-control select,
+  .map-city-control select {
     width: min(145px, 72%);
     height: 24px;
     font-size: 10px;
