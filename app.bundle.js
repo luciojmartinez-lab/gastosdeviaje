@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v118';
+const APP_VERSION = '700v119';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1137,7 +1137,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v118');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v119');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1169,7 +1169,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v118');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v119');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1540,7 +1540,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v118');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v119');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4576,10 +4576,12 @@ function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip
     .filter(entry => scopedTripIds.has(Number(entry.viajeId)) && entry.fecha === day)
     .filter(entry => blogEntryMatchesMapCountry(entry, paisId))
     .forEach(append);
-  return [...byCity.values()].map(record => ({
-    ...record,
-    descripcion: `${record.descripcion} · ${record.count} ${record.count === 1 ? 'registro' : 'registros'}`
-  }));
+  return [...byCity.values()]
+    .sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99') || String(a.descripcion || '').localeCompare(String(b.descripcion || ''), 'es'))
+    .map(record => ({
+      ...record,
+      descripcion: `${record.descripcion} · ${record.count} ${record.count === 1 ? 'registro' : 'registros'}`
+    }));
 }
 
 function dailyMapItem(record) {
@@ -4833,6 +4835,39 @@ function dailyMapDateTimeLabel(record) {
   return `${date} · ${record && record.hora ? record.hora : '--:--'}`;
 }
 
+function dailyMapTimeLabel(record) {
+  return record && record.hora ? record.hora : '--:--';
+}
+
+function dailyMapRouteRecords(records = []) {
+  const route = [];
+  const cityKeys = new Set();
+  let previousKey = '';
+  records.forEach((record, index) => {
+    if (!record) return;
+    const cityId = Number(record.ciudadId);
+    const latitude = Number(record.latitude);
+    const longitude = Number(record.longitude);
+    const key = cityId
+      ? `city-${cityId}`
+      : (Number.isFinite(latitude) && Number.isFinite(longitude)
+        ? `point-${latitude.toFixed(4)}-${longitude.toFixed(4)}`
+        : `record-${index}`);
+    cityKeys.add(key);
+    if (key === previousKey) return;
+    route.push(record);
+    previousKey = key;
+  });
+  return cityKeys.size > 1 ? route : [];
+}
+
+function tripMapArrivalLabel(item) {
+  const name = item && item.ciudad && item.ciudad.nombre ? item.ciudad.nombre : 'Punto';
+  return item && item.firstDate
+    ? `${name} · ${summaryDocumentDate(item.firstDate, true)}`
+    : name;
+}
+
 async function loadMapTileForCanvas(descriptor) {
   for (const url of [descriptor.primary, descriptor.fallback]) {
     try {
@@ -4884,11 +4919,28 @@ async function createDailyMapBlogImage(records, day) {
     context.drawImage(image, tile.left, headerHeight + tile.top, tile.width, tile.height);
   });
 
+  const dailyRoute = dailyMapRouteRecords(records);
+  if (dailyRoute.length > 1) {
+    context.beginPath();
+    dailyRoute.forEach((record, index) => {
+      const point = mapWorldPoint(record.latitude, record.longitude, zoom);
+      const x = point.x - layer.startX;
+      const y = headerHeight + point.y - layer.startY;
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    });
+    context.lineWidth = 4;
+    context.lineJoin = 'round';
+    context.lineCap = 'round';
+    context.strokeStyle = '#1d4ed8';
+    context.stroke();
+  }
+
   records.forEach((record, index) => {
     const point = mapWorldPoint(record.latitude, record.longitude, zoom);
     const x = point.x - layer.startX;
     const y = headerHeight + point.y - layer.startY;
-    const label = dailyMapDateTimeLabel(record);
+    const label = dailyMapTimeLabel(record);
     context.font = '700 14px system-ui, sans-serif';
     const textWidth = context.measureText(label).width;
     const labelOnLeft = x + textWidth + 28 > width;
@@ -5005,8 +5057,8 @@ function tripVectorMarkerElement(item, index, dailyMode) {
   const label = document.createElement('span');
   label.className = 'trip-vector-marker-label';
   label.textContent = dailyRecord
-    ? dailyMapDateTimeLabel(dailyRecord)
-    : (item.ciudad.nombre || 'Punto');
+    ? dailyMapTimeLabel(dailyRecord)
+    : tripMapArrivalLabel(item);
   element.append(dot, label);
   element.title = dailyRecord
     ? `${dailyRecord.descripcion || 'Punto'} · ${dailyMapDateTimeLabel(dailyRecord)}`
@@ -5138,8 +5190,13 @@ function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawR
     window.clearTimeout(startupTimer);
     host.querySelector('.trip-vector-loading')?.remove();
     map.resize();
-    const routeItems = dailyMode ? [] : standardItems.filter(item => !item.configuredOnly);
-    if (shouldDrawRoute && routeItems.length > 1) {
+    const dailyRoute = dailyMode
+      ? dailyMapRouteRecords(withCoords.map(item => item.dailyRecord).filter(Boolean))
+      : [];
+    const routeCoordinates = dailyMode
+      ? dailyRoute.map(record => [Number(record.longitude), Number(record.latitude)])
+      : standardItems.filter(item => !item.configuredOnly).map(item => [Number(item.ciudad.lng), Number(item.ciudad.lat)]);
+    if ((dailyMode ? dailyRoute.length > 1 : shouldDrawRoute) && routeCoordinates.length > 1) {
       map.addSource('trip-route', {
         type: 'geojson',
         data: {
@@ -5147,7 +5204,7 @@ function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawR
           properties: {},
           geometry: {
             type: 'LineString',
-            coordinates: routeItems.map(item => [Number(item.ciudad.lng), Number(item.ciudad.lat)])
+            coordinates: routeCoordinates
           }
         }
       });
@@ -5301,8 +5358,11 @@ function renderTripMap() {
     if (!pointGroups.has(key)) pointGroups.set(key, []);
     pointGroups.get(key).push(item);
   });
-  const routeItems = standardItems.filter(item => !item.configuredOnly);
-  const routePoints = routeItems.map(item => item.point).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const dailyRoute = dailyMode ? dailyMapRouteRecords(dailyRecords) : [];
+  const routeItems = dailyMode ? [] : standardItems.filter(item => !item.configuredOnly);
+  const routePoints = dailyMode
+    ? dailyRoute.map(record => project({ ciudad: { lat: record.latitude, lng: record.longitude } })).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+    : routeItems.map(item => item.point).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const markers = [...pointGroups.values()].map(group => {
     const item = group[0];
     const p = item.point;
@@ -5319,9 +5379,9 @@ function renderTripMap() {
       : (pointStops.length ? '•' : '+');
     const cityNames = [...new Set(group.map(stop => stop.ciudad.nombre))];
     const markerLabel = dailyRecord
-      ? dailyMapDateTimeLabel(dailyRecord)
+      ? dailyMapTimeLabel(dailyRecord)
       : routeStops.length
-      ? `${markerText}. ${cityNames.join(' / ')}`
+      ? `${markerText}. ${[...new Set(routeStops.map(tripMapArrivalLabel))].join(' / ')}`
       : cityNames.join(' / ');
     const title = dailyRecord
       ? `${dailyRecord.descripcion || 'Punto'} · ${dailyMapDateTimeLabel(dailyRecord)}`
@@ -5380,7 +5440,7 @@ function renderTripMap() {
     <div class="trip-map-frame" data-map-pan="1" style="aspect-ratio:${width} / ${height}">
       <div class="map-tiles" aria-hidden="true">${tiles.join('')}</div>
       <svg class="trip-map-overlay" viewBox="0 0 ${width} ${height}" role="img" aria-label="Mapa del viaje">
-        ${!dailyMode && shouldDrawRoute && routePoints && routeItems.length > 1 ? `<polyline points="${routePoints}" class="map-route"></polyline>` : ''}
+        ${(dailyMode ? dailyRoute.length > 1 : shouldDrawRoute && routeItems.length > 1) && routePoints ? `<polyline points="${routePoints}" class="map-route"></polyline>` : ''}
         ${markers}
         ${photoMarkers}
       </svg>
@@ -5410,7 +5470,8 @@ function renderTripMap() {
   });
   if (dailyMode) {
     const fallbackText = dailyUsesCityFallback ? ' Los datos sin GPS exacto se muestran agrupados en su ciudad.' : '';
-    info.textContent = `${dailyRecords.length} ${dailyRecords.length === 1 ? 'punto marcado' : 'puntos marcados'} el ${blogDayDateLabel(tripMapState.day)}, sin líneas. La fecha y la hora aparecen junto a cada punto.${fallbackText}`;
+    const routeText = dailyRoute.length > 1 ? 'con línea entre las ciudades' : 'sin líneas';
+    info.textContent = `${dailyRecords.length} ${dailyRecords.length === 1 ? 'punto marcado' : 'puntos marcados'} el ${blogDayDateLabel(tripMapState.day)}, ${routeText}. La hora aparece junto a cada punto.${fallbackText}`;
     return;
   }
   const missingText = missing.length ? ` Faltan coordenadas: ${missing.map(item => item.ciudad.nombre).join(', ')}.` : '';
