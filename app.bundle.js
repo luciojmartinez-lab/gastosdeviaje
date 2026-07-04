@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v121';
+const APP_VERSION = '700v122';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1138,7 +1138,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v121');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v122');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1170,7 +1170,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v121');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v122');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1179,6 +1179,39 @@ async function imageDateTimeForFile(file) {
   captured ||= fileModifiedDateTime(file);
   imageDateTimeCache.set(file, captured);
   return captured;
+}
+
+function applyImageDateTimeToFields(image, dateSelector, timeSelector, ownerLabel) {
+  if (!image) return false;
+  const dateField = $(dateSelector);
+  const timeField = $(timeSelector);
+  const capturedDate = String(image.capturedDate || image.date || '');
+  const capturedTime = String(image.capturedTime || image.time || '');
+  if ((!capturedDate && !capturedTime) || (!dateField && !timeField)) return false;
+  const currentDate = dateField ? String(dateField.value || '') : '';
+  const currentTime = timeField ? String(timeField.value || '') : '';
+  const hasConflict = Boolean(
+    (capturedDate && currentDate && capturedDate !== currentDate)
+    || (capturedTime && currentTime && capturedTime !== currentTime)
+  );
+  if (hasConflict) {
+    const photoValue = `${capturedDate ? summaryDocumentDate(capturedDate, true) : 'sin fecha'}${capturedTime ? ` a las ${capturedTime}` : ''}`;
+    const currentValue = `${currentDate ? summaryDocumentDate(currentDate, true) : 'sin fecha'}${currentTime ? ` a las ${currentTime}` : ''}`;
+    const replace = window.confirm(`La foto de referencia es del ${photoValue}, pero ${ownerLabel} tiene ${currentValue}. ¿Quieres reemplazar su fecha y hora por las de la foto?`);
+    if (!replace) return false;
+  }
+  if (capturedDate && dateField) dateField.value = capturedDate;
+  if (capturedTime && timeField) timeField.value = capturedTime;
+  return true;
+}
+
+function applyExpenseImageDateTime(prefix, captured) {
+  return applyImageDateTimeToFields(
+    captured,
+    `#${prefix}-fecha`,
+    `#${prefix}-hora`,
+    prefix === 'edit-gasto' ? 'el gasto guardado' : 'el gasto'
+  );
 }
 
 function clearExpenseTicketSelection(prefix) {
@@ -1239,7 +1272,7 @@ function clearExpenseExtraImageSelection(prefix) {
   if (inputs.mapCheckbox) inputs.mapCheckbox.checked = false;
 }
 
-async function syncExpenseExtraImageSelection(prefix) {
+async function syncExpenseExtraImageSelection(prefix, options = {}) {
   const inputs = expenseExtraImageInputs(prefix);
   const files = selectedExpenseExtraImageFiles(prefix);
   if (!inputs.status) return;
@@ -1251,7 +1284,11 @@ async function syncExpenseExtraImageSelection(prefix) {
   }
   inputs.status.textContent = `Comprobando ubicación de ${files.length} ${files.length === 1 ? 'imagen' : 'imágenes'}...`;
   const records = selectedExpenseExtraImageRecords(prefix);
-  const points = await Promise.all(records.map(record => imageGpsForFile(record.file, { useCurrentLocation: record.useCurrentLocation })));
+  const pointsPromise = Promise.all(records.map(record => imageGpsForFile(record.file, { useCurrentLocation: record.useCurrentLocation })));
+  const captured = options.applyDateTime ? await imageDateTimeForFile(files[0]) : null;
+  if (captured && selectedExpenseExtraImageFiles(prefix)[0] === files[0]) applyExpenseImageDateTime(prefix, captured);
+  const points = await pointsPromise;
+  if (selectedExpenseExtraImageFiles(prefix)[0] !== files[0]) return;
   const locatedCount = points.filter(Boolean).length;
   const exifCount = points.filter(point => point && point.source === 'exif').length;
   const currentCount = points.filter(point => point && point.source === 'device').length;
@@ -1541,7 +1578,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v121');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v122');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6973,9 +7010,7 @@ async function compressBlogImage(file, options = {}) {
 }
 
 function applyBlogImageDateTime(image) {
-  if (activeBlogEntryId || !image) return;
-  if (image.capturedDate && $('#blog-fecha')) $('#blog-fecha').value = image.capturedDate;
-  if (image.capturedTime && $('#blog-hora')) $('#blog-hora').value = image.capturedTime;
+  return applyImageDateTimeToFields(image, '#blog-fecha', '#blog-hora', activeBlogEntryId ? 'la entrada guardada del Blog' : 'la entrada del Blog');
 }
 
 async function selectBlogImage(input, otherInput, options = {}) {
@@ -8820,13 +8855,13 @@ function bindEvents() {
   $('#g-ticket').onchange = () => syncExpenseTicketSelection('g', 'file');
   $('#g-ticket-camera').onchange = () => syncExpenseTicketSelection('g', 'camera');
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
-  $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g');
-  $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g');
+  $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true });
+  $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true });
   $('#edit-gasto-ticket').onchange = () => syncExpenseTicketSelection('edit-gasto', 'file');
   $('#edit-gasto-ticket-camera').onchange = () => syncExpenseTicketSelection('edit-gasto', 'camera');
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
-  $('#edit-gasto-extra-images').onchange = () => syncExpenseExtraImageSelection('edit-gasto');
-  $('#edit-gasto-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('edit-gasto');
+  $('#edit-gasto-extra-images').onchange = () => syncExpenseExtraImageSelection('edit-gasto', { applyDateTime: true });
+  $('#edit-gasto-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('edit-gasto', { applyDateTime: true });
   $('#edit-gasto-ticket-remove').onchange = () => {
     if ($('#edit-gasto-ticket-remove').checked) clearExpenseTicketSelection('edit-gasto');
     syncTicketOcrAvailability('edit-gasto');
