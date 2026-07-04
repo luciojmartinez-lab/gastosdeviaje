@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v122';
+const APP_VERSION = '700v123';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1138,7 +1138,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v122');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v123');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1170,7 +1170,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v122');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v123');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1578,7 +1578,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v122');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v123');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -2781,7 +2781,8 @@ async function delBlogEntry(id) {
 }
 
 function compareBlogEntries(a, b) {
-  return `${a.fecha || ''}T${a.hora || '00:00'}`.localeCompare(`${b.fecha || ''}T${b.hora || '00:00'}`) ||
+  return Number(String(b.dailyMapDate || '').startsWith('trip-overview:')) - Number(String(a.dailyMapDate || '').startsWith('trip-overview:')) ||
+    `${a.fecha || ''}T${a.hora || '00:00'}`.localeCompare(`${b.fecha || ''}T${b.hora || '00:00'}`) ||
     Number(Boolean(b.dailyMapDate)) - Number(Boolean(a.dailyMapDate)) ||
     Number(a.id || 0) - Number(b.id || 0);
 }
@@ -3982,6 +3983,62 @@ function destinationRouteScope(routeIds = []) {
   };
 }
 
+function tripDateWithinRange(date, trip) {
+  const value = String(date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (trip && trip.fechaInicio && value < trip.fechaInicio) return false;
+  if (trip && trip.fechaFin && value > trip.fechaFin) return false;
+  return true;
+}
+
+function tripRouteArrivalDates(trip, routeIds = tripCityIds(trip)) {
+  const ids = routeIds.map(Number).filter(Boolean);
+  if (!trip || !ids.length) return ids.map(() => '');
+  const actualDates = new Map();
+  const fallbackDates = new Map();
+  const append = (target, cityId, date) => {
+    const id = Number(cityId);
+    const value = String(date || '');
+    if (!id || !tripDateWithinRange(value, trip)) return;
+    if (!target.has(id)) target.set(id, new Set());
+    target.get(id).add(value);
+  };
+  state.blogEntries
+    .filter(entry => Number(entry.viajeId) === Number(trip.id))
+    .forEach(entry => {
+      append(actualDates, entry.ciudadId, entry.fecha);
+      blogEntryImages(entry).forEach(image => append(actualDates, entry.ciudadId, image.capturedDate));
+    });
+  state.gastos
+    .filter(gasto => Number(gasto.viajeId) === Number(trip.id))
+    .forEach(gasto => {
+      expenseExtraImages(gasto).forEach(image => append(actualDates, gasto.ciudadId, image.capturedDate));
+      append(fallbackDates, gasto.ciudadId, gasto.fecha);
+    });
+  const occurrences = new Map();
+  ids.forEach((id, index) => {
+    if (!occurrences.has(id)) occurrences.set(id, []);
+    occurrences.get(id).push(index);
+  });
+  const result = ids.map(() => '');
+  occurrences.forEach((indexes, cityId) => {
+    const source = actualDates.get(cityId) && actualDates.get(cityId).size
+      ? actualDates.get(cityId)
+      : fallbackDates.get(cityId);
+    const dates = source ? [...source].sort() : [];
+    indexes.forEach((routeIndex, occurrenceIndex) => {
+      if (!dates.length) return;
+      const dateIndex = indexes.length === 1
+        ? 0
+        : Math.round((occurrenceIndex * (dates.length - 1)) / (indexes.length - 1));
+      result[routeIndex] = dates[dateIndex] || '';
+    });
+  });
+  if (trip.fechaInicio) result[0] = trip.fechaInicio;
+  if (trip.fechaFin) result[result.length - 1] = trip.fechaFin;
+  return result;
+}
+
 function mapRouteCities(gastos, paisId) {
   const byCity = new Map();
   const routeOrder = mapCityOrderForScope(gastos);
@@ -4014,9 +4071,12 @@ function mapRouteCities(gastos, paisId) {
       item.totalEur += toEur(g.importe, g.moneda);
     });
   if (scopedTrips.length === 1) {
-    const destinationScope = destinationRouteScope(tripCityIds(scopedTrips[0]));
+    const scopedTrip = scopedTrips[0];
+    const destinationScope = destinationRouteScope(tripCityIds(scopedTrip));
     const omittedEndpointIds = destinationScope.omittedIds;
     const plannedIds = destinationScope.visibleIds;
+    const completeArrivalDates = tripRouteArrivalDates(scopedTrip, destinationScope.completeIds);
+    const plannedArrivalDates = destinationScope.applied ? completeArrivalDates.slice(1, -1) : completeArrivalDates;
     if (!plannedIds.length) {
       return [...byCity.values()]
         .filter(item => !omittedEndpointIds.has(Number(item.ciudad.id)))
@@ -4045,7 +4105,7 @@ function mapRouteCities(gastos, paisId) {
       return {
         ciudad,
         pais,
-        firstDate: expenseItem ? expenseItem.firstDate : '',
+        firstDate: plannedArrivalDates[index] || '',
         firstOrder: expenseItem ? expenseItem.firstOrder : index,
         routeOrder: index,
         count: expenseItem ? expenseItem.count : 0,
@@ -5084,6 +5144,137 @@ async function createDailyMapBlogImage(records, day) {
   };
 }
 
+async function createTripOverviewMapBlogImage(trip) {
+  const routeIds = tripCityIds(trip);
+  const arrivalDates = tripRouteArrivalDates(trip, routeIds);
+  const stops = routeIds.map((id, index) => ({
+    city: state.lugares.find(item => Number(item.id) === Number(id)) || null,
+    number: index + 1,
+    arrivalDate: arrivalDates[index] || ''
+  })).filter(stop => stop.city);
+  const locatedStops = stops.filter(stop => lugarHasCoords(stop.city));
+  if (!locatedStops.length) throw new Error('Las ciudades del viaje no tienen coordenadas para crear el mapa.');
+  const width = TRIP_MAP_WIDTH;
+  const mapHeight = TRIP_MAP_HEIGHT;
+  const headerHeight = 86;
+  const listHeaderHeight = 48;
+  const listLineHeight = 24;
+  const footerHeight = 18;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = headerHeight + mapHeight + listHeaderHeight + stops.length * listLineHeight + footerHeight;
+  const context = canvas.getContext('2d', { alpha: false });
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#0f172a';
+  context.font = '800 28px system-ui, sans-serif';
+  context.fillText(trip.nombre || 'Viaje', 22, 34);
+  context.fillStyle = '#475569';
+  context.font = '600 16px system-ui, sans-serif';
+  const dateRange = [trip.fechaInicio, trip.fechaFin].filter(Boolean).map(date => summaryDocumentDate(date, true)).join(' — ');
+  context.fillText(dateRange || 'Fechas no indicadas', 22, 62);
+
+  const items = locatedStops.map(stop => ({ ciudad: stop.city }));
+  const zoom = chooseMapZoom(items, width, mapHeight);
+  const world = items.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom));
+  const centerWorld = {
+    x: (Math.min(...world.map(point => point.x)) + Math.max(...world.map(point => point.x))) / 2,
+    y: (Math.min(...world.map(point => point.y)) + Math.max(...world.map(point => point.y))) / 2
+  };
+  const center = mapLatLngFromWorldPoint(centerWorld.x, centerWorld.y, zoom);
+  const layer = mapTileLayer(center.latitude, center.longitude, zoom, width, mapHeight);
+  context.fillStyle = '#cfe8f3';
+  context.fillRect(0, headerHeight, width, mapHeight);
+  const tileImages = await Promise.all(layer.tiles.map(loadMapTileForCanvas));
+  tileImages.forEach((image, index) => {
+    if (!image) return;
+    const tile = layer.tiles[index];
+    context.drawImage(image, tile.left, headerHeight + tile.top, tile.width, tile.height);
+  });
+  const projectedStops = locatedStops.map(stop => {
+    const point = mapWorldPoint(stop.city.lat, stop.city.lng, zoom);
+    return { ...stop, x: point.x - layer.startX, y: headerHeight + point.y - layer.startY };
+  });
+  if (projectedStops.length > 1) {
+    context.beginPath();
+    projectedStops.forEach((stop, index) => index ? context.lineTo(stop.x, stop.y) : context.moveTo(stop.x, stop.y));
+    context.lineWidth = 4;
+    context.lineJoin = 'round';
+    context.lineCap = 'round';
+    context.strokeStyle = '#1d4ed8';
+    context.stroke();
+  }
+  const stopGroups = new Map();
+  projectedStops.forEach(stop => {
+    const key = Number(stop.city.id);
+    if (!stopGroups.has(key)) stopGroups.set(key, []);
+    stopGroups.get(key).push(stop);
+  });
+  stopGroups.forEach(group => {
+    const stop = group[0];
+    const numberText = group.map(item => item.number).join('-');
+    context.font = '800 11px system-ui, sans-serif';
+    const markerWidth = Math.max(20, Math.ceil(context.measureText(numberText).width) + 12);
+    context.fillStyle = '#dc2626';
+    context.beginPath();
+    context.moveTo(stop.x - markerWidth / 2 + 10, stop.y - 10);
+    context.lineTo(stop.x + markerWidth / 2 - 10, stop.y - 10);
+    context.quadraticCurveTo(stop.x + markerWidth / 2, stop.y - 10, stop.x + markerWidth / 2, stop.y);
+    context.quadraticCurveTo(stop.x + markerWidth / 2, stop.y + 10, stop.x + markerWidth / 2 - 10, stop.y + 10);
+    context.lineTo(stop.x - markerWidth / 2 + 10, stop.y + 10);
+    context.quadraticCurveTo(stop.x - markerWidth / 2, stop.y + 10, stop.x - markerWidth / 2, stop.y);
+    context.quadraticCurveTo(stop.x - markerWidth / 2, stop.y - 10, stop.x - markerWidth / 2 + 10, stop.y - 10);
+    context.closePath();
+    context.fill();
+    context.lineWidth = 3;
+    context.strokeStyle = '#ffffff';
+    context.stroke();
+    context.fillStyle = '#ffffff';
+    context.textAlign = 'center';
+    context.fillText(numberText, stop.x, stop.y + 3.5);
+    context.textAlign = 'left';
+    const dates = [...new Set(group.map(item => item.arrivalDate).filter(Boolean).map(date => summaryDocumentDate(date, true)))];
+    const labelLines = [stop.city.nombre, ...(dates.length ? [dates.join(' - ')] : [])];
+    context.font = '700 13px system-ui, sans-serif';
+    const labelWidth = Math.max(...labelLines.map(line => context.measureText(line).width));
+    const labelLeft = stop.x + markerWidth / 2 + 7 + labelWidth > width ? stop.x - markerWidth / 2 - 7 - labelWidth : stop.x + markerWidth / 2 + 7;
+    context.fillStyle = '#ffffffdd';
+    context.fillRect(labelLeft - 3, stop.y - 17, labelWidth + 6, labelLines.length * 16 + 3);
+    context.fillStyle = '#172033';
+    labelLines.forEach((line, index) => context.fillText(line, labelLeft, stop.y - 5 + index * 15));
+  });
+  context.fillStyle = '#ffffffdd';
+  context.fillRect(width - 190, headerHeight + mapHeight - 20, 186, 18);
+  context.fillStyle = '#475569';
+  context.font = '11px system-ui, sans-serif';
+  context.fillText('© OpenStreetMap · © CARTO', width - 184, headerHeight + mapHeight - 7);
+
+  const listTop = headerHeight + mapHeight;
+  context.fillStyle = '#0f172a';
+  context.font = '800 20px system-ui, sans-serif';
+  context.fillText('Ciudades visitadas', 22, listTop + 32);
+  context.font = '600 15px system-ui, sans-serif';
+  stops.forEach((stop, index) => {
+    const date = stop.arrivalDate ? summaryDocumentDate(stop.arrivalDate, true) : 'Fecha no disponible';
+    context.fillStyle = '#172033';
+    context.fillText(`${stop.number}. ${stop.city.nombre}`, 28, listTop + listHeaderHeight + index * listLineHeight + 17);
+    context.fillStyle = '#475569';
+    context.textAlign = 'right';
+    context.fillText(date, width - 28, listTop + listHeaderHeight + index * listLineHeight + 17);
+    context.textAlign = 'left';
+  });
+  const blob = await canvasToJpeg(canvas, 0.9);
+  return {
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    name: `mapa-${slugFilePart(trip.nombre || 'viaje')}.jpg`,
+    type: 'image/jpeg',
+    size: blob.size,
+    data: await readBlobAsDataUrl(blob),
+    width: canvas.width,
+    height: canvas.height
+  };
+}
+
 async function copyDailyMapToBlog() {
   const trip = currentMapTrip();
   const day = tripMapState.day;
@@ -5133,6 +5324,51 @@ async function copyDailyMapToBlog() {
   }
 }
 
+async function copyTripOverviewMapToBlog() {
+  const trip = currentMapTrip();
+  if (!trip) throw new Error('Selecciona un único viaje.');
+  const info = $('#trip-map-info');
+  if (info) info.textContent = 'Preparando el mapa completo para la primera página del Blog...';
+  const image = await createTripOverviewMapBlogImage(trip);
+  const overviewKey = `trip-overview:${trip.id}`;
+  const existing = state.blogEntries.find(entry =>
+    Number(entry.viajeId) === Number(trip.id)
+    && entry.tipo === 'imagen'
+    && entry.dailyMapDate === overviewKey
+  );
+  const snapshot = {
+    viajeId: Number(trip.id),
+    fecha: trip.fechaInicio || currentLocalDate(),
+    hora: '00:00',
+    tipo: 'imagen',
+    descripcion: trip.nombre || 'Mapa del viaje',
+    paisId: null,
+    ciudadId: null,
+    imageName: image.name,
+    imageType: image.type,
+    imageSize: image.size,
+    imageData: image.data,
+    imageWidth: image.width,
+    imageHeight: image.height,
+    imageId: image.id,
+    imageMapEnabled: false,
+    galleryImages: [],
+    wordpressIncluded: true,
+    featuredImage: false,
+    dailyMapDate: overviewKey
+  };
+  if (existing) await updateBlogEntry(existing.id, { ...snapshot, updatedAt: new Date().toISOString() });
+  else await addBlogEntry(snapshot);
+  await loadAll();
+  if ($('#trip-map-info')) $('#trip-map-info').textContent = `${existing ? 'Página inicial actualizada' : 'Página inicial creada'} en el Blog para ${trip.nombre}.`;
+}
+
+async function copyCurrentMapToBlog() {
+  if (tripMapState.day) return copyDailyMapToBlog();
+  if (tripMapState.cityId) throw new Error('El mapa por ciudad no se copia al Blog. Elige Todos los días y Todas las ciudades.');
+  return copyTripOverviewMapToBlog();
+}
+
 function destroyTripVectorMap() {
   tripVectorPhotoMarkers.forEach(marker => {
     try { marker.remove(); } catch {}
@@ -5148,20 +5384,25 @@ function destroyTripVectorMap() {
   }
 }
 
-function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false) {
+function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, routeGroup = []) {
   const element = document.createElement('div');
   const dailyRecord = dailyMode ? item.dailyRecord : null;
-  const routePoint = !item.configuredOnly;
+  const groupedRouteItems = routeGroup.length ? routeGroup.map(entry => entry.item) : [];
+  const routePoint = groupedRouteItems.length > 0 || !item.configuredOnly;
   const pointMarker = Boolean(item.blogPoint);
-  element.className = `trip-vector-marker${item.configuredOnly ? ' configured' : ''}${pointMarker ? ' point' : ''}${dailyRecord ? ' daily' : ''}`;
+  element.className = `trip-vector-marker${item.configuredOnly ? ' configured' : ''}${pointMarker ? ' point' : ''}${dailyRecord ? ' daily' : ''}${routeGroup.length > 1 ? ' repeated' : ''}`;
   const dot = document.createElement('span');
   dot.className = 'trip-vector-marker-dot';
-  dot.textContent = dailyRecord ? String(index + 1) : (routePoint ? String(index + 1) : (pointMarker ? '•' : '+'));
+  const routeNumberText = routeGroup.length ? routeGroup.map(entry => entry.index + 1).join('-') : String(index + 1);
+  dot.textContent = dailyRecord ? String(index + 1) : (routePoint ? routeNumberText : (pointMarker ? '•' : '+'));
   const label = document.createElement('span');
   label.className = 'trip-vector-marker-label';
+  const routeDates = [...new Set(groupedRouteItems.map(entry => entry.firstDate).filter(Boolean).map(date => summaryDocumentDate(date, true)))];
   const labelLines = dailyRecord
     ? dailyMapLabelLines(dailyRecord, dailyHasRoute)
-    : tripMapArrivalLabelLines(item);
+    : groupedRouteItems.length
+      ? [item.ciudad.nombre || 'Punto', ...(routeDates.length ? [routeDates.join(' - ')] : [])]
+      : tripMapArrivalLabelLines(item);
   label.textContent = labelLines.join('\n');
   element.append(dot, label);
   element.title = dailyRecord
@@ -5278,9 +5519,20 @@ function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawR
   const dailyHasRoute = dailyRoute.length > 1;
   const standardItems = withCoords.filter(item => !item.photoPoint);
   const photoItems = withCoords.filter(item => item.photoPoint);
+  const markerGroups = new Map();
   standardItems.forEach((item, index) => {
+    const routePoint = !dailyMode && !item.configuredOnly;
+    const key = routePoint
+      ? `route-${Number(item.ciudad.id) || `${Number(item.ciudad.lat).toFixed(5)}-${Number(item.ciudad.lng).toFixed(5)}`}`
+      : `item-${index}`;
+    if (!markerGroups.has(key)) markerGroups.set(key, []);
+    markerGroups.get(key).push({ item, index });
+  });
+  markerGroups.forEach(group => {
+    const { item, index } = group[0];
+    const routeGroup = !dailyMode && !item.configuredOnly ? group : [];
     const marker = new window.maplibregl.Marker({
-      element: tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute),
+      element: tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute, routeGroup),
       anchor: 'center'
     }).setLngLat([Number(item.ciudad.lng), Number(item.ciudad.lat)]).addTo(map);
     tripVectorMarkers.push(marker);
@@ -5486,7 +5738,7 @@ function renderTripMap() {
     const markerText = dailyRecord
       ? String(item.index + 1)
       : routeStops.length
-      ? routeStops.map(stop => stop.index + 1).join('/')
+      ? routeStops.map(stop => stop.index + 1).join('-')
       : (pointStops.length ? '•' : '+');
     const cityNames = [...new Set(group.map(stop => stop.ciudad.nombre))];
     const markerLabelLines = dailyRecord
@@ -5531,13 +5783,18 @@ function renderTripMap() {
   const cityOptionsHtml = cityOptions.map(city => `<option value="${Number(city.id)}"${Number(tripMapState.cityId) === Number(city.id) ? ' selected' : ''}>${escapeHtml(city.nombre)}</option>`).join('');
   const fullscreen = isTripMapFullscreen();
   const canCopyDailyMap = dailyMode && scopedTrips.length === 1 && dailyRecords.length > 0;
+  const canCopyTripOverview = !dailyMode && !cityMode && scopedTrips.length === 1 && tripCityIds(scopedTrips[0]).length > 0;
+  const canCopyMapToBlog = canCopyDailyMap || canCopyTripOverview;
+  const copyMapTitle = dailyMode
+    ? 'Guardar el mapa al principio del día en el Blog'
+    : 'Crear o actualizar la primera página del Blog con el mapa completo del viaje';
   container.innerHTML = `<div class="trip-map-shell">
     <div class="map-controls" aria-label="Controles del mapa">
       <div class="map-controls-actions">
         <button type="button" data-map-zoom="reset" title="Volver al encuadre automático">Centrar</button>
         <label class="map-day-control" title="Mostrar solamente los puntos y fotos de un día"><span>Día</span><select data-map-day="1"><option value="">Todos los días</option>${dayOptionsHtml}</select></label>
         <label class="map-city-control" title="Mostrar los puntos y fotos de una ciudad durante todo el viaje"><span>Ciudad</span><select data-map-city="1"><option value="">Todas las ciudades</option>${cityOptionsHtml}</select></label>
-        <button type="button" data-map-copy-blog="1" class="${dailyMode ? 'active' : ''}" title="Guardar una imagen de este mapa al principio del día en el Blog"${canCopyDailyMap ? '' : ' disabled'}>Copiar al Blog</button>
+        <button type="button" data-map-copy-blog="1" class="${canCopyMapToBlog ? 'active' : ''}" title="${copyMapTitle}"${canCopyMapToBlog ? '' : ' disabled'}>Copiar al Blog</button>
         <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
         <button type="button" data-map-photos="1" class="${tripMapState.showPhotos ? 'active' : ''}" aria-pressed="${tripMapState.showPhotos}" title="Mostrar u ocultar fotos geolocalizadas"${availablePhotoCount ? '' : ' disabled'}>Fotos${availablePhotoCount ? ` (${availablePhotoCount})` : ''}</button>
         <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar el viaje completo' : (destinationOnlyAvailable ? 'Omitir la primera y la última parada para ampliar el destino' : 'Disponible en viajes con al menos tres paradas')}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destino</button>
@@ -9580,7 +9837,7 @@ function bindEvents() {
       if (mapCopyBlogButton) {
         mapCopyBlogButton.setAttribute('disabled', 'disabled');
         try {
-          await copyDailyMapToBlog();
+          await copyCurrentMapToBlog();
         } finally {
           if (document.contains(mapCopyBlogButton)) mapCopyBlogButton.removeAttribute('disabled');
         }

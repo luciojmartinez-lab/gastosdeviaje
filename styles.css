@@ -1769,6 +1769,7 @@ body.map-fullscreen-open {
 
 .trip-vector-marker {
   position: absolute;
+  z-index: 3;
   width: 20px;
   height: 20px;
   pointer-events: none;
@@ -1795,6 +1796,15 @@ body.map-fullscreen-open {
   background: #2563eb;
 }
 
+.trip-vector-marker.repeated,
+.trip-vector-marker.repeated .trip-vector-marker-dot {
+  width: 30px;
+}
+
+.trip-vector-marker.repeated .trip-vector-marker-label {
+  left: 34px;
+}
+
 .trip-vector-marker.point .trip-vector-marker-dot,
 .trip-vector-marker.daily .trip-vector-marker-dot {
   background: #7c3aed;
@@ -1817,6 +1827,7 @@ body.map-fullscreen-open {
 
 .trip-vector-photo-marker {
   position: absolute;
+  z-index: 2;
   padding: 0;
   border-width: 2px;
   background: #0f766e;
