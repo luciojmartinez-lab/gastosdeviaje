@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v124';
+const APP_VERSION = '700v125';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1138,7 +1138,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v124');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v125');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1170,7 +1170,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v124');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v125');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1578,7 +1578,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v124');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v125');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4470,6 +4470,42 @@ function photoMapRecordKey(image, fallback) {
   return String(image && image.id || fallback || '').trim();
 }
 
+function photoMapDataFingerprint(data) {
+  const value = String(data || '');
+  if (!value) return '';
+  const middle = Math.max(0, Math.floor(value.length / 2) - 48);
+  const sample = `${value.slice(0, 96)}${value.slice(middle, middle + 96)}${value.slice(-96)}`;
+  let hash = 2166136261;
+  for (let index = 0; index < sample.length; index += 1) {
+    hash ^= sample.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${value.length}-${(hash >>> 0).toString(36)}`;
+}
+
+function photoMapImageSignatures(image) {
+  const normalized = normalizeStoredImageRecord(image);
+  const point = storedImageCoordinates(normalized);
+  const signatures = [];
+  if (normalized.id) signatures.push(`id:${normalized.id}`);
+  const dataFingerprint = photoMapDataFingerprint(normalized.data);
+  if (dataFingerprint) signatures.push(`data:${dataFingerprint}`);
+  const usefulMetadata = Boolean(normalized.capturedDate || normalized.capturedTime || point);
+  if (usefulMetadata) {
+    signatures.push(`meta:${[
+      normalized.name.toLocaleLowerCase('es'),
+      normalized.size,
+      normalized.width,
+      normalized.height,
+      normalized.capturedDate,
+      normalized.capturedTime,
+      point ? point.latitude.toFixed(5) : '',
+      point ? point.longitude.toFixed(5) : ''
+    ].join('|')}`);
+  }
+  return signatures;
+}
+
 function photoMapMatchesCountry(record, paisId) {
   if (!paisId) return true;
   const city = state.lugares.find(item => Number(item.id) === Number(record.ciudadId));
@@ -4479,13 +4515,20 @@ function photoMapMatchesCountry(record, paisId) {
 function photoMapRecordsForScope(scopedTripIds, paisId) {
   const records = [];
   const seen = new Set();
+  let duplicateCount = 0;
   const append = record => {
     if (!record || !record.image || !record.image.mapEnabled) return;
     const point = storedImageCoordinates(record.image);
     if (!point || !photoMapMatchesCountry(record, paisId)) return;
     const key = photoMapRecordKey(record.image, record.fallbackKey);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
+    const keySignature = `key:${key}`;
+    const signatures = photoMapImageSignatures(record.image);
+    if (!key || seen.has(keySignature) || signatures.some(signature => seen.has(signature))) {
+      duplicateCount += 1;
+      return;
+    }
+    signatures.forEach(signature => seen.add(signature));
+    seen.add(keySignature);
     records.push({
       ...record,
       key,
@@ -4525,6 +4568,7 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
         source: 'gasto'
       }));
     });
+  records.duplicateCount = duplicateCount;
   return records;
 }
 
@@ -4682,6 +4726,16 @@ function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip
     }));
 }
 
+function combineDailyMapRecords(exactRecords = [], cityRecords = []) {
+  const exactCityIds = new Set(exactRecords.map(record => Number(record.ciudadId)).filter(Boolean));
+  const cityFallbackRecords = cityRecords.filter(record => !exactCityIds.has(Number(record.ciudadId)));
+  const records = [...exactRecords, ...cityFallbackRecords].sort((a, b) =>
+    `${a.fecha || ''}T${a.hora || '00:00'}`.localeCompare(`${b.fecha || ''}T${b.hora || '00:00'}`)
+    || String(a.key || '').localeCompare(String(b.key || ''))
+  );
+  return { records, usesCityFallback: cityFallbackRecords.length > 0 };
+}
+
 function dailyMapItem(record) {
   return {
     ciudad: {
@@ -4719,9 +4773,11 @@ function tripMapItemsForCurrentScope() {
   const selectedExactDailyRecords = dailyMode
     ? exactDailyRecords.filter(record => record.fecha === tripMapState.day)
     : [];
-  const dailyRecords = selectedExactDailyRecords.length
-    ? selectedExactDailyRecords
-    : (dailyMode ? dailyCityMapRecordsForScope(scopedTripIds, paisId, tripMapState.day, destinationTrip) : []);
+  const dailyCityRecords = dailyMode
+    ? dailyCityMapRecordsForScope(scopedTripIds, paisId, tripMapState.day, destinationTrip)
+    : [];
+  const combinedDailyRecords = combineDailyMapRecords(selectedExactDailyRecords, dailyCityRecords);
+  const dailyRecords = dailyMode ? combinedDailyRecords.records : [];
   const cities = mapRouteCities(gastos, paisId);
   const points = state.blogEntries
     .filter(entry => entry.tipo === 'punto' && scopedTripIds.has(Number(entry.viajeId)) && blogPointCoordinates(entry))
@@ -4752,8 +4808,9 @@ function tripMapItemsForCurrentScope() {
         pointEntry: entry
       };
     });
-  const allPhotoRecords = photoMapRecordsForScope(scopedTripIds, paisId)
-    .filter(record => mapRecordMatchesDestination(record, destinationTrip));
+  const photoScopeRecords = photoMapRecordsForScope(scopedTripIds, paisId);
+  const duplicatePhotoCount = Number(photoScopeRecords.duplicateCount || 0);
+  const allPhotoRecords = photoScopeRecords.filter(record => mapRecordMatchesDestination(record, destinationTrip));
   const cityOptionsById = new Map();
   const appendCityOption = cityId => {
     const id = Number(cityId);
@@ -4813,10 +4870,11 @@ function tripMapItemsForCurrentScope() {
     destinationOnlyApplied,
     pointCount: visiblePoints.length,
     photoCount: photos.length,
+    duplicatePhotoCount,
     availablePhotoCount: visiblePhotoRecords.length,
     dailyMode,
     dailyRecords,
-    dailyUsesCityFallback: dailyMode && selectedExactDailyRecords.length === 0 && dailyRecords.length > 0,
+    dailyUsesCityFallback: dailyMode && combinedDailyRecords.usesCityFallback,
     dayOptions,
     cityMode,
     cityOptions,
@@ -5625,6 +5683,7 @@ function renderTripMap() {
     destinationOnlyApplied,
     pointCount,
     photoCount,
+    duplicatePhotoCount,
     availablePhotoCount,
     dailyMode,
     dailyRecords,
@@ -5649,6 +5708,9 @@ function renderTripMap() {
     info.textContent = `Faltan coordenadas: ${missing.map(item => item.ciudad.nombre).join(', ')}.`;
     return;
   }
+  const duplicatePhotoText = duplicatePhotoCount
+    ? ` Se ${duplicatePhotoCount === 1 ? 'ha' : 'han'} ocultado ${duplicatePhotoCount} ${duplicatePhotoCount === 1 ? 'foto duplicada' : 'fotos duplicadas'} procedentes de Gastos o Blog.`
+    : '';
   const { width, height } = tripMapSize();
   const routeKey = [
     `${width}x${height}`,
@@ -5850,14 +5912,14 @@ function renderTripMap() {
   if (dailyMode) {
     const fallbackText = dailyUsesCityFallback ? ' Los datos sin GPS exacto se muestran agrupados en su ciudad.' : '';
     const routeText = dailyRoute.length > 1 ? 'con línea entre las ciudades' : 'sin líneas';
-    info.textContent = `${dailyRecords.length} ${dailyRecords.length === 1 ? 'punto marcado' : 'puntos marcados'} el ${blogDayDateLabel(tripMapState.day)}, ${routeText}. La hora aparece junto a cada punto.${fallbackText}`;
+    info.textContent = `${dailyRecords.length} ${dailyRecords.length === 1 ? 'punto marcado' : 'puntos marcados'} el ${blogDayDateLabel(tripMapState.day)}, ${routeText}. La hora aparece junto a cada punto.${fallbackText}${duplicatePhotoText}`;
     return;
   }
   if (cityMode) {
     const dayText = cityDayCount === 1 ? '1 día' : `${cityDayCount} días`;
     const pointText = pointCount === 1 ? '1 punto' : `${pointCount} puntos`;
     const photoText = photoCount === 1 ? '1 foto' : `${photoCount} fotos`;
-    info.textContent = `${selectedCity ? selectedCity.nombre : 'Ciudad'}: ${pointText} y ${photoText} de ${dayText}, sin líneas. Las fechas reúnen todo el periodo pasado en la ciudad.`;
+    info.textContent = `${selectedCity ? selectedCity.nombre : 'Ciudad'}: ${pointText} y ${photoText} de ${dayText}, sin líneas. Las fechas reúnen todo el periodo pasado en la ciudad.${duplicatePhotoText}`;
     return;
   }
   const missingText = missing.length ? ` Faltan coordenadas: ${missing.map(item => item.ciudad.nombre).join(', ')}.` : '';
@@ -5870,7 +5932,7 @@ function renderTripMap() {
   const photoText = photoCount ? ` ${photoCount} ${photoCount === 1 ? 'foto geolocalizada' : 'fotos geolocalizadas'}.` : '';
   const routeLabel = shouldDrawRoute ? `Ruta: ${route || 'sin gastos con ciudad'}.` : `Ciudades: ${route || 'sin gastos con ciudad'}.`;
   const destinationText = destinationOnlyApplied ? ' Modo solo destino: se omiten la salida y el regreso.' : '';
-  info.textContent = `${cityCount} ciudades en el mapa.${pointText}${photoText} ${routeLabel}${destinationText}${configuredText}${missingText}`;
+  info.textContent = `${cityCount} ciudades en el mapa.${pointText}${photoText} ${routeLabel}${destinationText}${configuredText}${missingText}${duplicatePhotoText}`;
 }
 
 function mapGesturePoints() {
@@ -6982,15 +7044,15 @@ function showBlogImages(images = []) {
         deviceCount ? `${deviceCount} con ubicación actual del móvil` : '',
         normalized.length > located.length ? `${normalized.length - located.length} sin GPS` : ''
       ].filter(Boolean).join(' · ');
-      $('#blog-image-status').textContent = `${normalized.length} imágenes preparadas para la galería${locationParts ? ` · ${locationParts}` : ''}.`;
+      $('#blog-image-status').textContent = `${normalized.length} imágenes preparadas para la galería${locationParts ? ` · ${locationParts}` : ''}. Toca una miniatura para convertirla en la primera imagen.`;
     }
   }
   if ($('#blog-image-preview')) {
     $('#blog-image-preview').src = normalized[0] ? normalized[0].data : '';
-    $('#blog-image-preview').hidden = normalized.length !== 1;
+    $('#blog-image-preview').hidden = normalized.length === 0;
   }
   if ($('#blog-gallery-preview')) {
-    $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"><figcaption>${escapeHtml(image.name)} · ${storedImageCoordinates(image) ? 'GPS' : 'sin GPS'}</figcaption></figure>`).join('');
+    $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure class="${index === 0 ? 'is-primary' : ''}"><button type="button" data-blog-primary-image="${index}" title="Usar como primera imagen"><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"></button><figcaption>${index === 0 ? '<strong>Primera</strong> · ' : ''}${escapeHtml(image.name)} · ${storedImageCoordinates(image) ? 'GPS' : 'sin GPS'}</figcaption></figure>`).join('');
     $('#blog-gallery-preview').hidden = normalized.length <= 1;
   }
   if ($('#blog-images-map-option')) {
@@ -7002,6 +7064,16 @@ function showBlogImages(images = []) {
     $('#blog-images-map').checked = mappableCount > 0 && enabledCount === mappableCount;
     $('#blog-images-map').indeterminate = enabledCount > 0 && enabledCount < mappableCount;
   }
+}
+
+function selectBlogPrimaryImage(index) {
+  const images = [activeBlogImage, ...activeBlogGalleryImages].filter(Boolean);
+  const selectedIndex = Number(index);
+  if (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= images.length || selectedIndex === 0) return;
+  const [selected] = images.splice(selectedIndex, 1);
+  images.unshift(selected);
+  showBlogImages(images);
+  applyBlogImageDateTime(selected);
 }
 
 function setActiveBlogImagesMapEnabled(enabled) {
@@ -9114,6 +9186,10 @@ function bindEvents() {
   $('#blog-image-file').onchange = () => selectBlogImage($('#blog-image-file'), $('#blog-image-camera'));
   $('#blog-image-gallery').onchange = () => selectBlogGallery($('#blog-image-gallery'));
   $('#blog-image-camera').onchange = () => selectBlogImage($('#blog-image-camera'), $('#blog-image-file'), { useCurrentLocation: true });
+  $('#blog-gallery-preview').onclick = event => {
+    const button = event.target.closest('[data-blog-primary-image]');
+    if (button) selectBlogPrimaryImage(button.dataset.blogPrimaryImage);
+  };
   $('#blog-images-map').onchange = () => setActiveBlogImagesMapEnabled($('#blog-images-map').checked);
   $('#blog-voice').onclick = startBlogDictation;
   $('#blog-point-current').onclick = useCurrentBlogPointLocation;

@@ -1081,6 +1081,21 @@ input[type="checkbox"] {
   min-width: 0;
 }
 
+.blog-gallery-preview button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.blog-gallery-preview figure.is-primary button {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 18%);
+}
+
 .blog-gallery-preview img {
   display: block;
   width: 100%;
@@ -1089,6 +1104,13 @@ input[type="checkbox"] {
   border-radius: 8px;
   object-fit: contain;
   background: #f8fafc;
+}
+
+.blog-gallery-preview figcaption {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.25;
 }
 
 .blog-image-picker-actions {
