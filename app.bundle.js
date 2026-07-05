@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v127';
+const APP_VERSION = '700v128';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1138,7 +1138,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v127');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v128');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1170,7 +1170,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v127');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v128');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1578,7 +1578,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v127');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v128');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5136,6 +5136,37 @@ async function loadMapTileForCanvas(descriptor) {
   return null;
 }
 
+function dailyMapPhotoGroups(records = []) {
+  const groups = new Map();
+  records.filter(record => record && record.kind === 'photo').forEach((record, index) => {
+    const cityId = Number(record.ciudadId);
+    const key = cityId
+      ? `city-${cityId}`
+      : `point-${Number(record.latitude).toFixed(4)}-${Number(record.longitude).toFixed(4)}-${index}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(record);
+  });
+  return [...groups.values()].map(group => ({
+    records: group,
+    count: group.length,
+    latitude: group.reduce((sum, record) => sum + Number(record.latitude), 0) / group.length,
+    longitude: group.reduce((sum, record) => sum + Number(record.longitude), 0) / group.length
+  }));
+}
+
+function dailyMapBlogLayers(records = []) {
+  const dailyRoute = dailyMapRouteRecords(records);
+  const cityMarkers = records.filter(record => record.kind === 'city');
+  return {
+    dailyRoute,
+    routeMarkers: cityMarkers.length
+      ? cityMarkers
+      : (dailyRoute.length ? dailyRoute : records.filter(record => record.kind !== 'photo')),
+    exactPoints: records.filter(record => record.kind === 'point'),
+    photoGroups: dailyMapPhotoGroups(records)
+  };
+}
+
 async function createDailyMapBlogImage(records, day) {
   if (!records.length) throw new Error('Ese día no tiene puntos geolocalizados para copiar.');
   const width = TRIP_MAP_WIDTH;
@@ -5173,7 +5204,7 @@ async function createDailyMapBlogImage(records, day) {
     context.drawImage(image, tile.left, headerHeight + tile.top, tile.width, tile.height);
   });
 
-  const dailyRoute = dailyMapRouteRecords(records);
+  const { dailyRoute, routeMarkers, exactPoints, photoGroups } = dailyMapBlogLayers(records);
   if (dailyRoute.length > 1) {
     context.beginPath();
     dailyRoute.forEach((record, index) => {
@@ -5191,7 +5222,50 @@ async function createDailyMapBlogImage(records, day) {
   }
 
   const dailyHasRoute = dailyRoute.length > 1;
-  records.forEach((record, index) => {
+  exactPoints.forEach(record => {
+    const point = mapWorldPoint(record.latitude, record.longitude, zoom);
+    const x = point.x - layer.startX;
+    const y = headerHeight + point.y - layer.startY;
+    context.fillStyle = '#7c3aed';
+    context.beginPath();
+    context.arc(x, y, 7, 0, Math.PI * 2);
+    context.fill();
+    context.lineWidth = 2;
+    context.strokeStyle = '#ffffff';
+    context.stroke();
+  });
+
+  photoGroups.forEach(group => {
+    const point = mapWorldPoint(group.latitude, group.longitude, zoom);
+    const x = point.x - layer.startX + 13;
+    const y = headerHeight + point.y - layer.startY - 13;
+    context.fillStyle = '#0f766e';
+    context.beginPath();
+    context.arc(x, y, 9, 0, Math.PI * 2);
+    context.fill();
+    context.lineWidth = 2;
+    context.strokeStyle = '#ffffff';
+    context.stroke();
+    context.fillStyle = '#ffffff';
+    context.font = '800 14px system-ui, sans-serif';
+    context.textAlign = 'center';
+    context.fillText('+', x, y + 4.5);
+    if (group.count > 1) {
+      context.fillStyle = '#f97316';
+      context.beginPath();
+      context.arc(x + 8, y - 8, 7, 0, Math.PI * 2);
+      context.fill();
+      context.lineWidth = 1.5;
+      context.strokeStyle = '#ffffff';
+      context.stroke();
+      context.fillStyle = '#ffffff';
+      context.font = '800 8px system-ui, sans-serif';
+      context.fillText(String(group.count), x + 8, y - 5.5);
+    }
+    context.textAlign = 'left';
+  });
+
+  routeMarkers.forEach((record, index) => {
     const point = mapWorldPoint(record.latitude, record.longitude, zoom);
     const x = point.x - layer.startX;
     const y = headerHeight + point.y - layer.startY;
@@ -5200,10 +5274,11 @@ async function createDailyMapBlogImage(records, day) {
     const textWidth = Math.max(...labelLines.map(label => context.measureText(label).width));
     const labelOnLeft = x + textWidth + 28 > width;
     const labelX = labelOnLeft ? x - textWidth - 18 : x + 15;
-    const labelY = Math.max(headerHeight + 20, Math.min(headerHeight + mapHeight - 10 - (labelLines.length - 1) * 17, y - 12 + (index % 3) * 17));
+    const preferredLabelY = index % 2 === 0 ? y - 12 : y + 22;
+    const labelY = Math.max(headerHeight + 20, Math.min(headerHeight + mapHeight - 10 - (labelLines.length - 1) * 17, preferredLabelY));
     context.fillStyle = '#ffffffdd';
     context.fillRect(labelX - 4, labelY - 15, textWidth + 8, 20 + (labelLines.length - 1) * 17);
-    context.fillStyle = record.kind === 'photo' ? '#0f766e' : '#7c3aed';
+    context.fillStyle = '#7c3aed';
     context.beginPath();
     context.arc(x, y, 10, 0, Math.PI * 2);
     context.fill();
@@ -5213,7 +5288,7 @@ async function createDailyMapBlogImage(records, day) {
     context.fillStyle = '#ffffff';
     context.font = '800 10px system-ui, sans-serif';
     context.textAlign = 'center';
-    context.fillText(String(index + 1), x, y + 3.5);
+    context.fillText(String(record.routeNumber || index + 1), x, y + 3.5);
     context.textAlign = 'left';
     context.fillStyle = '#111827';
     context.font = '700 14px system-ui, sans-serif';
