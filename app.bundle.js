@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v126';
+const APP_VERSION = '700v127';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1138,7 +1138,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v126');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v127');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1170,7 +1170,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v126');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v127');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1578,7 +1578,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v126');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v127');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4749,17 +4749,19 @@ function tripDailyRouteOrder(trip, day) {
 }
 
 function combineDailyMapRecords(exactRecords = [], cityRecords = [], routeOrder = new Map()) {
-  const exactCityIds = new Set(exactRecords.map(record => Number(record.ciudadId)).filter(Boolean));
-  const cityFallbackRecords = cityRecords.filter(record => !exactCityIds.has(Number(record.ciudadId)));
   const routeIndex = record => routeOrder.has(Number(record.ciudadId))
     ? Number(routeOrder.get(Number(record.ciudadId)))
     : Number.POSITIVE_INFINITY;
-  const records = [...exactRecords, ...cityFallbackRecords].sort((a, b) =>
+  const records = [...cityRecords, ...exactRecords].sort((a, b) =>
     routeIndex(a) - routeIndex(b)
+    || Number(b.kind === 'city') - Number(a.kind === 'city')
     || `${a.fecha || ''}T${a.hora || '00:00'}`.localeCompare(`${b.fecha || ''}T${b.hora || '00:00'}`)
     || String(a.key || '').localeCompare(String(b.key || ''))
-  );
-  return { records, usesCityFallback: cityFallbackRecords.length > 0 };
+  ).map(record => ({
+    ...record,
+    routeNumber: Number.isFinite(routeIndex(record)) ? routeIndex(record) + 1 : null
+  }));
+  return { records, usesCityFallback: cityRecords.length > 0 };
 }
 
 function dailyMapItem(record) {
@@ -5090,7 +5092,10 @@ function dailyMapRouteRecords(records = []) {
         ? `point-${latitude.toFixed(4)}-${longitude.toFixed(4)}`
         : `record-${index}`);
     cityKeys.add(key);
-    if (key === previousKey) return;
+    if (key === previousKey) {
+      if (record.kind === 'city') route[route.length - 1] = record;
+      return;
+    }
     route.push(record);
     previousKey = key;
   });
@@ -5489,7 +5494,9 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
   const dot = document.createElement('span');
   dot.className = 'trip-vector-marker-dot';
   const routeNumberText = routeGroup.length ? routeGroup.map(entry => entry.index + 1).join('-') : String(index + 1);
-  dot.textContent = dailyRecord ? String(index + 1) : (routePoint ? routeNumberText : (pointMarker ? '•' : '+'));
+  dot.textContent = dailyRecord
+    ? String(dailyRecord.routeNumber || index + 1)
+    : (routePoint ? routeNumberText : (pointMarker ? '•' : '+'));
   const label = document.createElement('span');
   label.className = 'trip-vector-marker-label';
   const routeDates = [...new Set(groupedRouteItems.map(entry => entry.firstDate).filter(Boolean).map(date => summaryDocumentDate(date, true)))];
@@ -5812,7 +5819,9 @@ function renderTripMap() {
     };
   };
   const projectedItems = withCoords.map((item, index) => ({ ...item, index, point: project(item) }));
-  const standardItems = dailyMode ? projectedItems : projectedItems.filter(item => !item.photoPoint);
+  const standardItems = dailyMode
+    ? projectedItems.slice().sort((a, b) => Number(b.photoPoint) - Number(a.photoPoint))
+    : projectedItems.filter(item => !item.photoPoint);
   const photoItems = dailyMode ? [] : projectedItems.filter(item => item.photoPoint);
   const pointGroups = new Map();
   standardItems.forEach((item, index) => {
@@ -5835,7 +5844,7 @@ function renderTripMap() {
     const dailyRecord = dailyMode ? item.dailyRecord : null;
     const dailyPhoto = Boolean(dailyRecord && dailyRecord.kind === 'photo');
     const markerText = dailyRecord
-      ? String(item.index + 1)
+      ? (dailyPhoto ? '+' : String(dailyRecord.routeNumber || item.index + 1))
       : routeStops.length
       ? routeStops.map(stop => stop.index + 1).join('-')
       : (pointStops.length ? '•' : '+');
