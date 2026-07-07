@@ -108,5 +108,20 @@
     return { stops: normalized, routeStops, markerGroups };
   }
 
-  root.TripMapModel = Object.freeze({ createDaily, createTrip, locationKey });
+  function createOverviewPrintLayout(options = {}) {
+    const sourceWidth = Math.max(1, finiteNumber(options.sourceWidth) || 920);
+    const sourceHeight = Math.max(1, finiteNumber(options.sourceHeight) || 564);
+    const mapTop = Math.max(0, finiteNumber(options.mapTop) || 0);
+    const mapHeight = Math.max(1, finiteNumber(options.mapHeight) || 460);
+    return {
+      frameAspectRatio: `${sourceWidth} / ${mapHeight}`,
+      imageOffsetPercent: Math.min(100, (mapTop / sourceHeight) * 100),
+      mapTop,
+      mapHeight,
+      sourceWidth,
+      sourceHeight
+    };
+  }
+
+  root.TripMapModel = Object.freeze({ createDaily, createTrip, createOverviewPrintLayout, locationKey });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

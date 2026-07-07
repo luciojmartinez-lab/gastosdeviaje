@@ -7995,8 +7995,31 @@ function isTripOverviewBlogEntry(entry, trip) {
 function blogPrintOverviewHtml(entry, trip) {
   const image = entry ? blogEntryImages(entry)[0] : null;
   if (!image || !image.data) return '';
+  const routeIds = tripCityIds(trip);
+  const arrivalDates = tripRouteArrivalDates(trip, routeIds);
+  const stops = routeIds.map((id, index) => ({
+    city: state.lugares.find(item => Number(item.id) === Number(id)) || null,
+    number: index + 1,
+    arrivalDate: arrivalDates[index] || ''
+  })).filter(stop => stop.city);
+  const expectedSourceHeight = 86 + TRIP_MAP_HEIGHT + 48 + stops.length * 24 + 18;
+  const layout = window.TripMapModel.createOverviewPrintLayout({
+    sourceWidth: Number(image.width) || TRIP_MAP_WIDTH,
+    sourceHeight: Number(image.height) || expectedSourceHeight,
+    mapTop: 86,
+    mapHeight: TRIP_MAP_HEIGHT
+  });
+  const dateRange = [trip.fechaInicio, trip.fechaFin]
+    .filter(Boolean)
+    .map(date => summaryDocumentDate(date, true))
+    .join(' — ');
+  const stopList = stops.map(stop => `<li><span><strong>${stop.number}.</strong> ${escapeHtml(stop.city.nombre)}</span><time>${escapeHtml(stop.arrivalDate ? summaryDocumentDate(stop.arrivalDate, true) : 'Fecha no disponible')}</time></li>`).join('');
   return `<section class="blog-print-overview" aria-label="Mapa general de ${escapeHtml(trip.nombre || 'viaje')}">
-    <img src="${escapeHtml(image.data)}" alt="Mapa general de ${escapeHtml(trip.nombre || 'viaje')}">
+    <header><h1>${escapeHtml(trip.nombre || 'Viaje')}</h1><p>${escapeHtml(dateRange || 'Fechas no indicadas')}</p></header>
+    <div class="blog-print-overview-map" style="aspect-ratio:${layout.frameAspectRatio};--overview-map-offset:-${layout.imageOffsetPercent.toFixed(6)}%">
+      <img src="${escapeHtml(image.data)}" alt="Mapa general de ${escapeHtml(trip.nombre || 'viaje')}">
+    </div>
+    <div class="blog-print-overview-list"><h2>Ciudades visitadas</h2><ol>${stopList}</ol></div>
   </section>`;
 }
 
@@ -8165,8 +8188,17 @@ function printBlog() {
     body { margin: 0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color: #1f2937; }
     h1 { margin: 0 0 6mm; font-size: 22px; }
     h2 { margin: 3mm 0; font-size: 16px; }
-    .blog-print-overview { display: flex; width: 100%; min-height: 270mm; align-items: flex-start; justify-content: center; break-after: page; page-break-after: always; }
-    .blog-print-overview img { display: block; width: 100%; height: auto; max-height: 270mm; object-fit: contain; }
+    .blog-print-overview { display: block; width: 100%; break-after: page; page-break-after: always; }
+    .blog-print-overview > header { margin-bottom: 5mm; }
+    .blog-print-overview > header h1 { margin-bottom: 1mm; }
+    .blog-print-overview > header p { margin: 0; color: #64748b; font-size: 12px; }
+    .blog-print-overview-map { position: relative; width: 100%; overflow: hidden; background: #cfe8f3; }
+    .blog-print-overview-map img { display: block; width: 100%; max-width: none; height: auto; transform: translateY(var(--overview-map-offset)); }
+    .blog-print-overview-list { margin-top: 5mm; padding-top: 4mm; border-top: 1px solid #94a3b8; }
+    .blog-print-overview-list h2 { margin: 0 0 2mm; }
+    .blog-print-overview-list ol { margin: 0; padding: 0; list-style: none; }
+    .blog-print-overview-list li { display: flex; justify-content: space-between; gap: 8mm; padding: 0.8mm 1mm; font-size: 11px; line-height: 1.25; }
+    .blog-print-overview-list time { flex: 0 0 auto; color: #475569; }
     .blog-print-preparations { break-after: page; page-break-after: always; }
     .blog-print-preparation-day { padding-top: 1mm; }
     .blog-print-preparation-day.separated { margin-top: 5mm; padding-top: 6mm; border-top: 1px solid #94a3b8; }

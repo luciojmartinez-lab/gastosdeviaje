@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import '../map-model.js';
 
-const { createDaily, createTrip } = globalThis.TripMapModel;
+const { createDaily, createTrip, createOverviewPrintLayout } = globalThis.TripMapModel;
 
 test('el recorrido diario respeta Barcelona, Varsovia y Torun aunque haya fotos intercaladas', () => {
   const records = [
@@ -52,4 +52,16 @@ test('las fotos se agrupan sin alterar los marcadores de ciudades', () => {
   assert.equal(model.routeMarkers.length, 1);
   assert.equal(model.photoGroups.length, 1);
   assert.equal(model.photoGroups[0].count, 2);
+});
+
+test('el PDF recorta solo el mapa y deja fuera la lista incrustada', () => {
+  const layout = createOverviewPrintLayout({
+    sourceWidth: 920,
+    sourceHeight: 756,
+    mapTop: 86,
+    mapHeight: 460
+  });
+  assert.equal(layout.frameAspectRatio, '920 / 460');
+  assert.equal(layout.imageOffsetPercent, (86 / 756) * 100);
+  assert.ok(layout.mapTop + layout.mapHeight < layout.sourceHeight);
 });
