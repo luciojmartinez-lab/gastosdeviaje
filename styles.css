@@ -498,6 +498,26 @@ h2 {
   animation: app-loading-train 3.7s ease-in-out infinite;
 }
 
+.train-smoke {
+  position: absolute;
+  top: -28px;
+  left: 64px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(94, 105, 116, 0.22);
+  opacity: 0;
+  animation: train-smoke 1.9s ease-out infinite;
+}
+
+.smoke-two {
+  animation-delay: 0.45s;
+}
+
+.smoke-three {
+  animation-delay: 0.9s;
+}
+
 .app-loading-train::before {
   content: "";
   position: absolute;
@@ -621,28 +641,123 @@ h2 {
   }
 }
 
+@keyframes train-smoke {
+  0% {
+    opacity: 0;
+    transform: translate(0, 8px) scale(0.55);
+  }
+  18% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-34px, -34px) scale(1.55);
+  }
+}
+
 @media (max-width: 640px) {
   .app-loading {
-    gap: 15px;
+    gap: 12px;
     padding: 22px;
   }
 
+  .app-loading::before {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(255, 250, 244, 0.68)),
+      url("assets/bitacora-splash-mobile.png") center / cover no-repeat;
+    transform: none;
+  }
+
+  .app-loading::after {
+    height: 28%;
+    background: linear-gradient(180deg, rgba(255, 250, 244, 0), rgba(255, 250, 244, 0.78) 78%);
+  }
+
   .app-loading-cover {
-    width: min(150px, 44vw);
+    width: min(118px, 34vw);
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.74), rgba(248, 242, 232, 0.48)),
+      url("assets/bitacora-splash-mobile.png") center / cover no-repeat;
   }
 
   .app-loading-train {
-    top: 50%;
-    width: 260px;
-    transform-origin: left center;
+    top: calc(50% - 96px);
+    left: -135px;
+    gap: 0;
+    width: 110px;
+    height: 44px;
+    opacity: 0.58;
+    filter: drop-shadow(0 5px 7px rgba(37, 52, 71, 0.14));
+    animation: app-loading-train-mobile 6.2s linear infinite;
+  }
+
+  .app-loading-train::before {
+    left: -12px;
+    right: -12px;
+    bottom: 3px;
+    background: linear-gradient(90deg, transparent, rgba(37, 52, 71, 0.18), transparent);
   }
 
   .train-engine {
-    width: 78px;
+    width: 88px;
+    height: 30px;
+    border-radius: 16px 8px 4px 4px;
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.72) 9px, transparent 9px 16px, rgba(255, 255, 255, 0.72) 16px 23px, transparent 23px),
+      linear-gradient(180deg, rgba(31, 118, 108, 0.72), rgba(37, 52, 71, 0.78));
+  }
+
+  .train-engine::before {
+    right: 9px;
+    top: -13px;
+    width: 14px;
+    height: 14px;
+    border-radius: 4px 4px 0 0;
   }
 
   .train-car {
-    width: 68px;
+    display: none;
+  }
+
+  .train-engine::after {
+    left: 13px;
+    right: 13px;
+    bottom: -6px;
+    height: 9px;
+    background:
+      radial-gradient(circle at 7px 5px, #253447 0 3px, transparent 3.5px),
+      radial-gradient(circle at calc(100% - 7px) 5px, #253447 0 3px, transparent 3.5px);
+  }
+
+  .train-smoke {
+    top: -26px;
+    left: 55px;
+    width: 13px;
+    height: 13px;
+    background: rgba(94, 105, 116, 0.18);
+    animation-duration: 2.35s;
+  }
+
+  .app-loading-title strong {
+    font-size: clamp(2rem, 12vw, 3.2rem);
+  }
+
+  .app-loading-title span {
+    font-size: clamp(0.95rem, 5vw, 1.25rem);
+  }
+
+  .app-loading-progress {
+    width: min(250px, 62vw);
+  }
+}
+
+@keyframes app-loading-train-mobile {
+  0% {
+    transform: translateX(0);
+  }
+  86%,
+  100% {
+    transform: translateX(calc(100vw + 250px));
   }
 }
 

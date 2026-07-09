@@ -13,6 +13,7 @@ const APP_SHELL_REQUIRED = [
   './manifest.webmanifest',
   './icon.svg',
   './assets/bitacora-splash.png',
+  './assets/bitacora-splash-mobile.png',
   './version.txt'
 ];
 const APP_SHELL_OPTIONAL = [
