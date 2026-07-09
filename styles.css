@@ -422,15 +422,175 @@ h2 {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  display: grid;
-  place-content: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   justify-items: center;
-  gap: 14px;
-  background: rgba(245, 249, 255, 0.97);
-  color: #164e87;
-  font-size: 1.15rem;
+  gap: 18px;
+  min-height: 100svh;
+  padding: 28px;
+  overflow: hidden;
+  background: #fffaf4;
+  color: #253447;
+  font-size: 1rem;
   opacity: 1;
-  transition: opacity 180ms ease, visibility 180ms ease;
+  transition: opacity 420ms ease, visibility 420ms ease;
+}
+
+.app-loading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 250, 244, 0.9)),
+    url("assets/bitacora-splash.png") center / cover no-repeat;
+  transform: scale(1.02);
+}
+
+.app-loading::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 34%;
+  background: linear-gradient(180deg, rgba(255, 250, 244, 0), #fffaf4 74%);
+}
+
+.app-loading-cover,
+.app-loading-train,
+.app-loading-title,
+.app-loading-progress,
+.app-loading p {
+  position: relative;
+  z-index: 2;
+}
+
+.app-loading-cover {
+  width: min(188px, 42vw);
+  aspect-ratio: 1 / 1.28;
+  border: 1px solid rgba(37, 52, 71, 0.15);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(248, 242, 232, 0.82)),
+    url("assets/bitacora-splash.png") center / cover no-repeat;
+  box-shadow: 0 22px 44px rgba(56, 49, 39, 0.18);
+}
+
+.app-loading-title {
+  display: grid;
+  gap: 8px;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.app-loading-train {
+  position: absolute;
+  top: 48%;
+  left: -360px;
+  z-index: 1;
+  display: flex;
+  align-items: end;
+  gap: 7px;
+  width: 330px;
+  height: 54px;
+  opacity: 0.72;
+  filter: drop-shadow(0 8px 10px rgba(37, 52, 71, 0.16));
+  animation: app-loading-train 3.7s ease-in-out infinite;
+}
+
+.app-loading-train::before {
+  content: "";
+  position: absolute;
+  left: -30px;
+  right: -30px;
+  bottom: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(37, 52, 71, 0.28), transparent);
+}
+
+.train-engine,
+.train-car {
+  position: relative;
+  display: block;
+  height: 31px;
+  border: 1px solid rgba(37, 52, 71, 0.24);
+  border-radius: 6px 10px 5px 5px;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.72) 10px, transparent 10px 18px, rgba(255, 255, 255, 0.72) 18px 26px, transparent 26px),
+    linear-gradient(180deg, rgba(31, 118, 108, 0.9), rgba(37, 52, 71, 0.88));
+}
+
+.train-engine {
+  width: 96px;
+  height: 38px;
+  border-radius: 20px 10px 5px 5px;
+}
+
+.train-engine::before {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: -14px;
+  width: 18px;
+  height: 16px;
+  border-radius: 5px 5px 0 0;
+  background: rgba(37, 52, 71, 0.86);
+}
+
+.train-engine::after,
+.train-car::after {
+  content: "";
+  position: absolute;
+  left: 15px;
+  right: 15px;
+  bottom: -7px;
+  height: 10px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 8px 5px, #253447 0 4px, transparent 4.5px),
+    radial-gradient(circle at calc(100% - 8px) 5px, #253447 0 4px, transparent 4.5px);
+}
+
+.train-car {
+  width: 88px;
+}
+
+.app-loading-title strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2.25rem, 8vw, 5rem);
+  font-weight: 700;
+  line-height: 0.95;
+}
+
+.app-loading-title span {
+  color: #5a4637;
+  font-size: clamp(1rem, 2.6vw, 1.45rem);
+  font-weight: 700;
+}
+
+.app-loading-progress {
+  width: min(280px, 64vw);
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(37, 52, 71, 0.14);
+}
+
+.app-loading-progress span {
+  display: block;
+  width: 46%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1f766c, #b65d3a);
+  animation: app-loading-progress 1.4s ease-in-out infinite;
+}
+
+.app-loading p {
+  margin: 0;
+  color: #5f6b7a;
+  font-size: 0.95rem;
+  font-weight: 700;
 }
 
 .app-loading.is-ready {
@@ -439,13 +599,51 @@ h2 {
   pointer-events: none;
 }
 
-.app-loading-spinner {
-  width: 36px;
-  height: 36px;
-  border: 4px solid #bfdbfe;
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: backup-upload-spin 0.8s linear infinite;
+@keyframes app-loading-progress {
+  0% {
+    transform: translateX(-120%);
+  }
+  50% {
+    transform: translateX(72%);
+  }
+  100% {
+    transform: translateX(240%);
+  }
+}
+
+@keyframes app-loading-train {
+  0% {
+    transform: translateX(0);
+  }
+  72%,
+  100% {
+    transform: translateX(calc(100vw + 720px));
+  }
+}
+
+@media (max-width: 640px) {
+  .app-loading {
+    gap: 15px;
+    padding: 22px;
+  }
+
+  .app-loading-cover {
+    width: min(150px, 44vw);
+  }
+
+  .app-loading-train {
+    top: 50%;
+    width: 260px;
+    transform-origin: left center;
+  }
+
+  .train-engine {
+    width: 78px;
+  }
+
+  .train-car {
+    width: 68px;
+  }
 }
 
 .offline-status {

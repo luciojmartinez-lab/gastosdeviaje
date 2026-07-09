@@ -11430,12 +11430,23 @@ function bindEvents() {
   };
 }
 
+const APP_LOADING_STARTED_AT = Date.now();
+const APP_LOADING_MIN_MS = 1600;
+const APP_LOADING_MAX_MS = 4000;
+
 function finishAppLoading() {
   const loading = $('#app-loading');
   if (!loading || loading.classList.contains('is-ready')) return;
-  loading.classList.add('is-ready');
-  window.setTimeout(() => loading.remove(), 220);
+  const elapsed = Date.now() - APP_LOADING_STARTED_AT;
+  const delay = Math.max(0, APP_LOADING_MIN_MS - elapsed);
+  window.setTimeout(() => {
+    if (!loading || loading.classList.contains('is-ready')) return;
+    loading.classList.add('is-ready');
+    window.setTimeout(() => loading.remove(), 460);
+  }, delay);
 }
+
+window.setTimeout(finishAppLoading, APP_LOADING_MAX_MS);
 
 function updateOfflineStatus() {
   const status = $('#offline-status');

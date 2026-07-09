@@ -12,6 +12,7 @@ const APP_SHELL_REQUIRED = [
   './vendor/maplibre/maplibre-gl.js?v=5.24.0',
   './manifest.webmanifest',
   './icon.svg',
+  './assets/bitacora-splash.png',
   './version.txt'
 ];
 const APP_SHELL_OPTIONAL = [

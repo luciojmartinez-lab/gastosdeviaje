@@ -11,9 +11,21 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
 <body>
-<div id="app-loading" class="app-loading" role="status" aria-live="polite">
-  <span class="app-loading-spinner" aria-hidden="true"></span>
-  <strong>Cargando</strong>
+<div id="app-loading" class="app-loading" role="status" aria-live="polite" aria-label="Cargando Cuaderno de Bitácora">
+  <div class="app-loading-cover" aria-hidden="true"></div>
+  <div class="app-loading-train" aria-hidden="true">
+    <span class="train-engine"></span>
+    <span class="train-car"></span>
+    <span class="train-car"></span>
+  </div>
+  <div class="app-loading-title">
+    <strong>Cuaderno de Bitácora</strong>
+    <span>por Lucio J. Martínez</span>
+  </div>
+  <div class="app-loading-progress" aria-hidden="true">
+    <span></span>
+  </div>
+  <p>Preparando el viaje...</p>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
