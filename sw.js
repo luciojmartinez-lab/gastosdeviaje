@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gastosdeviaje-700v137';
+const CACHE_NAME = 'gastosdeviaje-700v137-splash5';
 const MAP_RUNTIME_CACHE = 'cuaderno-bitacora-map-runtime-v1';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname;
