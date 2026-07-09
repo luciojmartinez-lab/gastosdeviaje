@@ -432,7 +432,7 @@
           qué cuenta, en qué moneda y cómo encaja eso con el recorrido.
         </p>
         <p>
-          La app se organiza en cuatro áreas: Viajes, Gastos, Resumen y Configuración. La ayuda
+          La app se organiza en seis áreas: Viajes, Gastos, Blog, Mapa, Resumen y Configuración. La ayuda
           se irá actualizando cuando se añadan funciones importantes.
         </p>
         <nav class="help-nav" aria-label="Índice de ayuda">
@@ -450,6 +450,8 @@
           <div class="tabs">
             <span class="tab active">Viajes</span>
             <span class="tab">Gastos</span>
+            <span class="tab">Blog</span>
+            <span class="tab">Mapa</span>
             <span class="tab">Resumen</span>
             <span class="tab">Config.</span>
           </div>
@@ -507,7 +509,7 @@
         <article class="screen">
           <div class="screen-top">
             <p class="screen-title">Viajes</p>
-            <div class="tabs"><span class="tab active">Viajes</span><span class="tab">Gastos</span><span class="tab">Resumen</span><span class="tab">Config.</span></div>
+            <div class="tabs"><span class="tab active">Viajes</span><span class="tab">Gastos</span><span class="tab">Blog</span><span class="tab">Mapa</span><span class="tab">Resumen</span><span class="tab">Config.</span></div>
           </div>
           <div class="screen-body">
             <div class="mock-row"><b>Filtro activo</b><span class="pill">Quitar selección</span><span class="pill">Backups</span></div>
@@ -523,7 +525,7 @@
         <article class="screen">
           <div class="screen-top">
             <p class="screen-title">Gastos</p>
-            <div class="tabs"><span class="tab">Viajes</span><span class="tab active">Gastos</span><span class="tab">Resumen</span><span class="tab">Config.</span></div>
+            <div class="tabs"><span class="tab">Viajes</span><span class="tab active">Gastos</span><span class="tab">Blog</span><span class="tab">Mapa</span><span class="tab">Resumen</span><span class="tab">Config.</span></div>
           </div>
           <div class="screen-body">
             <div class="mock-row"><b>Nuevo gasto</b><span class="pill">Gasto</span><span class="pill">Ingreso</span></div>
@@ -539,7 +541,7 @@
         <article class="screen">
           <div class="screen-top">
             <p class="screen-title">Resumen</p>
-            <div class="tabs"><span class="tab">Viajes</span><span class="tab">Gastos</span><span class="tab active">Resumen</span><span class="tab">Config.</span></div>
+            <div class="tabs"><span class="tab">Viajes</span><span class="tab">Gastos</span><span class="tab">Blog</span><span class="tab">Mapa</span><span class="tab active">Resumen</span><span class="tab">Config.</span></div>
           </div>
           <div class="screen-body">
             <div class="metric-grid">
@@ -559,7 +561,7 @@
         <article class="screen">
           <div class="screen-top">
             <p class="screen-title">Mapa</p>
-            <div class="tabs"><span class="tab">Totales</span><span class="tab">Desglose</span><span class="tab">Cuentas</span><span class="tab active">Mapa</span></div>
+            <div class="tabs"><span class="tab">Viajes</span><span class="tab">Gastos</span><span class="tab">Blog</span><span class="tab active">Mapa</span><span class="tab">Resumen</span><span class="tab">Config.</span></div>
           </div>
           <div class="screen-body">
             <div class="mock-map">
@@ -589,7 +591,7 @@
       <h3>Viajes</h3>
       <ul>
         <li>Filtro global por viaje o año, con multiselección desde la tabla principal.</li>
-        <li>Las acciones de cada viaje se limitan a Documentos viaje y Editar; Gastos y Resumen se abren desde la navegación superior.</li>
+        <li>Las acciones de cada viaje se limitan a Documentos viaje y Editar; Gastos, Mapa y Resumen se abren desde la navegación superior.</li>
         <li>Selección automática del viaje en curso o del próximo viaje futuro al abrir.</li>
         <li>Presupuesto manual del viaje, separado del presupuesto de las cuentas.</li>
         <li>Ciudades planificadas por país, con orden, eliminación, restablecimiento, editor de paradas y repetición de ciudades cuando el viaje vuelve por una ciudad.</li>
@@ -614,7 +616,7 @@
         <li>En móvil, Añadir gastos, Último gasto, Filtros y el selector de vista se distribuyen en una sola fila compacta. Quitar filtros aparece debajo solo cuando hay filtros activos.</li>
       </ul>
 
-      <h3>Resumen</h3>
+      <h3>Resumen y Mapa</h3>
       <ul>
         <li>El acceso superior Imprimir PDF abre las mismas opciones de informe que Configuración → Exportar / Importar.</li>
         <li>En móvil, los tres indicadores principales se agrupan en una sola tarjeta compacta con separaciones.</li>
@@ -622,9 +624,9 @@
         <li>Media diaria, presupuesto usado, restante y porcentaje de gasto.</li>
         <li>Desglose por categoría y subcategoría.</li>
         <li>Resumen por cuentas, con presupuesto de cuenta y presupuesto del viaje.</li>
-        <li>Mapa del viaje con paradas planificadas, puntos con gasto, puntos geolocalizados del Blog, fotos con GPS, rutas y filtro por país. Las fotos usan un signo + pequeño, pueden ocultarse con el control Fotos y se agrupan cuando están próximas. Al pulsarlas se muestran miniatura, fecha, hora y descripción. Los puntos concretos no se unen a la ruta. El modo Solo destino omite la primera y la última parada y también sus fotos y puntos, para mostrar únicamente la zona central del viaje.</li>
+        <li>Mapa es una opción principal de la navegación, con selectores propios de viaje y país. Muestra paradas planificadas, puntos con gasto, puntos geolocalizados del Blog, fotos con GPS y rutas. Las fotos usan un signo + pequeño, pueden ocultarse con el control Fotos y se agrupan cuando están próximas. Al pulsarlas se muestran miniatura, fecha, hora y descripción. Los puntos concretos no se unen a la ruta. El modo Solo destino omite la primera y la última parada y también sus fotos y puntos, para mostrar únicamente la zona central del viaje.</li>
         <li>El selector Día incluye todas las fechas del viaje que tengan gastos o entradas del Blog. Combina los puntos y fotos con GPS exacto con las ciudades de los registros que no tienen GPS, sin perder el origen ni las escalas. Si ese día hay datos en varias ciudades, la línea sigue el orden de las paradas configuradas —1, 2, 3…— y agrupa todas las fotos de una ciudad antes de pasar a la siguiente; la hora solo ordena los datos dentro de cada ciudad. La marca numerada de una ciudad se conserva aunque también tenga fotos con GPS, y aparece por encima de su grupo de fotos. Cada marca muestra la ciudad con la hora debajo; una sola ciudad permanece sin líneas y muestra únicamente la hora. El selector Ciudad reúne en un único mapa los puntos y fotos de esa ciudad durante todos los días del viaje, sin líneas de trayecto; Día y Ciudad son filtros alternativos. Las fotos repetidas entre Gastos y Blog se muestran una sola vez y el texto inferior avisa de cuántas se han ocultado. Las fotos se abren pulsando su punto. En un día concreto, Copiar al Blog crea o actualiza el mapa diario a las 00:00 y conserva las mismas marcas numeradas; las fotos se representan aparte mediante un único símbolo + con su contador, sin repetir nombres ni horas. En Todos los días y Todas las ciudades, crea o actualiza la primera página del Blog con el nombre y las fechas del viaje, el mapa completo y una lista numerada de ciudades con su fecha real de llegada. Las llegadas se obtienen de entradas y fotos del viaje; los gastos solo se usan como alternativa si están dentro de las fechas del viaje. Las ciudades repetidas muestran sus números unidos por guion, por ejemplo 1-8.</li>
-        <li>El mapa interactivo del Resumen utiliza cartografía vectorial: el gesto de pellizco conserva de forma continua la ampliación, el centro, los rótulos y los puntos, sin saltos al atravesar niveles enteros de zoom. El encuadre se adapta a una ciudad o a toda la ruta, con niveles adicionales de reducción para viajes largos; Pantalla completa amplía el mapa en el móvil y Tamaño normal devuelve la vista original. Localizar busca y guarda las coordenadas que falten. Los mapas de PDF y los copiados al Blog mantienen el sistema de imagen para poder imprimirse y compartirse.</li>
+        <li>El mapa interactivo utiliza cartografía vectorial: el gesto de pellizco conserva de forma continua la ampliación, el centro, los rótulos y los puntos, sin saltos al atravesar niveles enteros de zoom. El encuadre se adapta a una ciudad o a toda la ruta, con niveles adicionales de reducción para viajes largos; Pantalla completa amplía el mapa en el móvil y Tamaño normal devuelve la vista original. Localizar busca y guarda las coordenadas que falten. Los mapas de PDF y los copiados al Blog mantienen el sistema de imagen para poder imprimirse y compartirse.</li>
         <li>El acceso Documentos reúne al final del resumen dos tablas: documentos del viaje y archivos de gastos, ordenados desde los más antiguos hasta los más recientes. Cada fila muestra fecha, descripción y un enlace para abrir el archivo.</li>
         <li>En el resumen por cuentas, la columna EUR solo muestra equivalencia cuando la moneda original es distinta de EUR.</li>
         <li>En móvil, los seis filtros del desglose se presentan en dos filas compactas de tres columnas.</li>

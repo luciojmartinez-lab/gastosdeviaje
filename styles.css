@@ -2202,6 +2202,8 @@ footer {
   header {
     align-items: flex-start;
     flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
   }
 
   .header-help {
@@ -2212,12 +2214,17 @@ footer {
   header h1 {
     order: 0;
     min-width: 0;
+    font-size: 17px;
+  }
+
+  header h1 span {
+    font-size: 10px;
   }
 
   nav {
     order: 3;
     width: 100%;
-    gap: 4px;
+    gap: 2px;
   }
 
   .nav-help {
@@ -2227,6 +2234,8 @@ footer {
   .app-version {
     order: 2;
     margin-left: 0;
+    padding-inline: 6px;
+    font-size: 10px;
   }
 
   .config-menu,
@@ -2268,8 +2277,14 @@ footer {
   nav button {
     flex: 1 1 0;
     min-width: 0;
-    padding: 7px 3px;
-    font-size: 11px;
+    padding: 7px 1px;
+    font-size: 10.5px;
+    letter-spacing: -0.1px;
+  }
+
+  .header-help {
+    min-height: 32px;
+    padding: 6px 9px;
   }
 
   .desktop-label {

@@ -825,6 +825,7 @@ function syncTripSelectsFromSelection() {
   const value = ids.length === 1 ? String(ids[0]) : '';
   if ($('#f-viaje')) $('#f-viaje').value = value;
   if ($('#r-viaje')) $('#r-viaje').value = value;
+  if ($('#map-viaje')) $('#map-viaje').value = value;
   if ($('#c-viaje')) $('#c-viaje').value = value;
   state.selectedViajeId = ids.length === 1 ? ids[0] : null;
 }
@@ -3106,6 +3107,7 @@ async function loadAll() {
   state.transferencias = transferencias.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
   renderAll();
   if (state.activeTab === 'resumen') renderResumen();
+  if (state.activeTab === 'mapa') renderMapPaises();
 }
 
 function renderAll() {
@@ -3340,6 +3342,7 @@ function renderTripSelectors() {
   fillSelect('#g-viaje', trips, '(sin viaje)');
   fillSelect('#f-viaje', trips, '(todos)');
   fillSelect('#r-viaje', trips, '(todos)');
+  fillSelect('#map-viaje', trips, '(todos)');
   fillSelect('#c-viaje', trips, '(plantilla global)');
   if ($('#edit-gasto-viaje')) fillSelect('#edit-gasto-viaje', trips, '(sin viaje)');
   fillSelect('#backup-export-trip', trips, '(elige viaje)');
@@ -3510,7 +3513,7 @@ function renderResumenPaises() {
 function renderMapPaises() {
   const select = $('#map-pais');
   if (!select) return;
-  const gastos = gastosForSelectorTripScope('#r-viaje');
+  const gastos = gastosForSelectorTripScope('#map-viaje');
   const options = mapPaisOptionsForScope(gastos);
   const scopeKey = `${[...mapScopedTripIds(gastos)].sort((a, b) => a - b).join(',')}|${options.map(option => option.value).join(',')}`;
   const scopeChanged = tripMapState.countryScopeKey !== scopeKey;
@@ -3922,8 +3925,8 @@ function drawBarChart(container, data) {
 
 function mapScopedTripIds(gastos = []) {
   const ids = new Set();
-  const selectedResumenTripId = Number($('#r-viaje') ? $('#r-viaje').value : 0);
-  if (selectedResumenTripId) ids.add(selectedResumenTripId);
+  const selectedMapTripId = Number($('#map-viaje') ? $('#map-viaje').value : 0);
+  if (selectedMapTripId) ids.add(selectedMapTripId);
   else if (hasTripSelection()) selectedTripIds().forEach(id => ids.add(Number(id)));
   else state.viajes.forEach(v => ids.add(Number(v.id)));
   return ids;
@@ -4260,7 +4263,7 @@ async function geocodeTripMapCities() {
   await loadAll();
   const info = $('#trip-map-info');
   const paisId = Number($('#map-pais') ? $('#map-pais').value : 0);
-  const gastos = gastosForSelectorTripScope('#r-viaje');
+  const gastos = gastosForSelectorTripScope('#map-viaje');
   const cities = mapRouteCities(gastos, paisId);
   const candidates = cities.filter(item => item.ciudad && !isTransitPlaceName(item.ciudad.nombre) && !lugarHasCoords(item.ciudad));
   if (!candidates.length) {
@@ -4295,11 +4298,11 @@ async function geocodeTripMapCities() {
 }
 
 function currentMapTrip() {
-  const selectedResumenTripId = Number($('#r-viaje') ? $('#r-viaje').value : 0);
-  if (selectedResumenTripId) return state.viajes.find(v => Number(v.id) === selectedResumenTripId) || null;
+  const selectedMapTripId = Number($('#map-viaje') ? $('#map-viaje').value : 0);
+  if (selectedMapTripId) return state.viajes.find(v => Number(v.id) === selectedMapTripId) || null;
   const ids = selectedTripIds();
   if (ids.length === 1) return state.viajes.find(v => Number(v.id) === ids[0]) || null;
-  const gastos = gastosForSelectorTripScope('#r-viaje');
+  const gastos = gastosForSelectorTripScope('#map-viaje');
   const tripIds = [...new Set(gastos.map(g => Number(g.viajeId)).filter(Boolean))];
   if (tripIds.length === 1) return state.viajes.find(v => Number(v.id) === tripIds[0]) || null;
   return null;
@@ -4415,7 +4418,7 @@ function renderRouteDialog() {
 function openRouteDialog(trip, options = {}) {
   const dialog = $('#route-dialog');
   if (!dialog) return;
-  const gastos = gastosForSelectorTripScope('#r-viaje')
+  const gastos = gastosForSelectorTripScope('#map-viaje')
     .filter(g => Number(g.viajeId) === Number(trip.id));
   const mapCityIds = mapRouteCities(gastos, 0)
     .map(item => Number(item.ciudad && item.ciudad.id))
@@ -4787,7 +4790,7 @@ function dailyMapItem(record) {
 
 function tripMapItemsForCurrentScope() {
   const paisId = Number($('#map-pais') ? $('#map-pais').value : 0);
-  const gastos = gastosForSelectorTripScope('#r-viaje');
+  const gastos = gastosForSelectorTripScope('#map-viaje');
   const scopedTripIds = mapScopedTripIds(gastos);
   const scopedTrips = mapScopedTrips(gastos);
   const destinationOnlyAvailable = scopedTrips.length === 1 && tripCityIds(scopedTrips[0]).length > 2;
@@ -5870,7 +5873,7 @@ function renderTripMap() {
     window.maplibregl
       && (typeof window.maplibregl.supported !== 'function' || window.maplibregl.supported())
   );
-  const useVectorInteractiveMap = Boolean(mapLibreSupported && !tripVectorMapFailed && !tripMapState.printMode && state.activeTab === 'resumen');
+  const useVectorInteractiveMap = Boolean(mapLibreSupported && !tripVectorMapFailed && !tripMapState.printMode && state.activeTab === 'mapa');
   if (!useVectorInteractiveMap && tripVectorMap) destroyTripVectorMap();
   const zoomFraction = zoom - tileZoom;
   const tiles = useVectorInteractiveMap ? [] : tileLevelHtml(tileZoom, tileScale, 1, true);
@@ -6446,7 +6449,7 @@ function renderResumen() {
     accountHtml.push(`<tr class="subtotal-row"><td>Total gastado</td><td>EUR</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td></td><td>-</td><td>-</td><td>-</td></tr>`);
   }
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
-  renderTripMap();
+  if (state.activeTab === 'mapa' || tripMapState.printMode) renderTripMap();
   renderSummaryDocuments();
 }
 
@@ -8286,12 +8289,13 @@ function scrollToLastBlogEntry() {
 
 function setTab(id) {
   if (id === 'blog' && !selectedBlogTrip()) return;
-  if (id !== 'resumen' && tripVectorMap) destroyTripVectorMap();
+  if (id !== 'mapa' && tripVectorMap) destroyTripVectorMap();
   state.activeTab = id;
-  ['viajes', 'gastos', 'blog', 'resumen', 'config'].forEach(tab => {
+  ['viajes', 'gastos', 'blog', 'mapa', 'resumen', 'config'].forEach(tab => {
     $(`#tab-${tab}`).classList.toggle('active', tab === id);
     $(`#view-${tab}`).style.display = tab === id ? 'block' : 'none';
   });
+  if (id === 'mapa') renderMapPaises();
   if (id === 'resumen') renderResumen();
   if (id === 'blog') renderBlog();
   if (id === 'gastos' || id === 'blog') scrollToSectionStart(id);
@@ -8963,6 +8967,10 @@ function printableSectionHtml(id) {
   const original = $(`#view-${id}`);
   if (!original) return '';
   const clone = original.cloneNode(true);
+  if (id === 'resumen') {
+    const mapCard = $('#resumen-mapa');
+    if (mapCard) clone.appendChild(mapCard.cloneNode(true));
+  }
   clone.removeAttribute('id');
   clone.style.display = 'block';
   clone.querySelectorAll('.map-controls').forEach(el => el.remove());
@@ -9238,6 +9246,7 @@ function bindEvents() {
   $('#tab-viajes').onclick = () => setTab('viajes');
   $('#tab-gastos').onclick = () => setTab('gastos');
   $('#tab-blog').onclick = () => setTab('blog');
+  $('#tab-mapa').onclick = () => setTab('mapa');
   $('#tab-resumen').onclick = () => setTab('resumen');
   $('#tab-config').onclick = () => setTab('config');
   $('#btn-clear-trip').onclick = () => {
@@ -9556,6 +9565,9 @@ function bindEvents() {
     tripMapState.day = '';
     resetTripMapView();
     renderTripMap();
+  };
+  $('#map-viaje').onchange = () => {
+    applySelectedTrip($('#map-viaje').value ? Number($('#map-viaje').value) : null);
   };
   $('#r-viaje').onchange = () => {
     setSelectedTrips($('#r-viaje').value ? [Number($('#r-viaje').value)] : []);

@@ -6,7 +6,7 @@
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v130">
+  <link rel="stylesheet" href="styles.css?v=700v131">
   <meta name="theme-color" content="#1976d2">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
@@ -22,11 +22,12 @@
     <button id="tab-viajes" class="active">Viajes</button>
     <button id="tab-gastos">Gastos</button>
     <button id="tab-blog" disabled>Blog</button>
+    <button id="tab-mapa">Mapa</button>
     <button id="tab-resumen">Resumen</button>
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v130</div>
+  <div class="app-version">700v131</div>
 </header>
 
 <main>
@@ -141,7 +142,6 @@
         <a class="btn ghost" href="#resumen-totales">Totales</a>
         <a class="btn ghost" href="#resumen-desglose">Desglose</a>
         <a class="btn ghost" href="#resumen-cuentas">Cuentas</a>
-        <a class="btn ghost" href="#resumen-mapa">Mapa</a>
         <a class="btn ghost" href="#resumen-documentos">Documentos</a>
         <button class="btn ghost" id="btn-print-summary-top" type="button">Imprimir PDF</button>
       </div>
@@ -172,16 +172,6 @@
         <table id="tabla-cuenta"><thead><tr><th>Cuenta</th><th>Moneda</th><th>Gastado</th><th>EUR</th><th>Presupuesto</th><th>Restante</th><th>%</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
-    <div class="card" id="resumen-mapa">
-      <div class="section-head">
-        <h2>Mapa del viaje</h2>
-      </div>
-      <div class="row">
-        <div><label>País</label><select id="map-pais"></select></div>
-      </div>
-      <div id="trip-map" class="trip-map"></div>
-      <p id="trip-map-info" class="small"></p>
-    </div>
     <div class="card summary-documents" id="resumen-documentos">
       <h2>Documentos</h2>
       <section class="summary-document-section">
@@ -202,6 +192,20 @@
           </table>
         </div>
       </section>
+    </div>
+  </section>
+
+  <section id="view-mapa" style="display:none">
+    <div class="card map-page-card" id="resumen-mapa">
+      <div class="section-head">
+        <h2>Mapa del viaje</h2>
+      </div>
+      <div class="row map-page-filters">
+        <div><label>Viaje</label><select id="map-viaje"></select></div>
+        <div><label>País</label><select id="map-pais"></select></div>
+      </div>
+      <div id="trip-map" class="trip-map"></div>
+      <p id="trip-map-info" class="small"></p>
     </div>
   </section>
 
@@ -816,11 +820,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v130"></script>
-<script src="app.bundle.js?v=700v130"></script>
+<script src="map-model.js?v=700v131"></script>
+<script src="app.bundle.js?v=700v131"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v130';
+    const pageVersion = '700v131';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -847,7 +851,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v130', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v131', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
