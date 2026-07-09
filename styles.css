@@ -448,6 +448,21 @@ h2 {
   animation: backup-upload-spin 0.8s linear infinite;
 }
 
+.offline-status {
+  max-width: 1100px;
+  margin: 10px auto 0;
+  padding: 9px 14px;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+}
+
+.offline-status[hidden] {
+  display: none;
+}
+
 .backup-upload-status[hidden] {
   display: none;
 }

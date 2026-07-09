@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v133';
+const APP_VERSION = '700v134';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -744,6 +744,9 @@ async function fetchCurrentCurrencyQuote(code) {
   const currency = String(code || '').trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error('Escribe un código ISO de 3 letras, por ejemplo USD o JPY');
   if (currency === 'EUR') throw new Error('EUR ya es la moneda base');
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new Error('No hay conexión para consultar el cambio. Puedes introducirlo manualmente');
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 12000);
   try {
@@ -1161,7 +1164,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v133');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v134');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1193,7 +1196,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v133');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v134');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1601,7 +1604,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v133');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v134');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -10876,9 +10879,20 @@ function finishAppLoading() {
   window.setTimeout(() => loading.remove(), 220);
 }
 
+function updateOfflineStatus() {
+  const status = $('#offline-status');
+  if (!status) return;
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  status.hidden = !offline;
+}
+
+window.addEventListener('online', updateOfflineStatus);
+window.addEventListener('offline', updateOfflineStatus);
+
 window.addEventListener('DOMContentLoaded', async () => {
   try {
     const hasSharedLaunch = new URL(window.location.href).searchParams.has('shared') || new URL(window.location.href).searchParams.has('shared_error');
+    updateOfflineStatus();
     bindEvents();
     ensureSyncKey();
     await withDataTrackingPaused(seedIfEmpty);

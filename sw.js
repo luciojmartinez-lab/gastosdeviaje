@@ -1,27 +1,88 @@
-const CACHE_NAME = 'gastosdeviaje-700v133';
+const CACHE_NAME = 'gastosdeviaje-700v134';
+const MAP_RUNTIME_CACHE = 'cuaderno-bitacora-map-runtime-v1';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname;
-const APP_SHELL = [
+const APP_SHELL_REQUIRED = [
   './',
   './index.html',
-  './styles.css?v=700v133',
-  './map-model.js?v=700v133',
-  './app.bundle.js?v=700v133',
+  './styles.css?v=700v134',
+  './map-model.js?v=700v134',
+  './app.bundle.js?v=700v134',
   './vendor/maplibre/maplibre-gl.css?v=5.24.0',
   './vendor/maplibre/maplibre-gl.js?v=5.24.0',
-  './ticket-ocr.js?v=700v133',
-  './image-location.js?v=700v133',
-  './ayuda.html',
   './manifest.webmanifest',
   './icon.svg',
+  './version.txt'
+];
+const APP_SHELL_OPTIONAL = [
+  './ticket-ocr.js?v=700v134',
+  './image-location.js?v=700v134',
+  './ayuda.html',
+  './vendor/pdfjs/pdf.min.mjs',
+  './vendor/pdfjs/pdf.worker.min.mjs',
+  './vendor/tesseract/tesseract.esm.min.js',
+  './vendor/tesseract/worker.min.js',
+  './vendor/tesseract/core/tesseract-core-lstm.wasm',
+  './vendor/tesseract/core/tesseract-core-lstm.wasm.js',
+  './vendor/tesseract/core/tesseract-core-simd-lstm.wasm',
+  './vendor/tesseract/core/tesseract-core-simd-lstm.wasm.js',
+  './vendor/tesseract/core/tesseract-core-relaxedsimd-lstm.wasm',
+  './vendor/tesseract/core/tesseract-core-relaxedsimd-lstm.wasm.js',
+  './vendor/tesseract/lang/spa.traineddata.gz',
   './wordpress-gastos-viaje-importer.zip'
 ];
 
+async function cacheBestEffort(cache, urls) {
+  await Promise.all(urls.map(async url => {
+    try {
+      const response = await fetch(url, { cache: 'reload' });
+      if (response && response.ok) await cache.put(url, response);
+    } catch (_) {}
+  }));
+}
+
+function isMapRuntimeRequest(url) {
+  return [
+    'a.basemaps.cartocdn.com',
+    'b.basemaps.cartocdn.com',
+    'c.basemaps.cartocdn.com',
+    'd.basemaps.cartocdn.com',
+    'tile.openstreetmap.org',
+    'tiles.openfreemap.org'
+  ].includes(url.hostname);
+}
+
+async function updateRuntimeCache(cacheName, request) {
+  const response = await fetch(request);
+  if (response && (response.ok || response.type === 'opaque')) {
+    try {
+      const cache = await caches.open(cacheName);
+      await cache.put(request, response.clone());
+    } catch (_) {}
+  }
+  return response;
+}
+
+async function cachedMapResponse(request) {
+  const cached = await caches.match(request);
+  if (cached) {
+    updateRuntimeCache(MAP_RUNTIME_CACHE, request).catch(() => {});
+    return cached;
+  }
+  try {
+    return await updateRuntimeCache(MAP_RUNTIME_CACHE, request);
+  } catch (_) {
+    return cached || Response.error();
+  }
+}
+
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then(async cache => {
+      await cache.addAll(APP_SHELL_REQUIRED);
+      await cacheBestEffort(cache, APP_SHELL_OPTIONAL);
+      await self.skipWaiting();
+    })
   );
 });
 
@@ -92,6 +153,10 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (event.request.method !== 'GET') return;
+  if (isMapRuntimeRequest(url)) {
+    event.respondWith(cachedMapResponse(event.request));
+    return;
+  }
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
   if (event.request.mode === 'navigate') {
