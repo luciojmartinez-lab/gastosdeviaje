@@ -418,7 +418,7 @@
 <body>
   <header class="topbar">
     <a href="index.html">Volver</a>
-    <h1>Ayuda de Cuaderno de Bitácora <span>Actualizada para 700v136</span></h1>
+    <h1>Ayuda de Cuaderno de Bitácora <span>Actualizada para 700v137</span></h1>
   </header>
 
   <main>
@@ -686,7 +686,8 @@
         </article>
         <article class="mini-card">
           <h3>Sincronización</h3>
-          <p>Sincronizar muestra por separado la fecha real de la última copia local, la fecha de la copia en Netlify y cuándo se modificaron los datos de cada versión. La comparación utiliza la fecha de modificación de los datos para no reemplazar cambios por una copia más nueva que contenga información más antigua. Nunca reemplaza datos sin permiso. Antes de sincronizar crea una copia local y, al terminar, otra cuyo nombre acaba en <b>-2</b>.</p>
+          <p>Sincronizar muestra por separado la fecha real de la última copia local, la fecha de la copia en Netlify y cuándo se modificaron los datos de cada versión. Además recuerda la última sincronización confirmada de este dispositivo. Si desde entonces han cambiado este dispositivo y también la nube, avisa de conflicto y muestra tanto la opción de bajar como la de subir, creando siempre copias locales antes y después. La comparación utiliza la fecha de modificación de los datos para no reemplazar cambios por una copia más nueva que contenga información más antigua. Nunca reemplaza datos sin permiso. Antes de sincronizar crea una copia local y, al terminar, otra cuyo nombre acaba en <b>-2</b>.</p>
+          <p>La subida comprueba que la copia de la nube no haya cambiado mientras se prepara el envío. Si otro dispositivo sincroniza en ese intervalo, la app cancela la subida y pide comprobar de nuevo antes de decidir.</p>
           <p>Los datos, tickets, imágenes adicionales de gastos, documentos de viaje e imágenes del blog se guardan por separado. Cada archivo se identifica mediante una huella digital: la app consulta primero Netlify y solo sube los que todavía no existen. Los archivos grandes se dividen en fragmentos y se reconstruyen automáticamente al recuperarlos desde la nube.</p>
           <p>Los tickets creados con versiones antiguas se conservan aunque utilicen un formato diferente. Un ticket heredado o incompleto no impide sincronizar el resto de la copia.</p>
         </article>
@@ -706,7 +707,7 @@
       </div>
     </section>
 
-    <p class="footer-note">Cuaderno de Bitácora 700v136. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
+    <p class="footer-note">Cuaderno de Bitácora 700v137. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
   </main>
 </body>
 </html>

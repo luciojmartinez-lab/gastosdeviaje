@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v136';
+const APP_VERSION = '700v137';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -8,6 +8,7 @@ const DATA_UPDATED_KEY = 'gastos_viaje_data_updated_at';
 const FORM_DRAFTS_KEY = 'gastos_viaje_form_drafts_v1';
 const FORM_DRAFT_MAX_AGE_DAYS = 30;
 const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
+const SYNC_STATE_STORAGE = 'gastos_viaje_sync_state_v1';
 const BACKUP_DIRECTORY_SETTING_KEY = 'backupDirectory';
 const SYNC_ENDPOINT = '/api/travel-sync';
 const LOCAL_BACKUP_LIMIT = 5;
@@ -1463,7 +1464,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v136');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v137');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1495,7 +1496,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v136');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v137');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1906,7 +1907,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v136');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v137');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -9368,6 +9369,85 @@ function syncMetadataDate(metadata) {
   return metadata && (metadata.updatedAt || metadata.savedAt) || '';
 }
 
+function readSyncState() {
+  try {
+    return JSON.parse(localStorage.getItem(SYNC_STATE_STORAGE) || '{}') || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function writeSyncState(stateValue) {
+  try {
+    localStorage.setItem(SYNC_STATE_STORAGE, JSON.stringify(stateValue || {}));
+  } catch (_) {}
+}
+
+function syncDirectionLabel(direction) {
+  if (direction === 'upload') return 'subida a la nube';
+  if (direction === 'download') return 'actualización desde la nube';
+  return 'sincronización';
+}
+
+function renderSyncLastStatus() {
+  const element = $('#sync-last-status');
+  if (!element) return;
+  const last = readSyncState();
+  if (!last || !last.at) {
+    element.textContent = 'Este dispositivo todavía no tiene una sincronización confirmada.';
+    return;
+  }
+  const parts = [
+    `Última sincronización: ${syncDirectionLabel(last.direction)} el ${formatSyncDate(last.at)}`,
+    last.cloudUpdatedAt ? `nube ${formatSyncDate(last.cloudUpdatedAt)}` : '',
+    last.localUpdatedAt ? `local ${formatSyncDate(last.localUpdatedAt)}` : ''
+  ].filter(Boolean);
+  element.textContent = `${parts.join(' · ')}.`;
+}
+
+function recordSuccessfulSync(direction, metadata, localUpdatedAt = ensureLocalDataUpdatedAt()) {
+  const cloudUpdatedAt = syncMetadataDate(metadata);
+  writeSyncState({
+    direction,
+    at: new Date().toISOString(),
+    localUpdatedAt,
+    cloudUpdatedAt,
+    cloudSavedAt: metadata && metadata.savedAt || '',
+    cloudEtag: metadata && metadata.etag || '',
+    filename: metadata && metadata.filename || '',
+    appVersion: metadata && metadata.appVersion || ''
+  });
+  renderSyncLastStatus();
+}
+
+function syncComparisonAnalysis(metadata, localDataDate = ensureLocalDataUpdatedAt()) {
+  const last = readSyncState();
+  const localTime = Date.parse(localDataDate || 0);
+  const cloudDataDate = syncMetadataDate(metadata);
+  const cloudTime = Date.parse(cloudDataDate || 0);
+  const lastLocalTime = Date.parse(last.localUpdatedAt || 0);
+  const lastCloudTime = Date.parse(last.cloudUpdatedAt || 0);
+  const localChangedSinceSync = Boolean(last.at && localTime && lastLocalTime && localTime > lastLocalTime);
+  const cloudChangedSinceSync = Boolean(
+    metadata
+    && last.at
+    && (
+      (metadata.etag && last.cloudEtag && metadata.etag !== last.cloudEtag)
+      || (cloudTime && lastCloudTime && cloudTime > lastCloudTime)
+    )
+  );
+  const conflict = Boolean(metadata && localChangedSinceSync && cloudChangedSinceSync);
+  return {
+    conflict,
+    localChangedSinceSync,
+    cloudChangedSinceSync,
+    cloudIsPreferred: Boolean(metadata && (cloudTime > localTime || (!hasMeaningfulLocalData() && cloudTime !== localTime))),
+    localIsPreferred: Boolean(metadata ? localTime > cloudTime : hasMeaningfulLocalData()),
+    localTime,
+    cloudTime
+  };
+}
+
 function hasMeaningfulLocalData() {
   return Boolean(
     state.viajes.length
@@ -9389,7 +9469,7 @@ async function fetchCloudMetadata() {
   if (response.status === 404) return null;
   if (!response.ok) throw new Error('No se pudo consultar la copia en Netlify');
   const payload = await response.json();
-  return payload.metadata || null;
+  return payload.metadata ? { ...payload.metadata, etag: payload.etag || '' } : null;
 }
 
 async function fetchCloudSnapshot() {
@@ -9402,7 +9482,15 @@ async function fetchCloudSnapshot() {
   return response.json();
 }
 
-async function uploadCloudSnapshot({ backupData = null, backupName = '' } = {}) {
+async function uploadCloudSnapshot({ backupData = null, backupName = '', expectedEtag = undefined } = {}) {
+  let uploadExpectedEtag = expectedEtag;
+  if (uploadExpectedEtag === undefined) {
+    const latestMetadata = await fetchCloudMetadata().catch(error => {
+      if (error && /No hay conexión/.test(error.message || '')) throw error;
+      return null;
+    });
+    uploadExpectedEtag = latestMetadata ? latestMetadata.etag || '' : '';
+  }
   const manualFullBackup = backupData && backupData.backupScope === 'all';
   const fullData = manualFullBackup ? backupData : buildBackupData('all');
   const fullName = manualFullBackup && backupName ? backupName : backupFilename(fullData);
@@ -9418,7 +9506,8 @@ async function uploadCloudSnapshot({ backupData = null, backupName = '' } = {}) 
     data: preparedFull.data,
     updatedAt: fullData.dataUpdatedAt || ensureLocalDataUpdatedAt(),
     filename: fullName,
-    appVersion: APP_VERSION
+    appVersion: APP_VERSION,
+    expectedEtag: uploadExpectedEtag
   };
   if (preparedBackup) {
     body.backup = {
@@ -9441,6 +9530,7 @@ async function uploadCloudSnapshot({ backupData = null, backupName = '' } = {}) 
   if (!response.ok) {
     const detail = await response.json().catch(() => ({}));
     if (detail.error === 'payload_too_large') throw new Error('La copia supera el tamaño permitido por Netlify');
+    if (detail.error === 'cloud_changed') throw new Error('La copia en la nube cambió mientras se preparaba la subida. Pulsa “Comprobar de nuevo” antes de decidir si bajar o subir.');
     throw new Error('No se pudo guardar la copia en Netlify');
   }
   const saved = await response.json();
@@ -9461,6 +9551,8 @@ function renderSyncComparison(metadata) {
   const localBackupDate = localStorage.getItem(BACKUP_KEY) || '';
   const cloudDataDate = syncMetadataDate(metadata);
   const cloudBackupDate = metadata && (metadata.savedAt || cloudDataDate) || '';
+  const analysis = syncComparisonAnalysis(metadata, localDataDate);
+  renderSyncLastStatus();
   if ($('#sync-local-backup-date')) {
     $('#sync-local-backup-date').textContent = localBackupDate ? formatSyncDate(localBackupDate) : 'No existe todavía';
   }
@@ -9474,19 +9566,18 @@ function renderSyncComparison(metadata) {
     $('#sync-cloud-saved-date').textContent = metadata ? formatSyncDate(cloudBackupDate) : 'No existe todavía';
   }
 
-  const localTime = Date.parse(localDataDate || 0);
-  const cloudTime = Date.parse(cloudDataDate || 0);
-  const cloudIsPreferred = metadata && (cloudTime > localTime || (!hasMeaningfulLocalData() && cloudTime !== localTime));
   const downloadButton = $('#sync-download');
   const uploadButton = $('#sync-upload');
-  if (downloadButton) downloadButton.style.display = cloudIsPreferred ? '' : 'none';
-  if (uploadButton) uploadButton.style.display = !metadata || (hasMeaningfulLocalData() && localTime > cloudTime) ? '' : 'none';
+  if (downloadButton) downloadButton.style.display = analysis.conflict || analysis.cloudIsPreferred ? '' : 'none';
+  if (uploadButton) uploadButton.style.display = analysis.conflict || !metadata || analysis.localIsPreferred ? '' : 'none';
 
   if (!metadata) {
     setSyncMessage('No hay una versión en la nube. Puedes guardar la versión local; la subida puede tardar un poco si contiene fotos o documentos.');
-  } else if (cloudIsPreferred) {
+  } else if (analysis.conflict) {
+    setSyncMessage('Atención: hay cambios en este dispositivo y también en la nube desde la última sincronización confirmada. Antes de elegir, se crea una copia local. Si bajas, este dispositivo queda como la nube; si subes, la nube queda como este dispositivo.', true);
+  } else if (analysis.cloudIsPreferred) {
     setSyncMessage('La versión de la nube es más reciente. ¿Quieres actualizar este dispositivo?');
-  } else if (localTime > cloudTime) {
+  } else if (analysis.localIsPreferred) {
     setSyncMessage('La versión local es más reciente. ¿Quieres guardarla en la nube? La subida puede tardar un poco si contiene fotos o documentos.');
   } else {
     setSyncMessage('La versión local y la versión en la nube están sincronizadas.');
@@ -9495,6 +9586,7 @@ function renderSyncComparison(metadata) {
 
 async function refreshSyncComparison() {
   setSyncMessage('Consultando Netlify...');
+  renderSyncLastStatus();
   if ($('#sync-download')) $('#sync-download').style.display = 'none';
   if ($('#sync-upload')) $('#sync-upload').style.display = 'none';
   try {
@@ -9576,21 +9668,32 @@ async function performCloudDownload() {
   await loadAll();
   await createSyncBackup('after-sync');
   await refreshLocalBackupHistory();
-  renderSyncComparison({
+  const verified = await fetchCloudMetadata();
+  const metadata = verified || {
     savedAt: remote.savedAt,
     updatedAt: remote.updatedAt,
     filename: remote.filename,
     appVersion: remote.appVersion
-  });
+  };
+  recordSuccessfulSync('download', metadata, ensureLocalDataUpdatedAt());
+  renderSyncComparison(metadata);
   showBackupResult('Sincronización realizada', 'Los datos se actualizaron desde la nube. Se crearon una copia local anterior y otra posterior terminada en -2.');
 }
 
 async function performCloudUpload() {
   setSyncMessage('Subiendo copia a la nube… Puede tardar un poco si contiene fotos o documentos.');
+  const latestMetadata = await fetchCloudMetadata();
+  const analysis = syncComparisonAnalysis(latestMetadata);
+  renderSyncComparison(latestMetadata);
+  if (analysis.conflict && !confirm('Hay cambios locales y cambios en la nube desde la última sincronización. Subir reemplazará la copia de la nube por este dispositivo. ¿Continuar?')) {
+    setSyncMessage('Subida cancelada. Puedes actualizar desde la nube o revisar tus copias locales antes de decidir.');
+    return;
+  }
   await createSyncBackup('before-sync');
-  const saved = await uploadCloudSnapshot();
+  const saved = await uploadCloudSnapshot({ expectedEtag: latestMetadata ? latestMetadata.etag || '' : '' });
   await createSyncBackup('after-sync');
   await refreshLocalBackupHistory();
+  recordSuccessfulSync('upload', saved, ensureLocalDataUpdatedAt());
   renderSyncComparison(saved);
   const stats = saved.attachmentStats || {};
   const photoDetail = stats.total
@@ -9603,10 +9706,8 @@ async function checkCloudOnEntry() {
   try {
     const metadata = await fetchCloudMetadata();
     if (!metadata) return;
-    const cloudTime = Date.parse(syncMetadataDate(metadata) || 0);
-    const localTime = Date.parse(ensureLocalDataUpdatedAt() || 0);
-    const cloudIsPreferred = cloudTime > localTime || (!hasMeaningfulLocalData() && cloudTime !== localTime);
-    if (cloudIsPreferred) await openSyncDialog(metadata);
+    const analysis = syncComparisonAnalysis(metadata, ensureLocalDataUpdatedAt());
+    if (analysis.conflict || analysis.cloudIsPreferred) await openSyncDialog(metadata);
   } catch (error) {
     console.warn('No se pudo comprobar la sincronización al entrar', error);
   }
@@ -9807,6 +9908,7 @@ async function handleBackupDownload() {
       setBackupUploadState(true, 'Subiendo copia a la nube…', 'Puede tardar un poco si contiene fotos o documentos.');
       try {
         const saved = await uploadCloudSnapshot({ backupData: data, backupName: filename });
+        recordSuccessfulSync('upload', saved, ensureLocalDataUpdatedAt());
         const stats = saved.attachmentStats || {};
         const detail = stats.total
           ? ` Archivos nuevos: ${stats.uploaded}. Archivos ya existentes: ${stats.reused}.`

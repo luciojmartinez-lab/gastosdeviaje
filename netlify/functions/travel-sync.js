@@ -171,6 +171,19 @@ export default async (req) => {
     return json({ error: "invalid_sync_payload" }, 400);
   }
 
+  const expectedEtag = typeof body.expectedEtag === "string" ? body.expectedEtag : null;
+  if (expectedEtag !== null) {
+    const currentMetadata = await store.getMetadata(currentKey);
+    const currentEtag = currentMetadata && currentMetadata.etag ? currentMetadata.etag : "";
+    if (currentEtag !== expectedEtag) {
+      return json({
+        error: "cloud_changed",
+        metadata: currentMetadata && currentMetadata.metadata || null,
+        etag: currentEtag,
+      }, 409);
+    }
+  }
+
   const now = new Date();
   const savedAt = now.toISOString();
   const keyStamp = savedAt.replace(/[:.]/g, "-");
@@ -219,6 +232,7 @@ export default async (req) => {
       scope: "all",
     },
   });
+  const savedMetadata = await store.getMetadata(currentKey);
 
   await Promise.all([
     prune(store, `users/${keyHash}/history/`),
@@ -230,6 +244,7 @@ export default async (req) => {
     savedAt: payload.savedAt,
     updatedAt: payload.updatedAt,
     filename: payload.filename,
+    etag: savedMetadata && savedMetadata.etag || "",
   });
 };
 

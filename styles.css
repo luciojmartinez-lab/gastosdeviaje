@@ -1616,6 +1616,11 @@ input[type="checkbox"] {
   margin: 14px 0 0;
 }
 
+.sync-last-status {
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+
 .sync-actions {
   margin-top: 8px;
 }
