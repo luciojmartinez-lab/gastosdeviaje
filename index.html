@@ -6,7 +6,7 @@
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v132">
+  <link rel="stylesheet" href="styles.css?v=700v133">
   <meta name="theme-color" content="#1976d2">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
@@ -27,7 +27,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v132</div>
+  <div class="app-version">700v133</div>
 </header>
 
 <main>
@@ -580,6 +580,19 @@
   </form>
 </dialog>
 
+<dialog id="trip-review-dialog" class="modal trip-review-modal">
+  <form method="dialog">
+    <div class="modal-head">
+      <h2 id="trip-review-title">Revisar viaje</h2>
+      <button type="button" class="ghost icon-btn" id="trip-review-close" aria-label="Cerrar">x</button>
+    </div>
+    <div id="trip-review-body"></div>
+    <div class="actions">
+      <button type="button" class="ghost" id="trip-review-done">Cerrar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="blog-entry-dialog" class="modal blog-entry-modal">
   <form method="dialog" id="blog-entry-form">
     <div class="modal-head">
@@ -822,11 +835,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v132"></script>
-<script src="app.bundle.js?v=700v132"></script>
+<script src="map-model.js?v=700v133"></script>
+<script src="app.bundle.js?v=700v133"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v132';
+    const pageVersion = '700v133';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -853,7 +866,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v132', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v133', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

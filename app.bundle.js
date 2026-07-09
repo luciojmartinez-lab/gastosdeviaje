@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v132';
+const APP_VERSION = '700v133';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1161,7 +1161,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v132');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v133');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1193,7 +1193,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v132');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v133');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1601,7 +1601,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v132');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v133');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -2336,6 +2336,250 @@ function openTripDocument(id) {
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
   setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function reviewPlural(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function tripReviewExpenseLabel(gasto) {
+  const parts = [
+    gasto.fecha || 'sin fecha',
+    expenseTimeValue(gasto) || '',
+    gasto.desc || ''
+  ].filter(Boolean);
+  return parts.join(' · ') || `gasto ${gasto.id || ''}`.trim();
+}
+
+function tripReviewEntryLabel(entry) {
+  const parts = [
+    entry.fecha || 'sin fecha',
+    entry.hora || '',
+    entry.descripcion || entry.tipo || ''
+  ].filter(Boolean);
+  return parts.join(' · ') || `entrada ${entry.id || ''}`.trim();
+}
+
+function tripReviewSample(items, formatter, max = 4) {
+  const list = items.slice(0, max).map(formatter).filter(Boolean);
+  const rest = items.length - list.length;
+  return `${list.join('; ')}${rest > 0 ? `; y ${reviewPlural(rest, 'más', 'más')}` : ''}`;
+}
+
+function tripReviewItem(severity, title, detail = '') {
+  return { severity, title, detail };
+}
+
+function tripReviewItemHtml(item) {
+  return `<li class="${escapeHtml(item.severity || 'info')}"><strong>${escapeHtml(item.title)}</strong>${item.detail ? `<span>${escapeHtml(item.detail)}</span>` : ''}</li>`;
+}
+
+function tripReviewSectionHtml(section) {
+  const items = section.items && section.items.length
+    ? section.items
+    : [tripReviewItem('ok', 'Sin avisos', 'No se han detectado problemas en este bloque.')];
+  return `<section class="trip-review-section">
+    <h3>${escapeHtml(section.title)}</h3>
+    <ul class="trip-review-list">${items.map(tripReviewItemHtml).join('')}</ul>
+  </section>`;
+}
+
+function tripReviewCityNames(ids) {
+  return ids
+    .map(id => state.lugares.find(lugar => Number(lugar.id) === Number(id)))
+    .filter(Boolean)
+    .map(city => city.nombre);
+}
+
+function tripReviewImageRecords(tripId) {
+  const fromExpenses = state.gastos
+    .filter(gasto => Number(gasto.viajeId) === Number(tripId))
+    .flatMap(gasto => expenseExtraImages(gasto).map(image => ({
+      ...image,
+      source: 'Gastos',
+      owner: gasto.desc || gasto.fecha || `gasto ${gasto.id || ''}`.trim()
+    })));
+  const fromBlog = blogEntriesForTrip(tripId)
+    .flatMap(entry => blogEntryImages(entry).map(image => ({
+      ...image,
+      source: 'Blog',
+      owner: entry.descripcion || entry.fecha || `entrada ${entry.id || ''}`.trim()
+    })));
+  return [...fromExpenses, ...fromBlog];
+}
+
+function buildTripReview(trip) {
+  const tripId = Number(trip && trip.id);
+  const expenses = state.gastos
+    .filter(gasto => Number(gasto.viajeId) === tripId)
+    .sort(compareExpensesChronologically);
+  const entries = blogEntriesForTrip(tripId);
+  const documents = tripDocumentsFor(tripId);
+  const plannedCityIds = tripCityIds(trip);
+  const plannedCountryIds = tripCountryIds(trip);
+  const visitedCityIds = [...new Set([
+    ...expenses.map(gasto => Number(gasto.ciudadId)).filter(Boolean),
+    ...entries.map(entry => Number(entry.ciudadId)).filter(Boolean)
+  ])];
+  const reviewCityIds = [...new Set([...plannedCityIds, ...visitedCityIds])];
+  const imageRecords = tripReviewImageRecords(tripId);
+  const mapImages = imageRecords.filter(image => image.mapEnabled);
+  const gpsImages = imageRecords.filter(storedImageCoordinates);
+  const totalEur = expenses.reduce((sum, gasto) => sum + toEur(gasto.importe, gasto.moneda), 0);
+  const budget = effectiveTripBudget(trip);
+  const warnings = [];
+  const sections = [];
+
+  const basicItems = [];
+  if (!trip.nombre) basicItems.push(tripReviewItem('warning', 'El viaje no tiene nombre', 'Pon un nombre claro para que el PDF, el blog y las copias sean fáciles de identificar.'));
+  if (!trip.fechaInicio || !trip.fechaFin) basicItems.push(tripReviewItem('error', 'Faltan fechas del viaje', 'Define fecha de inicio y fecha final.'));
+  else if (trip.fechaFin < trip.fechaInicio) basicItems.push(tripReviewItem('error', 'La fecha final es anterior al inicio', `${fmtDate(trip.fechaInicio)} → ${fmtDate(trip.fechaFin)}.`));
+  else basicItems.push(tripReviewItem('ok', 'Fechas del viaje correctas', `${fmtDate(trip.fechaInicio)} → ${fmtDate(trip.fechaFin)}.`));
+  if (!plannedCountryIds.length) basicItems.push(tripReviewItem('warning', 'No hay países planificados', 'Añade al menos un país en Configuración → Viajes.'));
+  else basicItems.push(tripReviewItem('ok', 'Países planificados', tripCountryLabel(trip)));
+  if (!plannedCityIds.length) basicItems.push(tripReviewItem('warning', 'No hay ciudades planificadas', 'Añadirlas mejora el mapa del viaje y la ruta.'));
+  else basicItems.push(tripReviewItem('ok', 'Ciudades planificadas', tripReviewCityNames(plannedCityIds).join(' → ')));
+  const preparatoryExpenses = trip.fechaInicio ? expenses.filter(gasto => gasto.fecha && gasto.fecha < trip.fechaInicio) : [];
+  const preparatoryEntries = trip.fechaInicio ? entries.filter(entry => entry.fecha && entry.fecha < trip.fechaInicio) : [];
+  if (preparatoryExpenses.length || preparatoryEntries.length) {
+    basicItems.push(tripReviewItem('info', 'Preparativos detectados', `${reviewPlural(preparatoryExpenses.length, 'gasto')} y ${reviewPlural(preparatoryEntries.length, 'entrada')} anteriores al inicio. Se tratarán como preparativos en el blog/PDF.`));
+  }
+  sections.push({ title: 'Datos básicos', items: basicItems });
+
+  const expenseItems = [];
+  if (!expenses.length) {
+    expenseItems.push(tripReviewItem('warning', 'No hay gastos en este viaje', 'Si el viaje ya está completo, revisa que los gastos estén asociados al viaje correcto.'));
+  } else {
+    expenseItems.push(tripReviewItem('ok', 'Gastos asociados', `${reviewPlural(expenses.length, 'gasto')} · total ${fmtCurrency(totalEur, 'EUR')}${budget ? ` · presupuesto ${fmtCurrency(budget, 'EUR')}` : ''}.`));
+  }
+  const missingExpenseDate = expenses.filter(gasto => !gasto.fecha);
+  const missingExpenseTime = expenses.filter(gasto => !normalizeExpenseTime(gasto.hora));
+  const missingExpenseCity = expenses.filter(gasto => !gasto.ciudadId);
+  const missingExpenseAccount = expenses.filter(gasto => !state.cuentas.some(cuenta => Number(cuenta.id) === Number(gasto.cuentaId)));
+  const missingExpenseCategory = expenses.filter(gasto => !state.categorias.some(cat => Number(cat.id) === Number(gasto.catId)));
+  const expensesAfterEnd = trip.fechaFin ? expenses.filter(gasto => gasto.fecha && gasto.fecha > trip.fechaFin) : [];
+  if (missingExpenseDate.length) expenseItems.push(tripReviewItem('error', `${reviewPlural(missingExpenseDate.length, 'gasto')} sin fecha`, tripReviewSample(missingExpenseDate, tripReviewExpenseLabel)));
+  if (missingExpenseTime.length) expenseItems.push(tripReviewItem('warning', `${reviewPlural(missingExpenseTime.length, 'gasto')} sin hora explícita`, 'La app puede usar la hora de creación como apoyo, pero para ordenar el relato y el mapa es mejor guardar la hora real.'));
+  if (missingExpenseCity.length) expenseItems.push(tripReviewItem('warning', `${reviewPlural(missingExpenseCity.length, 'gasto')} sin ciudad`, tripReviewSample(missingExpenseCity, tripReviewExpenseLabel)));
+  if (missingExpenseAccount.length) expenseItems.push(tripReviewItem('error', `${reviewPlural(missingExpenseAccount.length, 'gasto')} sin cuenta válida`, tripReviewSample(missingExpenseAccount, tripReviewExpenseLabel)));
+  if (missingExpenseCategory.length) expenseItems.push(tripReviewItem('warning', `${reviewPlural(missingExpenseCategory.length, 'gasto')} sin categoría válida`, tripReviewSample(missingExpenseCategory, tripReviewExpenseLabel)));
+  if (expensesAfterEnd.length) expenseItems.push(tripReviewItem('warning', `${reviewPlural(expensesAfterEnd.length, 'gasto')} posterior al final del viaje`, tripReviewSample(expensesAfterEnd, tripReviewExpenseLabel)));
+  const attachedExpenses = expenses.filter(expenseAttachmentCount);
+  expenseItems.push(attachedExpenses.length
+    ? tripReviewItem('ok', 'Archivos en gastos', `${reviewPlural(attachedExpenses.length, 'gasto')} tienen ticket o imágenes.`)
+    : tripReviewItem('info', 'Sin tickets o imágenes en gastos', 'No es obligatorio, pero puede ser útil para revisar facturas y recuerdos.'));
+  sections.push({ title: 'Gastos', items: expenseItems });
+
+  const blogItems = [];
+  if (!entries.length) {
+    blogItems.push(tripReviewItem('warning', 'No hay entradas de blog', 'Si quieres generar relato o WordPress, añade textos, imágenes o puntos.'));
+  } else {
+    blogItems.push(tripReviewItem('ok', 'Entradas de blog', `${reviewPlural(entries.length, 'entrada')} en el viaje.`));
+  }
+  const missingEntryDate = entries.filter(entry => !entry.fecha);
+  const missingEntryCity = entries.filter(entry => !entry.ciudadId);
+  const imageEntriesWithoutImage = entries.filter(entry => entry.tipo === 'imagen' && !blogEntryImages(entry).length);
+  const pointEntriesWithoutCoordinates = entries.filter(entry => entry.tipo === 'punto' && !blogPointCoordinates(entry));
+  if (missingEntryDate.length) blogItems.push(tripReviewItem('error', `${reviewPlural(missingEntryDate.length, 'entrada')} sin fecha`, tripReviewSample(missingEntryDate, tripReviewEntryLabel)));
+  if (missingEntryCity.length) blogItems.push(tripReviewItem('warning', `${reviewPlural(missingEntryCity.length, 'entrada')} sin ciudad`, tripReviewSample(missingEntryCity, tripReviewEntryLabel)));
+  if (imageEntriesWithoutImage.length) blogItems.push(tripReviewItem('error', `${reviewPlural(imageEntriesWithoutImage.length, 'entrada de imagen', 'entradas de imagen')} sin imagen`, tripReviewSample(imageEntriesWithoutImage, tripReviewEntryLabel)));
+  if (pointEntriesWithoutCoordinates.length) blogItems.push(tripReviewItem('warning', `${reviewPlural(pointEntriesWithoutCoordinates.length, 'punto')} sin coordenadas`, tripReviewSample(pointEntriesWithoutCoordinates, tripReviewEntryLabel)));
+  const wordpressEntries = entries.filter(entry => entry.wordpress !== false);
+  if (entries.length) blogItems.push(tripReviewItem('info', 'WordPress', `${reviewPlural(wordpressEntries.length, 'entrada')} marcadas para WordPress.`));
+  sections.push({ title: 'Blog', items: blogItems });
+
+  const mapItems = [];
+  const missingCityCoords = reviewCityIds
+    .map(id => state.lugares.find(lugar => Number(lugar.id) === Number(id)))
+    .filter(city => city && !lugarHasCoords(city));
+  if (!reviewCityIds.length) {
+    mapItems.push(tripReviewItem('warning', 'No hay ciudades para el mapa', 'Añade ciudades al viaje o a los gastos/entradas.'));
+  } else if (missingCityCoords.length) {
+    mapItems.push(tripReviewItem('warning', `${reviewPlural(missingCityCoords.length, 'ciudad')} sin coordenadas`, missingCityCoords.map(city => city.nombre).join(', ')));
+  } else {
+    mapItems.push(tripReviewItem('ok', 'Ciudades con coordenadas', `${reviewPlural(reviewCityIds.length, 'ciudad')} listas para el mapa.`));
+  }
+  const brokenMapImages = mapImages.filter(image => !storedImageCoordinates(image));
+  if (brokenMapImages.length) mapItems.push(tripReviewItem('error', `${reviewPlural(brokenMapImages.length, 'foto')} marcada para mapa sin coordenadas`, tripReviewSample(brokenMapImages, image => `${image.source} · ${image.owner || image.name}`)));
+  mapItems.push(mapImages.length
+    ? tripReviewItem('ok', 'Fotos en el mapa', `${reviewPlural(mapImages.length, 'foto')} marcadas para el mapa.`)
+    : tripReviewItem('info', 'Sin fotos marcadas para el mapa', gpsImages.length ? `${reviewPlural(gpsImages.length, 'foto')} tienen GPS y podrían añadirse si quieres.` : 'No se han encontrado fotos con GPS marcadas para el mapa.'));
+  sections.push({ title: 'Mapa', items: mapItems });
+
+  const documentItems = [];
+  documentItems.push(documents.length
+    ? tripReviewItem('ok', 'Documentos de viaje', `${reviewPlural(documents.length, 'documento')} guardados.`)
+    : tripReviewItem('info', 'Sin documentos de viaje', 'Puedes añadir reservas, billetes, seguros o pasaportes desde Documentos viaje.'));
+  const documentsWithoutFile = documents.filter(document => !document.fileData && !document.fileRef);
+  if (documentsWithoutFile.length) documentItems.push(tripReviewItem('error', `${reviewPlural(documentsWithoutFile.length, 'documento')} sin archivo`, tripReviewSample(documentsWithoutFile, document => document.descripcion || document.fileName || 'documento')));
+  sections.push({ title: 'Documentos y copia', items: documentItems });
+
+  const backupItems = [];
+  const lastBackup = localStorage.getItem(BACKUP_KEY) || '';
+  if (!lastBackup) {
+    backupItems.push(tripReviewItem('warning', 'No hay copia local registrada', 'Crea una copia antes de hacer cambios grandes o cerrar el viaje.'));
+  } else {
+    const backupDate = new Date(lastBackup);
+    const backupAge = Number.isNaN(backupDate.getTime()) ? null : Math.floor((Date.now() - backupDate.getTime()) / 86400000);
+    if (backupAge != null && backupAge > 7) backupItems.push(tripReviewItem('warning', 'La última copia local es antigua', `Última copia: ${backupDate.toLocaleString('es-ES')} · hace ${backupAge} días.`));
+    else backupItems.push(tripReviewItem('ok', 'Copia local reciente', `Última copia: ${backupDate.toLocaleString('es-ES')}.`));
+  }
+  sections.push({ title: 'Backup', items: backupItems });
+
+  const flat = sections.flatMap(section => section.items);
+  const problemCount = flat.filter(item => item.severity === 'error').length;
+  const warningCount = flat.filter(item => item.severity === 'warning').length;
+  warnings.push(...flat.filter(item => item.severity === 'error' || item.severity === 'warning'));
+
+  return {
+    problemCount,
+    warningCount,
+    summary: {
+      expenses: expenses.length,
+      blog: entries.length,
+      warnings: warnings.length
+    },
+    sections
+  };
+}
+
+function renderTripReview(trip) {
+  if (!trip) return;
+  const review = buildTripReview(trip);
+  const body = $('#trip-review-body');
+  if (!body) return;
+  const status = review.problemCount
+    ? `${review.problemCount} problema(s) y ${review.warningCount} aviso(s)`
+    : review.warningCount
+      ? `${review.warningCount} aviso(s)`
+      : 'Sin avisos importantes';
+  body.innerHTML = `
+    <p class="small">Revisión rápida antes de cerrar, exportar o publicar el viaje. No modifica ningún dato.</p>
+    <div class="trip-review-summary">
+      <div class="trip-review-box"><strong>${review.summary.expenses}</strong><span>Gastos</span></div>
+      <div class="trip-review-box"><strong>${review.summary.blog}</strong><span>Entradas de blog</span></div>
+      <div class="trip-review-box"><strong>${review.summary.warnings}</strong><span>${escapeHtml(status)}</span></div>
+    </div>
+    ${review.sections.map(tripReviewSectionHtml).join('')}
+  `;
+}
+
+function openTripReviewDialog(tripId) {
+  const trip = state.viajes.find(item => Number(item.id) === Number(tripId));
+  if (!trip) throw new Error('No se encuentra el viaje');
+  if ($('#trip-review-title')) $('#trip-review-title').textContent = `Revisar viaje · ${trip.nombre || ''}`;
+  renderTripReview(trip);
+  const dialog = $('#trip-review-dialog');
+  if (!dialog) return;
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeTripReviewDialog() {
+  const dialog = $('#trip-review-dialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
 }
 
 function downloadText(filename, text, type = 'text/plain') {
@@ -3840,7 +4084,7 @@ function renderViajes() {
     const budget = numberValue(v.presupuesto);
     const documentCount = tripDocumentsFor(v.id).length;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${escapeHtml(tripCountryLabel(v))}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td><select class="trip-config-action-select" data-trip-config-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}"><option value="">Acciones</option><option value="documents">Documentos viaje (${documentCount})</option><option value="edit">Editar</option><option value="delete">Eliminar</option></select></td>`;
+    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${escapeHtml(tripCountryLabel(v))}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td><select class="trip-config-action-select" data-trip-config-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}"><option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="edit">Editar</option><option value="delete">Eliminar</option></select></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -3901,7 +4145,7 @@ function renderViajesHome() {
       const tr = document.createElement('tr');
       if (remaining !== null && remaining < 0) tr.className = 'warning-row';
       const documentCount = tripDocumentsFor(v.id).length;
-      tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><span class="trip-actions-inline"><button class="ghost" data-trip-documents="${v.id}" title="${documentCount} documento(s)">Documentos viaje</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button></span></td>`;
+      tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><span class="trip-actions-inline"><button class="ghost" data-review-trip="${v.id}">Revisar viaje</button> <button class="ghost" data-trip-documents="${v.id}" title="${documentCount} documento(s)">Documentos viaje</button> <button class="ghost" data-edit-viaje="${v.id}">Editar</button></span></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
@@ -7035,7 +7279,9 @@ function openEditViajeDialog(v) {
 async function handleTripConfigAction(id, action) {
   const trip = state.viajes.find(item => item.id === Number(id));
   if (!trip) return;
-  if (action === 'documents') {
+  if (action === 'review') {
+    openTripReviewDialog(trip.id);
+  } else if (action === 'documents') {
     openTripDocumentsDialog(trip.id);
   } else if (action === 'edit') {
     openEditViajeDialog(trip);
@@ -10296,6 +10542,11 @@ function bindEvents() {
         openTicket(openTicketButton.dataset.openTicket);
         return;
       }
+      const tripReviewButton = target.closest('[data-review-trip]');
+      if (tripReviewButton) {
+        openTripReviewDialog(tripReviewButton.dataset.reviewTrip);
+        return;
+      }
       const tripDocumentsButton = target.closest('[data-trip-documents]');
       if (tripDocumentsButton) {
         openTripDocumentsDialog(tripDocumentsButton.dataset.tripDocuments);
@@ -10508,6 +10759,8 @@ function bindEvents() {
 
   $('#btn-export').onclick = () => openBackupDialogSafe();
   $('#trip-documents-close').onclick = closeTripDocumentsDialog;
+  $('#trip-review-close').onclick = closeTripReviewDialog;
+  $('#trip-review-done').onclick = closeTripReviewDialog;
   $('#trip-document-file').onchange = () => {
     if ($('#trip-document-file').files.length) {
       $('#trip-document-camera').value = '';
