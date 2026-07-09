@@ -1,10 +1,11 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v134';
+const APP_VERSION = '700v135';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
 const DATA_UPDATED_KEY = 'gastos_viaje_data_updated_at';
+const FORM_DRAFTS_KEY = 'gastos_viaje_form_drafts_v1';
 const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
 const BACKUP_DIRECTORY_SETTING_KEY = 'backupDirectory';
 const SYNC_ENDPOINT = '/api/travel-sync';
@@ -331,6 +332,216 @@ async function clearStores(names) {
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => Array.from(document.querySelectorAll(selector));
+
+const ADD_EXPENSE_DRAFT_FIELDS = [
+  '#g-fecha', '#g-hora', '#g-viaje', '#g-cuenta', '#g-moneda',
+  '#g-cat', '#g-subcat', '#g-pais', '#g-ciudad', '#g-importe',
+  '#g-tipo', '#g-desc', '#g-extra-images-map'
+];
+const BLOG_ENTRY_DRAFT_FIELDS = [
+  '#blog-fecha', '#blog-hora', '#blog-tipo', '#blog-pais', '#blog-ciudad',
+  '#blog-descripcion', '#blog-wordpress', '#blog-featured', '#blog-texto',
+  '#blog-point-lat', '#blog-point-lng', '#blog-images-map'
+];
+const INLINE_FORM_DRAFTS = [
+  {
+    key: 'config-lugar',
+    fields: ['#lugar-nombre', '#lugar-parent', '#lugar-lat', '#lugar-lng'],
+    message: '#msg-lugar'
+  },
+  {
+    key: 'config-viaje',
+    fields: ['#v-nombre', '#v-inicio', '#v-fin', '#v-presu', '#v-paises', '#v-ciudades'],
+    message: '#msg-viaje',
+    restore: restoreTripConfigDraft
+  },
+  {
+    key: 'config-moneda',
+    fields: ['#m-iso-entry', '#m-nombre', '#m-eur', '#m-back'],
+    message: '#msg-moneda'
+  },
+  {
+    key: 'config-cuenta',
+    fields: ['#c-nombre', '#c-template', '#c-moneda', '#c-viaje', '#c-saldo', '#c-presu', '#c-nota'],
+    message: '#msg-cuenta'
+  },
+  {
+    key: 'config-transferencia',
+    fields: ['#t-fecha', '#t-from', '#t-to', '#t-importe', '#t-importe-to', '#t-nota'],
+    message: '#msg-transfer'
+  },
+  {
+    key: 'config-categoria',
+    fields: ['#cat-nombre', '#cat-parent'],
+    message: '#msg-cat'
+  }
+];
+
+let restoringFormDraft = false;
+const formDraftTimers = new Map();
+
+function formDraftKey(name, context = 'global') {
+  return `${name}:${context || 'global'}`;
+}
+
+function readFormDrafts() {
+  try {
+    return JSON.parse(localStorage.getItem(FORM_DRAFTS_KEY) || '{}') || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function writeFormDrafts(drafts) {
+  try {
+    localStorage.setItem(FORM_DRAFTS_KEY, JSON.stringify(drafts || {}));
+  } catch (_) {}
+}
+
+function formFieldDraftId(selector) {
+  return String(selector || '').replace(/^#/, '');
+}
+
+function formDraftFieldValue(field) {
+  if (!field || !field.id) return undefined;
+  const tag = String(field.tagName || '').toLowerCase();
+  const type = String(field.type || '').toLowerCase();
+  if (['file', 'button', 'submit', 'reset', 'hidden'].includes(type)) return undefined;
+  if (type === 'checkbox') return Boolean(field.checked);
+  if (tag === 'select' && field.multiple) return [...field.selectedOptions].map(option => option.value);
+  return field.value;
+}
+
+function collectFormDraftValues(selectors) {
+  const values = {};
+  for (const selector of selectors || []) {
+    const field = $(selector);
+    const value = formDraftFieldValue(field);
+    if (value !== undefined) values[formFieldDraftId(selector)] = value;
+  }
+  return values;
+}
+
+function hasMeaningfulDraftValue(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'boolean') return value === true;
+  return String(value ?? '').trim() !== '';
+}
+
+function hasMeaningfulFormDraft(values) {
+  return Object.values(values || {}).some(hasMeaningfulDraftValue);
+}
+
+function saveFormDraft(key, selectors, meta = {}) {
+  if (restoringFormDraft || !key) return;
+  const values = collectFormDraftValues(selectors);
+  const drafts = readFormDrafts();
+  if (!hasMeaningfulFormDraft(values)) {
+    delete drafts[key];
+  } else {
+    drafts[key] = {
+      values,
+      meta,
+      updatedAt: new Date().toISOString()
+    };
+  }
+  writeFormDrafts(drafts);
+}
+
+function scheduleFormDraftSave(key, selectors, metaFactory = () => ({})) {
+  if (!key) return;
+  window.clearTimeout(formDraftTimers.get(key));
+  formDraftTimers.set(key, window.setTimeout(() => {
+    saveFormDraft(key, selectors, metaFactory() || {});
+  }, 250));
+}
+
+function getFormDraft(key) {
+  return readFormDrafts()[key] || null;
+}
+
+function clearFormDraft(key) {
+  if (!key) return;
+  window.clearTimeout(formDraftTimers.get(key));
+  formDraftTimers.delete(key);
+  const drafts = readFormDrafts();
+  if (drafts[key]) {
+    delete drafts[key];
+    writeFormDrafts(drafts);
+  }
+}
+
+function applyFormDraftValues(selectors, values) {
+  if (!values) return;
+  restoringFormDraft = true;
+  try {
+    for (const selector of selectors || []) {
+      const field = $(selector);
+      if (!field) continue;
+      const id = formFieldDraftId(selector);
+      if (!Object.prototype.hasOwnProperty.call(values, id)) continue;
+      const value = values[id];
+      const tag = String(field.tagName || '').toLowerCase();
+      const type = String(field.type || '').toLowerCase();
+      if (type === 'checkbox') {
+        field.checked = Boolean(value);
+      } else if (tag === 'select' && field.multiple) {
+        const selected = new Set((Array.isArray(value) ? value : [value]).map(String));
+        [...field.options].forEach(option => { option.selected = selected.has(String(option.value)); });
+      } else if (tag === 'select') {
+        const hasOption = [...field.options].some(option => String(option.value) === String(value));
+        if (hasOption || value === '') field.value = String(value);
+      } else {
+        field.value = value ?? '';
+      }
+    }
+  } finally {
+    restoringFormDraft = false;
+  }
+}
+
+function restoreSimpleFormDraft(key, selectors, messageSelector) {
+  const draft = getFormDraft(key);
+  if (!draft) return false;
+  applyFormDraftValues(selectors, draft.values);
+  if (messageSelector) setMessage(messageSelector, 'Borrador restaurado.');
+  return true;
+}
+
+function bindFormDraft(key, selectors, metaFactory = () => ({})) {
+  for (const selector of selectors || []) {
+    const field = $(selector);
+    if (!field) continue;
+    ['input', 'change'].forEach(eventName => {
+      field.addEventListener(eventName, () => scheduleFormDraftSave(key, selectors, metaFactory));
+    });
+  }
+}
+
+function scheduleInlineFormDraft(key) {
+  const config = INLINE_FORM_DRAFTS.find(item => item.key === key);
+  if (config) scheduleFormDraftSave(config.key, config.fields);
+}
+
+function restoreTripConfigDraft(draft) {
+  if (!draft) return false;
+  applyFormDraftValues(['#v-nombre', '#v-inicio', '#v-fin', '#v-presu', '#v-paises'], draft.values);
+  renderTripPlannedCitySelector();
+  applyFormDraftValues(['#v-ciudades'], draft.values);
+  updateTripPlanningCounters();
+  setMessage('#msg-viaje', 'Borrador restaurado.');
+  return true;
+}
+
+function restoreInlineFormDrafts() {
+  for (const config of INLINE_FORM_DRAFTS) {
+    const draft = getFormDraft(config.key);
+    if (!draft) continue;
+    if (typeof config.restore === 'function') config.restore(draft);
+    else restoreSimpleFormDraft(config.key, config.fields, config.message);
+  }
+}
+
 const BASE_MONEDAS = ['EUR', 'USD', 'GBP', 'SEK', 'NOK', 'DKK', 'CHF', 'JPY'];
 const DEFAULT_CUENTAS = [
   { nombre: 'Santander', moneda: 'EUR', saldoInicial: 0, presupuesto: 0 },
@@ -1164,7 +1375,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v134');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v135');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1196,7 +1407,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v134');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v135');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1312,7 +1523,10 @@ async function syncExpenseExtraImageSelection(prefix, options = {}) {
   const records = selectedExpenseExtraImageRecords(prefix);
   const pointsPromise = Promise.all(records.map(record => imageGpsForFile(record.file, { useCurrentLocation: record.useCurrentLocation })));
   const captured = options.applyDateTime ? await imageDateTimeForFile(files[0]) : null;
-  if (captured && selectedExpenseExtraImageFiles(prefix)[0] === files[0]) applyExpenseImageDateTime(prefix, captured);
+  if (captured && selectedExpenseExtraImageFiles(prefix)[0] === files[0]) {
+    applyExpenseImageDateTime(prefix, captured);
+    if (prefix === 'g') scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
+  }
   const points = await pointsPromise;
   if (selectedExpenseExtraImageFiles(prefix)[0] !== files[0]) return;
   const locatedCount = points.filter(Boolean).length;
@@ -1604,7 +1818,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v134');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v135');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -1623,6 +1837,7 @@ async function readExpenseTicket(prefix) {
       }
     }
     setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result));
+    if (prefix === 'g') scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   } catch (error) {
     console.error(error);
     setTicketOcrStatus(prefix, error?.message || 'No se ha podido leer el ticket.', true);
@@ -3569,6 +3784,7 @@ async function loadAll() {
   state.monedas = monedas.sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
   state.transferencias = transferencias.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
   renderAll();
+  restoreInlineFormDrafts();
   if (state.activeTab === 'resumen') renderResumen();
   if (state.activeTab === 'mapa') renderMapPaises();
 }
@@ -7674,6 +7890,7 @@ function setBlogEntryType(type) {
   if ($('#blog-point-fields')) $('#blog-point-fields').hidden = type !== 'punto';
   if ($('#blog-featured-option')) $('#blog-featured-option').hidden = type !== 'imagen';
   if (type === 'punto') resetBlogPointPicker();
+  if (!restoringFormDraft) scheduleActiveBlogEntryDraftSave();
 }
 
 function cleanSpeechText(value) {
@@ -7755,6 +7972,7 @@ function finishBlogDictation(message = 'Dictado finalizado.', isError = false) {
     const textField = $('#blog-texto');
     if (textField && transcript) {
       textField.value = ensureSpeechTerminalPunctuation(composeBlogDictationText(session.baseText, transcript));
+      scheduleActiveBlogEntryDraftSave();
     }
   }
   const recognition = blogSpeechRecognition;
@@ -7772,6 +7990,61 @@ function stopBlogDictation() {
   const session = blogDictationSession;
   const hasTranscript = Boolean(session && compactSpeechSegments([...(session.segments || []), session.current || '']));
   finishBlogDictation(hasTranscript ? 'Dictado finalizado.' : '');
+}
+
+function blogEntryDraftKey(tripId = null) {
+  const id = tripId || (selectedBlogTrip() ? selectedBlogTrip().id : '');
+  return id ? formDraftKey('blog-entry', id) : '';
+}
+
+function scheduleActiveBlogEntryDraftSave() {
+  if (activeBlogEntryId) return;
+  const key = blogEntryDraftKey();
+  if (!key) return;
+  scheduleFormDraftSave(key, BLOG_ENTRY_DRAFT_FIELDS, () => ({ type: activeBlogEntryType }));
+}
+
+function bindBlogEntryDraftFields() {
+  for (const selector of BLOG_ENTRY_DRAFT_FIELDS) {
+    const field = $(selector);
+    if (!field) continue;
+    ['input', 'change'].forEach(eventName => {
+      field.addEventListener(eventName, scheduleActiveBlogEntryDraftSave);
+    });
+  }
+}
+
+function discardActiveBlogEntryDraft() {
+  const key = blogEntryDraftKey();
+  if (key) clearFormDraft(key);
+  setMessage('#msg-blog-entry', '');
+}
+
+function restoreBlogEntryDraft(trip) {
+  const draft = getFormDraft(blogEntryDraftKey(trip && trip.id));
+  if (!draft) return false;
+  const values = draft.values || {};
+  const type = String(draft.meta && draft.meta.type || '').trim();
+  restoringFormDraft = true;
+  try {
+    if (type) setBlogEntryType(type);
+    applyFormDraftValues(['#blog-fecha', '#blog-hora', '#blog-descripcion', '#blog-wordpress', '#blog-featured', '#blog-texto'], values);
+    applyFormDraftValues(['#blog-pais'], values);
+    renderBlogCities(values['blog-ciudad'] || '');
+    applyFormDraftValues(['#blog-ciudad', '#blog-point-lat', '#blog-point-lng', '#blog-images-map'], values);
+    if (type === 'punto') {
+      const point = blogPointFieldCoordinates();
+      if (point) {
+        blogPointPickerState.centerLat = point.latitude;
+        blogPointPickerState.centerLng = point.longitude;
+      }
+      renderBlogPointPicker();
+    }
+  } finally {
+    restoringFormDraft = false;
+  }
+  setMessage('#msg-blog-entry', 'Borrador restaurado. Si habías elegido imágenes, tendrás que volver a seleccionarlas.');
+  return true;
 }
 
 function closeBlogEntryDialog() {
@@ -7824,6 +8097,7 @@ function openBlogEntryDialog(entry = null) {
     renderBlogCities(lastEntry.ciudadId);
   }
   if ($('#msg-blog-entry')) setMessage('#msg-blog-entry', '');
+  if (!entry) restoreBlogEntryDraft(trip);
   if ($('#blog-voice-status')) $('#blog-voice-status').textContent = '';
   const dialog = $('#blog-entry-dialog');
   if (dialog.showModal) dialog.showModal();
@@ -7926,7 +8200,9 @@ async function compressBlogImage(file, options = {}) {
 }
 
 function applyBlogImageDateTime(image) {
-  return applyImageDateTimeToFields(image, '#blog-fecha', '#blog-hora', activeBlogEntryId ? 'la entrada guardada del Blog' : 'la entrada del Blog');
+  const result = applyImageDateTimeToFields(image, '#blog-fecha', '#blog-hora', activeBlogEntryId ? 'la entrada guardada del Blog' : 'la entrada del Blog');
+  scheduleActiveBlogEntryDraftSave();
+  return result;
 }
 
 async function selectBlogImage(input, otherInput, options = {}) {
@@ -8100,6 +8376,7 @@ async function continueSharedImagesImport() {
     showBlogImages(images);
     applyBlogImageDateTime(images[0]);
     if (suggestedDescription && $('#blog-descripcion')) $('#blog-descripcion').value = suggestedDescription;
+    scheduleActiveBlogEntryDraftSave();
     return;
   }
   applySelectedTrip(tripId);
@@ -8173,7 +8450,10 @@ function startBlogDictation() {
 
   const renderSessionText = () => {
     const transcript = compactSpeechSegments([...session.segments, session.current]);
-    if (textField) textField.value = composeBlogDictationText(session.baseText, transcript);
+    if (textField) {
+      textField.value = composeBlogDictationText(session.baseText, transcript);
+      scheduleActiveBlogEntryDraftSave();
+    }
   };
   const scheduleSilenceStop = () => {
     clearTimeout(session.idleTimer);
@@ -8323,6 +8603,7 @@ async function saveBlogEntryForm() {
     await updateBlogEntry(current.id, values);
   } else {
     await addBlogEntry(values);
+    clearFormDraft(blogEntryDraftKey(trip.id));
   }
   closeBlogEntryDialog();
   await loadAll();
@@ -8827,18 +9108,47 @@ function closeEditGasto() {
   else dialog.removeAttribute('open');
 }
 
+function addExpenseDraftKey() {
+  return formDraftKey('expense-new');
+}
+
+function restoreAddExpenseDraft() {
+  const draft = getFormDraft(addExpenseDraftKey());
+  if (!draft) return false;
+  const values = draft.values || {};
+  applyFormDraftValues(['#g-fecha', '#g-hora', '#g-viaje', '#g-tipo', '#g-importe', '#g-desc'], values);
+  renderGastoAccountSelector();
+  applyFormDraftValues(['#g-cuenta', '#g-moneda'], values);
+  applyFormDraftValues(['#g-cat'], values);
+  renderSubcategories();
+  applyFormDraftValues(['#g-subcat'], values);
+  applyFormDraftValues(['#g-pais'], values);
+  renderCiudades();
+  applyFormDraftValues(['#g-ciudad', '#g-extra-images-map'], values);
+  setMessage('#msg-gasto', 'Borrador restaurado. Si habías elegido tickets o fotos, tendrás que volver a seleccionarlos.');
+  return true;
+}
+
+function discardAddExpenseDraft() {
+  clearFormDraft(addExpenseDraftKey());
+  setMessage('#msg-gasto', '');
+}
+
 function openAddGasto() {
   const dialog = $('#add-gasto-dialog');
   if (!dialog) return;
   setMessage('#msg-gasto', '');
   clearExpenseTicketSelection('g');
   clearExpenseExtraImageSelection('g');
-  if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
-  $('#g-hora').value = currentLocalTime();
-  const ids = selectedTripIds();
-  if (ids.length === 1 && $('#g-viaje')) $('#g-viaje').value = String(ids[0]);
-  renderGastoAccountSelector();
-  applyDefaultExpenseLocation();
+  const restored = restoreAddExpenseDraft();
+  if (!restored) {
+    if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
+    $('#g-hora').value = currentLocalTime();
+    const ids = selectedTripIds();
+    if (ids.length === 1 && $('#g-viaje')) $('#g-viaje').value = String(ids[0]);
+    renderGastoAccountSelector();
+    applyDefaultExpenseLocation();
+  }
   rememberLastValidExpenseCategory('g');
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute('open', 'open');
@@ -9771,7 +10081,10 @@ function bindEvents() {
   };
   $('#blog-filter-city').onchange = renderBlog;
   $('#blog-entry-close').onclick = closeBlogEntryDialog;
-  $('#blog-entry-cancel').onclick = closeBlogEntryDialog;
+  $('#blog-entry-cancel').onclick = () => {
+    discardActiveBlogEntryDraft();
+    closeBlogEntryDialog();
+  };
   $('#blog-entry-dialog').oncancel = stopBlogDictation;
   $('#blog-entry-dialog').onclose = stopBlogDictation;
   $('#blog-entry-form').onsubmit = async event => {
@@ -9782,6 +10095,7 @@ function bindEvents() {
       setMessage('#msg-blog-entry', error.message || String(error), true);
     }
   };
+  bindBlogEntryDraftFields();
   $$('[data-blog-type]').forEach(button => {
     button.onclick = () => setBlogEntryType(button.dataset.blogType);
   });
@@ -9789,16 +10103,20 @@ function bindEvents() {
     renderBlogCities();
     if (activeBlogEntryType === 'punto' && !blogPointFieldCoordinates()) resetBlogPointPicker();
     if (activeBlogEntryType === 'imagen' && activeBlogImage) showBlogImages([activeBlogImage, ...activeBlogGalleryImages]);
+    scheduleActiveBlogEntryDraftSave();
   };
   $('#blog-ciudad').onchange = () => {
     if (activeBlogEntryType === 'punto' && !blogPointFieldCoordinates()) resetBlogPointPicker();
     if (activeBlogEntryType === 'imagen' && activeBlogImage) showBlogImages([activeBlogImage, ...activeBlogGalleryImages]);
+    scheduleActiveBlogEntryDraftSave();
   };
   $('#blog-featured').onchange = () => {
     if ($('#blog-featured').checked) $('#blog-wordpress').checked = true;
+    scheduleActiveBlogEntryDraftSave();
   };
   $('#blog-wordpress').onchange = () => {
     if (!$('#blog-wordpress').checked) $('#blog-featured').checked = false;
+    scheduleActiveBlogEntryDraftSave();
   };
   $('#blog-image-file').onchange = () => selectBlogImage($('#blog-image-file'), $('#blog-image-camera'));
   $('#blog-image-gallery').onchange = () => selectBlogGallery($('#blog-image-gallery'));
@@ -9807,12 +10125,19 @@ function bindEvents() {
     const button = event.target.closest('[data-blog-primary-image]');
     if (button) selectBlogPrimaryImage(button.dataset.blogPrimaryImage);
   };
-  $('#blog-images-map').onchange = () => setActiveBlogImagesMapEnabled($('#blog-images-map').checked);
+  $('#blog-images-map').onchange = () => {
+    setActiveBlogImagesMapEnabled($('#blog-images-map').checked);
+    scheduleActiveBlogEntryDraftSave();
+  };
   $('#blog-voice').onclick = startBlogDictation;
-  $('#blog-point-current').onclick = useCurrentBlogPointLocation;
+  $('#blog-point-current').onclick = async () => {
+    await useCurrentBlogPointLocation();
+    scheduleActiveBlogEntryDraftSave();
+  };
   $('#blog-point-search').onclick = async () => {
     try {
       await searchBlogPointLocation();
+      scheduleActiveBlogEntryDraftSave();
     } catch (error) {
       setMessage('#blog-point-status', error.message || String(error), true);
     }
@@ -9827,6 +10152,7 @@ function bindEvents() {
       blogPointPickerState.centerLat = point.latitude;
       blogPointPickerState.centerLng = point.longitude;
       renderBlogPointPicker();
+      scheduleActiveBlogEntryDraftSave();
     };
   });
   $('#blog-point-zoom-in').onclick = () => {
@@ -9840,11 +10166,17 @@ function bindEvents() {
   $('#btn-open-filters').onclick = openFiltersPanel;
   $('#filters-close').onclick = closeFiltersPanel;
   $('#add-gasto-close').onclick = closeAddGasto;
-  $('#add-gasto-cancel').onclick = closeAddGasto;
+  $('#add-gasto-cancel').onclick = () => {
+    discardAddExpenseDraft();
+    closeAddGasto();
+  };
+  $('#add-gasto-dialog').oncancel = () => closeAddGasto();
   $('#add-gasto-form').onsubmit = event => {
     event.preventDefault();
     $('#btn-add-gasto').click();
   };
+  bindFormDraft(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
+  INLINE_FORM_DRAFTS.forEach(config => bindFormDraft(config.key, config.fields));
   const savedExpenseView = localStorage.getItem(EXPENSE_VIEW_KEY) || 'table';
   $('#f-view').value = savedExpenseView;
   $('#f-view-mobile').value = savedExpenseView;
@@ -9854,8 +10186,14 @@ function bindEvents() {
   $('#f-view-mobile').onchange = () => {
     setExpenseViewMode($('#f-view-mobile').value);
   };
-  $('#g-cat').onchange = () => handleExpenseCategoryChange('g');
-  $('#g-subcat').onchange = () => handleExpenseSubcategoryChange('g');
+  $('#g-cat').onchange = () => {
+    handleExpenseCategoryChange('g');
+    scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
+  };
+  $('#g-subcat').onchange = () => {
+    handleExpenseSubcategoryChange('g');
+    scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
+  };
   $('#edit-gasto-cat').onchange = () => handleExpenseCategoryChange('edit-gasto');
   $('#edit-gasto-subcat').onchange = () => handleExpenseSubcategoryChange('edit-gasto');
   $('#g-ticket').onchange = () => syncExpenseTicketSelection('g', 'file');
@@ -9875,9 +10213,16 @@ function bindEvents() {
   $('#g-pais').onchange = () => {
     renderCiudades();
     syncExpenseExtraImageSelection('g');
+    scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   };
-  $('#g-ciudad').onchange = () => syncExpenseExtraImageSelection('g');
-  $('#g-fecha').onchange = applyDefaultExpenseLocation;
+  $('#g-ciudad').onchange = () => {
+    syncExpenseExtraImageSelection('g');
+    scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
+  };
+  $('#g-fecha').onchange = () => {
+    applyDefaultExpenseLocation();
+    scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
+  };
   $('#edit-gasto-pais').onchange = () => {
     renderEditCiudades();
     syncExpenseExtraImageSelection('edit-gasto');
@@ -9978,10 +10323,12 @@ function bindEvents() {
   $('#g-cuenta').onchange = () => {
     const account = state.cuentas.find(c => c.id === Number($('#g-cuenta').value));
     if (account) $('#g-moneda').value = account.moneda;
+    scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   };
   $('#g-viaje').onchange = () => {
     renderGastoAccountSelector();
     applyDefaultExpenseLocation();
+    scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   };
   $('#g-moneda').onchange = () => {
     const account = state.cuentas.find(c => c.id === Number($('#g-cuenta').value));
@@ -9992,6 +10339,7 @@ function bindEvents() {
     } else {
       setMessage('#msg-gasto', '');
     }
+    scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   };
   function syncCurrencyRate(source) {
     const eurPerUnit = $('#m-eur');
@@ -10088,6 +10436,7 @@ function bindEvents() {
         ticketData: ticket ? ticket.data : '',
         extraImages
       });
+      clearFormDraft(addExpenseDraftKey());
       rememberTicketCategory('g');
       $('#g-importe').value = '';
       $('#g-desc').value = '';
@@ -10129,6 +10478,7 @@ function bindEvents() {
         presupuesto: $('#c-presu').value,
         nota: $('#c-nota').value.trim()
       });
+      clearFormDraft('config-cuenta');
       ['#c-nombre', '#c-template', '#c-saldo', '#c-presu', '#c-nota'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
       setMessage('#msg-cuenta', 'Cuenta anadida');
       await loadAll();
@@ -10147,6 +10497,7 @@ function bindEvents() {
         importeTo: $('#t-importe-to') ? $('#t-importe-to').value : '',
         nota: $('#t-nota').value
       });
+      clearFormDraft('config-transferencia');
       ['#t-importe', '#t-importe-to', '#t-cambio', '#t-nota'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
       if (!$('#t-fecha').value) $('#t-fecha').value = todayIso();
       setMessage('#msg-transfer', 'Transferencia anadida');
@@ -10173,6 +10524,7 @@ function bindEvents() {
       const paisIds = selectedMultiValues('#v-paises');
       if (!paisIds.length) throw new Error('Selecciona al menos un país');
       await addViaje({ nombre, fechaInicio, fechaFin, presupuesto: $('#v-presu').value, paisIds, ciudadIds: allMultiValues('#v-ciudades') });
+      clearFormDraft('config-viaje');
       ['#v-nombre', '#v-inicio', '#v-fin', '#v-presu'].forEach(sel => $(sel).value = '');
       if ($('#v-paises')) [...$('#v-paises').options].forEach(opt => { opt.selected = false; });
       if ($('#v-ciudades')) [...$('#v-ciudades').options].forEach(opt => { opt.selected = false; });
@@ -10186,24 +10538,35 @@ function bindEvents() {
   $('#v-inicio').onchange = () => {
     const start = $('#v-inicio').value;
     if (start && (!$('#v-fin').value || $('#v-fin').value < start)) $('#v-fin').value = start;
+    scheduleInlineFormDraft('config-viaje');
   };
-  $('#v-paises').onchange = renderTripPlannedCitySelector;
-  $('#v-ciudades').onchange = updateTripPlanningCounters;
+  $('#v-paises').onchange = () => {
+    renderTripPlannedCitySelector();
+    scheduleInlineFormDraft('config-viaje');
+  };
+  $('#v-ciudades').onchange = () => {
+    updateTripPlanningCounters();
+    scheduleInlineFormDraft('config-viaje');
+  };
   if ($('#v-ciudades-up')) $('#v-ciudades-up').onclick = event => {
     event.preventDefault();
     moveSelectedMultiOption('#v-ciudades', -1);
+    scheduleInlineFormDraft('config-viaje');
   };
   if ($('#v-ciudades-down')) $('#v-ciudades-down').onclick = event => {
     event.preventDefault();
     moveSelectedMultiOption('#v-ciudades', 1);
+    scheduleInlineFormDraft('config-viaje');
   };
   if ($('#v-ciudades-remove')) $('#v-ciudades-remove').onclick = event => {
     event.preventDefault();
     removeSelectedMultiOptions('#v-ciudades');
+    scheduleInlineFormDraft('config-viaje');
   };
   if ($('#v-ciudades-reset')) $('#v-ciudades-reset').onclick = event => {
     event.preventDefault();
     resetPlannedCitySelector('#v-paises', '#v-ciudades');
+    scheduleInlineFormDraft('config-viaje');
   };
 
   $('#m-iso-entry').oninput = () => {
@@ -10254,6 +10617,7 @@ function bindEvents() {
         eurPorUnidad: $('#m-eur').value,
         unidadesPorEuro: $('#m-back').value
       });
+      clearFormDraft('config-moneda');
       ['#m-iso-entry', '#m-nombre', '#m-eur', '#m-back'].forEach(sel => $(sel).value = '');
       clearCurrencyQuote();
       setMessage('#msg-moneda', 'Moneda guardada');
@@ -10268,6 +10632,7 @@ function bindEvents() {
       const nombre = $('#cat-nombre').value.trim();
       if (!nombre) throw new Error('Escribe un nombre');
       await addCategoria({ nombre, parentId: $('#cat-parent').value || null });
+      clearFormDraft('config-categoria');
       $('#cat-nombre').value = '';
       $('#cat-parent').value = '';
       setMessage('#msg-cat', 'Categoría guardada');
@@ -10287,6 +10652,7 @@ function bindEvents() {
         lat: $('#lugar-lat').value,
         lng: $('#lugar-lng').value
       });
+      clearFormDraft('config-lugar');
       $('#lugar-nombre').value = '';
       $('#lugar-parent').value = '';
       $('#lugar-lat').value = '';
