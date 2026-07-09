@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v128';
+const APP_VERSION = '700v132';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -11,9 +11,9 @@ const SYNC_ENDPOINT = '/api/travel-sync';
 const LOCAL_BACKUP_LIMIT = 5;
 const CLOUD_ATTACHMENT_CHUNK_CHARS = 2_500_000;
 const CLOUD_ATTACHMENT_CHECK_BATCH = 75;
-const BLOG_IMAGE_TARGET_BYTES = 900 * 1024;
-const BLOG_IMAGE_OUTPUT_LIMIT = 1_500_000;
-const BLOG_IMAGE_MAX_DIMENSION = 1800;
+const BLOG_IMAGE_TARGET_BYTES = 650 * 1024;
+const BLOG_IMAGE_OUTPUT_LIMIT = 1_100_000;
+const BLOG_IMAGE_MAX_DIMENSION = 1600;
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const TRIP_MAP_WIDTH = 920;
 const TRIP_MAP_HEIGHT = 460;
@@ -1078,9 +1078,31 @@ function renderBackupStatus() {
   syncBackupShareAvailability();
 }
 
-function readFileData(input) {
+function fileLooksLikeImage(file) {
+  const type = String(file && file.type || '').toLowerCase();
+  const name = String(file && file.name || '').toLowerCase();
+  return type.startsWith('image/') || /\.(?:jpe?g|png|webp|gif|bmp|svg)$/i.test(name);
+}
+
+async function readFileData(input, options = {}) {
   const file = input && input.files && input.files[0];
   if (!file) return Promise.resolve(null);
+  if (options.compressImages !== false && fileLooksLikeImage(file)) {
+    try {
+      const image = await compressBlogImage(file, { skipMetadata: true });
+      return {
+        name: image.name,
+        type: image.type,
+        size: image.size,
+        data: image.data,
+        width: image.width,
+        height: image.height,
+        compressed: true
+      };
+    } catch (error) {
+      console.warn('No se pudo compactar la imagen; se guardará el archivo original.', error);
+    }
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve({
@@ -1139,7 +1161,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v128');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v132');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1171,7 +1193,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v128');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v132');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1579,7 +1601,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v128');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v132');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -2027,6 +2049,200 @@ function formatFileSize(value) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function compactImageFileName(name = 'imagen') {
+  const base = String(name || 'imagen').replace(/\.[^.]+$/, '') || 'imagen';
+  return `${base}.jpg`;
+}
+
+async function compactStoredImagePayload({ data, name = 'imagen', type = 'image/jpeg' } = {}) {
+  if (!data) return null;
+  const file = ticketDataInfo(data, type || 'application/octet-stream');
+  const mime = String(file.blob.type || type || '').toLowerCase();
+  if (!mime.startsWith('image/')) return null;
+  const originalText = String(file.data || data || '');
+  const originalSize = Number(file.blob.size) || Math.max(0, Math.round(originalText.length * 0.75));
+  const nextName = compactImageFileName(name);
+  const source = typeof File === 'function'
+    ? new File([file.blob], nextName, { type: file.blob.type || type || 'image/jpeg' })
+    : file.blob;
+  try {
+    const image = await compressBlogImage(source, { skipMetadata: true });
+    const savedBytes = Math.max(0, originalSize - Number(image.size || 0));
+    const savedText = Math.max(0, originalText.length - String(image.data || '').length);
+    if (savedBytes <= Math.max(2048, originalSize * 0.03) && savedText <= Math.max(2048, originalText.length * 0.03)) {
+      return null;
+    }
+    return {
+      name: compactImageFileName(name),
+      type: image.type,
+      size: image.size,
+      data: image.data,
+      width: image.width,
+      height: image.height,
+      savedBytes,
+      savedText
+    };
+  } catch (error) {
+    console.warn('No se pudo compactar una imagen guardada.', error);
+    return null;
+  }
+}
+
+function addCompactStats(stats, result) {
+  if (!result) return;
+  stats.optimized += 1;
+  stats.savedBytes += Math.max(0, Number(result.savedBytes) || 0);
+  stats.savedText += Math.max(0, Number(result.savedText) || 0);
+}
+
+async function compactStoredImages() {
+  const stats = {
+    scanned: 0,
+    optimized: 0,
+    savedBytes: 0,
+    savedText: 0
+  };
+  for (const gasto of state.gastos) {
+    let changed = false;
+    const next = { ...gasto };
+    if (next.ticketData) {
+      stats.scanned += 1;
+      const compacted = await compactStoredImagePayload({
+        data: next.ticketData,
+        name: next.ticketName || 'ticket',
+        type: next.ticketType || 'application/octet-stream'
+      });
+      if (compacted) {
+        next.ticketData = compacted.data;
+        next.ticketName = compacted.name;
+        next.ticketType = compacted.type;
+        changed = true;
+        addCompactStats(stats, compacted);
+      }
+    }
+    if (Array.isArray(next.extraImages) && next.extraImages.length) {
+      const images = [];
+      for (const sourceImage of next.extraImages) {
+        const image = { ...sourceImage };
+        if (image.data) {
+          stats.scanned += 1;
+          const compacted = await compactStoredImagePayload({
+            data: image.data,
+            name: image.name || 'imagen-gasto',
+            type: image.type || 'image/jpeg'
+          });
+          if (compacted) {
+            Object.assign(image, {
+              data: compacted.data,
+              name: compacted.name,
+              type: compacted.type,
+              size: compacted.size,
+              width: compacted.width,
+              height: compacted.height
+            });
+            changed = true;
+            addCompactStats(stats, compacted);
+          }
+        }
+        images.push(image);
+      }
+      next.extraImages = images;
+    }
+    if (changed) await putRecord('gastos', { ...next, updatedAt: new Date().toISOString() });
+  }
+  for (const document of state.viajeDocumentos) {
+    if (!document.fileData) continue;
+    stats.scanned += 1;
+    const compacted = await compactStoredImagePayload({
+      data: document.fileData,
+      name: document.fileName || 'documento',
+      type: document.fileType || 'application/octet-stream'
+    });
+    if (!compacted) continue;
+    await putRecord('tripDocuments', {
+      ...document,
+      fileData: compacted.data,
+      fileName: compacted.name,
+      fileType: compacted.type,
+      fileSize: compacted.size,
+      updatedAt: new Date().toISOString()
+    });
+    addCompactStats(stats, compacted);
+  }
+  for (const entry of state.blogEntries) {
+    let changed = false;
+    const next = { ...entry };
+    if (next.imageData) {
+      stats.scanned += 1;
+      const compacted = await compactStoredImagePayload({
+        data: next.imageData,
+        name: next.imageName || 'imagen-blog',
+        type: next.imageType || 'image/jpeg'
+      });
+      if (compacted) {
+        next.imageData = compacted.data;
+        next.imageName = compacted.name;
+        next.imageType = compacted.type;
+        next.imageSize = compacted.size;
+        next.imageWidth = compacted.width;
+        next.imageHeight = compacted.height;
+        changed = true;
+        addCompactStats(stats, compacted);
+      }
+    }
+    if (Array.isArray(next.galleryImages) && next.galleryImages.length) {
+      const images = [];
+      for (const sourceImage of next.galleryImages) {
+        const image = { ...sourceImage };
+        if (image.data) {
+          stats.scanned += 1;
+          const compacted = await compactStoredImagePayload({
+            data: image.data,
+            name: image.name || 'galeria-blog',
+            type: image.type || 'image/jpeg'
+          });
+          if (compacted) {
+            Object.assign(image, {
+              data: compacted.data,
+              name: compacted.name,
+              type: compacted.type,
+              size: compacted.size,
+              width: compacted.width,
+              height: compacted.height
+            });
+            changed = true;
+            addCompactStats(stats, compacted);
+          }
+        }
+        images.push(image);
+      }
+      next.galleryImages = images;
+    }
+    if (changed) await putRecord('blogEntries', { ...next, updatedAt: new Date().toISOString() });
+  }
+  return stats;
+}
+
+async function compactStoragePrompt() {
+  if (!confirm('Se recomprimirán las imágenes guardadas en Gastos, Blog y Documentos de viaje. Los PDF y otros documentos no se tocarán. Conviene tener una copia reciente antes de continuar. ¿Reducir espacio ocupado ahora?')) return;
+  const button = $('#btn-compact-storage');
+  if (button) button.disabled = true;
+  setMessage('#msg-compact-storage', 'Reduciendo espacio ocupado…');
+  try {
+    const stats = await compactStoredImages();
+    await loadAll();
+    const saved = formatFileSize(stats.savedBytes) || '0 B';
+    const detail = stats.optimized
+      ? `Optimización terminada: ${stats.optimized} de ${stats.scanned} imágenes compactadas. Ahorro aproximado: ${saved}.`
+      : `No había imágenes que compactar. Revisadas: ${stats.scanned}.`;
+    setMessage('#msg-compact-storage', detail);
+  } catch (error) {
+    setMessage('#msg-compact-storage', error.message || String(error), true);
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function tripDocumentsFor(tripId) {
@@ -7401,10 +7617,14 @@ async function compressBlogImage(file, options = {}) {
   const supportedByType = String(file && file.type || '').startsWith('image/');
   const supportedByName = /\.(?:jpe?g|png|webp|gif)$/i.test(fileName);
   if (!file || (!supportedByType && !supportedByName)) throw new Error('Selecciona un archivo de imagen');
-  const [gps, captured] = await Promise.all([
-    imageGpsForFile(file, options),
-    imageDateTimeForFile(file)
-  ]);
+  let gps = null;
+  let captured = null;
+  if (!options.skipMetadata) {
+    [gps, captured] = await Promise.all([
+      imageGpsForFile(file, options),
+      imageDateTimeForFile(file)
+    ]);
+  }
   const image = await loadImageFile(file);
   let width = image.naturalWidth || image.width;
   let height = image.naturalHeight || image.height;
@@ -10329,6 +10549,7 @@ function bindEvents() {
     forgetBackupDirectory().catch(error => setMessage('#msg-backup', error.message || String(error), true));
   };
   $('#backup-import').onclick = handleBackupImportClick;
+  if ($('#btn-compact-storage')) $('#btn-compact-storage').onclick = compactStoragePrompt;
   $('#btn-import').onclick = () => openBackupDialogSafe('import');
   $('#btn-import-home').onclick = () => openBackupDialogSafe('import');
   $('#btn-backup-home').onclick = () => openBackupDialogSafe('backup');
