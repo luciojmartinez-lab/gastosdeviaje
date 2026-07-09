@@ -10,7 +10,9 @@ const [html, app, help] = await Promise.all([
 
 test('los borradores tienen almacenamiento local y restauracion generica', () => {
   assert.match(app, /const FORM_DRAFTS_KEY = 'gastos_viaje_form_drafts_v1'/);
+  assert.match(app, /const FORM_DRAFT_MAX_AGE_DAYS = 30/);
   assert.match(app, /function saveFormDraft\(key, selectors/);
+  assert.match(app, /function pruneExpiredFormDrafts\(\)/);
   assert.match(app, /function restoreSimpleFormDraft\(key, selectors, messageSelector\)/);
   assert.match(app, /function bindFormDraft\(key, selectors/);
   assert.match(app, /localStorage\.setItem\(FORM_DRAFTS_KEY/);
@@ -49,4 +51,14 @@ test('configuracion guarda borradores de creacion', () => {
   }
   assert.match(app, /restoreInlineFormDrafts\(\)/);
   assert.match(app, /scheduleInlineFormDraft\('config-viaje'\)/);
+});
+
+test('Avanzado permite revisar y limpiar borradores guardados', () => {
+  assert.match(html, /id="btn-clear-form-drafts"/);
+  assert.match(html, /id="msg-form-drafts"/);
+  assert.match(html, /id="form-drafts-list"/);
+  assert.match(app, /function renderFormDraftStatus\(message = ''\)/);
+  assert.match(app, /function clearAllFormDrafts\(\)/);
+  assert.match(app, /if \(\$\(\'#btn-clear-form-drafts\'\)\) \$\(\'#btn-clear-form-drafts\'\)\.onclick = clearAllFormDrafts;/);
+  assert.match(help, /Avanzado puedes ver cu.ntos borradores hay y limpiarlos manualmente/);
 });

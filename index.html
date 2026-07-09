@@ -6,7 +6,7 @@
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v135">
+  <link rel="stylesheet" href="styles.css?v=700v136">
   <meta name="theme-color" content="#1976d2">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
@@ -27,7 +27,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v135</div>
+  <div class="app-version">700v136</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -371,6 +371,9 @@
       <h2>Avanzado</h2>
       <p class="small">Reduce el espacio ocupado recomprimiendo las imágenes ya guardadas en Gastos, Blog y Documentos de viaje. Los PDF y otros documentos no se modifican.</p>
       <div class="actions"><button class="btn ghost" id="btn-compact-storage" type="button">Reducir espacio ocupado</button><span id="msg-compact-storage" class="small"></span></div>
+      <p class="small">Los borradores de formularios se guardan solo en este dispositivo y caducan automÃ¡ticamente tras 30 dÃ­as.</p>
+      <div class="actions"><button class="btn ghost" id="btn-clear-form-drafts" type="button">Limpiar borradores</button><span id="msg-form-drafts" class="small"></span></div>
+      <div id="form-drafts-list" class="form-drafts-list small"></div>
       <p class="small">Si algo no responde, este botón borra caché, service worker y base de datos local.</p>
       <div class="actions"><button class="btn" id="btn-reset">Reparar / Resetear datos</button></div>
     </div>
@@ -839,11 +842,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v135"></script>
-<script src="app.bundle.js?v=700v135"></script>
+<script src="map-model.js?v=700v136"></script>
+<script src="app.bundle.js?v=700v136"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v135';
+    const pageVersion = '700v136';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -870,7 +873,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v135', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v136', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

@@ -496,6 +496,15 @@ h2 {
   padding: 0;
 }
 
+.form-drafts-list ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.form-drafts-list li {
+  margin: 2px 0;
+}
+
 .backup-history-list li {
   display: flex;
   align-items: center;

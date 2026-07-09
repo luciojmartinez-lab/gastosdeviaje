@@ -1,11 +1,12 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v135';
+const APP_VERSION = '700v136';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
 const DATA_UPDATED_KEY = 'gastos_viaje_data_updated_at';
 const FORM_DRAFTS_KEY = 'gastos_viaje_form_drafts_v1';
+const FORM_DRAFT_MAX_AGE_DAYS = 30;
 const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
 const BACKUP_DIRECTORY_SETTING_KEY = 'backupDirectory';
 const SYNC_ENDPOINT = '/api/travel-sync';
@@ -398,6 +399,91 @@ function writeFormDrafts(drafts) {
   } catch (_) {}
 }
 
+function formDraftUpdatedMs(draft) {
+  const time = Date.parse(draft && draft.updatedAt);
+  return Number.isFinite(time) ? time : 0;
+}
+
+function pruneExpiredFormDrafts() {
+  const drafts = readFormDrafts();
+  const now = Date.now();
+  const maxAgeMs = FORM_DRAFT_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  let changed = false;
+  for (const [key, draft] of Object.entries(drafts)) {
+    const updatedMs = formDraftUpdatedMs(draft);
+    if (!updatedMs || now - updatedMs > maxAgeMs) {
+      delete drafts[key];
+      changed = true;
+    }
+  }
+  if (changed) writeFormDrafts(drafts);
+  return drafts;
+}
+
+function formDraftLabel(key) {
+  if (key === addExpenseDraftKey()) return 'Nuevo gasto';
+  if (String(key || '').startsWith('blog-entry:')) {
+    const tripId = Number(String(key).split(':')[1]);
+    const trip = state.viajes.find(item => Number(item.id) === tripId);
+    return `Entrada de blog${trip ? ` · ${trip.nombre}` : ''}`;
+  }
+  const labels = {
+    'config-lugar': 'País / ciudad',
+    'config-viaje': 'Viaje',
+    'config-moneda': 'Moneda',
+    'config-cuenta': 'Cuenta',
+    'config-transferencia': 'Transferencia',
+    'config-categoria': 'Categoría'
+  };
+  return labels[key] || key;
+}
+
+function formDraftAgeText(draft) {
+  const updatedMs = formDraftUpdatedMs(draft);
+  if (!updatedMs) return 'fecha no disponible';
+  const minutes = Math.max(0, Math.round((Date.now() - updatedMs) / 60000));
+  if (minutes < 1) return 'ahora';
+  if (minutes < 60) return `hace ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `hace ${hours} h`;
+  const days = Math.round(hours / 24);
+  return `hace ${days} días`;
+}
+
+function renderFormDraftStatus(message = '') {
+  if (typeof document === 'undefined') return;
+  const status = $('#msg-form-drafts');
+  const list = $('#form-drafts-list');
+  const button = $('#btn-clear-form-drafts');
+  if (!status && !list && !button) return;
+  const drafts = pruneExpiredFormDrafts();
+  const entries = Object.entries(drafts).sort((a, b) => formDraftUpdatedMs(b[1]) - formDraftUpdatedMs(a[1]));
+  if (button) button.disabled = entries.length === 0;
+  if (status) {
+    status.textContent = message || (entries.length
+      ? `${entries.length} ${entries.length === 1 ? 'borrador guardado' : 'borradores guardados'} en este dispositivo.`
+      : 'No hay borradores guardados.');
+    status.classList.remove('error');
+  }
+  if (list) {
+    list.innerHTML = entries.length
+      ? `<ul>${entries.map(([key, draft]) => `<li>${escapeHtml(formDraftLabel(key))} · ${escapeHtml(formDraftAgeText(draft))}</li>`).join('')}</ul>`
+      : '';
+  }
+}
+
+function clearAllFormDrafts() {
+  const drafts = pruneExpiredFormDrafts();
+  const count = Object.keys(drafts).length;
+  if (!count) {
+    renderFormDraftStatus('No hay borradores guardados.');
+    return;
+  }
+  if (!confirm(`Se borrarán ${count} ${count === 1 ? 'borrador guardado' : 'borradores guardados'} en este dispositivo. ¿Continuar?`)) return;
+  writeFormDrafts({});
+  renderFormDraftStatus('Borradores eliminados.');
+}
+
 function formFieldDraftId(selector) {
   return String(selector || '').replace(/^#/, '');
 }
@@ -446,6 +532,7 @@ function saveFormDraft(key, selectors, meta = {}) {
     };
   }
   writeFormDrafts(drafts);
+  renderFormDraftStatus();
 }
 
 function scheduleFormDraftSave(key, selectors, metaFactory = () => ({})) {
@@ -469,6 +556,7 @@ function clearFormDraft(key) {
     delete drafts[key];
     writeFormDrafts(drafts);
   }
+  renderFormDraftStatus();
 }
 
 function applyFormDraftValues(selectors, values) {
@@ -1375,7 +1463,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v135');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v136');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1407,7 +1495,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v135');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v136');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1818,7 +1906,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v135');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v136');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -11172,6 +11260,8 @@ function bindEvents() {
   };
   $('#backup-import').onclick = handleBackupImportClick;
   if ($('#btn-compact-storage')) $('#btn-compact-storage').onclick = compactStoragePrompt;
+  if ($('#btn-clear-form-drafts')) $('#btn-clear-form-drafts').onclick = clearAllFormDrafts;
+  renderFormDraftStatus();
   $('#btn-import').onclick = () => openBackupDialogSafe('import');
   $('#btn-import-home').onclick = () => openBackupDialogSafe('import');
   $('#btn-backup-home').onclick = () => openBackupDialogSafe('backup');
