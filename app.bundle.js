@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v137';
+const APP_VERSION = '700v138';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -34,6 +34,7 @@ let activeBlogEntryId = null;
 let activeBlogEntryType = '';
 let activeBlogImage = null;
 let activeBlogGalleryImages = [];
+let activeBlogCameraOriginalFile = null;
 let imageLocationModulePromise = null;
 const imageGpsCache = new WeakMap();
 const imageDateTimeCache = new WeakMap();
@@ -1464,7 +1465,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v137');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v138');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1496,7 +1497,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v137');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v138');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1907,7 +1908,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v137');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v138');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -7135,7 +7136,7 @@ function renderResumen() {
       return items;
     }, [])
     .sort((a, b) => b.total - a.total);
-  const breakdownMode = $('#r-desglose') ? $('#r-desglose').value : 'subcategorias';
+  const breakdownMode = $('#r-desglose') ? $('#r-desglose').value : 'categorias';
   const breakdownHead = $('#tabla-cat thead tr');
   if (breakdownHead) breakdownHead.innerHTML = '<th>Categoría</th><th>Subcategoría</th><th>Total EUR</th><th>% gasto</th>';
   if (breakdownMode === 'categorias') {
@@ -7885,10 +7886,12 @@ async function searchBlogPointLocation() {
 function clearBlogImageSelection() {
   activeBlogImage = null;
   activeBlogGalleryImages = [];
+  activeBlogCameraOriginalFile = null;
   if ($('#blog-image-file')) $('#blog-image-file').value = '';
   if ($('#blog-image-gallery')) $('#blog-image-gallery').value = '';
   if ($('#blog-image-camera')) $('#blog-image-camera').value = '';
   if ($('#blog-image-status')) $('#blog-image-status').textContent = 'Ninguna imagen seleccionada.';
+  updateBlogOriginalActions();
   if ($('#blog-image-preview')) {
     $('#blog-image-preview').hidden = true;
     $('#blog-image-preview').removeAttribute('src');
@@ -8142,6 +8145,8 @@ function closeBlogEntryDialog() {
   activeBlogEntryType = '';
   activeBlogImage = null;
   activeBlogGalleryImages = [];
+  activeBlogCameraOriginalFile = null;
+  updateBlogOriginalActions();
   const dialog = $('#blog-entry-dialog');
   if (!dialog) return;
   if (dialog.close) dialog.close();
@@ -8238,54 +8243,66 @@ async function compressBlogImage(file, options = {}) {
     ]);
   }
   const image = await loadImageFile(file);
-  let width = image.naturalWidth || image.width;
-  let height = image.naturalHeight || image.height;
-  if (!width || !height) throw new Error('La imagen no tiene dimensiones válidas');
-  const scale = Math.min(1, BLOG_IMAGE_MAX_DIMENSION / Math.max(width, height));
-  width = Math.max(1, Math.round(width * scale));
-  height = Math.max(1, Math.round(height * scale));
-  let blob = null;
-  let outputWidth = width;
-  let outputHeight = height;
-  for (let resizeRound = 0; resizeRound < 4; resizeRound += 1) {
-    outputWidth = width;
-    outputHeight = height;
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d', { alpha: false });
-    context.fillStyle = '#fff';
-    context.fillRect(0, 0, width, height);
-    context.drawImage(image, 0, 0, width, height);
-    for (const quality of [0.86, 0.78, 0.68, 0.58]) {
-      blob = await canvasToJpeg(canvas, quality);
+  try {
+    let width = image.naturalWidth || image.width;
+    let height = image.naturalHeight || image.height;
+    if (!width || !height) throw new Error('La imagen no tiene dimensiones válidas');
+    const scale = Math.min(1, BLOG_IMAGE_MAX_DIMENSION / Math.max(width, height));
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+    let blob = null;
+    let outputWidth = width;
+    let outputHeight = height;
+    for (let resizeRound = 0; resizeRound < 4; resizeRound += 1) {
+      outputWidth = width;
+      outputHeight = height;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d', { alpha: false });
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+      for (const quality of [0.86, 0.78, 0.68, 0.58]) {
+        blob = await canvasToJpeg(canvas, quality);
+        if (blob.size <= BLOG_IMAGE_TARGET_BYTES) break;
+      }
+      canvas.width = 1;
+      canvas.height = 1;
       if (blob.size <= BLOG_IMAGE_TARGET_BYTES) break;
+      const longestEdge = Math.max(width, height);
+      if (longestEdge <= 640) break;
+      const resizeScale = Math.max(640 / longestEdge, 0.82);
+      width = Math.max(1, Math.round(width * resizeScale));
+      height = Math.max(1, Math.round(height * resizeScale));
     }
-    if (blob.size <= BLOG_IMAGE_TARGET_BYTES) break;
-    const longestEdge = Math.max(width, height);
-    if (longestEdge <= 640) break;
-    const resizeScale = Math.max(640 / longestEdge, 0.82);
-    width = Math.max(1, Math.round(width * resizeScale));
-    height = Math.max(1, Math.round(height * resizeScale));
+    if (!blob || blob.size > BLOG_IMAGE_OUTPUT_LIMIT) {
+      throw new Error('El navegador no pudo reducir suficientemente la imagen. Prueba con otra foto o recórtala antes.');
+    }
+    return {
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      name: String(file.name || 'imagen').replace(/\.[^.]+$/, '') + '.jpg',
+      type: 'image/jpeg',
+      size: blob.size,
+      data: await readBlobAsDataUrl(blob),
+      width: outputWidth,
+      height: outputHeight,
+      latitude: gps ? gps.latitude : null,
+      longitude: gps ? gps.longitude : null,
+      locationSource: gps ? gps.source || 'exif' : '',
+      mapEnabled: false,
+      capturedDate: captured ? captured.date : '',
+      capturedTime: captured ? captured.time : ''
+    };
+  } finally {
+    image.src = '';
   }
-  if (!blob || blob.size > BLOG_IMAGE_OUTPUT_LIMIT) {
-    throw new Error('El navegador no pudo reducir suficientemente la imagen. Prueba con otra foto o recórtala antes.');
-  }
-  return {
-    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
-    name: String(file.name || 'imagen').replace(/\.[^.]+$/, '') + '.jpg',
-    type: 'image/jpeg',
-    size: blob.size,
-    data: await readBlobAsDataUrl(blob),
-    width: outputWidth,
-    height: outputHeight,
-    latitude: gps ? gps.latitude : null,
-    longitude: gps ? gps.longitude : null,
-    locationSource: gps ? gps.source || 'exif' : '',
-    mapEnabled: false,
-    capturedDate: captured ? captured.date : '',
-    capturedTime: captured ? captured.time : ''
-  };
+}
+
+function updateBlogOriginalActions(message = '', isError = false) {
+  const actions = $('#blog-original-actions');
+  if (actions) actions.hidden = !activeBlogCameraOriginalFile;
+  setMessage('#blog-original-status', message, isError);
 }
 
 function applyBlogImageDateTime(image) {
@@ -8298,6 +8315,8 @@ async function selectBlogImage(input, otherInput, options = {}) {
   const file = input && input.files && input.files[0];
   if (!file) return;
   [otherInput, $('#blog-image-gallery')].filter(Boolean).forEach(field => { field.value = ''; });
+  activeBlogCameraOriginalFile = options.fromCamera ? file : null;
+  updateBlogOriginalActions(activeBlogCameraOriginalFile ? 'Original listo para guardar fuera de la aplicación.' : '');
   setMessage('#msg-blog-entry', '');
   if ($('#blog-image-status')) $('#blog-image-status').textContent = 'Comprimiendo imagen...';
   try {
@@ -8306,6 +8325,8 @@ async function selectBlogImage(input, otherInput, options = {}) {
     applyBlogImageDateTime(image);
   } catch (error) {
     input.value = '';
+    if (options.fromCamera) activeBlogCameraOriginalFile = null;
+    updateBlogOriginalActions();
     if (activeBlogImage) showBlogImage(activeBlogImage);
     else if ($('#blog-image-status')) $('#blog-image-status').textContent = 'Ninguna imagen seleccionada.';
     setMessage('#msg-blog-entry', error.message || String(error), true);
@@ -8317,6 +8338,8 @@ async function selectBlogGallery(input) {
   if (!files.length) return;
   if ($('#blog-image-file')) $('#blog-image-file').value = '';
   if ($('#blog-image-camera')) $('#blog-image-camera').value = '';
+  activeBlogCameraOriginalFile = null;
+  updateBlogOriginalActions();
   setMessage('#msg-blog-entry', '');
   const images = [];
   try {
@@ -8655,11 +8678,11 @@ async function saveBlogEntryForm() {
       galleryImages: activeBlogGalleryImages.map(normalizeBlogImageRecord)
     });
     if (values.featuredImage) values.wordpressIncluded = true;
-    const previousFeatured = state.blogEntries.find(entry =>
+    const previousFeatured = values.featuredImage ? state.blogEntries.find(entry =>
       entry.tipo === 'imagen' && entry.featuredImage &&
       Number(entry.viajeId) === Number(trip.id) && entry.fecha === values.fecha &&
       Number(entry.id) !== Number(current && current.id)
-    );
+    ) : null;
     if (previousFeatured) {
       if (!confirm('Ya existe una imagen destacada para este día. ¿Quieres sustituirla y conservar la anterior como imagen normal?')) {
         throw new Error('Se mantiene la imagen destacada anterior.');
@@ -10310,7 +10333,8 @@ function bindEvents() {
   };
   $('#blog-image-file').onchange = () => selectBlogImage($('#blog-image-file'), $('#blog-image-camera'));
   $('#blog-image-gallery').onchange = () => selectBlogGallery($('#blog-image-gallery'));
-  $('#blog-image-camera').onchange = () => selectBlogImage($('#blog-image-camera'), $('#blog-image-file'), { useCurrentLocation: true });
+  $('#blog-image-camera').onchange = () => selectBlogImage($('#blog-image-camera'), $('#blog-image-file'), { useCurrentLocation: true, fromCamera: true });
+  $('#blog-save-original').onclick = saveBlogCameraOriginal;
   $('#blog-gallery-preview').onclick = event => {
     const button = event.target.closest('[data-blog-primary-image]');
     if (button) selectBlogPrimaryImage(button.dataset.blogPrimaryImage);
@@ -11444,6 +11468,43 @@ function finishAppLoading() {
     loading.classList.add('is-ready');
     window.setTimeout(() => loading.remove(), 460);
   }, delay);
+}
+
+async function saveBlogCameraOriginal() {
+  const file = activeBlogCameraOriginalFile;
+  if (!file) {
+    updateBlogOriginalActions('', false);
+    return;
+  }
+  const filename = file.name || `foto-blog-${currentLocalDate()}.jpg`;
+  const shareFile = new File([file], filename, { type: file.type || 'image/jpeg' });
+  try {
+    if (navigator.canShare && navigator.share && navigator.canShare({ files: [shareFile] })) {
+      await navigator.share({
+        files: [shareFile],
+        title: filename,
+        text: 'Foto original del blog'
+      });
+      updateBlogOriginalActions('Abierto el menú del sistema. Elige Guardar imagen/Fotos si aparece.');
+      return;
+    }
+  } catch (error) {
+    if (error && error.name === 'AbortError') {
+      updateBlogOriginalActions('Guardado cancelado.');
+      return;
+    }
+    console.warn('No se pudo compartir la foto original', error);
+  }
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  updateBlogOriginalActions('Descarga iniciada. En algunos móviles se guarda en Descargas.');
 }
 
 window.setTimeout(finishAppLoading, APP_LOADING_MAX_MS);

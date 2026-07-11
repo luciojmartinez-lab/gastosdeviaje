@@ -6,7 +6,7 @@
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v137">
+  <link rel="stylesheet" href="styles.css?v=700v138">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
@@ -43,7 +43,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v137</div>
+  <div class="app-version">700v138</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -178,7 +178,7 @@
         <div><label>Viaje</label><select id="r-viaje"></select></div>
         <div><label>País</label><select id="r-pais"></select></div>
         <div><label>Ciudad</label><select id="r-ciudad"></select></div>
-        <div><label>Desglose</label><select id="r-desglose"><option value="subcategorias">Subcategorías</option><option value="categorias">Categorías</option><option value="ciudades">Ciudades</option></select></div>
+        <div><label>Desglose</label><select id="r-desglose"><option value="categorias">Categorías</option><option value="subcategorias">Subcategorías</option><option value="ciudades">Ciudades</option></select></div>
       </div>
       <div id="chart-cat"></div>
       <div class="table-wrap">
@@ -664,6 +664,10 @@
         </div>
         <p class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
         <p id="blog-image-status" class="small">Ninguna imagen seleccionada.</p>
+        <div id="blog-original-actions" class="blog-original-actions" hidden>
+          <button type="button" class="btn ghost" id="blog-save-original">Guardar original en Fotos</button>
+          <span id="blog-original-status" class="small"></span>
+        </div>
         <img id="blog-image-preview" class="blog-image-preview" alt="Vista previa" hidden>
         <div id="blog-gallery-preview" class="blog-gallery-preview" hidden></div>
         <p class="small">En una galería, toca una miniatura para colocarla como primera. Si marcas «Usar como imagen destacada», esa será la foto destacada.</p>
@@ -859,11 +863,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v137"></script>
-<script src="app.bundle.js?v=700v137"></script>
+<script src="map-model.js?v=700v138"></script>
+<script src="app.bundle.js?v=700v138"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v137';
+    const pageVersion = '700v138';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -890,7 +894,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v137', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v138', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
