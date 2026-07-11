@@ -6,22 +6,14 @@
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v138">
+  <link rel="stylesheet" href="styles.css?v=700v139">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
 <body>
 <div id="app-loading" class="app-loading" role="status" aria-live="polite" aria-label="Cargando Cuaderno de Bitácora">
   <div class="app-loading-cover" aria-hidden="true"></div>
-  <div class="app-loading-train" aria-hidden="true">
-    <span class="train-smoke smoke-one"></span>
-    <span class="train-smoke smoke-two"></span>
-    <span class="train-smoke smoke-three"></span>
-    <span class="train-engine"></span>
-    <span class="train-car"></span>
-    <span class="train-car"></span>
-    <span class="train-car"></span>
-  </div>
+  <div class="app-loading-train" aria-hidden="true"></div>
   <div class="app-loading-title">
     <strong>Cuaderno de Bitácora</strong>
     <span>por Lucio J. Martínez</span>
@@ -43,7 +35,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v138</div>
+  <div class="app-version">700v139</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -863,11 +855,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v138"></script>
-<script src="app.bundle.js?v=700v138"></script>
+<script src="map-model.js?v=700v139"></script>
+<script src="app.bundle.js?v=700v139"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v138';
+    const pageVersion = '700v139';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -894,7 +886,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v138', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v139', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

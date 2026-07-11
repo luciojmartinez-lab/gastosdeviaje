@@ -512,100 +512,19 @@ h2 {
 
 .app-loading-train {
   position: absolute;
-  top: 48%;
-  left: -360px;
+  top: calc(50% - 155px);
+  left: 50%;
   z-index: 3;
-  display: flex;
-  flex-direction: row-reverse;
-  align-items: end;
-  gap: 7px;
-  width: 330px;
-  height: 54px;
-  opacity: 0.72;
-  filter: drop-shadow(0 8px 10px rgba(37, 52, 71, 0.16));
-  animation: app-loading-train 3.7s ease-in-out infinite;
+  width: min(260px, 42vw);
+  aspect-ratio: 285 / 300;
+  opacity: 0.9;
+  background: url("assets/loading-train.png") center / contain no-repeat;
+  filter: drop-shadow(0 10px 12px rgba(37, 52, 71, 0.16));
+  animation: app-loading-train 4.8s ease-in-out infinite;
 }
 
-.train-smoke {
-  position: absolute;
-  top: -28px;
-  right: 22px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: rgba(94, 105, 116, 0.22);
-  opacity: 0;
-  animation: train-smoke 1.9s ease-out infinite;
-}
-
-.smoke-two {
-  animation-delay: 0.45s;
-}
-
-.smoke-three {
-  animation-delay: 0.9s;
-}
-
-.app-loading-train::before {
-  content: "";
-  position: absolute;
-  left: -30px;
-  right: -30px;
-  bottom: 5px;
-  height: 2px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, transparent, rgba(37, 52, 71, 0.28), transparent);
-}
-
-.train-engine,
-.train-car {
-  position: relative;
-  display: block;
-  height: 31px;
-  border: 1px solid rgba(37, 52, 71, 0.24);
-  border-radius: 10px 6px 5px 5px;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.72) 10px, transparent 10px 18px, rgba(255, 255, 255, 0.72) 18px 26px, transparent 26px),
-    linear-gradient(180deg, rgba(31, 118, 108, 0.9), rgba(37, 52, 71, 0.88));
-}
-
-.train-engine {
-  width: 96px;
-  height: 38px;
-  border-radius: 10px 24px 5px 5px;
-  background:
-    radial-gradient(circle at 82px 22px, rgba(255, 255, 255, 0.9) 0 9px, rgba(37, 52, 71, 0.78) 9.5px 12px, transparent 12.5px),
-    linear-gradient(90deg, rgba(37, 52, 71, 0.9) 0 22px, rgba(255, 255, 255, 0.72) 22px 37px, rgba(31, 118, 108, 0.88) 37px 72px, rgba(37, 52, 71, 0.84) 72px),
-    linear-gradient(180deg, rgba(31, 118, 108, 0.9), rgba(37, 52, 71, 0.88));
-}
-
-.train-engine::before {
-  content: "";
-  position: absolute;
-  right: 16px;
-  top: -14px;
-  width: 18px;
-  height: 16px;
-  border-radius: 5px 5px 0 0;
-  background: rgba(37, 52, 71, 0.86);
-}
-
-.train-engine::after,
-.train-car::after {
-  content: "";
-  position: absolute;
-  left: 15px;
-  right: 15px;
-  bottom: -7px;
-  height: 10px;
-  border-radius: 999px;
-  background:
-    radial-gradient(circle at 8px 5px, #253447 0 4px, transparent 4.5px),
-    radial-gradient(circle at calc(100% - 8px) 5px, #253447 0 4px, transparent 4.5px);
-}
-
-.train-car {
-  width: 88px;
+.app-loading-train > span {
+  display: none;
 }
 
 .blog-original-actions {
@@ -677,25 +596,13 @@ h2 {
 
 @keyframes app-loading-train {
   0% {
-    transform: translateX(0);
+    transform: translate(-52%, 0);
   }
-  72%,
-  100% {
-    transform: translateX(calc(100vw + 720px));
-  }
-}
-
-@keyframes train-smoke {
-  0% {
-    opacity: 0;
-    transform: translate(0, 8px) scale(0.55);
-  }
-  18% {
-    opacity: 0.55;
+  50% {
+    transform: translate(-48%, -1px);
   }
   100% {
-    opacity: 0;
-    transform: translate(-34px, -34px) scale(1.55);
+    transform: translate(-52%, 0);
   }
 }
 
@@ -725,80 +632,10 @@ h2 {
   }
 
   .app-loading-train {
-    top: calc(50% - 104px);
-    left: -126px;
-    flex-direction: row-reverse;
-    gap: 4px;
-    width: 116px;
-    height: 40px;
-    opacity: 0.74;
-    filter: drop-shadow(0 5px 7px rgba(37, 52, 71, 0.2));
-    animation: app-loading-train-mobile 9.2s linear infinite;
-  }
-
-  .app-loading-train::before {
-    left: -12px;
-    right: -12px;
-    bottom: 3px;
-    background: linear-gradient(90deg, transparent, rgba(37, 52, 71, 0.18), transparent);
-  }
-
-  .train-engine {
-    width: 48px;
-    height: 24px;
-    border-radius: 7px 14px 3px 3px;
-    background:
-      radial-gradient(circle at 39px 13px, rgba(255, 255, 255, 0.82) 0 5px, rgba(37, 52, 71, 0.78) 5.5px 7px, transparent 7.5px),
-      linear-gradient(90deg, rgba(37, 52, 71, 0.9) 0 13px, rgba(255, 255, 255, 0.72) 13px 19px, rgba(31, 118, 108, 0.76) 19px 35px, rgba(37, 52, 71, 0.78) 35px),
-      linear-gradient(180deg, rgba(31, 118, 108, 0.78), rgba(37, 52, 71, 0.84));
-  }
-
-  .train-engine::before {
-    right: 13px;
-    top: -12px;
-    width: 8px;
-    height: 13px;
-    border-radius: 4px 4px 1px 1px;
-    background: rgba(37, 52, 71, 0.9);
-  }
-
-  .train-car {
-    display: block;
-    width: 18px;
-    height: 16px;
-    border-radius: 4px 4px 3px 3px;
-    background:
-      linear-gradient(90deg, rgba(255, 255, 255, 0.65) 4px, transparent 4px 8px, rgba(255, 255, 255, 0.65) 8px 12px, transparent 12px),
-      linear-gradient(180deg, rgba(96, 76, 58, 0.76), rgba(37, 52, 71, 0.76));
-  }
-
-  .train-engine::after {
-    left: 8px;
-    right: 8px;
-    bottom: -5px;
-    height: 7px;
-    background:
-      radial-gradient(circle at 5px 4px, #253447 0 2.2px, transparent 2.7px),
-      radial-gradient(circle at calc(100% - 5px) 4px, #253447 0 2.2px, transparent 2.7px);
-  }
-
-  .train-car::after {
-    left: 4px;
-    right: 4px;
-    bottom: -5px;
-    height: 6px;
-    background:
-      radial-gradient(circle at 3px 3px, #253447 0 1.8px, transparent 2.2px),
-      radial-gradient(circle at calc(100% - 3px) 3px, #253447 0 1.8px, transparent 2.2px);
-  }
-
-  .train-smoke {
-    top: -24px;
-    right: 12px;
-    width: 11px;
-    height: 11px;
-    background: rgba(94, 105, 116, 0.26);
-    animation-duration: 3.1s;
+    top: calc(50% - 146px);
+    width: min(225px, 56vw);
+    opacity: 0.92;
+    filter: drop-shadow(0 7px 9px rgba(37, 52, 71, 0.18));
   }
 
   .app-loading-title strong {
@@ -811,16 +648,6 @@ h2 {
 
   .app-loading-progress {
     width: min(250px, 62vw);
-  }
-}
-
-@keyframes app-loading-train-mobile {
-  0% {
-    transform: translateX(0);
-  }
-  86%,
-  100% {
-    transform: translateX(calc(100vw + 220px));
   }
 }
 
