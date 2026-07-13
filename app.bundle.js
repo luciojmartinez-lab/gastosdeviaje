@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v141';
+const APP_VERSION = '700v142';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -17,6 +17,8 @@ const CLOUD_ATTACHMENT_CHECK_BATCH = 75;
 const BLOG_IMAGE_TARGET_BYTES = 650 * 1024;
 const BLOG_IMAGE_OUTPUT_LIMIT = 1_100_000;
 const BLOG_IMAGE_MAX_DIMENSION = 1600;
+const BLOG_DICTATION_MAX_MS = 3 * 60 * 1000;
+const BLOG_DICTATION_MAX_BYTES = 3_500_000;
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const TRIP_MAP_WIDTH = 920;
 const TRIP_MAP_HEIGHT = 460;
@@ -47,7 +49,6 @@ let tripVectorMap = null;
 let tripVectorMarkers = [];
 let tripVectorPhotoMarkers = [];
 let tripVectorMapFailed = false;
-let blogSpeechRecognition = null;
 let blogDictationSession = null;
 let openBlogDays = new Set();
 let openBlogDaysScope = '';
@@ -1470,7 +1471,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v141');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v142');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1502,7 +1503,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v141');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v142');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1913,7 +1914,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v141');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v142');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -8059,34 +8060,110 @@ function ensureSpeechTerminalPunctuation(value) {
   return text && !/[.!?…,:;]$/.test(text) ? `${text}.` : text;
 }
 
-function finishBlogDictation(message = 'Dictado finalizado.', isError = false) {
-  const session = blogDictationSession;
-  if (session) {
-    session.active = false;
-    clearTimeout(session.idleTimer);
-    clearTimeout(session.restartTimer);
-    const transcript = compactSpeechSegments([...(session.segments || []), session.current || '']);
-    const textField = $('#blog-texto');
-    if (textField && transcript) {
-      textField.value = ensureSpeechTerminalPunctuation(composeBlogDictationText(session.baseText, transcript));
-      scheduleActiveBlogEntryDraftSave();
-    }
-  }
-  const recognition = blogSpeechRecognition;
+function setBlogDictationButton(label = 'Dictar por voz', disabled = false, pressed = false) {
+  const button = $('#blog-voice');
+  if (!button) return;
+  button.textContent = label;
+  button.disabled = disabled;
+  button.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+}
+
+function stopBlogDictationTracks(session) {
+  if (!session || !session.stream) return;
+  session.stream.getTracks().forEach(track => track.stop());
+  session.stream = null;
+}
+
+function finishBlogDictation(session, message = '', isError = false) {
+  if (!session) return;
+  clearTimeout(session.limitTimer);
+  stopBlogDictationTracks(session);
+  if (blogDictationSession !== session) return;
   blogDictationSession = null;
-  blogSpeechRecognition = null;
-  if (recognition) {
-    recognition.onend = null;
-    try { recognition.stop(); } catch {}
-  }
-  if ($('#blog-voice')) $('#blog-voice').textContent = 'Dictar por voz';
+  setBlogDictationButton();
   setMessage('#blog-voice-status', message, isError);
 }
 
-function stopBlogDictation() {
+function blogDictationErrorMessage(code, status) {
+  if (code === 'transcription_not_configured') return 'El dictado todavía no está configurado en el servidor.';
+  if (code === 'transcription_credentials_invalid') return 'La clave del servicio de dictado no es válida.';
+  if (code === 'transcription_rate_limited' || status === 429) return 'Se han hecho demasiados dictados seguidos. Espera un minuto y vuelve a intentarlo.';
+  if (code === 'audio_too_large' || status === 413) return 'La grabación es demasiado larga. Haz un dictado más corto.';
+  if (code === 'unsupported_audio' || status === 415) return 'Este navegador ha creado un formato de audio no compatible.';
+  if (code === 'empty_transcription' || status === 422) return 'No se ha detectado texto en la grabación.';
+  return 'No se ha podido transcribir el dictado. Comprueba la conexión y vuelve a intentarlo.';
+}
+
+async function transcribeBlogDictation(session) {
+  stopBlogDictationTracks(session);
+  if (session.cancelled || blogDictationSession !== session) return;
+
+  const mimeType = session.recorder.mimeType || session.mimeType || session.chunks[0]?.type || 'audio/webm';
+  const audio = new Blob(session.chunks, { type: mimeType });
+  session.chunks = [];
+  if (!audio.size) {
+    finishBlogDictation(session, 'No se ha grabado audio.', true);
+    return;
+  }
+  if (audio.size > BLOG_DICTATION_MAX_BYTES) {
+    finishBlogDictation(session, 'La grabación es demasiado larga. Haz un dictado más corto.', true);
+    return;
+  }
+  if (!navigator.onLine) {
+    finishBlogDictation(session, 'El dictado necesita conexión a Internet para convertir el audio en texto.', true);
+    return;
+  }
+
+  session.phase = 'transcribing';
+  session.abortController = new AbortController();
+  setBlogDictationButton('Transcribiendo...', true);
+  setMessage('#blog-voice-status', 'Convirtiendo el audio en texto...');
+  const formData = new FormData();
+  formData.append('audio', audio, 'dictado');
+
+  try {
+    const response = await fetch('/api/transcribe-dictation', {
+      method: 'POST',
+      body: formData,
+      cache: 'no-store',
+      signal: session.abortController.signal
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw Object.assign(new Error('transcription_failed'), { code: result.error, status: response.status });
+    if (session.cancelled || blogDictationSession !== session) return;
+    const transcript = compactSpeechSegments([result.text]);
+    if (!transcript) throw Object.assign(new Error('empty_transcription'), { code: 'empty_transcription', status: 422 });
+    const textField = $('#blog-texto');
+    if (textField) {
+      textField.value = ensureSpeechTerminalPunctuation(composeBlogDictationText(session.baseText, transcript));
+      scheduleActiveBlogEntryDraftSave();
+    }
+    finishBlogDictation(session, 'Dictado añadido al texto.');
+  } catch (error) {
+    if (error.name === 'AbortError' || session.cancelled) return;
+    finishBlogDictation(session, blogDictationErrorMessage(error.code, error.status), true);
+  }
+}
+
+function stopBlogDictation(options = {}) {
   const session = blogDictationSession;
-  const hasTranscript = Boolean(session && compactSpeechSegments([...(session.segments || []), session.current || '']));
-  finishBlogDictation(hasTranscript ? 'Dictado finalizado.' : '');
+  if (!session) return;
+  if (options.discard) {
+    session.cancelled = true;
+    if (session.abortController) session.abortController.abort();
+  }
+  clearTimeout(session.limitTimer);
+  if (session.recorder && session.recorder.state !== 'inactive') {
+    session.phase = 'stopping';
+    if (!session.cancelled) {
+      setBlogDictationButton('Preparando...', true);
+      setMessage('#blog-voice-status', options.message || 'Preparando la transcripción...');
+    }
+    try { session.recorder.stop(); } catch {}
+    if (session.cancelled) finishBlogDictation(session);
+    return;
+  }
+  finishBlogDictation(session);
 }
 
 function blogEntryDraftKey(tripId = null) {
@@ -8145,7 +8222,7 @@ function restoreBlogEntryDraft(trip) {
 }
 
 function closeBlogEntryDialog() {
-  stopBlogDictation();
+  stopBlogDictation({ discard: true });
   activeBlogEntryId = null;
   activeBlogEntryType = '';
   activeBlogImage = null;
@@ -8542,106 +8619,92 @@ async function consumeSharedImagesLaunch() {
   openSharedImagesDialog({ ...metadata, files });
 }
 
-function startBlogDictation() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    setMessage('#blog-voice-status', 'El dictado no está disponible en este navegador.', true);
-    return;
-  }
+function preferredBlogDictationMimeType() {
+  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+  return [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4'
+  ].find(type => MediaRecorder.isTypeSupported(type)) || '';
+}
+
+async function startBlogDictation() {
   if (blogDictationSession) {
     stopBlogDictation();
     return;
   }
+  if (!navigator.onLine) {
+    setMessage('#blog-voice-status', 'El dictado necesita conexión a Internet.', true);
+    return;
+  }
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function' || typeof MediaRecorder === 'undefined') {
+    setMessage('#blog-voice-status', 'La grabación de voz no está disponible en este navegador.', true);
+    return;
+  }
+
   const textField = $('#blog-texto');
   const session = {
-    active: true,
+    phase: 'requesting',
     baseText: ensureSpeechTerminalPunctuation(textField ? textField.value : ''),
-    segments: [],
-    current: '',
-    lastActivity: Date.now(),
-    idleTimer: null,
-    restartTimer: null
+    stream: null,
+    recorder: null,
+    mimeType: '',
+    chunks: [],
+    limitTimer: null,
+    abortController: null,
+    cancelled: false
   };
   blogDictationSession = session;
-  if ($('#blog-voice')) $('#blog-voice').textContent = 'Detener dictado';
+  setBlogDictationButton('Preparando...', true);
+  setMessage('#blog-voice-status', 'Solicitando acceso al micrófono...');
 
-  const renderSessionText = () => {
-    const transcript = compactSpeechSegments([...session.segments, session.current]);
-    if (textField) {
-      textField.value = composeBlogDictationText(session.baseText, transcript);
-      scheduleActiveBlogEntryDraftSave();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    if (session.cancelled || blogDictationSession !== session) {
+      stream.getTracks().forEach(track => track.stop());
+      return;
     }
-  };
-  const scheduleSilenceStop = () => {
-    clearTimeout(session.idleTimer);
-    const remaining = Math.max(0, 10000 - (Date.now() - session.lastActivity));
-    session.idleTimer = setTimeout(() => {
-      if (!session.active) return;
-      if (Date.now() - session.lastActivity < 10000) {
-        scheduleSilenceStop();
-        return;
-      }
-      finishBlogDictation('Dictado finalizado tras 10 segundos de silencio.');
-    }, remaining + 25);
-  };
-  const launchRecognition = () => {
-    if (!session.active || blogDictationSession !== session) return;
-    const recognition = new SpeechRecognition();
-    const sessionResults = new Map();
-    recognition.lang = 'es-ES';
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.onstart = () => setMessage('#blog-voice-status', 'Escuchando...');
-    recognition.onresult = event => {
-      session.lastActivity = Date.now();
-      scheduleSilenceStop();
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        sessionResults.set(index, {
-          text: event.results[index][0].transcript,
-          final: Boolean(event.results[index].isFinal)
-        });
-      }
-      const ordered = Array.from(sessionResults.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(item => item[1]);
-      session.current = compactSpeechSegments(ordered.map(item => item.text));
-      const interimText = compactSpeechSegments(ordered.filter(item => !item.final).map(item => item.text));
-      renderSessionText();
-      setMessage('#blog-voice-status', interimText ? `Escuchando: ${interimText}` : 'Escuchando...');
-    };
-    recognition.onerror = event => {
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        finishBlogDictation('Permiso de micrófono denegado.', true);
-      } else if (event.error !== 'no-speech' && session.active) {
-        setMessage('#blog-voice-status', 'Reconectando el dictado...');
-      }
-    };
-    recognition.onend = () => {
-      if (blogSpeechRecognition === recognition) blogSpeechRecognition = null;
-      if (session.current) {
-        session.segments.push(session.current);
-        session.segments = [compactSpeechSegments(session.segments)];
-        session.current = '';
-        renderSessionText();
-      }
-      if (!session.active || blogDictationSession !== session) return;
-      if (Date.now() - session.lastActivity >= 10000) {
-        finishBlogDictation('Dictado finalizado tras 10 segundos de silencio.');
-        return;
-      }
-      clearTimeout(session.restartTimer);
-      session.restartTimer = setTimeout(launchRecognition, 200);
-    };
-    blogSpeechRecognition = recognition;
+    session.stream = stream;
+    session.mimeType = preferredBlogDictationMimeType();
+    const options = { audioBitsPerSecond: 64_000 };
+    if (session.mimeType) options.mimeType = session.mimeType;
     try {
-      recognition.start();
+      session.recorder = new MediaRecorder(stream, options);
     } catch {
-      session.restartTimer = setTimeout(launchRecognition, 350);
+      session.mimeType = '';
+      session.recorder = new MediaRecorder(stream);
     }
-  };
-
-  scheduleSilenceStop();
-  launchRecognition();
+    session.recorder.ondataavailable = event => {
+      if (event.data && event.data.size) session.chunks.push(event.data);
+    };
+    session.recorder.onerror = () => {
+      session.cancelled = true;
+      finishBlogDictation(session, 'Se ha interrumpido la grabación.', true);
+    };
+    session.recorder.onstop = () => transcribeBlogDictation(session);
+    session.recorder.start(1000);
+    session.phase = 'recording';
+    session.limitTimer = setTimeout(() => {
+      if (blogDictationSession === session && session.phase === 'recording') {
+        stopBlogDictation({ message: 'Se ha alcanzado el máximo de tres minutos. Preparando la transcripción...' });
+      }
+    }, BLOG_DICTATION_MAX_MS);
+    setBlogDictationButton('Detener dictado', false, true);
+    setMessage('#blog-voice-status', 'Grabando...');
+  } catch (error) {
+    const denied = error && (error.name === 'NotAllowedError' || error.name === 'SecurityError');
+    finishBlogDictation(
+      session,
+      denied ? 'Permiso de micrófono denegado.' : 'No se ha podido iniciar la grabación.',
+      true
+    );
+  }
 }
 
 async function saveBlogEntryForm() {
@@ -10337,10 +10400,15 @@ function bindEvents() {
     discardActiveBlogEntryDraft();
     closeBlogEntryDialog();
   };
-  $('#blog-entry-dialog').oncancel = stopBlogDictation;
-  $('#blog-entry-dialog').onclose = stopBlogDictation;
+  $('#blog-entry-dialog').oncancel = () => stopBlogDictation({ discard: true });
+  $('#blog-entry-dialog').onclose = () => stopBlogDictation({ discard: true });
   $('#blog-entry-form').onsubmit = async event => {
     event.preventDefault();
+    if (blogDictationSession) {
+      if (blogDictationSession.phase === 'recording') stopBlogDictation();
+      setMessage('#msg-blog-entry', 'Espera a que termine la transcripción antes de guardar.', true);
+      return;
+    }
     try {
       await saveBlogEntryForm();
     } catch (error) {
