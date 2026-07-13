@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v139';
+const APP_VERSION = '700v140';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1354,6 +1354,11 @@ function transferRateLabel(transfer) {
   return `1\u00a0${transfer.monedaFrom} = ${rate.toLocaleString('es-ES', { maximumFractionDigits: 6 })}\u00a0${transfer.monedaTo}`;
 }
 
+function compareTransferenciasChronologically(a, b) {
+  return (a.fecha || '').localeCompare(b.fecha || '')
+    || Number(a.id || 0) - Number(b.id || 0);
+}
+
 function renderBackupStatus() {
   const items = $$('.backup-status');
   if (!items.length) {
@@ -1465,7 +1470,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v139');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v140');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1497,7 +1502,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v139');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v140');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1908,7 +1913,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v139');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v140');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3872,7 +3877,7 @@ async function loadAll() {
     setSelectedTrips(validSelectedTripIds);
   }
   state.monedas = monedas.sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
-  state.transferencias = transferencias.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+  state.transferencias = transferencias.sort(compareTransferenciasChronologically);
   renderAll();
   restoreInlineFormDrafts();
   if (state.activeTab === 'resumen') renderResumen();
@@ -4377,7 +4382,7 @@ function renderTransferencias() {
     const source = state.cuentas.find(c => c.id === Number(t.fromId));
     const target = state.cuentas.find(c => c.id === Number(t.toId));
     return selectedIds.has(Number(source && source.viajeId)) || selectedIds.has(Number(target && target.viajeId));
-  }).forEach(t => {
+  }).sort(compareTransferenciasChronologically).forEach(t => {
     const source = state.cuentas.find(c => c.id === t.fromId);
     const target = state.cuentas.find(c => c.id === t.toId);
     const tr = document.createElement('tr');
@@ -8732,9 +8737,44 @@ function expenseBlogTime(gasto) {
   return expenseTimeValue(gasto) || currentLocalTime();
 }
 
+function chooseExpenseBlogReplacement() {
+  const dialog = $('#expense-blog-replace-dialog');
+  if (!dialog) {
+    return Promise.resolve(confirm('Este gasto ya existe en el blog. ¿Quieres reemplazar sus datos manteniendo la fecha y hora editadas en el blog?') ? 'keep-date' : 'cancel');
+  }
+  return new Promise(resolve => {
+    const keepButton = $('#expense-blog-replace-keep');
+    const replaceAllButton = $('#expense-blog-replace-all');
+    const cancelButton = $('#expense-blog-replace-cancel');
+    let resolved = false;
+    const finish = value => {
+      if (resolved) return;
+      resolved = true;
+      if (keepButton) keepButton.onclick = null;
+      if (replaceAllButton) replaceAllButton.onclick = null;
+      if (cancelButton) cancelButton.onclick = null;
+      dialog.oncancel = null;
+      if (dialog.close) dialog.close();
+      else dialog.removeAttribute('open');
+      resolve(value);
+    };
+    if (keepButton) keepButton.onclick = () => finish('keep-date');
+    if (replaceAllButton) replaceAllButton.onclick = () => finish('replace-all');
+    if (cancelButton) cancelButton.onclick = () => finish('cancel');
+    dialog.oncancel = event => {
+      event.preventDefault();
+      finish('cancel');
+    };
+    if (dialog.showModal) dialog.showModal();
+    else dialog.setAttribute('open', 'open');
+  });
+}
+
 async function addExpenseToBlog(gasto) {
   if (!gasto.viajeId) throw new Error('Este gasto no pertenece a ningún viaje');
   const existing = state.blogEntries.find(entry => entry.tipo === 'gasto' && Number(entry.sourceGastoId) === Number(gasto.id));
+  const replacementMode = existing ? await chooseExpenseBlogReplacement() : 'replace-all';
+  if (replacementMode === 'cancel') return false;
   const wordpressIncluded = confirm('¿Quieres incluir este gasto en el post de WordPress correspondiente a ese día?');
   const snapshot = {
     viajeId: Number(gasto.viajeId),
@@ -8751,11 +8791,10 @@ async function addExpenseToBlog(gasto) {
     featuredImage: false
   };
   if (existing) {
-    if (!confirm('Este gasto ya existe en el blog. ¿Quieres reemplazar sus datos manteniendo la fecha y hora editadas en el blog?')) return false;
     await updateBlogEntry(existing.id, {
       ...snapshot,
-      fecha: existing.fecha,
-      hora: existing.hora
+      fecha: replacementMode === 'keep-date' ? existing.fecha : gasto.fecha || currentLocalDate(),
+      hora: replacementMode === 'keep-date' ? existing.hora : expenseBlogTime(gasto)
     });
   } else {
     await addBlogEntry({
