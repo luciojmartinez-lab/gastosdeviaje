@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v143';
+const APP_VERSION = '700v144';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1470,7 +1470,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v143');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v144');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1502,7 +1502,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v143');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v144');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1913,7 +1913,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v143');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v144');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -8018,6 +8018,28 @@ function formatSpeechPunctuation(value) {
   );
 }
 
+function speechComparisonWords(value) {
+  return cleanSpeechText(value)
+    .toLocaleLowerCase('es-ES')
+    .replace(/[.,;:!?\u00bf\u00a1"()]/g, '')
+    .split(' ')
+    .filter(Boolean);
+}
+
+function isRevisedSpeechSegment(previous, segment) {
+  const previousWords = speechComparisonWords(previous);
+  const segmentWords = speechComparisonWords(segment);
+  const shorterLength = Math.min(previousWords.length, segmentWords.length);
+  let commonPrefixLength = 0;
+  while (
+    commonPrefixLength < shorterLength
+    && previousWords[commonPrefixLength] === segmentWords[commonPrefixLength]
+  ) {
+    commonPrefixLength += 1;
+  }
+  return commonPrefixLength >= 4 && commonPrefixLength / shorterLength >= 0.7;
+}
+
 function compactSpeechSegments(values) {
   const compact = [];
   for (const value of values || []) {
@@ -8031,7 +8053,7 @@ function compactSpeechSegments(values) {
     const previousKey = previous.toLocaleLowerCase('es-ES');
     const segmentKey = segment.toLocaleLowerCase('es-ES');
     if (segmentKey === previousKey || previousKey.startsWith(`${segmentKey} `)) continue;
-    if (segmentKey.startsWith(`${previousKey} `)) {
+    if (segmentKey.startsWith(`${previousKey} `) || isRevisedSpeechSegment(previous, segment)) {
       compact[compact.length - 1] = segment;
       continue;
     }
