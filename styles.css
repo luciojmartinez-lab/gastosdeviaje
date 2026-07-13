@@ -1144,17 +1144,6 @@ input[type="checkbox"] {
   color: var(--soft-text);
 }
 
-.btn:disabled,
-.ghost:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
-#blog-voice[aria-pressed="true"] {
-  background: #b42318;
-  color: #fff;
-}
-
 .config-menu,
 .summary-menu {
   position: sticky;

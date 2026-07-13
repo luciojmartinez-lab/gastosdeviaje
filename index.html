@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v142">
+  <link rel="manifest" href="manifest.webmanifest?v=700v143">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v142">
+  <link rel="stylesheet" href="styles.css?v=700v143">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
 </head>
@@ -35,7 +35,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v142</div>
+  <div class="app-version">700v143</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -669,8 +669,8 @@
       <div id="blog-text-fields" class="blog-text-fields" hidden>
         <label for="blog-texto">Texto</label>
         <textarea id="blog-texto" placeholder="Escribe el comentario del viaje..."></textarea>
-        <button type="button" class="btn ghost" id="blog-voice" aria-pressed="false">Dictar por voz</button>
-        <span id="blog-voice-status" class="small" aria-live="polite"></span>
+        <button type="button" class="btn ghost" id="blog-voice">Dictar por voz</button>
+        <span id="blog-voice-status" class="small"></span>
         <p class="small">Puedes decir «punto», «coma», «punto y coma», «dos puntos» o «punto y aparte».</p>
       </div>
       <div id="blog-point-fields" class="blog-point-fields" hidden>
@@ -870,11 +870,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v142"></script>
-<script src="app.bundle.js?v=700v142"></script>
+<script src="map-model.js?v=700v143"></script>
+<script src="app.bundle.js?v=700v143"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v142';
+    const pageVersion = '700v143';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -901,7 +901,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v142', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v143', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
