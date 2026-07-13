@@ -42,3 +42,10 @@ test('los mapas vistos se guardan en cache dinamica para uso offline', () => {
   assert.match(sw, /response\.ok \|\| response\.type === 'opaque'/);
   assert.match(help, /Los mapas ya vistos se conservan en cach/);
 });
+
+test('la pantalla inicial se sirve desde cache aunque no haya red disponible', () => {
+  assert.match(sw, /async function cachedNavigationResponse\(request\)/);
+  assert.match(sw, /caches\.match\(request, \{ ignoreSearch: true \}\)/);
+  assert.match(sw, /updateNavigationCache\(request\)\.catch\(\(\) => \{\}\)/);
+  assert.match(sw, /event\.respondWith\(cachedNavigationResponse\(event\.request\)\)/);
+});

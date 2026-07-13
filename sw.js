@@ -1,16 +1,16 @@
-const CACHE_NAME = 'gastosdeviaje-700v140-splash7';
+const CACHE_NAME = 'gastosdeviaje-700v141-offline-start';
 const MAP_RUNTIME_CACHE = 'cuaderno-bitacora-map-runtime-v1';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname;
 const APP_SHELL_REQUIRED = [
   './',
   './index.html',
-  './styles.css?v=700v140',
-  './map-model.js?v=700v140',
-  './app.bundle.js?v=700v140',
+  './styles.css?v=700v141',
+  './map-model.js?v=700v141',
+  './app.bundle.js?v=700v141',
   './vendor/maplibre/maplibre-gl.css?v=5.24.0',
   './vendor/maplibre/maplibre-gl.js?v=5.24.0',
-  './manifest.webmanifest?v=700v140',
+  './manifest.webmanifest?v=700v141',
   './version.txt'
 ];
 const APP_SHELL_OPTIONAL = [
@@ -19,8 +19,8 @@ const APP_SHELL_OPTIONAL = [
   './assets/bitacora-splash.png',
   './assets/bitacora-splash-mobile.png',
   './assets/loading-train.png',
-  './ticket-ocr.js?v=700v140',
-  './image-location.js?v=700v140',
+  './ticket-ocr.js?v=700v141',
+  './image-location.js?v=700v141',
   './ayuda.html',
   './vendor/pdfjs/pdf.min.mjs',
   './vendor/pdfjs/pdf.worker.min.mjs',
@@ -77,6 +77,34 @@ async function cachedMapResponse(request) {
     return await updateRuntimeCache(MAP_RUNTIME_CACHE, request);
   } catch (_) {
     return cached || Response.error();
+  }
+}
+
+async function updateNavigationCache(request) {
+  const response = await fetch(request, { cache: 'no-store' });
+  if (response && response.ok) {
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      const copy = response.clone();
+      await cache.put('./index.html', copy.clone());
+      await cache.put(request, copy);
+    } catch (_) {}
+  }
+  return response;
+}
+
+async function cachedNavigationResponse(request) {
+  const cached = await caches.match(request, { ignoreSearch: true })
+    || await caches.match('./index.html')
+    || await caches.match('./');
+  if (cached) {
+    updateNavigationCache(request).catch(() => {});
+    return cached;
+  }
+  try {
+    return await updateNavigationCache(request);
+  } catch (_) {
+    return await caches.match('./index.html') || Response.error();
   }
 }
 
@@ -164,18 +192,7 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
   if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-store' }).then(response => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put('./index.html', copy.clone());
-            cache.put(event.request, copy);
-          });
-        }
-        return response;
-      }).catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
-    );
+    event.respondWith(cachedNavigationResponse(event.request));
     return;
   }
   event.respondWith(
