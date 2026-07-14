@@ -38,8 +38,9 @@ test('los gastos permiten doble clic para editar y señalan si ya están en el B
 test('la tabla del blog prioriza hora, ciudad y descripcion', () => {
   assert.match(html, /<th>Hora<\/th><th>Ciudad<\/th><th>Descripción<\/th><th>Tipo<\/th><th>País<\/th><th>Precio<\/th>/);
   assert.match(html, /class="blog-col-city"[\s\S]*?class="blog-col-description"/);
-  assert.match(styles, /\.blog-col-city \{ width: 145px; \}/);
-  assert.match(styles, /\.blog-col-description \{ width: 260px; \}/);
+  assert.match(styles, /\.blog-col-time \{ width: 60px; \}/);
+  assert.match(styles, /\.blog-col-city \{ width: 110px; \}/);
+  assert.match(styles, /\.blog-col-description \{ width: 315px; \}/);
   assert.match(app, /entry\.hora \|\| '-'[\s\S]*?entry\.ciudadId[\s\S]*?entry\.descripcion[\s\S]*?blogTypeLabel\(entry\.tipo\)[\s\S]*?entry\.paisId/);
 });
 

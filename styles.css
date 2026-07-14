@@ -1624,9 +1624,9 @@ input[type="checkbox"] {
   table-layout: fixed;
 }
 
-#tabla-blog .blog-col-time { width: 80px; }
-#tabla-blog .blog-col-city { width: 145px; }
-#tabla-blog .blog-col-description { width: 260px; }
+#tabla-blog .blog-col-time { width: 60px; }
+#tabla-blog .blog-col-city { width: 110px; }
+#tabla-blog .blog-col-description { width: 315px; }
 #tabla-blog .blog-col-type { width: 105px; }
 #tabla-blog .blog-col-country { width: 100px; }
 #tabla-blog .blog-col-price { width: 90px; }
@@ -1638,7 +1638,7 @@ input[type="checkbox"] {
 }
 
 #tabla-blog td:nth-child(3) {
-  max-width: 260px;
+  max-width: 315px;
   overflow-wrap: anywhere;
 }
 
