@@ -1,16 +1,16 @@
-const CACHE_NAME = 'gastosdeviaje-700v144-offline-start';
+const CACHE_NAME = 'gastosdeviaje-700v145-offline-start';
 const MAP_RUNTIME_CACHE = 'cuaderno-bitacora-map-runtime-v1';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname;
 const APP_SHELL_REQUIRED = [
   './',
   './index.html',
-  './styles.css?v=700v144',
-  './map-model.js?v=700v144',
-  './app.bundle.js?v=700v144',
+  './styles.css?v=700v145',
+  './map-model.js?v=700v145',
+  './app.bundle.js?v=700v145',
   './vendor/maplibre/maplibre-gl.css?v=5.24.0',
   './vendor/maplibre/maplibre-gl.js?v=5.24.0',
-  './manifest.webmanifest?v=700v144',
+  './manifest.webmanifest?v=700v145',
   './version.txt'
 ];
 const APP_SHELL_OPTIONAL = [
@@ -19,8 +19,8 @@ const APP_SHELL_OPTIONAL = [
   './assets/bitacora-splash.png',
   './assets/bitacora-splash-mobile.png',
   './assets/loading-train.png',
-  './ticket-ocr.js?v=700v144',
-  './image-location.js?v=700v144',
+  './ticket-ocr.js?v=700v145',
+  './image-location.js?v=700v145',
   './ayuda.html',
   './vendor/pdfjs/pdf.min.mjs',
   './vendor/pdfjs/pdf.worker.min.mjs',
@@ -132,15 +132,29 @@ self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
-async function receiveSharedImages(request) {
+async function receiveSharedContent(request) {
   const formData = await request.formData();
-  const files = formData.getAll('photos').filter(file => {
+  const sharedFiles = formData.getAll('photos').filter(file => {
     if (!file || typeof file.arrayBuffer !== 'function' || !file.size) return false;
-    return String(file.type || '').startsWith('image/') || /\.(?:jpe?g|png|webp)$/i.test(String(file.name || ''));
+    return true;
   });
+  const files = sharedFiles.filter(file =>
+    String(file.type || '').startsWith('image/') || /\.(?:jpe?g|png|webp)$/i.test(String(file.name || ''))
+  );
+  const textFiles = sharedFiles.filter(file =>
+    String(file.type || '').toLowerCase() === 'text/plain' || /\.txt$/i.test(String(file.name || ''))
+  );
+  const sharedTextParts = [String(formData.get('text') || '').trim()].filter(Boolean);
+  for (const file of textFiles) {
+    if (file.size > 1024 * 1024) continue;
+    const value = String(await file.text()).trim();
+    if (value) sharedTextParts.push(value);
+  }
+  const title = String(formData.get('title') || '').trim();
+  const sourceUrl = String(formData.get('url') || '').trim();
   const redirectUrl = new URL('./index.html', request.url);
-  if (!files.length) {
-    redirectUrl.searchParams.set('shared_error', 'no-image');
+  if (!files.length && !sharedTextParts.length && !title && !sourceUrl) {
+    redirectUrl.searchParams.set('shared_error', 'unsupported');
     return Response.redirect(redirectUrl.href, 303);
   }
   const id = self.crypto && self.crypto.randomUUID
@@ -167,9 +181,9 @@ async function receiveSharedImages(request) {
   const metadataUrl = new URL(`./__shared/${encodeURIComponent(id)}/metadata.json`, request.url).href;
   await cache.put(metadataUrl, new Response(JSON.stringify({
     id,
-    title: String(formData.get('title') || ''),
-    text: String(formData.get('text') || ''),
-    sourceUrl: String(formData.get('url') || ''),
+    title,
+    text: sharedTextParts.join('\n\n'),
+    sourceUrl,
     files: storedFiles
   }), {
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
@@ -181,7 +195,7 @@ async function receiveSharedImages(request) {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method === 'POST' && url.origin === self.location.origin && url.pathname === SHARE_TARGET_PATH) {
-    event.respondWith(receiveSharedImages(event.request));
+    event.respondWith(receiveSharedContent(event.request));
     return;
   }
   if (event.request.method !== 'GET') return;

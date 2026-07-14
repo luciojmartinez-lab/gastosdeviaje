@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v144';
+const APP_VERSION = '700v145';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1470,7 +1470,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v144');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v145');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1502,7 +1502,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v144');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v145');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1913,7 +1913,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v144');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v145');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -7749,10 +7749,10 @@ function renderBlog() {
       const pointAction = point ? `<button type="button" class="ghost" data-open-blog-point="${entry.id}">Mapa</button> ` : '';
       return `<tr class="blog-day-entry" data-blog-day-entry="${escapeHtml(group.date)}"${isOpen ? '' : ' hidden'}>
       <td>${escapeHtml(entry.hora || '-')}</td>
-      <td>${escapeHtml(blogPlaceName(entry.paisId))}</td>
       <td>${escapeHtml(blogPlaceName(entry.ciudadId))}</td>
-      <td>${escapeHtml(blogTypeLabel(entry.tipo))}${imageCount ? `<span class="blog-entry-note">${imageCount} ${imageCount === 1 ? 'imagen' : 'imágenes'}</span>` : ''}${entry.featuredImage ? '<span class="blog-entry-note">Destacada</span>' : ''}${pointNote}</td>
       <td>${escapeHtml(entry.descripcion || '')}</td>
+      <td>${escapeHtml(blogTypeLabel(entry.tipo))}${imageCount ? `<span class="blog-entry-note">${imageCount} ${imageCount === 1 ? 'imagen' : 'imágenes'}</span>` : ''}${entry.featuredImage ? '<span class="blog-entry-note">Destacada</span>' : ''}${pointNote}</td>
+      <td>${escapeHtml(blogPlaceName(entry.paisId))}</td>
       <td>${entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '-'}</td>
       <td>${entry.wordpressIncluded !== false ? '<span class="badge">Sí</span>' : 'No'}</td>
       <td class="blog-entry-actions">${pointAction}<button type="button" class="ghost" data-edit-blog="${entry.id}">Editar</button> <button type="button" class="ghost danger-text" data-delete-blog="${entry.id}">Eliminar</button></td>
@@ -8420,11 +8420,28 @@ function renderSharedExpenseOptions() {
   select.disabled = !expenses.length;
 }
 
+function sharedPayloadText(payload) {
+  const text = String(payload?.text || '').trim();
+  const sourceUrl = String(payload?.sourceUrl || '').trim();
+  const parts = text ? [text] : [];
+  if (sourceUrl && !text.includes(sourceUrl)) parts.push(sourceUrl);
+  if (!parts.length && String(payload?.title || '').trim()) parts.push(String(payload.title).trim());
+  return parts.join('\n\n');
+}
+
+function sharedPayloadDescription(payload, text = sharedPayloadText(payload)) {
+  const title = cleanSpeechText(payload?.title || '');
+  const firstLine = cleanSpeechText(String(text || '').split(/\r?\n/)[0]);
+  return (title || firstLine || 'Texto compartido').slice(0, 240);
+}
+
 function syncSharedImagesDestination() {
-  const existing = $('#shared-images-destination')?.value === 'expense-existing';
+  const hasImages = Boolean(pendingSharedImagesPayload?.files?.length);
+  const hasText = Boolean(sharedPayloadText(pendingSharedImagesPayload));
+  const existing = hasImages && $('#shared-images-destination')?.value === 'expense-existing';
   if ($('#shared-images-expense-row')) $('#shared-images-expense-row').hidden = !existing;
   if (existing) renderSharedExpenseOptions();
-  const canContinue = Boolean(pendingSharedImagesPayload?.files?.length)
+  const canContinue = (hasImages || hasText)
     && Boolean($('#shared-images-trip')?.value)
     && (!existing || Boolean($('#shared-images-expense')?.value));
   if ($('#shared-images-continue')) $('#shared-images-continue').disabled = !canContinue;
@@ -8432,7 +8449,11 @@ function syncSharedImagesDestination() {
 
 async function updateSharedImagesGpsSummary(payload) {
   const summary = $('#shared-images-summary');
-  if (!summary || !payload?.files?.length) return;
+  if (!summary) return;
+  if (!payload?.files?.length) {
+    summary.textContent = 'Texto listo para añadir al Blog.';
+    return;
+  }
   summary.textContent = `Comprobando GPS de ${payload.files.length} ${payload.files.length === 1 ? 'imagen' : 'imágenes'}...`;
   const points = await Promise.all(payload.files.map(file => imageGpsForFile(file)));
   if (pendingSharedImagesPayload !== payload) return;
@@ -8441,15 +8462,27 @@ async function updateSharedImagesGpsSummary(payload) {
 }
 
 function openSharedImagesDialog(payload) {
+  payload = { ...payload, files: Array.isArray(payload?.files) ? payload.files : [] };
   pendingSharedImagesPayload = payload;
   revokeSharedImagePreviewUrls();
+  const hasImages = payload.files.length > 0;
+  const sharedText = sharedPayloadText(payload);
+  if ($('#shared-content-title')) $('#shared-content-title').textContent = hasImages ? 'Imágenes recibidas' : 'Texto recibido';
+  if ($('#shared-content-intro')) {
+    $('#shared-content-intro').textContent = hasImages
+      ? 'Elige dónde preparar las imágenes compartidas. No se guardará nada hasta que confirmes el formulario correspondiente.'
+      : 'Elige el viaje. El texto se preparará como una nueva entrada del Blog y podrás revisarlo antes de guardarlo.';
+  }
   const preview = $('#shared-images-preview');
   if (preview) {
-    preview.innerHTML = payload.files.map((file, index) => {
-      const url = URL.createObjectURL(file);
-      sharedImagePreviewUrls.push(url);
-      return `<figure><img src="${escapeHtml(url)}" alt="Imagen compartida ${index + 1}"><figcaption>${escapeHtml(file.name || `Imagen ${index + 1}`)}</figcaption></figure>`;
-    }).join('');
+    preview.classList.toggle('shared-text-preview', !hasImages);
+    preview.innerHTML = hasImages
+      ? payload.files.map((file, index) => {
+        const url = URL.createObjectURL(file);
+        sharedImagePreviewUrls.push(url);
+        return `<figure><img src="${escapeHtml(url)}" alt="Imagen compartida ${index + 1}"><figcaption>${escapeHtml(file.name || `Imagen ${index + 1}`)}</figcaption></figure>`;
+      }).join('')
+      : escapeHtml(sharedText).replace(/\n/g, '<br>');
   }
   const tripSelect = $('#shared-images-trip');
   const trips = state.viajes.slice().sort((a, b) => (b.fechaInicio || '').localeCompare(a.fechaInicio || '') || String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
@@ -8463,6 +8496,7 @@ function openSharedImagesDialog(payload) {
     tripSelect.disabled = !trips.length;
   }
   if ($('#shared-images-destination')) $('#shared-images-destination').value = 'blog';
+  if ($('#shared-images-destination-field')) $('#shared-images-destination-field').hidden = !hasImages;
   if ($('#msg-shared-images')) setMessage('#msg-shared-images', '');
   syncSharedImagesDestination();
   const dialog = $('#shared-images-dialog');
@@ -8501,10 +8535,22 @@ async function continueSharedImagesImport() {
   const payload = pendingSharedImagesPayload;
   const tripId = Number($('#shared-images-trip')?.value || 0);
   const destination = $('#shared-images-destination')?.value || 'blog';
-  if (!payload?.files?.length) throw new Error('No hay imágenes compartidas disponibles.');
+  const files = Array.isArray(payload?.files) ? payload.files.slice() : [];
+  const sharedText = sharedPayloadText(payload);
+  if (!files.length && !sharedText) throw new Error('No hay contenido compartido disponible.');
   if (!tripId || !state.viajes.some(trip => Number(trip.id) === tripId)) throw new Error('Elige un viaje.');
-  const files = payload.files.slice();
-  const suggestedDescription = String(payload.text || payload.title || '').trim().slice(0, 240);
+  const suggestedDescription = sharedPayloadDescription(payload, sharedText);
+  if (!files.length) {
+    applySelectedTrip(tripId);
+    closeSharedImagesDialog();
+    setTab('blog');
+    openBlogEntryDialog();
+    setBlogEntryType('texto');
+    if ($('#blog-descripcion')) $('#blog-descripcion').value = suggestedDescription;
+    if ($('#blog-texto')) $('#blog-texto').value = sharedText;
+    scheduleActiveBlogEntryDraftSave();
+    return;
+  }
   if (destination === 'blog') {
     const images = await prepareSharedBlogImages(files);
     applySelectedTrip(tripId);
@@ -8542,12 +8588,12 @@ async function consumeSharedImagesLaunch() {
   if (!id && !errorCode) return;
   replaceSharedLaunchQuery();
   if (errorCode) {
-    alert('No se recibió ninguna imagen compatible desde Android.');
+    alert('No se recibió contenido compatible desde Android.');
     return;
   }
   const metadataUrl = new URL(`./__shared/${encodeURIComponent(id)}/metadata.json`, window.location.href).href;
   const response = await fetch(metadataUrl, { cache: 'no-store' });
-  if (!response.ok) throw new Error('Las imágenes compartidas ya no están disponibles. Vuelve a compartirlas desde Galería.');
+  if (!response.ok) throw new Error('El contenido compartido ya no está disponible. Vuelve a compartirlo desde la aplicación de origen.');
   const metadata = await response.json();
   const descriptors = Array.isArray(metadata.files) ? metadata.files : [];
   const files = await Promise.all(descriptors.map(async (descriptor, index) => {
@@ -8560,7 +8606,7 @@ async function consumeSharedImagesLaunch() {
     });
   }));
   await deleteSharedLaunchCache(metadataUrl, descriptors);
-  if (!files.length) throw new Error('No se recibió ninguna imagen compatible.');
+  if (!files.length && !sharedPayloadText(metadata)) throw new Error('No se recibió contenido compatible.');
   openSharedImagesDialog({ ...metadata, files });
 }
 
@@ -8827,7 +8873,7 @@ async function addExpenseToBlog(gasto) {
   }
   setSelectedTrips([Number(gasto.viajeId)]);
   await loadAll();
-  setTab('blog');
+  setTab('gastos');
   return true;
 }
 

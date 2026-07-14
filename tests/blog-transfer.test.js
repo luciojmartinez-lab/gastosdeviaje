@@ -19,6 +19,19 @@ test('al reemplazar un gasto existente en el blog permite conservar o reemplazar
   assert.match(app, /replacementMode === 'keep-date' \? existing\.hora : expenseBlogTime\(gasto\)/);
 });
 
+test('al anadir un gasto al blog permanece en Gastos', () => {
+  const start = app.indexOf('async function addExpenseToBlog');
+  const end = app.indexOf('function blogPrintImagesHtml', start);
+  const source = app.slice(start, end);
+  assert.match(source, /setTab\('gastos'\)/);
+  assert.doesNotMatch(source, /setTab\('blog'\)/);
+});
+
+test('la tabla del blog prioriza hora, ciudad y descripcion', () => {
+  assert.match(html, /<th>Hora<\/th><th>Ciudad<\/th><th>Descripción<\/th><th>Tipo<\/th><th>País<\/th><th>Precio<\/th>/);
+  assert.match(app, /entry\.hora \|\| '-'[\s\S]*?entry\.ciudadId[\s\S]*?entry\.descripcion[\s\S]*?blogTypeLabel\(entry\.tipo\)[\s\S]*?entry\.paisId/);
+});
+
 test('las transferencias se muestran de antiguas a modernas', () => {
   assert.match(app, /function compareTransferenciasChronologically\(a, b\)/);
   assert.match(app, /state\.transferencias = transferencias\.sort\(compareTransferenciasChronologically\)/);

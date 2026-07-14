@@ -608,7 +608,7 @@ h2 {
 
 @media (max-width: 640px) {
   .app-loading {
-    gap: 12px;
+    gap: 0;
     padding: 22px;
   }
 
@@ -625,17 +625,21 @@ h2 {
   }
 
   .app-loading-cover {
-    width: min(118px, 34vw);
-    background:
-      linear-gradient(135deg, rgba(255, 255, 255, 0.74), rgba(248, 242, 232, 0.48)),
-      url("assets/bitacora-splash-mobile.png") center / cover no-repeat;
+    display: none;
   }
 
   .app-loading-train {
-    top: calc(50% - 146px);
-    width: min(225px, 56vw);
+    top: 46svh;
+    width: min(205px, 46vw);
     opacity: 0.92;
     filter: drop-shadow(0 7px 9px rgba(37, 52, 71, 0.18));
+  }
+
+  .app-loading-title {
+    position: absolute;
+    top: 23svh;
+    right: 18px;
+    left: 18px;
   }
 
   .app-loading-title strong {
@@ -647,7 +651,14 @@ h2 {
   }
 
   .app-loading-progress {
+    position: absolute;
+    top: 72svh;
     width: min(250px, 62vw);
+  }
+
+  .app-loading p {
+    position: absolute;
+    top: calc(72svh + 22px);
   }
 }
 
@@ -1303,6 +1314,18 @@ input[type="checkbox"] {
   margin: 12px 0;
 }
 
+.shared-images-preview.shared-text-preview {
+  display: block;
+  max-height: min(280px, 36dvh);
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .shared-images-preview figure {
   min-width: 0;
   margin: 0;
@@ -1585,7 +1608,7 @@ input[type="checkbox"] {
   min-width: 860px;
 }
 
-#tabla-blog td:nth-child(5) {
+#tabla-blog td:nth-child(3) {
   max-width: 300px;
   overflow-wrap: anywhere;
 }
