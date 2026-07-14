@@ -4,19 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v145">
+  <link rel="manifest" href="manifest.webmanifest?v=700v146">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v145">
+  <link rel="stylesheet" href="styles.css?v=700v146">
+  <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
 </head>
 <body>
 <div id="app-loading" class="app-loading" role="status" aria-live="polite" aria-label="Cargando Cuaderno de Bitácora">
   <div class="app-loading-cover" aria-hidden="true"></div>
-  <div class="app-loading-train" aria-hidden="true"></div>
   <div class="app-loading-title">
     <strong>Cuaderno de Bitácora</strong>
-    <span>por Lucio J. Martínez</span>
+  </div>
+  <div class="app-loading-train-group">
+    <div class="app-loading-train" aria-hidden="true"></div>
+    <div class="app-loading-credit">por Lucio J. Martínez</div>
   </div>
   <div class="app-loading-progress" aria-hidden="true">
     <span></span>
@@ -35,7 +38,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v145</div>
+  <div class="app-version">700v146</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -132,6 +135,16 @@
       </div>
       <div class="table-wrap">
         <table id="tabla-blog">
+          <colgroup>
+            <col class="blog-col-time">
+            <col class="blog-col-city">
+            <col class="blog-col-description">
+            <col class="blog-col-type">
+            <col class="blog-col-country">
+            <col class="blog-col-price">
+            <col class="blog-col-wordpress">
+            <col class="blog-col-actions">
+          </colgroup>
           <thead><tr><th>Hora</th><th>Ciudad</th><th>Descripción</th><th>Tipo</th><th>País</th><th>Precio</th><th>WordPress</th><th>Acciones</th></tr></thead>
           <tbody></tbody>
         </table>
@@ -870,11 +883,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v145"></script>
-<script src="app.bundle.js?v=700v145"></script>
+<script src="map-model.js?v=700v146"></script>
+<script src="app.bundle.js?v=700v146"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v145';
+    const pageVersion = '700v146';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -901,7 +914,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v145', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v146', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

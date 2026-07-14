@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v145';
+const APP_VERSION = '700v146';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1470,7 +1470,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v145');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v146');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1502,7 +1502,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v145');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v146');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1913,7 +1913,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v145');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v146');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4587,6 +4587,9 @@ function renderGastosTabla() {
   applyExpenseViewMode();
   updateMobileClearFilters();
   const rows = filteredGastos();
+  const expensesInBlog = new Set(state.blogEntries
+    .filter(entry => entry.tipo === 'gasto' && entry.sourceGastoId)
+    .map(entry => Number(entry.sourceGastoId)));
   if ($('#btn-last-expense')) $('#btn-last-expense').disabled = !rows.length;
   const byGroup = {};
   rows.forEach(g => {
@@ -4624,12 +4627,13 @@ function renderGastosTabla() {
       totalEur += eur;
       const tr = document.createElement('tr');
       tr.className = 'expense-row';
+      tr.dataset.gastoId = String(g.id);
       const attachmentCount = expenseAttachmentCount(g);
       const filesOption = attachmentCount
         ? `<option value="files">Ver archivos (${attachmentCount})</option>`
         : '<option value="files" disabled>Ver archivos (ninguno)</option>';
       const blogOption = g.viajeId
-        ? '<option value="blog">Añadir al blog</option>'
+        ? `<option value="blog">${expensesInBlog.has(Number(g.id)) ? '✓ Ya está en el Blog (actualizar)' : 'Añadir al Blog'}</option>`
         : '<option value="blog" disabled>Añadir al blog (sin viaje)</option>';
       const attachmentIndicator = attachmentCount
         ? `<button type="button" class="expense-attachment-indicator" data-expense-files="${g.id}" title="${attachmentCount} archivo(s) adjunto(s)" aria-label="Ver ${attachmentCount} archivo(s) adjunto(s)">📎 ${attachmentCount}</button>`
@@ -11045,6 +11049,15 @@ function bindEvents() {
     }
   });
 
+  document.addEventListener('dblclick', event => {
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest('button, select, input, textarea, a')) return;
+    const row = target.closest('#tabla-gastos .expense-row[data-gasto-id]');
+    if (!row) return;
+    event.preventDefault();
+    handleGastoAction(row.dataset.gastoId, 'edit').catch(error => alert(error.message || String(error)));
+  });
+
   document.addEventListener('click', event => {
     const target = event.target;
     if (!(target instanceof Element)) return;
@@ -11562,8 +11575,8 @@ function bindEvents() {
 }
 
 const APP_LOADING_STARTED_AT = Date.now();
-const APP_LOADING_MIN_MS = 1600;
-const APP_LOADING_MAX_MS = 4000;
+const APP_LOADING_MIN_MS = 4000;
+const APP_LOADING_MAX_MS = 8000;
 
 function finishAppLoading() {
   const loading = $('#app-loading');

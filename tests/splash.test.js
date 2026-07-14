@@ -8,7 +8,19 @@ test('el titulo del arranque movil queda por encima del tren', () => {
   const mobileStart = styles.indexOf('@media (max-width: 640px)');
   const mobileEnd = styles.indexOf('.offline-status', mobileStart);
   const mobileStyles = styles.slice(mobileStart, mobileEnd);
-  assert.match(mobileStyles, /\.app-loading-title \{[\s\S]*?top: 23svh/);
-  assert.match(mobileStyles, /\.app-loading-train \{[\s\S]*?top: 46svh/);
+  assert.match(mobileStyles, /\.app-loading-title \{[\s\S]*?top: 22svh/);
+  assert.match(mobileStyles, /\.app-loading-train-group \{[\s\S]*?top: 40svh/);
   assert.match(mobileStyles, /\.app-loading-cover \{[\s\S]*?display: none/);
+});
+
+test('el arranque conserva el entorno, coloca el credito bajo el tren y dura cuatro segundos', async () => {
+  const [html, app, sw] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
+    readFile(new URL('../sw.js', import.meta.url), 'utf8')
+  ]);
+  assert.match(html, /rel="preload"[\s\S]*?bitacora-splash-mobile\.png/);
+  assert.match(html, /app-loading-train-group[\s\S]*?app-loading-train[\s\S]*?app-loading-credit/);
+  assert.match(app, /const APP_LOADING_MIN_MS = 4000/);
+  assert.match(sw, /APP_SHELL_REQUIRED[\s\S]*?bitacora-splash-mobile\.png[\s\S]*?loading-train\.png/);
 });

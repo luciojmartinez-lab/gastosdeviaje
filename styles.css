@@ -457,8 +457,10 @@ h2 {
 }
 
 .app-loading-cover,
+.app-loading-train-group,
 .app-loading-train,
 .app-loading-title,
+.app-loading-credit,
 .app-loading-progress,
 .app-loading p {
   position: relative;
@@ -510,11 +512,19 @@ h2 {
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
-.app-loading-train {
+.app-loading-train-group {
   position: absolute;
   top: calc(50% - 155px);
   left: 50%;
   z-index: 3;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+}
+
+.app-loading-train {
+  position: relative;
   width: min(260px, 42vw);
   aspect-ratio: 285 / 300;
   opacity: 0.9;
@@ -546,10 +556,12 @@ h2 {
   line-height: 0.95;
 }
 
-.app-loading-title span {
+.app-loading-credit {
   color: #5a4637;
   font-size: clamp(1rem, 2.6vw, 1.45rem);
   font-weight: 700;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .app-loading-progress {
@@ -596,13 +608,13 @@ h2 {
 
 @keyframes app-loading-train {
   0% {
-    transform: translate(-52%, 0);
+    transform: translate(-2%, 0);
   }
   50% {
-    transform: translate(-48%, -1px);
+    transform: translate(2%, -1px);
   }
   100% {
-    transform: translate(-52%, 0);
+    transform: translate(-2%, 0);
   }
 }
 
@@ -614,22 +626,25 @@ h2 {
 
   .app-loading::before {
     background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(255, 250, 244, 0.68)),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 250, 244, 0.46)),
       url("assets/bitacora-splash-mobile.png") center / cover no-repeat;
     transform: none;
   }
 
   .app-loading::after {
     height: 28%;
-    background: linear-gradient(180deg, rgba(255, 250, 244, 0), rgba(255, 250, 244, 0.78) 78%);
+    background: linear-gradient(180deg, rgba(255, 250, 244, 0), rgba(255, 250, 244, 0.56) 78%);
   }
 
   .app-loading-cover {
     display: none;
   }
 
+  .app-loading-train-group {
+    top: 40svh;
+  }
+
   .app-loading-train {
-    top: 46svh;
     width: min(205px, 46vw);
     opacity: 0.92;
     filter: drop-shadow(0 7px 9px rgba(37, 52, 71, 0.18));
@@ -637,7 +652,7 @@ h2 {
 
   .app-loading-title {
     position: absolute;
-    top: 23svh;
+    top: 22svh;
     right: 18px;
     left: 18px;
   }
@@ -646,19 +661,19 @@ h2 {
     font-size: clamp(2rem, 12vw, 3.2rem);
   }
 
-  .app-loading-title span {
+  .app-loading-credit {
     font-size: clamp(0.95rem, 5vw, 1.25rem);
   }
 
   .app-loading-progress {
     position: absolute;
-    top: 72svh;
+    top: 76svh;
     width: min(250px, 62vw);
   }
 
   .app-loading p {
     position: absolute;
-    top: calc(72svh + 22px);
+    top: calc(76svh + 22px);
   }
 }
 
@@ -1605,11 +1620,25 @@ input[type="checkbox"] {
 }
 
 #tabla-blog {
-  min-width: 860px;
+  min-width: 1050px;
+  table-layout: fixed;
+}
+
+#tabla-blog .blog-col-time { width: 80px; }
+#tabla-blog .blog-col-city { width: 145px; }
+#tabla-blog .blog-col-description { width: 260px; }
+#tabla-blog .blog-col-type { width: 105px; }
+#tabla-blog .blog-col-country { width: 100px; }
+#tabla-blog .blog-col-price { width: 90px; }
+#tabla-blog .blog-col-wordpress { width: 100px; }
+#tabla-blog .blog-col-actions { width: 170px; }
+
+#tabla-blog .blog-day-entry td:nth-child(2) {
+  overflow-wrap: anywhere;
 }
 
 #tabla-blog td:nth-child(3) {
-  max-width: 300px;
+  max-width: 260px;
   overflow-wrap: anywhere;
 }
 
