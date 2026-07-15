@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v147';
+const APP_VERSION = '700v148';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1470,7 +1470,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v147');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v148');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1502,7 +1502,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v147');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v148');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1913,7 +1913,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v147');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v148');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4652,7 +4652,9 @@ function renderGastosTabla() {
 function drawPieChart(container, data) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
   const w = 360;
-  const h = 240;
+  const legendStartY = 38;
+  const legendRowHeight = 22;
+  const h = Math.max(240, legendStartY + Math.max(0, data.length - 1) * legendRowHeight + 24);
   const r = 74;
   const cx = 92;
   const cy = 118;
@@ -4674,7 +4676,8 @@ function drawPieChart(container, data) {
   });
   data.forEach((item, i) => {
     const color = `hsl(${(i * 57) % 360} 70% 48%)`;
-    svg += `<rect x="190" y="${38 + i * 22}" width="10" height="10" fill="${color}"></rect><text x="208" y="${47 + i * 22}" font-size="8.5" fill="#374151">${escapeHtml(item.label.slice(0, 26))}</text>`;
+    const legendY = legendStartY + i * legendRowHeight;
+    svg += `<rect x="190" y="${legendY}" width="10" height="10" fill="${color}"></rect><text x="208" y="${legendY + 9}" font-size="8.5" fill="#374151">${escapeHtml(item.label.slice(0, 26))}</text>`;
   });
   svg += '</svg>';
   container.innerHTML = svg;
@@ -7168,7 +7171,7 @@ function renderResumen() {
     });
     groupedRows.push(summaryTotalRow('Total', '-'));
     $('#tabla-cat tbody').innerHTML = groupedRows.join('');
-    drawPieChart($('#chart-cat'), pieRows.slice(0, 6).map(row => ({ label: row.sub === '(sin subcat)' ? row.cat : `${row.cat} · ${row.sub}`, value: row.total })));
+    drawPieChart($('#chart-cat'), pieRows.map(row => ({ label: row.sub === '(sin subcat)' ? row.cat : `${row.cat} · ${row.sub}`, value: row.total })));
   }
 
   if (breakdownMode === 'ciudades') {

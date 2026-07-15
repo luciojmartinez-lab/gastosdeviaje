@@ -2058,6 +2058,10 @@ tfoot td { font-weight: 700; }
   margin: 8px auto;
 }
 
+#chart-cat .chart {
+  max-height: none;
+}
+
 .trip-map {
   min-height: 260px;
   margin-top: 10px;
