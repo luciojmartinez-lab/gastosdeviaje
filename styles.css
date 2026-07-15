@@ -1366,6 +1366,7 @@ input[type="checkbox"] {
 }
 
 .shared-images-options,
+#shared-images-description-row,
 #shared-images-expense-row {
   margin-top: 12px;
 }

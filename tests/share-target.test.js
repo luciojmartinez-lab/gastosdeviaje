@@ -57,6 +57,15 @@ test('el service worker recibe texto sin exigir una imagen', async () => {
   assert.deepEqual(metadata.files, []);
 });
 
+test('las fotos compartidas piden una descripción editable y no imponen Texto compartido', () => {
+  assert.match(html, /id="shared-images-description"/);
+  assert.match(html, /Describe la foto antes de continuar/);
+  assert.match(app, /requiresDescription = hasImages && !existing/);
+  assert.match(app, /Escribe una descripción para la foto/);
+  assert.match(app, /#g-desc'\)\) \$\('#g-desc'\)\.value = suggestedDescription/);
+  assert.doesNotMatch(app, /title \|\| firstLine \|\| 'Texto compartido'/);
+});
+
 test('el texto compartido abre una entrada de Blog revisable', () => {
   assert.match(html, /id="shared-content-title"/);
   assert.match(html, /id="shared-images-destination-field"/);

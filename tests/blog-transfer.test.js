@@ -24,15 +24,34 @@ test('al anadir un gasto al blog permanece en Gastos', () => {
   const start = app.indexOf('async function addExpenseToBlog');
   const end = app.indexOf('function blogPrintImagesHtml', start);
   const source = app.slice(start, end);
-  assert.match(source, /setTab\('gastos'\)/);
+  assert.match(source, /setTab\('gastos', \{ expenseId: gasto\.id \}\)/);
   assert.doesNotMatch(source, /setTab\('blog'\)/);
+});
+
+test('al volver a Gastos conserva visible el gasto transferido y la entrada normal muestra el último', () => {
+  assert.match(app, /function scrollToExpense\(expenseId, behavior = 'auto'\)/);
+  assert.match(app, /if \(options\.expenseId\) scrollToExpense\(options\.expenseId\)/);
+  assert.match(app, /else scrollToLastExpense\('auto'\)/);
+});
+
+test('las imágenes del gasto y los tickets que son foto pasan al Blog', () => {
+  assert.match(app, /function expenseBlogImages\(gasto\)/);
+  assert.match(app, /fileLooksLikeImage\(\{ type: gasto\.ticketType, name: gasto\.ticketName \}\)/);
+  assert.match(app, /galleryImages: expenseBlogImages\(gasto\)/);
+  assert.match(app, /imagen adjunta/);
 });
 
 test('los gastos permiten doble clic para editar y señalan si ya están en el Blog', () => {
   assert.match(app, /const expensesInBlog = new Set\(state\.blogEntries/);
   assert.match(app, /✓ Ya está en el Blog \(actualizar\)/);
   assert.match(app, /tr\.dataset\.gastoId = String\(g\.id\)/);
-  assert.match(app, /document\.addEventListener\('dblclick',[\s\S]*?handleGastoAction\(row\.dataset\.gastoId, 'edit'\)/);
+  assert.match(app, /document\.addEventListener\('dblclick',[\s\S]*?handleGastoAction\(expenseRow\.dataset\.gastoId, 'edit'\)/);
+});
+
+test('las entradas del Blog permiten doble clic para editar', () => {
+  assert.match(app, /data-blog-entry-id="\$\{entry\.id\}"/);
+  assert.match(app, /target\.closest\('#tabla-blog \.blog-day-entry\[data-blog-entry-id\]'\)/);
+  assert.match(app, /openBlogEntryDialog\(entry\)/);
 });
 
 test('la tabla del blog prioriza hora, ciudad y descripcion', () => {
