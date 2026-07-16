@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v155';
+const APP_VERSION = '700v156';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1526,7 +1526,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v155');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v156');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1558,7 +1558,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v155');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v156');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1969,7 +1969,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v155');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v156');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5176,7 +5176,7 @@ async function addMapStopToTrip() {
     alert('Selecciona un único viaje para editar sus paradas.');
     return;
   }
-  openRouteDialog(trip);
+  openRouteDialog(trip, { preferConfigured: true, optionMode: 'tripCountries' });
 }
 
 function routeCityOptionsForTrip(trip) {
@@ -5268,7 +5268,7 @@ function openRouteDialog(trip, options = {}) {
     .filter(Boolean);
   const configuredCityIds = tripCityIds(trip).map(Number).filter(Boolean);
   routeEditorState.tripId = Number(trip.id);
-  routeEditorState.cityIds = options.preferConfigured ? configuredCityIds : (mapCityIds.length ? mapCityIds : configuredCityIds);
+  routeEditorState.cityIds = configuredCityIds.length ? configuredCityIds : mapCityIds;
   routeEditorState.dragIndex = null;
   routeEditorState.optionMode = options.optionMode || 'expenses';
   $('#route-dialog-title').textContent = `Añadir / modificar paradas de ${trip.nombre}`;

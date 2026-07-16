@@ -23,3 +23,9 @@ test('el menú móvil reparte el espacio entre los seis botones', () => {
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?nav button \{[\s\S]*?flex: 1 1 0;/);
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?nav \{[\s\S]*?gap: 2px;/);
 });
+
+test('el editor del mapa conserva la ruta planificada y las ciudades repetidas', () => {
+  assert.match(app, /openRouteDialog\(trip, \{ preferConfigured: true, optionMode: 'tripCountries' \}\)/);
+  assert.match(app, /routeEditorState\.cityIds = configuredCityIds\.length \? configuredCityIds : mapCityIds/);
+  assert.doesNotMatch(app, /mapCityIds\.length \? mapCityIds : configuredCityIds/);
+});
