@@ -70,6 +70,12 @@ test('las entradas del Blog permiten doble clic para editar', () => {
   assert.match(app, /openBlogEntryDialog\(entry\)/);
 });
 
+test('el Blog usa el campo de texto normal sin dictado propio', () => {
+  assert.match(html, /<textarea id="blog-texto"/);
+  assert.doesNotMatch(html, /blog-voice|Dictar por voz/);
+  assert.doesNotMatch(app, /SpeechRecognition|startBlogDictation|blogDictationSession/);
+});
+
 test('la tabla del blog prioriza hora, ciudad y descripcion', () => {
   assert.match(html, /<th>Hora<\/th><th>Ciudad<\/th><th>Descripción<\/th><th>Tipo<\/th><th>País<\/th><th>Precio<\/th>/);
   assert.match(html, /class="blog-col-city"[\s\S]*?class="blog-col-description"/);
