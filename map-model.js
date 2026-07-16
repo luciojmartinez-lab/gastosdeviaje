@@ -56,7 +56,7 @@
 
     const marker = record => ({
       record,
-      numberText: String(record.routeNumber || usableRecords.indexOf(record) + 1),
+      numberText: record.kind === 'photo' ? '+' : '•',
       labelLines: hasRoute ? [getCityName(record), getTime(record)] : [getTime(record)]
     });
 

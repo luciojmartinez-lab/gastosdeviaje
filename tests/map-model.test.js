@@ -14,7 +14,7 @@ test('el recorrido diario respeta Barcelona, Varsovia y Torun aunque haya fotos 
   ];
   const model = createDaily(records);
   assert.deepEqual(model.route.map(record => record.ciudadId), [1, 2, 3]);
-  assert.deepEqual(model.markers.map(marker => marker.numberText), ['1', '2', '3']);
+  assert.deepEqual(model.markers.map(marker => marker.numberText), ['•', '•', '•']);
   assert.deepEqual(model.markers[2].labelLines, ['Torun', '21:18']);
 });
 
@@ -66,7 +66,7 @@ test('el PDF recorta solo el mapa y deja fuera la lista incrustada', () => {
   assert.ok(layout.mapTop + layout.mapHeight < layout.sourceHeight);
 });
 
-test('el recorrido diario sigue la hora aunque la numeración general sea distinta', () => {
+test('el recorrido diario sigue la hora y muestra puntos sin números', () => {
   const records = [
     { kind: 'city', ciudadId: 4, cityName: 'Santiago', hora: '08:41', routeNumber: 4, latitude: 42.88, longitude: -8.54 },
     { kind: 'city', ciudadId: 8, cityName: 'Sarria', hora: '13:54', routeNumber: 8, latitude: 42.78, longitude: -7.41 },
@@ -74,5 +74,5 @@ test('el recorrido diario sigue la hora aunque la numeración general sea distin
   ];
   const model = createDaily(records);
   assert.deepEqual(model.route.map(record => record.cityName), ['Santiago', 'Sarria', 'Lugo']);
-  assert.deepEqual(model.markers.map(marker => marker.numberText), ['4', '8', '6']);
+  assert.deepEqual(model.markers.map(marker => marker.numberText), ['•', '•', '•']);
 });

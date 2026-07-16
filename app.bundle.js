@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v157';
+const APP_VERSION = '700v158';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1526,7 +1526,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v157');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v158');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1558,7 +1558,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v157');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v158');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1969,7 +1969,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v157');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v158');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6491,7 +6491,7 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
     ? presentation.numberText
     : (routeGroup.length ? routeGroup.map(entry => entry.index + 1).join('-') : String(index + 1));
   dot.textContent = dailyRecord
-    ? String(dailyRecord.routeNumber || index + 1)
+    ? (dailyRecord.kind === 'photo' ? '+' : '•')
     : (routePoint ? routeNumberText : (pointMarker ? '•' : '+'));
   const label = document.createElement('span');
   label.className = 'trip-vector-marker-label';
@@ -6846,7 +6846,7 @@ function renderTripMap() {
     const dailyRecord = dailyMode ? item.dailyRecord : null;
     const dailyPhoto = Boolean(dailyRecord && dailyRecord.kind === 'photo');
     const markerText = dailyRecord
-      ? (dailyPhoto ? '+' : (presentation ? presentation.numberText : String(dailyRecord.routeNumber || item.index + 1)))
+      ? (dailyPhoto ? '+' : '•')
       : routeStops.length
       ? (presentation && presentation.numberText || routeStops.map(stop => stop.index + 1).join('-'))
       : (pointStops.length ? '•' : '+');
