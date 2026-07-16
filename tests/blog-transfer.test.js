@@ -36,9 +36,25 @@ test('al volver a Gastos conserva visible el gasto transferido y la entrada norm
 
 test('las imágenes del gasto y los tickets que son foto pasan al Blog', () => {
   assert.match(app, /function expenseBlogImages\(gasto\)/);
-  assert.match(app, /fileLooksLikeImage\(\{ type: gasto\.ticketType, name: gasto\.ticketName \}\)/);
-  assert.match(app, /galleryImages: expenseBlogImages\(gasto\)/);
+  assert.match(app, /fileLooksLikeImage\(\{ type: ticketType, name: ticketName \}\)/);
+  assert.match(app, /galleryImages: \(await expenseBlogImages\(gasto\)\)/);
   assert.match(app, /imagen adjunta/);
+});
+
+test('los tickets PDF antiguos pasan al Blog como imagen de su primera página', () => {
+  assert.match(app, /async function expenseTicketBlogImage\(gasto\)/);
+  assert.match(app, /ticketIsPdf/);
+  assert.match(app, /pdf\.getPage\(1\)/);
+  assert.match(app, /pdf-preview/);
+  assert.match(app, /await pdf\.destroy\(\)/);
+});
+
+test('el PDF del Blog usa 80 por ciento para imágenes normales y aprovecha el espacio inferior', () => {
+  assert.match(app, /\.blog-print-image\.landscape \{ width: 80%; \}/);
+  assert.match(app, /\.blog-print-gallery \{ display: grid; width: 80%;/);
+  assert.match(app, /\.blog-print-featured \.blog-print-image \{ width: 100%; max-width: 100%; \}/);
+  assert.match(app, /\.blog-print-entry \{ break-inside: auto; page-break-inside: auto;/);
+  assert.match(app, /class="blog-print-entry-heading"/);
 });
 
 test('los gastos permiten doble clic para editar y señalan si ya están en el Blog', () => {

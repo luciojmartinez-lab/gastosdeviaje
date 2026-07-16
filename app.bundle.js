@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v149';
+const APP_VERSION = '700v150';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -772,22 +772,62 @@ function expenseExtraImages(gasto) {
     ? gasto.extraImages.map(normalizeStoredImageRecord).filter(image => image.data || image.fileRef)
     : [];
 }
-function expenseBlogImages(gasto) {
-  const images = expenseExtraImages(gasto);
+async function expenseTicketBlogImage(gasto) {
   const ticketData = normalizeTicketDataValue(gasto && gasto.ticketData);
-  const ticketIsImage = ticketData && (
-    fileLooksLikeImage({ type: gasto.ticketType, name: gasto.ticketName })
-    || /^data:image\//i.test(ticketData)
-  );
+  if (!ticketData) return null;
+  const ticketInfo = ticketDataInfo(ticketData, gasto.ticketType || 'application/octet-stream');
+  const ticketType = String(gasto.ticketType || ticketInfo.blob.type || '').toLowerCase();
+  const ticketName = String(gasto.ticketName || 'Ticket');
+  const ticketIsImage = fileLooksLikeImage({ type: ticketType, name: ticketName }) || /^data:image\//i.test(ticketInfo.data);
   if (ticketIsImage) {
-    images.unshift(normalizeBlogImageRecord({
+    return normalizeBlogImageRecord({
       id: `expense-ticket-${gasto.id || ''}`,
-      name: gasto.ticketName || 'Ticket',
-      type: gasto.ticketType || 'image/jpeg',
-      data: ticketData,
+      name: ticketName,
+      type: ticketType || 'image/jpeg',
+      size: ticketInfo.blob.size,
+      data: ticketInfo.data,
       createdAt: gasto.createdAt || ''
-    }));
+    });
   }
+  const ticketIsPdf = ticketType.includes('pdf')
+    || /\.pdf$/i.test(ticketName)
+    || /^data:application\/pdf/i.test(ticketInfo.data);
+  if (!ticketIsPdf) return null;
+
+  const pdfjs = await import('./vendor/pdfjs/pdf.min.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdfjs/pdf.worker.min.mjs', window.location.href).href;
+  const pdf = await pdfjs.getDocument({ data: await ticketInfo.blob.arrayBuffer() }).promise;
+  const canvas = document.createElement('canvas');
+  try {
+    const page = await pdf.getPage(1);
+    const original = page.getViewport({ scale: 1 });
+    const scale = Math.min(2.5, 1800 / Math.max(original.width, 1));
+    const viewport = page.getViewport({ scale: Math.max(1.4, scale) });
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    const imageBlob = await canvasToJpeg(canvas, 0.84);
+    return normalizeBlogImageRecord({
+      id: `expense-ticket-${gasto.id || ''}-pdf-preview`,
+      name: ticketName.replace(/\.pdf$/i, '') + ' · página 1.jpg',
+      type: 'image/jpeg',
+      size: imageBlob.size,
+      data: await readBlobAsDataUrl(imageBlob),
+      width: canvas.width,
+      height: canvas.height,
+      createdAt: gasto.createdAt || ''
+    });
+  } finally {
+    canvas.width = 1;
+    canvas.height = 1;
+    await pdf.destroy();
+  }
+}
+
+async function expenseBlogImages(gasto) {
+  const images = expenseExtraImages(gasto);
+  const ticketImage = await expenseTicketBlogImage(gasto);
+  if (ticketImage) images.unshift(ticketImage);
   return images;
 }
 function expenseAttachmentCount(gasto) {
@@ -1488,7 +1528,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v149');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v150');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1520,7 +1560,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v149');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v150');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1931,7 +1971,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v149');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v150');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -8902,7 +8942,7 @@ async function addExpenseToBlog(gasto) {
     gastoImporte: numberValue(gasto.importe),
     gastoMoneda: gasto.moneda || 'EUR',
     gastoImporteEur: toEur(gasto.importe, gasto.moneda),
-    galleryImages: expenseBlogImages(gasto).map(image => normalizeBlogImageRecord({ ...image })),
+    galleryImages: (await expenseBlogImages(gasto)).map(image => normalizeBlogImageRecord({ ...image })),
     wordpressIncluded,
     featuredImage: false
   };
@@ -8953,8 +8993,10 @@ function blogPrintEntryHtml(entry, options = {}) {
     ? `<div class="blog-print-point"><strong>📍 ${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}</strong><a href="${escapeHtml(pointUrl)}">Abrir en OpenStreetMap</a></div>`
     : '';
   return `<article class="blog-print-entry">
-    <div class="blog-print-meta"><strong>${summaryDocumentDate(entry.fecha, true)} · ${escapeHtml(entry.hora || '')}</strong><span>${escapeHtml(place)}</span><span>${escapeHtml(blogTypeLabel(entry.tipo))}${price ? ` · ${price}` : ''}</span></div>
-    <h2>${escapeHtml(entry.descripcion || '')}</h2>
+    <div class="blog-print-entry-heading">
+      <div class="blog-print-meta"><strong>${summaryDocumentDate(entry.fecha, true)} · ${escapeHtml(entry.hora || '')}</strong><span>${escapeHtml(place)}</span><span>${escapeHtml(blogTypeLabel(entry.tipo))}${price ? ` · ${price}` : ''}</span></div>
+      <h2>${escapeHtml(entry.descripcion || '')}</h2>
+    </div>
     ${text}${image}${pointHtml}
   </article>`;
 }
@@ -9225,13 +9267,14 @@ function printBlog() {
     .blog-print-preparations .blog-print-entry { padding-bottom: 4mm; margin-bottom: 4mm; border-bottom: 0; }
     .blog-print-empty { color: #64748b; font-style: italic; }
     .blog-print-day { break-before: page; page-break-before: always; }
-    .blog-print-entry { break-inside: avoid; page-break-inside: avoid; padding: 0 0 7mm; margin: 0 0 7mm; border-bottom: 1px solid #dbe3ef; }
+    .blog-print-entry { break-inside: auto; page-break-inside: auto; padding: 0 0 7mm; margin: 0 0 7mm; border-bottom: 1px solid #dbe3ef; }
+    .blog-print-entry-heading { break-inside: avoid; page-break-inside: avoid; }
     .blog-print-meta { display: flex; flex-wrap: wrap; gap: 3mm 7mm; color: #64748b; font-size: 11px; }
     .blog-print-text { margin-top: 3mm; font-size: 12px; line-height: 1.5; white-space: normal; }
-    .blog-print-image { display: block; height: auto; max-height: 245mm; margin: 4mm auto 0; object-fit: contain; }
-    .blog-print-image.landscape { width: 100%; }
+    .blog-print-image { display: block; height: auto; max-height: 245mm; margin: 4mm auto 0; object-fit: contain; break-inside: avoid; page-break-inside: avoid; }
+    .blog-print-image.landscape { width: 80%; }
     .blog-print-image.portrait { width: 35%; min-width: 50mm; }
-    .blog-print-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; margin-top: 4mm; }
+    .blog-print-gallery { display: grid; width: 80%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; margin: 4mm auto 0; }
     .blog-print-gallery figure { break-inside: avoid; page-break-inside: avoid; margin: 0; }
     .blog-print-gallery .blog-print-image { width: 100%; min-width: 0; max-height: 78mm; margin: 0; }
     .blog-print-point { display: flex; flex-wrap: wrap; gap: 3mm 7mm; align-items: center; margin-top: 4mm; padding: 4mm; border: 1px solid #c4b5fd; border-radius: 3mm; background: #f5f3ff; font-size: 11px; }
@@ -9246,6 +9289,7 @@ function printBlog() {
     .blog-print-map-marker text { fill: #111827; font-size: 13px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 4px; }
     .blog-print-map-marker .number { fill: #fff; stroke: none; font-size: 9px; text-anchor: middle; }
     .blog-print-featured { margin: 0 0 8mm; text-align: center; }
+    .blog-print-featured .blog-print-image { width: 100%; max-width: 100%; }
     .blog-print-featured figcaption { margin-top: 2mm; color: #64748b; font-size: 11px; }
     @media screen { body { max-width: 210mm; margin: 0 auto; padding: 12mm; } }
   </style></head><body>${body}<script>
