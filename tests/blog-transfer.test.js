@@ -49,6 +49,33 @@ test('los tickets PDF antiguos pasan al Blog como imagen de su primera página',
   assert.match(app, /await pdf\.destroy\(\)/);
 });
 
+test('las imágenes del Blog se pueden girar manualmente', () => {
+  assert.match(html, /id="blog-image-rotate-left"/);
+  assert.match(html, /id="blog-image-rotate-right"/);
+  assert.match(app, /async function rotateActiveBlogImage\(direction\)/);
+  assert.match(app, /context\.rotate\(quarterTurn \* Math\.PI \/ 2\)/);
+  assert.match(app, /width: canvas\.width,[\s\S]*height: canvas\.height/);
+  assert.match(app, /isExpenseWithImages = activeBlogEntryType === 'gasto' && hasImages/);
+  assert.match(app, /if \(blogEntryImages\(entry\)\.length\) showBlogImages\(blogEntryImages\(entry\)\)/);
+  assert.match(app, /if \(type === 'gasto' && activeBlogImage\)[\s\S]*galleryImages: activeBlogGalleryImages\.map\(normalizeBlogImageRecord\)/);
+  assert.match(styles, /\.blog-image-rotate-actions/);
+});
+
+test('los puntos geolocalizados admiten notas', () => {
+  assert.match(html, /id="blog-point-notes"/);
+  assert.match(app, /notas: type === 'punto' \? String\(data\.notas \|\| ''\) : ''/);
+  assert.match(app, /values\.notas = String\(\$\('#blog-point-notes'\)/);
+  assert.match(app, /entry\.tipo === 'punto' && entry\.notas/);
+  assert.match(app, /texto: entry\.tipo === 'punto' \? entry\.notas \|\| '' : entry\.texto \|\| ''/);
+});
+
+test('el Blog ya no muestra el mapa automático de puntos pero el PDF lo conserva', () => {
+  assert.doesNotMatch(html, /id="blog-points-overview"/);
+  assert.doesNotMatch(app, /function renderBlogPointsOverview/);
+  assert.match(app, /function blogPrintPointMapHtml\(entries\)/);
+  assert.match(app, /<h1>Mapa de puntos geolocalizados<\/h1>/);
+});
+
 test('el PDF del Blog usa 80 por ciento para imágenes normales y aprovecha el espacio inferior', () => {
   assert.match(app, /\.blog-print-image\.landscape \{ width: 80%; \}/);
   assert.match(app, /\.blog-print-gallery \{ display: grid; width: 80%;/);

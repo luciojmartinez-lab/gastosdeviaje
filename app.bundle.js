@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v154';
+const APP_VERSION = '700v155';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -342,7 +342,7 @@ const ADD_EXPENSE_DRAFT_FIELDS = [
 const BLOG_ENTRY_DRAFT_FIELDS = [
   '#blog-fecha', '#blog-hora', '#blog-tipo', '#blog-pais', '#blog-ciudad',
   '#blog-descripcion', '#blog-wordpress', '#blog-featured', '#blog-en-route', '#blog-texto',
-  '#blog-point-lat', '#blog-point-lng', '#blog-images-map'
+  '#blog-point-notes', '#blog-point-lat', '#blog-point-lng', '#blog-images-map'
 ];
 const INLINE_FORM_DRAFTS = [
   {
@@ -1526,7 +1526,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v154');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v155');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1558,7 +1558,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v154');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v155');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1969,7 +1969,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v154');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v155');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3578,6 +3578,7 @@ async function addBlogEntry(data) {
     paisId: data.paisId ? Number(data.paisId) : null,
     ciudadId: data.ciudadId ? Number(data.ciudadId) : null,
     texto: type === 'texto' ? String(data.texto || '') : '',
+    notas: type === 'punto' ? String(data.notas || '') : '',
     imageName: type === 'imagen' ? String(data.imageName || 'imagen.jpg') : '',
     imageType: type === 'imagen' ? String(data.imageType || 'image/jpeg') : '',
     imageSize: type === 'imagen' ? Math.max(0, Number(data.imageSize) || 0) : 0,
@@ -3635,6 +3636,7 @@ function normalizeImportedBlogEntry(entry = {}) {
     paisId: entry.paisId ? Number(entry.paisId) : null,
     ciudadId: entry.ciudadId ? Number(entry.ciudadId) : null,
     texto: String(entry.texto || ''),
+    notas: type === 'punto' ? String(entry.notas || '') : '',
     imageName: String(entry.imageName || ''),
     imageType: String(entry.imageType || ''),
     imageSize: Math.max(0, Number(entry.imageSize) || 0),
@@ -7819,43 +7821,6 @@ function syncOpenBlogDays(trip, entries) {
   if (filteredDate) openBlogDays.add(filteredDate);
 }
 
-function renderBlogPointsOverview(trip, entries = []) {
-  const section = $('#blog-points-overview');
-  const container = $('#blog-points-map');
-  if (!section || !container) return;
-  const points = trip
-    ? entries.filter(entry => entry.tipo === 'punto' && blogPointCoordinates(entry))
-    : [];
-  section.hidden = !points.length;
-  if (!points.length) {
-    container.innerHTML = '';
-    return;
-  }
-  const width = TRIP_MAP_WIDTH;
-  const height = TRIP_MAP_HEIGHT;
-  const items = points.map(entry => {
-    const point = blogPointCoordinates(entry);
-    return { entry, ciudad: { lat: point.latitude, lng: point.longitude } };
-  });
-  const zoom = items.length === 1 ? 15 : chooseMapZoom(items, width, height);
-  const world = items.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom));
-  const centerWorld = {
-    x: (Math.min(...world.map(point => point.x)) + Math.max(...world.map(point => point.x))) / 2,
-    y: (Math.min(...world.map(point => point.y)) + Math.max(...world.map(point => point.y))) / 2
-  };
-  const center = mapLatLngFromWorldPoint(centerWorld.x, centerWorld.y, zoom);
-  const layer = mapTileLayer(center.latitude, center.longitude, zoom, width, height);
-  const markers = items.map((item, index) => {
-    const point = mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom);
-    const x = point.x - layer.startX;
-    const y = point.y - layer.startY;
-    const labelX = x + 12 > width - 180 ? x - 12 : x + 12;
-    const anchor = x + 12 > width - 180 ? 'end' : 'start';
-    return `<g class="map-marker map-marker-point"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"></circle><text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" class="map-marker-number">${index + 1}</text><text x="${labelX.toFixed(1)}" y="${(y - 10).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(item.entry.descripcion || 'Punto')}</text><title>${escapeHtml(item.entry.descripcion || 'Punto')}</title></g>`;
-  }).join('');
-  container.innerHTML = `<div class="blog-points-map-frame"><div class="map-tiles" aria-hidden="true">${layer.html}</div><svg class="trip-map-overlay" viewBox="0 0 ${width} ${height}" role="img" aria-label="Mapa de puntos geolocalizados">${markers}</svg><div class="map-attribution">© OpenStreetMap · © CARTO</div></div>`;
-}
-
 function blogEntryShareText(entry) {
   const place = [blogPlaceName(entry.paisId), blogPlaceName(entry.ciudadId)].filter(value => value && value !== '-').join(' · ');
   const lines = [
@@ -7863,6 +7828,7 @@ function blogEntryShareText(entry) {
     [summaryDocumentDate(entry.fecha, true), entry.hora || '', place].filter(Boolean).join(' · ')
   ];
   if (entry.tipo === 'texto' && entry.texto) lines.push(String(entry.texto).trim());
+  if (entry.tipo === 'punto' && entry.notas) lines.push(String(entry.notas).trim());
   if (entry.tipo === 'gasto') lines.push(fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR'));
   const pointUrl = blogPointMapUrl(entry);
   if (pointUrl) lines.push(pointUrl);
@@ -7923,14 +7889,12 @@ function renderBlog() {
   syncBlogAvailability();
   if ($('#blog-title')) $('#blog-title').textContent = trip ? `Blog · ${trip.nombre}` : 'Blog';
   if (!trip) {
-    renderBlogPointsOverview(null, []);
     syncBlogFilterOptions(null, []);
     if ($('#blog-status')) $('#blog-status').textContent = 'Selecciona exactamente un viaje para consultar su blog.';
     tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">El Blog solo está disponible con un único viaje seleccionado.</td></tr>';
     return;
   }
   const entries = blogEntriesForTrip(trip.id);
-  renderBlogPointsOverview(trip, entries);
   syncBlogFilterOptions(trip, entries);
   syncOpenBlogDays(trip, entries);
   const filteredEntries = filteredBlogEntries(entries);
@@ -7960,11 +7924,12 @@ function renderBlog() {
       const point = blogPointCoordinates(entry);
       const pointNote = point ? `<span class="blog-entry-note">${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}</span>` : '';
       const routeNote = entry.enRuta ? '<span class="blog-entry-note blog-entry-route-note">En ruta</span>' : '';
+      const notes = entry.tipo === 'punto' && String(entry.notas || '').trim();
       const pointOption = point ? '<option value="map">Mapa</option>' : '';
       return `<tr class="blog-day-entry" data-blog-day-entry="${escapeHtml(group.date)}" data-blog-entry-id="${entry.id}"${isOpen ? '' : ' hidden'}>
       <td>${escapeHtml(entry.hora || '-')}</td>
       <td>${escapeHtml(blogPlaceName(entry.ciudadId))}</td>
-      <td>${escapeHtml(entry.descripcion || '')}</td>
+      <td>${escapeHtml(entry.descripcion || '')}${notes ? `<span class="blog-entry-note blog-entry-point-notes">${escapeHtml(notes)}</span>` : ''}</td>
       <td>${escapeHtml(blogTypeLabel(entry.tipo))}${imageNote}${entry.featuredImage ? '<span class="blog-entry-note">Destacada</span>' : ''}${routeNote}${pointNote}</td>
       <td>${escapeHtml(blogPlaceName(entry.paisId))}</td>
       <td>${entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '-'}</td>
@@ -8115,6 +8080,7 @@ function clearBlogImageSelection() {
     $('#blog-image-preview').hidden = true;
     $('#blog-image-preview').removeAttribute('src');
   }
+  if ($('#blog-image-rotate-actions')) $('#blog-image-rotate-actions').hidden = true;
   if ($('#blog-gallery-preview')) {
     $('#blog-gallery-preview').hidden = true;
     $('#blog-gallery-preview').innerHTML = '';
@@ -8124,6 +8090,16 @@ function clearBlogImageSelection() {
     $('#blog-images-map').checked = false;
     $('#blog-images-map').indeterminate = false;
   }
+}
+
+function syncBlogImageFieldsForType() {
+  const hasImages = Boolean(activeBlogImage);
+  const isImageEntry = activeBlogEntryType === 'imagen';
+  const isExpenseWithImages = activeBlogEntryType === 'gasto' && hasImages;
+  if ($('#blog-image-fields')) $('#blog-image-fields').hidden = !isImageEntry && !isExpenseWithImages;
+  if ($('#blog-image-label')) $('#blog-image-label').textContent = isExpenseWithImages ? 'Imágenes adjuntas del gasto' : 'Imagen';
+  if ($('#blog-image-picker-actions')) $('#blog-image-picker-actions').hidden = !isImageEntry;
+  if ($('#blog-image-gps-help')) $('#blog-image-gps-help').hidden = !isImageEntry;
 }
 
 function showBlogImages(images = []) {
@@ -8153,6 +8129,7 @@ function showBlogImages(images = []) {
     $('#blog-image-preview').src = normalized[0] ? normalized[0].data : '';
     $('#blog-image-preview').hidden = normalized.length === 0;
   }
+  if ($('#blog-image-rotate-actions')) $('#blog-image-rotate-actions').hidden = normalized.length === 0;
   if ($('#blog-gallery-preview')) {
     $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure class="${index === 0 ? 'is-primary' : ''}"><button type="button" data-blog-primary-image="${index}" title="Usar como primera imagen"><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"></button><figcaption>${index === 0 ? '<strong>Primera</strong> · ' : ''}${escapeHtml(image.name)} · ${storedImageCoordinates(image) ? 'GPS' : 'sin GPS'}</figcaption></figure>`).join('');
     $('#blog-gallery-preview').hidden = normalized.length <= 1;
@@ -8166,6 +8143,7 @@ function showBlogImages(images = []) {
     $('#blog-images-map').checked = mappableCount > 0 && enabledCount === mappableCount;
     $('#blog-images-map').indeterminate = enabledCount > 0 && enabledCount < mappableCount;
   }
+  syncBlogImageFieldsForType();
   syncBlogEnRouteOption();
 }
 
@@ -8189,6 +8167,44 @@ function setActiveBlogImagesMapEnabled(enabled) {
 
 function showBlogImage(image) {
   showBlogImages(image ? [image] : []);
+}
+
+async function rotateActiveBlogImage(direction) {
+  if (!activeBlogImage || !activeBlogImage.data) return;
+  const quarterTurn = direction === 'left' ? -1 : 1;
+  const source = new Image();
+  await new Promise((resolve, reject) => {
+    source.onload = resolve;
+    source.onerror = () => reject(new Error('No se pudo abrir la imagen para girarla.'));
+    source.src = activeBlogImage.data;
+  });
+  const sourceWidth = source.naturalWidth || activeBlogImage.width;
+  const sourceHeight = source.naturalHeight || activeBlogImage.height;
+  if (!sourceWidth || !sourceHeight) throw new Error('La imagen no tiene dimensiones válidas.');
+  const canvas = document.createElement('canvas');
+  canvas.width = sourceHeight;
+  canvas.height = sourceWidth;
+  const context = canvas.getContext('2d', { alpha: false });
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.translate(canvas.width / 2, canvas.height / 2);
+  context.rotate(quarterTurn * Math.PI / 2);
+  context.drawImage(source, -sourceWidth / 2, -sourceHeight / 2, sourceWidth, sourceHeight);
+  source.src = '';
+  const blob = await canvasToJpeg(canvas, 0.92);
+  const rotated = normalizeBlogImageRecord({
+    ...activeBlogImage,
+    name: String(activeBlogImage.name || 'imagen').replace(/\.[^.]+$/, '') + '.jpg',
+    type: 'image/jpeg',
+    size: blob.size,
+    data: await readBlobAsDataUrl(blob),
+    fileRef: '',
+    width: canvas.width,
+    height: canvas.height
+  });
+  showBlogImages([rotated, ...activeBlogGalleryImages]);
+  scheduleActiveBlogEntryDraftSave();
+  setMessage('#msg-blog-entry', 'Imagen girada. Guarda la entrada para conservar el cambio.');
 }
 
 function syncBlogEnRouteOption(message = '', isError = false) {
@@ -8243,7 +8259,7 @@ function setBlogEntryType(type) {
   if ($('#blog-entry-fields')) $('#blog-entry-fields').hidden = false;
   if ($('#blog-tipo')) $('#blog-tipo').value = blogTypeLabel(type);
   if ($('#blog-expense-fields')) $('#blog-expense-fields').hidden = type !== 'gasto';
-  if ($('#blog-image-fields')) $('#blog-image-fields').hidden = type !== 'imagen';
+  syncBlogImageFieldsForType();
   if ($('#blog-text-fields')) $('#blog-text-fields').hidden = type !== 'texto';
   if ($('#blog-point-fields')) $('#blog-point-fields').hidden = type !== 'punto';
   if ($('#blog-featured-option')) $('#blog-featured-option').hidden = type !== 'imagen';
@@ -8288,7 +8304,7 @@ function restoreBlogEntryDraft(trip) {
   restoringFormDraft = true;
   try {
     if (type) setBlogEntryType(type);
-    applyFormDraftValues(['#blog-fecha', '#blog-hora', '#blog-descripcion', '#blog-wordpress', '#blog-featured', '#blog-en-route', '#blog-texto'], values);
+    applyFormDraftValues(['#blog-fecha', '#blog-hora', '#blog-descripcion', '#blog-wordpress', '#blog-featured', '#blog-en-route', '#blog-texto', '#blog-point-notes'], values);
     applyFormDraftValues(['#blog-pais'], values);
     renderBlogCities(values['blog-ciudad'] || '');
     applyFormDraftValues(['#blog-ciudad', '#blog-point-lat', '#blog-point-lng', '#blog-images-map'], values);
@@ -8335,6 +8351,7 @@ function openBlogEntryDialog(entry = null) {
   if ($('#blog-hora')) $('#blog-hora').value = entry ? entry.hora : currentLocalTime();
   if ($('#blog-descripcion')) $('#blog-descripcion').value = entry ? entry.descripcion || '' : '';
   if ($('#blog-texto')) $('#blog-texto').value = entry ? entry.texto || '' : '';
+  if ($('#blog-point-notes')) $('#blog-point-notes').value = entry && entry.tipo === 'punto' ? entry.notas || '' : '';
   if ($('#blog-en-route')) $('#blog-en-route').checked = Boolean(entry && entry.enRuta);
   if ($('#blog-point-lat')) $('#blog-point-lat').value = entry && entry.latitude != null ? formatCoordinate(entry.latitude) : '';
   if ($('#blog-point-lng')) $('#blog-point-lng').value = entry && entry.longitude != null ? formatCoordinate(entry.longitude) : '';
@@ -8355,7 +8372,7 @@ function openBlogEntryDialog(entry = null) {
   if (entry) {
     renderBlogCities(entry.ciudadId);
     setBlogEntryType(entry.tipo);
-    if (entry.tipo === 'imagen') showBlogImages(blogEntryImages(entry));
+    if (blogEntryImages(entry).length) showBlogImages(blogEntryImages(entry));
     if (entry.tipo === 'punto') resetBlogPointPicker(entry);
   } else if (lastEntry) {
     renderBlogCities(lastEntry.ciudadId);
@@ -8844,6 +8861,22 @@ async function saveBlogEntryForm() {
       await updateBlogEntry(previousFeatured.id, { featuredImage: false });
     }
   }
+  if (type === 'gasto' && activeBlogImage) {
+    Object.assign(values, {
+      imageName: activeBlogImage.name,
+      imageType: activeBlogImage.type,
+      imageSize: activeBlogImage.size,
+      imageData: activeBlogImage.data,
+      imageWidth: activeBlogImage.width,
+      imageHeight: activeBlogImage.height,
+      imageId: activeBlogImage.id || '',
+      imageLatitude: activeBlogImage.latitude,
+      imageLongitude: activeBlogImage.longitude,
+      imageLocationSource: activeBlogImage.locationSource || '',
+      imageMapEnabled: activeBlogImage.mapEnabled === true,
+      galleryImages: activeBlogGalleryImages.map(normalizeBlogImageRecord)
+    });
+  }
   if (type === 'punto') {
     const point = blogPointFieldCoordinates();
     if (!point) throw new Error('Marca un punto válido en el mapa');
@@ -8856,6 +8889,7 @@ async function saveBlogEntryForm() {
     if (duplicate) throw new Error(`Ya existe el punto «${duplicate.descripcion}» a menos de 30 metros.`);
     values.latitude = point.latitude;
     values.longitude = point.longitude;
+    values.notas = String($('#blog-point-notes') ? $('#blog-point-notes').value : '').trim();
   }
   if (current) {
     if (type === 'gasto') {
@@ -8983,7 +9017,7 @@ function blogPrintEntryHtml(entry, options = {}) {
   const pointUrl = entry.tipo === 'punto' ? blogPointMapUrl(entry) : '';
   const point = blogPointCoordinates(entry);
   const pointHtml = point && pointUrl
-    ? `<div class="blog-print-point"><strong>📍 ${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}</strong><a href="${escapeHtml(pointUrl)}">Abrir en OpenStreetMap</a></div>`
+    ? `<div class="blog-print-point"><strong>📍 ${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}</strong>${entry.tipo === 'punto' && entry.notas ? `<p>${escapeHtml(entry.notas).replace(/\r?\n/g, '<br>')}</p>` : ''}<a href="${escapeHtml(pointUrl)}">Abrir en OpenStreetMap</a></div>`
     : '';
   return `<article class="blog-print-entry">
     <div class="blog-print-entry-heading">
@@ -9131,7 +9165,8 @@ function wordpressExportEntry(entry, trip) {
     descripcion: entry.descripcion || '',
     pais: blogPlaceName(entry.paisId) === '-' ? '' : blogPlaceName(entry.paisId),
     ciudad: blogPlaceName(entry.ciudadId) === '-' ? '' : blogPlaceName(entry.ciudadId),
-    texto: entry.texto || '',
+    texto: entry.tipo === 'punto' ? entry.notas || '' : entry.texto || '',
+    notas: entry.tipo === 'punto' ? entry.notas || '' : '',
     gastoImporte: numberValue(entry.gastoImporte),
     gastoMoneda: entry.gastoMoneda || 'EUR',
     imageName: primaryImage.imageName || '',
@@ -9271,6 +9306,7 @@ function printBlog() {
     .blog-print-gallery figure { break-inside: avoid; page-break-inside: avoid; margin: 0; }
     .blog-print-gallery .blog-print-image { width: 100%; min-width: 0; max-height: 78mm; margin: 0; }
     .blog-print-point { display: flex; flex-wrap: wrap; gap: 3mm 7mm; align-items: center; margin-top: 4mm; padding: 4mm; border: 1px solid #c4b5fd; border-radius: 3mm; background: #f5f3ff; font-size: 11px; }
+    .blog-print-point p { flex-basis: 100%; margin: 0; white-space: pre-line; }
     .blog-print-point a { color: #5b21b6; }
     .blog-print-map { break-before: page; page-break-before: always; }
     .blog-print-map-frame { position: relative; width: 100%; height: 118mm; overflow: hidden; border: 1px solid #dbe3ef; border-radius: 3mm; background: #cfe8f3; }
@@ -10541,6 +10577,20 @@ function bindEvents() {
   $('#blog-image-file').onchange = () => selectBlogImage($('#blog-image-file'), $('#blog-image-camera'));
   $('#blog-image-gallery').onchange = () => selectBlogGallery($('#blog-image-gallery'));
   $('#blog-image-camera').onchange = () => selectBlogImage($('#blog-image-camera'), $('#blog-image-file'), { useCurrentLocation: true, fromCamera: true });
+  $('#blog-image-rotate-left').onclick = async () => {
+    try {
+      await rotateActiveBlogImage('left');
+    } catch (error) {
+      setMessage('#msg-blog-entry', error.message || String(error), true);
+    }
+  };
+  $('#blog-image-rotate-right').onclick = async () => {
+    try {
+      await rotateActiveBlogImage('right');
+    } catch (error) {
+      setMessage('#msg-blog-entry', error.message || String(error), true);
+    }
+  };
   $('#blog-save-original').onclick = saveBlogCameraOriginal;
   $('#blog-gallery-preview').onclick = event => {
     const button = event.target.closest('[data-blog-primary-image]');

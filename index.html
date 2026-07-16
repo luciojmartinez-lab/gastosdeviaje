@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v154">
+  <link rel="manifest" href="manifest.webmanifest?v=700v155">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v154">
+  <link rel="stylesheet" href="styles.css?v=700v155">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -38,7 +38,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v154</div>
+  <div class="app-version">700v155</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -149,10 +149,6 @@
           <tbody></tbody>
         </table>
       </div>
-      <section id="blog-points-overview" class="blog-points-overview" hidden>
-        <h3>Mapa de puntos geolocalizados</h3>
-        <div id="blog-points-map"></div>
-      </section>
       <div class="actions blog-bottom-actions">
         <button class="btn" id="btn-blog-add-bottom" type="button">Añadir entrada</button>
         <button class="btn ghost" id="btn-blog-pdf-bottom" type="button">Ver en PDF</button>
@@ -659,8 +655,8 @@
         <input id="blog-gasto-precio" readonly>
       </div>
       <div id="blog-image-fields" class="blog-image-fields" hidden>
-        <label>Imagen</label>
-        <div class="trip-document-picker-actions blog-image-picker-actions">
+        <label id="blog-image-label">Imagen</label>
+        <div id="blog-image-picker-actions" class="trip-document-picker-actions blog-image-picker-actions">
           <label class="btn ghost trip-document-picker">Archivo (con GPS)
             <input type="file" id="blog-image-file">
           </label>
@@ -671,13 +667,18 @@
             <input type="file" id="blog-image-camera" accept="image/*" capture="environment">
           </label>
         </div>
-        <p class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
+        <p id="blog-image-gps-help" class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
         <p id="blog-image-status" class="small">Ninguna imagen seleccionada.</p>
         <div id="blog-original-actions" class="blog-original-actions" hidden>
           <button type="button" class="btn ghost" id="blog-save-original">Guardar original en Fotos</button>
           <span id="blog-original-status" class="small"></span>
         </div>
         <img id="blog-image-preview" class="blog-image-preview" alt="Vista previa" hidden>
+        <div id="blog-image-rotate-actions" class="actions blog-image-rotate-actions" hidden>
+          <button type="button" class="btn ghost" id="blog-image-rotate-left">Girar a la izquierda</button>
+          <button type="button" class="btn ghost" id="blog-image-rotate-right">Girar a la derecha</button>
+          <span class="small">En una galería, gira la imagen que aparece como primera.</span>
+        </div>
         <div id="blog-gallery-preview" class="blog-gallery-preview" hidden></div>
         <p class="small">En una galería, toca una miniatura para colocarla como primera. Si marcas «Usar como imagen destacada», esa será la foto destacada.</p>
         <label class="check-option photo-map-option" id="blog-images-map-option" hidden><input type="checkbox" id="blog-images-map"> Añadir las fotos al mapa</label>
@@ -688,6 +689,8 @@
         <textarea id="blog-texto" placeholder="Escribe el comentario del viaje..."></textarea>
       </div>
       <div id="blog-point-fields" class="blog-point-fields" hidden>
+        <label for="blog-point-notes">Notas del punto</label>
+        <textarea id="blog-point-notes" rows="4" placeholder="Añade información sobre este lugar..."></textarea>
         <div class="row blog-point-coordinates">
           <div><label for="blog-point-lat">Latitud</label><input type="number" step="0.000001" min="-90" max="90" id="blog-point-lat" placeholder="40.4138"></div>
           <div><label for="blog-point-lng">Longitud</label><input type="number" step="0.000001" min="-180" max="180" id="blog-point-lng" placeholder="-3.6921"></div>
@@ -888,11 +891,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v154"></script>
-<script src="app.bundle.js?v=700v154"></script>
+<script src="map-model.js?v=700v155"></script>
+<script src="app.bundle.js?v=700v155"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v154';
+    const pageVersion = '700v155';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -919,7 +922,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v154', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v155', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
