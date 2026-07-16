@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v156';
+const APP_VERSION = '700v157';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1526,7 +1526,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v156');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v157');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1558,7 +1558,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v156');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v157');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1969,7 +1969,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v156');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v157');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5600,10 +5600,11 @@ function combineDailyMapRecords(exactRecords = [], cityRecords = [], routeOrder 
   const routeIndex = record => routeOrder.has(Number(record.ciudadId))
     ? Number(routeOrder.get(Number(record.ciudadId)))
     : Number.POSITIVE_INFINITY;
+  const chronology = record => `${record.fecha || ''}T${record.hora || '99:99'}`;
   const records = [...cityRecords, ...exactRecords].sort((a, b) =>
-    routeIndex(a) - routeIndex(b)
+    chronology(a).localeCompare(chronology(b))
     || Number(b.kind === 'city') - Number(a.kind === 'city')
-    || `${a.fecha || ''}T${a.hora || '00:00'}`.localeCompare(`${b.fecha || ''}T${b.hora || '00:00'}`)
+    || routeIndex(a) - routeIndex(b)
     || String(a.key || '').localeCompare(String(b.key || ''))
   ).map(record => ({
     ...record,

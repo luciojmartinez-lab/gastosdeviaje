@@ -65,3 +65,14 @@ test('el PDF recorta solo el mapa y deja fuera la lista incrustada', () => {
   assert.equal(layout.imageOffsetPercent, (86 / 756) * 100);
   assert.ok(layout.mapTop + layout.mapHeight < layout.sourceHeight);
 });
+
+test('el recorrido diario sigue la hora aunque la numeración general sea distinta', () => {
+  const records = [
+    { kind: 'city', ciudadId: 4, cityName: 'Santiago', hora: '08:41', routeNumber: 4, latitude: 42.88, longitude: -8.54 },
+    { kind: 'city', ciudadId: 8, cityName: 'Sarria', hora: '13:54', routeNumber: 8, latitude: 42.78, longitude: -7.41 },
+    { kind: 'city', ciudadId: 6, cityName: 'Lugo', hora: '15:30', routeNumber: 6, latitude: 43.01, longitude: -7.56 }
+  ];
+  const model = createDaily(records);
+  assert.deepEqual(model.route.map(record => record.cityName), ['Santiago', 'Sarria', 'Lugo']);
+  assert.deepEqual(model.markers.map(marker => marker.numberText), ['4', '8', '6']);
+});

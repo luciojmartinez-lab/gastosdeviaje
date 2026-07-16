@@ -29,3 +29,11 @@ test('el editor del mapa conserva la ruta planificada y las ciudades repetidas',
   assert.match(app, /routeEditorState\.cityIds = configuredCityIds\.length \? configuredCityIds : mapCityIds/);
   assert.doesNotMatch(app, /mapCityIds\.length \? mapCityIds : configuredCityIds/);
 });
+
+test('el mapa diario ordena la línea por hora y conserva el número de parada', () => {
+  const start = app.indexOf('function combineDailyMapRecords');
+  const end = app.indexOf('function dailyMapItem', start);
+  const source = app.slice(start, end);
+  assert.ok(source.indexOf('chronology(a).localeCompare(chronology(b))') < source.indexOf('routeIndex(a) - routeIndex(b)'));
+  assert.match(source, /routeNumber: Number\.isFinite\(routeIndex\(record\)\) \? routeIndex\(record\) \+ 1 : null/);
+});
