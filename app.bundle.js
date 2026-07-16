@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v151';
+const APP_VERSION = '700v152';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -61,7 +61,6 @@ const blogPointPickerState = {
 const routeEditorState = {
   tripId: null,
   cityIds: [],
-  modes: [],
   dragIndex: null,
   optionMode: 'expenses'
 };
@@ -1529,7 +1528,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v151');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v152');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1561,7 +1560,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v151');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v152');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1972,7 +1971,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v151');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v152');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5210,27 +5209,14 @@ function routeCityOptionsHtml(options, selectedId = '') {
     .join('')}`;
 }
 
-function routeModeOptionsHtml(selectedMode = 'road') {
-  const selected = normalizeRouteMode(selectedMode);
-  return [
-    ['road', 'Carretera (ruta real)'],
-    ['train', 'Tren (aproximada)'],
-    ['direct', 'Línea directa']
-  ].map(([value, label]) => `<option value="${value}"${selected === value ? ' selected' : ''}>${label}</option>`).join('');
-}
-
 function moveRouteStop(fromIndex, toIndex) {
   const from = Number(fromIndex);
   const to = Math.max(0, Math.min(routeEditorState.cityIds.length - 1, Number(toIndex)));
   if (!Number.isInteger(from) || !Number.isInteger(to) || from === to) return;
   const ids = routeEditorState.cityIds.slice();
-  const modes = routeEditorState.modes.slice();
   const [item] = ids.splice(from, 1);
-  const [mode] = modes.splice(from, 1);
   ids.splice(to, 0, item);
-  modes.splice(to, 0, mode);
   routeEditorState.cityIds = ids;
-  routeEditorState.modes = modes;
 }
 
 function renderRouteDialog() {
@@ -5243,7 +5229,6 @@ function renderRouteDialog() {
     <tr class="route-stop-row" draggable="true" data-route-row="${index}">
       <td><input type="number" min="1" max="${Math.max(1, routeEditorState.cityIds.length)}" value="${index + 1}" data-route-position="${index}" aria-label="Número de parada"></td>
       <td><select data-route-city="${index}" aria-label="Ciudad de la parada ${index + 1}">${optionHtml(id)}</select></td>
-      <td>${index === 0 ? '<span class="small">Inicio</span>' : `<select data-route-mode="${index}" aria-label="Trayecto hasta la parada ${index + 1}">${routeModeOptionsHtml(routeEditorState.modes[index])}</select>`}</td>
       <td class="route-stop-actions">
         <button type="button" class="ghost icon-btn" data-route-up="${index}" title="Subir parada">↑</button>
         <button type="button" class="ghost icon-btn" data-route-down="${index}" title="Bajar parada">↓</button>
@@ -5252,40 +5237,21 @@ function renderRouteDialog() {
     </tr>
   `).join('');
   body.innerHTML = `
-    <p class="small route-help">Edita el orden y el medio de cada trayecto. La carretera sigue calles reales; el tren se representa con una curva aproximada.</p>
+    <p class="small route-help">Edita el orden de la ruta. Puedes arrastrar filas en PC, cambiar el número de parada o usar subir/bajar.</p>
     <div class="table-wrap route-table-wrap">
       <table class="route-stops-table">
-        <thead><tr><th>Nº</th><th>Ciudad</th><th>Desde anterior</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>Nº</th><th>Ciudad</th><th>Acciones</th></tr></thead>
         <tbody>
-          ${rows || '<tr><td colspan="4" class="small">Todavía no hay paradas planificadas.</td></tr>'}
+          ${rows || '<tr><td colspan="3" class="small">Todavía no hay paradas planificadas.</td></tr>'}
           <tr class="route-add-row">
             <td>${routeEditorState.cityIds.length + 1}</td>
             <td><select id="route-add-city" aria-label="Añadir ciudad">${optionHtml('')}</select></td>
-            <td><select id="route-add-mode" aria-label="Medio para la nueva parada">${routeModeOptionsHtml('road')}</select></td>
             <td><button type="button" class="btn ghost icon-btn" data-route-add="1" title="Añadir parada">+</button></td>
           </tr>
         </tbody>
       </table>
     </div>
   `;
-}
-
-async function fetchRoadRouteCoordinates(from, to) {
-  const coordinates = `${Number(from.lng)},${Number(from.lat)};${Number(to.lng)},${Number(to.lat)}`;
-  const url = `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=simplified&geometries=geojson&steps=false`;
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 15_000);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const result = await response.json();
-    const route = result && result.code === 'Ok' && result.routes && result.routes[0];
-    const points = route && route.geometry && route.geometry.coordinates;
-    if (!Array.isArray(points) || points.length < 2) throw new Error('El servicio no devolvió un trazado');
-    return points.map(point => [Number(point[0]), Number(point[1])]).filter(point => point.every(Number.isFinite));
-  } finally {
-    window.clearTimeout(timer);
-  }
 }
 
 function openRouteDialog(trip, options = {}) {
@@ -5299,12 +5265,6 @@ function openRouteDialog(trip, options = {}) {
   const configuredCityIds = tripCityIds(trip).map(Number).filter(Boolean);
   routeEditorState.tripId = Number(trip.id);
   routeEditorState.cityIds = options.preferConfigured ? configuredCityIds : (mapCityIds.length ? mapCityIds : configuredCityIds);
-  const storedLegs = tripRouteLegs(trip);
-  routeEditorState.modes = routeEditorState.cityIds.map((cityId, index, ids) => {
-    if (!index) return 'direct';
-    const matching = storedLegs.find(leg => Number(leg.fromCityId) === Number(ids[index - 1]) && Number(leg.toCityId) === Number(cityId));
-    return matching ? matching.mode : 'road';
-  });
   routeEditorState.dragIndex = null;
   routeEditorState.optionMode = options.optionMode || 'expenses';
   $('#route-dialog-title').textContent = `Añadir / modificar paradas de ${trip.nombre}`;
@@ -5318,7 +5278,6 @@ function closeRouteDialog() {
   const dialog = $('#route-dialog');
   routeEditorState.tripId = null;
   routeEditorState.cityIds = [];
-  routeEditorState.modes = [];
   routeEditorState.dragIndex = null;
   routeEditorState.optionMode = 'expenses';
   if (!dialog) return;
@@ -5335,32 +5294,9 @@ async function saveRouteDialog() {
     const city = state.lugares.find(l => Number(l.id) === Number(id));
     if (city && city.parentId) paisIds.add(Number(city.parentId));
   });
-  setMessage('#msg-route-dialog', 'Calculando los trayectos por carretera…');
-  const previousLegs = tripRouteLegs(trip);
-  const routeLegs = [];
-  for (let index = 1; index < cityIds.length; index += 1) {
-    const fromCityId = cityIds[index - 1];
-    const toCityId = cityIds[index];
-    const mode = normalizeRouteMode(routeEditorState.modes[index]);
-    const previous = previousLegs.find(leg => leg.fromCityId === fromCityId && leg.toCityId === toCityId && leg.mode === mode);
-    let coordinates = previous ? previous.coordinates : [];
-    if (mode === 'road' && !coordinates.length) {
-      const from = state.lugares.find(item => Number(item.id) === fromCityId);
-      const to = state.lugares.find(item => Number(item.id) === toCityId);
-      if (lugarHasCoords(from) && lugarHasCoords(to)) {
-        try {
-          coordinates = await fetchRoadRouteCoordinates(from, to);
-        } catch (error) {
-          console.warn('No se pudo calcular el trayecto por carretera', error);
-        }
-      }
-    }
-    routeLegs.push({ fromCityId, toCityId, mode, coordinates });
-  }
   await updateViaje(trip.id, {
     ciudadIds: cityIds,
     paisIds: [...paisIds],
-    routeLegs,
     updatedAt: new Date().toISOString()
   });
   tripMapState.showPlanned = true;
@@ -6258,23 +6194,17 @@ async function createTripOverviewMapBlogImage(trip) {
     const point = mapWorldPoint(item.latitude, item.longitude, zoom);
     return { ...item, x: point.x - layer.startX, y: headerHeight + point.y - layer.startY };
   });
-  tripRouteSegments(mapModel.routeStops, trip).forEach(segment => {
+  if (projectedStops.length > 1) {
     context.beginPath();
-    segment.coordinates.forEach(([lng, lat], index) => {
-      const point = mapWorldPoint(lat, lng, zoom);
-      const x = point.x - layer.startX;
-      const y = headerHeight + point.y - layer.startY;
-      if (index) context.lineTo(x, y);
-      else context.moveTo(x, y);
-    });
+    projectedStops.forEach((stop, index) => index ? context.lineTo(stop.x, stop.y) : context.moveTo(stop.x, stop.y));
     context.lineWidth = 4;
     context.lineJoin = 'round';
     context.lineCap = 'round';
-    context.strokeStyle = segment.mode === 'train' ? '#7c3aed' : segment.mode === 'road' ? '#1d4ed8' : '#64748b';
-    context.setLineDash(segment.mode === 'train' ? [8, 7] : segment.mode === 'direct' ? [3, 7] : []);
+    context.strokeStyle = '#1d4ed8';
+    context.setLineDash([10, 8]);
     context.stroke();
-  });
-  context.setLineDash([]);
+    context.setLineDash([]);
+  }
   const projectedByIndex = new Map(projectedStops.map(stop => [stop._mapIndex, stop]));
   mapModel.markerGroups.forEach(markerGroup => {
     const group = markerGroup.entries.map(entry => projectedByIndex.get(entry._mapIndex)).filter(Boolean);
@@ -6539,7 +6469,7 @@ function updateTripVectorZoomLabel(map, baseZoom) {
   label.textContent = `Z ${roundedZoom} ${Math.abs(roundedDelta) < 0.05 ? 'auto' : `${roundedDelta > 0 ? '+' : ''}${roundedDelta}`}`;
 }
 
-function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawRoute, baseZoom, trip }) {
+function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawRoute, baseZoom }) {
   if (!container || !window.maplibregl || !withCoords.length) return false;
   if (typeof window.maplibregl.supported === 'function' && !window.maplibregl.supported()) {
     tripVectorMapFailed = true;
@@ -6632,27 +6562,30 @@ function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawR
     window.clearTimeout(startupTimer);
     host.querySelector('.trip-vector-loading')?.remove();
     map.resize();
-    const routeSegments = dailyMode
-      ? (dailyRoute.length > 1 ? [{ mode: 'direct', coordinates: dailyRoute.map(record => [Number(record.longitude), Number(record.latitude)]) }] : [])
-      : (shouldDrawRoute ? tripRouteSegments(tripModel.routeStops, trip) : []);
-    routeSegments.forEach((segment, index) => {
-      const sourceId = `trip-route-${index}`;
-      map.addSource(sourceId, {
+    const routeCoordinates = dailyMode
+      ? dailyRoute.map(record => [Number(record.longitude), Number(record.latitude)])
+      : tripModel.routeStops.map(stop => [Number(stop.longitude), Number(stop.latitude)]);
+    if ((dailyMode ? dailyRoute.length > 1 : shouldDrawRoute) && routeCoordinates.length > 1) {
+      map.addSource('trip-route', {
         type: 'geojson',
-        data: { type: 'Feature', properties: { mode: segment.mode }, geometry: { type: 'LineString', coordinates: segment.coordinates } }
-      });
-      map.addLayer({
-        id: `${sourceId}-line`,
-        type: 'line',
-        source: sourceId,
-        paint: {
-          'line-color': segment.mode === 'train' ? '#7c3aed' : segment.mode === 'road' ? '#1d4ed8' : '#64748b',
-          'line-width': 4,
-          'line-opacity': 0.82,
-          'line-dasharray': segment.mode === 'train' ? [2, 2] : segment.mode === 'direct' ? [1, 2] : [1, 0.01]
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'LineString', coordinates: routeCoordinates }
         }
       });
-    });
+      map.addLayer({
+        id: 'trip-route-line',
+        type: 'line',
+        source: 'trip-route',
+        paint: {
+          'line-color': '#1d4ed8',
+          'line-width': 4,
+          'line-opacity': 0.82,
+          'line-dasharray': [2.5, 2]
+        }
+      });
+    }
     if (!storedCenter || storedZoom == null) {
       const bounds = coordinates.reduce(
         (result, point) => result.extend(point),
@@ -6811,18 +6744,9 @@ function renderTripMap() {
     }));
   const dailyRoute = dailyModel ? dailyModel.route : [];
   const routeItems = tripModel ? tripModel.routeStops.map(stop => stop.item) : [];
-  const mapTrip = scopedTrips.length === 1 ? scopedTrips[0] : null;
-  const detailedRouteSegments = dailyMode ? [] : tripRouteSegments(routeItems, mapTrip);
   const routePoints = dailyMode
     ? dailyRoute.map(record => project({ ciudad: { lat: record.latitude, lng: record.longitude } })).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-    : '';
-  const detailedRouteHtml = detailedRouteSegments.map(segment => {
-    const points = segment.coordinates.map(([lng, lat]) => {
-      const point = mapWorldPoint(lat, lng, zoom);
-      return `${(point.x - startX).toFixed(1)},${(point.y - startY).toFixed(1)}`;
-    }).join(' ');
-    return `<polyline points="${points}" class="map-route ${segment.mode}"></polyline>`;
-  }).join('');
+    : routeItems.map(item => item.point).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
   const markers = pointGroups.map(({ items: group, presentation }) => {
     const item = group[0];
     const p = item.point;
@@ -6906,7 +6830,7 @@ function renderTripMap() {
     <div class="trip-map-frame" data-map-pan="1" style="aspect-ratio:${width} / ${height}">
       <div class="map-tiles" aria-hidden="true">${tiles.join('')}</div>
       <svg class="trip-map-overlay" viewBox="0 0 ${width} ${height}" role="img" aria-label="Mapa del viaje">
-        ${dailyMode && dailyRoute.length > 1 && routePoints ? `<polyline points="${routePoints}" class="map-route direct"></polyline>` : (shouldDrawRoute ? detailedRouteHtml : '')}
+        ${(dailyMode ? dailyRoute.length > 1 : shouldDrawRoute && routeItems.length > 1) && routePoints ? `<polyline points="${routePoints}" class="map-route"></polyline>` : ''}
         ${markers}
         ${photoMarkers}
       </svg>
@@ -6920,8 +6844,7 @@ function renderTripMap() {
       withCoords,
       dailyMode,
       shouldDrawRoute,
-      baseZoom,
-      trip: mapTrip
+      baseZoom
     });
   }
   container.querySelectorAll('[data-map-photo-keys]').forEach(marker => {
@@ -7449,7 +7372,6 @@ async function importAll(data) {
       presupuesto: numberValue(v.presupuesto),
       paisIds: tripCountryIds(v),
       ciudadIds: tripCityIds(v),
-      routeLegs: tripRouteLegs(v),
       createdAt: v.createdAt || new Date().toISOString(),
       updatedAt: v.updatedAt || new Date().toISOString()
     };
@@ -7583,7 +7505,6 @@ async function importTripBackup(data, targetTripId) {
   if (sourceTrip.presupuesto != null) tripPatch.presupuesto = numberValue(sourceTrip.presupuesto);
   if (Array.isArray(sourceTrip.paisIds) || sourceTrip.paisId) tripPatch.paisIds = tripCountryIds(sourceTrip);
   if (Array.isArray(sourceTrip.ciudadIds)) tripPatch.ciudadIds = tripCityIds(sourceTrip);
-  if (Array.isArray(sourceTrip.routeLegs)) tripPatch.routeLegs = tripRouteLegs(sourceTrip);
   await updateViaje(targetId, tripPatch);
   const accountMap = {};
   for (const c of (data.cuentas || []).filter(c => Number(c.viajeId) === sourceTripId)) {
@@ -7847,40 +7768,6 @@ function renderBlogPointsOverview(trip, entries = []) {
     return `<g class="map-marker map-marker-point"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"></circle><text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" class="map-marker-number">${index + 1}</text><text x="${labelX.toFixed(1)}" y="${(y - 10).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(item.entry.descripcion || 'Punto')}</text><title>${escapeHtml(item.entry.descripcion || 'Punto')}</title></g>`;
   }).join('');
   container.innerHTML = `<div class="blog-points-map-frame"><div class="map-tiles" aria-hidden="true">${layer.html}</div><svg class="trip-map-overlay" viewBox="0 0 ${width} ${height}" role="img" aria-label="Mapa de puntos geolocalizados">${markers}</svg><div class="map-attribution">© OpenStreetMap · © CARTO</div></div>`;
-}
-
-function approximateTrainCoordinates(start, end, steps = 24) {
-  const dx = end[0] - start[0];
-  const dy = end[1] - start[1];
-  const distance = Math.hypot(dx, dy) || 1;
-  const bend = Math.min(distance * 0.1, 1.8);
-  const offsetX = (-dy / distance) * bend;
-  const offsetY = (dx / distance) * bend;
-  return Array.from({ length: steps + 1 }, (_, index) => {
-    const t = index / steps;
-    const curve = 4 * t * (1 - t);
-    return [start[0] + dx * t + offsetX * curve, start[1] + dy * t + offsetY * curve];
-  });
-}
-
-function tripRouteSegments(stops = [], trip = null) {
-  const legs = tripRouteLegs(trip);
-  const normalized = stops.map(stop => {
-    const city = stop.ciudad || (stop.item && stop.item.ciudad) || {};
-    return {
-      cityId: Number(stop.cityId || city.id),
-      coordinates: [Number(stop.longitude ?? city.lng), Number(stop.latitude ?? city.lat)]
-    };
-  }).filter(stop => stop.cityId && stop.coordinates.every(Number.isFinite));
-  return normalized.slice(1).map((stop, index) => {
-    const previous = normalized[index];
-    const leg = legs.find(item => item.fromCityId === previous.cityId && item.toCityId === stop.cityId) || {};
-    const mode = normalizeRouteMode(leg.mode || 'direct');
-    let coordinates = [previous.coordinates, stop.coordinates];
-    if (mode === 'road' && Array.isArray(leg.coordinates) && leg.coordinates.length > 1) coordinates = leg.coordinates;
-    else if (mode === 'train') coordinates = approximateTrainCoordinates(previous.coordinates, stop.coordinates);
-    return { mode, coordinates };
-  });
 }
 
 function blogEntryShareText(entry) {
@@ -8256,25 +8143,6 @@ function formatSpeechPunctuation(value) {
   return text.replace(/(^|[.!?]\s+|\n+)([a-záéíóúüñ])/g, (match, prefix, letter) =>
     `${prefix}${letter.toLocaleUpperCase('es-ES')}`
   );
-}
-
-function normalizeRouteMode(value) {
-  return ['road', 'train', 'direct'].includes(String(value)) ? String(value) : 'road';
-}
-
-function tripRouteLegs(viaje) {
-  const cityIds = tripCityIds(viaje);
-  const stored = Array.isArray(viaje && viaje.routeLegs) ? viaje.routeLegs : [];
-  return cityIds.slice(1).map((toCityId, index) => {
-    const fromCityId = cityIds[index];
-    const matching = stored.find(leg => Number(leg.fromCityId) === fromCityId && Number(leg.toCityId) === toCityId)
-      || stored[index]
-      || {};
-    const coordinates = Array.isArray(matching.coordinates)
-      ? matching.coordinates.filter(point => Array.isArray(point) && point.length >= 2).map(point => [Number(point[0]), Number(point[1])]).filter(point => point.every(Number.isFinite))
-      : [];
-    return { fromCityId, toCityId, mode: normalizeRouteMode(matching.mode), coordinates };
-  });
 }
 
 function speechComparisonWords(value) {
@@ -10418,9 +10286,7 @@ function printableDocument(section) {
     .map-tiles, .trip-map-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
     .map-tile { position: absolute; object-fit: cover; max-width: none !important; user-select: none; pointer-events: none; }
     .trip-map-overlay { z-index: 2; pointer-events: none; }
-    .map-route { fill: none; stroke: #1d4ed8; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
-    .map-route.train { stroke: #7c3aed; stroke-dasharray: 8 7; }
-    .map-route.direct { stroke: #64748b; stroke-dasharray: 3 7; }
+    .map-route { fill: none; stroke: #1d4ed8; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 10 8; opacity: 0.85; }
     .map-marker circle { fill: #dc2626; stroke: #fff; stroke-width: 3; }
     .map-marker-config circle { fill: #2563eb; }
     .map-marker text { fill: #111827; font-size: 15px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
@@ -11429,10 +11295,6 @@ function bindEvents() {
       routeEditorState.cityIds[index] = Number(target.value);
       return;
     }
-    if (target instanceof HTMLSelectElement && target.dataset.routeMode) {
-      routeEditorState.modes[Number(target.dataset.routeMode)] = normalizeRouteMode(target.value);
-      return;
-    }
     if (target instanceof HTMLInputElement && target.dataset.routePosition) {
       const index = Number(target.dataset.routePosition);
       const next = Math.max(1, Math.min(routeEditorState.cityIds.length, Number(target.value || 1))) - 1;
@@ -11448,7 +11310,6 @@ function bindEvents() {
     if (deleteButton) {
       const index = Number(deleteButton.dataset.routeDelete);
       routeEditorState.cityIds.splice(index, 1);
-      routeEditorState.modes.splice(index, 1);
       renderRouteDialog();
       return;
     }
@@ -11461,7 +11322,6 @@ function bindEvents() {
         return;
       }
       routeEditorState.cityIds.push(cityId);
-      routeEditorState.modes.push(normalizeRouteMode($('#route-add-mode')?.value));
       setMessage('#msg-route-dialog', '');
       renderRouteDialog();
       return;

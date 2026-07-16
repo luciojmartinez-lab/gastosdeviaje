@@ -23,13 +23,11 @@ test('las entradas del Blog se pueden compartir con texto e imágenes', () => {
   assert.match(app, /handleBlogAction\(blogActionId, action\)/);
 });
 
-test('los trayectos admiten carretera real, tren aproximado y línea directa', () => {
-  assert.match(app, /Carretera \(ruta real\)/);
-  assert.match(app, /Tren \(aproximada\)/);
-  assert.match(app, /router\.project-osrm\.org\/route\/v1\/driving/);
-  assert.match(app, /function approximateTrainCoordinates/);
-  assert.match(app, /routeLegs,/);
-  assert.match(styles, /\.map-route\.train/);
-  assert.match(sw, /'router\.project-osrm\.org'/);
-  assert.match(help, /carretera se calcula sobre calles reales de OpenStreetMap/);
+test('los trayectos son líneas rectas discontinuas sin modos de transporte', () => {
+  assert.match(app, /'line-dasharray': \[2\.5, 2\]/);
+  assert.match(styles, /\.map-route \{[\s\S]*stroke-dasharray: 10 8;/);
+  assert.match(app, /context\.setLineDash\(\[10, 8\]\)/);
+  assert.doesNotMatch(app, /router\.project-osrm\.org|Carretera \(ruta real\)|Tren \(aproximada\)/);
+  assert.doesNotMatch(sw, /router\.project-osrm\.org/);
+  assert.match(help, /líneas rectas discontinuas/);
 });

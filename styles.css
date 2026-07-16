@@ -1126,11 +1126,6 @@ input[type="checkbox"] {
 
 .route-stops-table th:nth-child(3),
 .route-stops-table td:nth-child(3) {
-  width: 190px;
-}
-
-.route-stops-table th:nth-child(4),
-.route-stops-table td:nth-child(4) {
   width: 150px;
 }
 
@@ -2382,17 +2377,8 @@ body.map-fullscreen-open {
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 0.85;
+  stroke-dasharray: 10 8;
   filter: drop-shadow(0 1px 2px #ffffff);
-}
-
-.map-route.train {
-  stroke: #7c3aed;
-  stroke-dasharray: 8 7;
-}
-
-.map-route.direct {
-  stroke: #64748b;
-  stroke-dasharray: 3 7;
 }
 
 .map-marker circle {
@@ -3198,12 +3184,7 @@ footer {
 
   .route-stops-table th:nth-child(3),
   .route-stops-table td:nth-child(3) {
-    width: 130px;
-  }
-
-  .route-stops-table th:nth-child(4),
-  .route-stops-table td:nth-child(4) {
-    width: 104px;
+    width: 116px;
   }
 
   .route-stops-table input,
