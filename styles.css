@@ -770,7 +770,9 @@ h2 {
   padding: 7px 9px;
 }
 
-.trip-config-action-select {
+.trip-config-action-select,
+.trip-home-action-select,
+.blog-action-select {
   display: block;
   min-width: 132px;
   margin: 0;
@@ -1124,6 +1126,11 @@ input[type="checkbox"] {
 
 .route-stops-table th:nth-child(3),
 .route-stops-table td:nth-child(3) {
+  width: 190px;
+}
+
+.route-stops-table th:nth-child(4),
+.route-stops-table td:nth-child(4) {
   width: 150px;
 }
 
@@ -2378,6 +2385,16 @@ body.map-fullscreen-open {
   filter: drop-shadow(0 1px 2px #ffffff);
 }
 
+.map-route.train {
+  stroke: #7c3aed;
+  stroke-dasharray: 8 7;
+}
+
+.map-route.direct {
+  stroke: #64748b;
+  stroke-dasharray: 3 7;
+}
+
 .map-marker circle {
   fill: #dc2626;
   stroke: #fff;
@@ -3181,7 +3198,12 @@ footer {
 
   .route-stops-table th:nth-child(3),
   .route-stops-table td:nth-child(3) {
-    width: 116px;
+    width: 130px;
+  }
+
+  .route-stops-table th:nth-child(4),
+  .route-stops-table td:nth-child(4) {
+    width: 104px;
   }
 
   .route-stops-table input,

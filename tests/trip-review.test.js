@@ -12,7 +12,7 @@ const [html, app, styles, help] = await Promise.all([
 test('Revisar viaje tiene diÃ¡logo y acceso desde Viajes', () => {
   assert.match(html, /<dialog id="trip-review-dialog"/);
   assert.match(html, /id="trip-review-body"/);
-  assert.match(app, /data-review-trip="\$\{v\.id\}"/);
+  assert.match(app, /data-trip-home-action="\$\{v\.id\}"/);
   assert.match(app, /<option value="review">Revisar viaje<\/option>/);
   assert.match(app, /openTripReviewDialog\(tripReviewButton\.dataset\.reviewTrip\)/);
   assert.match(app, /if \(action === 'review'\) \{\s+openTripReviewDialog\(trip\.id\);/);
