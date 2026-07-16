@@ -1627,6 +1627,26 @@ input[type="checkbox"] {
   table-layout: fixed;
 }
 
+.blog-en-route-option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 14px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.blog-en-route-option[hidden] {
+  display: none;
+}
+
+.blog-en-route-option .small {
+  flex: 1 1 220px;
+}
+
 #tabla-blog .blog-col-time { width: 60px; }
 #tabla-blog .blog-col-city { width: 110px; }
 #tabla-blog .blog-col-description { width: 315px; }
@@ -2059,6 +2079,10 @@ tfoot td { font-weight: 700; }
   max-height: 380px;
   display: block;
   margin: 8px auto;
+}
+
+.blog-entry-route-note {
+  color: #1d4ed8;
 }
 
 #chart-cat .chart {

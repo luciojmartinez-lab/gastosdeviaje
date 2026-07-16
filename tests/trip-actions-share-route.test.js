@@ -31,3 +31,16 @@ test('los trayectos son líneas rectas discontinuas sin modos de transporte', ()
   assert.doesNotMatch(sw, /router\.project-osrm\.org/);
   assert.match(help, /líneas rectas discontinuas/);
 });
+
+test('las entradas En ruta geolocalizan textos y afinan el recorrido', () => {
+  assert.match(app, /async function locateBlogTextEnRoute\(\)/);
+  assert.match(app, /await currentDeviceImageLocation\(\)/);
+  assert.match(app, /enRuta: type !== 'gasto' && entry\.enRuta === true/);
+  assert.match(app, /function orderTripItemsWithRouteWaypoints\(items = \[\]\)/);
+  assert.match(app, /function enRouteBlogItemsForTrip\(tripId\)/);
+  assert.match(app, /tripRoutePresentation\(orderTripItemsWithRouteWaypoints/);
+  assert.match(app, /\.\.\.enRouteBlogItemsForTrip\(trip\.id\)/);
+  assert.match(styles, /\.blog-en-route-option/);
+  assert.match(help, /marcadas «En ruta»/);
+  assert.match(help, /obtiene y guarda la ubicación actual/);
+});

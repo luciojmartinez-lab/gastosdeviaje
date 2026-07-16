@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v153">
+  <link rel="manifest" href="manifest.webmanifest?v=700v154">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v153">
+  <link rel="stylesheet" href="styles.css?v=700v154">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -38,7 +38,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v153</div>
+  <div class="app-version">700v154</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -646,6 +646,10 @@
       </div>
       <label>Descripción</label>
       <input id="blog-descripcion" maxlength="240" placeholder="Breve descripción de la entrada">
+      <div id="blog-en-route-option" class="blog-en-route-option" hidden>
+        <label class="check-option"><input type="checkbox" id="blog-en-route"> En ruta</label>
+        <span id="blog-en-route-status" class="small">Usar esta entrada como huella para afinar el recorrido.</span>
+      </div>
       <div class="blog-wordpress-options">
         <label class="check-option"><input type="checkbox" id="blog-wordpress" checked> Incluir en el post de WordPress de este día</label>
         <label class="check-option" id="blog-featured-option" hidden><input type="checkbox" id="blog-featured"> Usar como imagen destacada</label>
@@ -884,11 +888,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v153"></script>
-<script src="app.bundle.js?v=700v153"></script>
+<script src="map-model.js?v=700v154"></script>
+<script src="app.bundle.js?v=700v154"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v153';
+    const pageVersion = '700v154';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -915,7 +919,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v153', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v154', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

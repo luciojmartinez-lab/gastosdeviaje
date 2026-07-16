@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v153';
+const APP_VERSION = '700v154';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -341,7 +341,7 @@ const ADD_EXPENSE_DRAFT_FIELDS = [
 ];
 const BLOG_ENTRY_DRAFT_FIELDS = [
   '#blog-fecha', '#blog-hora', '#blog-tipo', '#blog-pais', '#blog-ciudad',
-  '#blog-descripcion', '#blog-wordpress', '#blog-featured', '#blog-texto',
+  '#blog-descripcion', '#blog-wordpress', '#blog-featured', '#blog-en-route', '#blog-texto',
   '#blog-point-lat', '#blog-point-lng', '#blog-images-map'
 ];
 const INLINE_FORM_DRAFTS = [
@@ -1526,7 +1526,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v153');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v154');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1558,7 +1558,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v153');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v154');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1969,7 +1969,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v153');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v154');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3564,8 +3564,10 @@ async function addBlogEntry(data) {
   if (type === 'texto' && !String(data.texto || '').trim()) throw new Error('Escribe el texto de la entrada');
   const galleryImages = Array.isArray(data.galleryImages) ? data.galleryImages.map(normalizeBlogImageRecord).filter(image => image.data) : [];
   if (type === 'imagen' && !data.imageData && !galleryImages.length) throw new Error('Selecciona una imagen, una galería o usa la cámara');
-  const point = type === 'punto' ? blogPointCoordinates(data) : null;
+  const enRuta = type !== 'gasto' && data.enRuta === true;
+  const point = (type === 'punto' || enRuta) ? blogPointCoordinates(data) : null;
   if (type === 'punto' && !point) throw new Error('Indica un punto geolocalizado válido');
+  if (enRuta && !point) throw new Error('La entrada En ruta necesita una ubicación válida');
   const now = new Date().toISOString();
   return addRecord('blogEntries', {
     viajeId: tripId,
@@ -3594,6 +3596,7 @@ async function addBlogEntry(data) {
     gastoImporteEur: type === 'gasto' ? numberValue(data.gastoImporteEur) : 0,
     wordpressIncluded: data.wordpressIncluded !== false,
     featuredImage: type === 'imagen' && Boolean(data.featuredImage),
+    enRuta,
     dailyMapDate: type === 'imagen' ? String(data.dailyMapDate || '') : '',
     latitude: point ? point.latitude : null,
     longitude: point ? point.longitude : null,
@@ -3652,9 +3655,10 @@ function normalizeImportedBlogEntry(entry = {}) {
     gastoImporteEur: numberValue(entry.gastoImporteEur),
     wordpressIncluded: entry.wordpressIncluded !== false,
     featuredImage: type === 'imagen' && Boolean(entry.featuredImage),
+    enRuta: type !== 'gasto' && entry.enRuta === true,
     dailyMapDate: type === 'imagen' ? String(entry.dailyMapDate || '') : '',
-    latitude: type === 'punto' ? blogPointCoordinate(entry.latitude, -90, 90) : null,
-    longitude: type === 'punto' ? blogPointCoordinate(entry.longitude, -180, 180) : null,
+    latitude: (type === 'punto' || entry.enRuta === true) ? blogPointCoordinate(entry.latitude, -90, 90) : null,
+    longitude: (type === 'punto' || entry.enRuta === true) ? blogPointCoordinate(entry.longitude, -180, 180) : null,
     createdAt: entry.createdAt || now,
     updatedAt: entry.updatedAt || now
   };
@@ -5357,7 +5361,7 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
   const seen = new Set();
   let duplicateCount = 0;
   const append = record => {
-    if (!record || !record.image || !record.image.mapEnabled) return;
+    if (!record || !record.image || (!record.image.mapEnabled && !record.enRuta)) return;
     const point = storedImageCoordinates(record.image);
     if (!point || !photoMapMatchesCountry(record, paisId)) return;
     const key = photoMapRecordKey(record.image, record.fallbackKey);
@@ -5389,6 +5393,7 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
         paisId: entry.paisId || null,
         ciudadId: entry.ciudadId || null,
         viajeId: entry.viajeId,
+        enRuta: entry.enRuta === true,
         source: 'blog'
       }));
     });
@@ -5453,13 +5458,14 @@ function photoMapItems(records) {
     configuredOnly: true,
     plannedOnly: false,
     photoPoint: true,
-    photoRecord: record
+    photoRecord: record,
+    routeWaypoint: record.enRuta === true
   }));
 }
 
 function dailyMapRecordsForScope(scopedTripIds, paisId) {
   const points = state.blogEntries
-    .filter(entry => entry.tipo === 'punto' && scopedTripIds.has(Number(entry.viajeId)) && blogPointCoordinates(entry))
+    .filter(entry => (entry.tipo === 'punto' || (entry.tipo === 'texto' && entry.enRuta === true)) && scopedTripIds.has(Number(entry.viajeId)) && blogPointCoordinates(entry))
     .filter(entry => {
       if (!paisId) return true;
       const city = state.lugares.find(item => Number(item.id) === Number(entry.ciudadId));
@@ -5651,7 +5657,7 @@ function tripMapItemsForCurrentScope() {
   const dailyRecords = dailyMode ? combinedDailyRecords.records : [];
   const cities = mapRouteCities(gastos, paisId);
   const points = state.blogEntries
-    .filter(entry => entry.tipo === 'punto' && scopedTripIds.has(Number(entry.viajeId)) && blogPointCoordinates(entry))
+    .filter(entry => (entry.tipo === 'punto' || (entry.tipo === 'texto' && entry.enRuta === true)) && scopedTripIds.has(Number(entry.viajeId)) && blogPointCoordinates(entry))
     .filter(entry => mapRecordMatchesDestination(entry, destinationTrip))
     .filter(entry => {
       if (!paisId) return true;
@@ -5676,7 +5682,8 @@ function tripMapItemsForCurrentScope() {
         configuredOnly: true,
         plannedOnly: false,
         blogPoint: true,
-        pointEntry: entry
+        pointEntry: entry,
+        routeWaypoint: entry.enRuta === true
       };
     });
   const photoScopeRecords = photoMapRecordsForScope(scopedTripIds, paisId);
@@ -5967,11 +5974,90 @@ function tripRoutePresentation(items = []) {
     longitude: item && item.ciudad && item.ciudad.lng,
     number: Number(item && item.index) + 1 || index + 1,
     arrivalDate: item && item.firstDate,
-    route: !item.configuredOnly
+    route: item.routeWaypoint === true || !item.configuredOnly
   })), {
     getName: stop => stop.name || 'Punto',
     formatDate: date => summaryDocumentDate(date, true)
   });
+}
+
+function tripRouteItemDateTime(item) {
+  const source = item.photoRecord || item.pointEntry || item;
+  const date = source.fecha || item.firstDate || '';
+  return date ? `${date}T${source.hora || '00:00'}` : '';
+}
+
+function orderTripItemsWithRouteWaypoints(items = []) {
+  const base = items.filter(item => !item.configuredOnly && !item.routeWaypoint);
+  const waypoints = items.filter(item => item.routeWaypoint && lugarHasCoords(item.ciudad));
+  if (base.length < 2 || !waypoints.length) return items;
+  const assigned = Array.from({ length: base.length - 1 }, () => []);
+  waypoints.forEach(waypoint => {
+    let best = null;
+    for (let index = 0; index < base.length - 1; index += 1) {
+      const from = base[index];
+      const to = base[index + 1];
+      const direct = geographicDistanceMeters(
+        { latitude: from.ciudad.lat, longitude: from.ciudad.lng },
+        { latitude: to.ciudad.lat, longitude: to.ciudad.lng }
+      );
+      const fromDistance = geographicDistanceMeters(
+        { latitude: from.ciudad.lat, longitude: from.ciudad.lng },
+        { latitude: waypoint.ciudad.lat, longitude: waypoint.ciudad.lng }
+      );
+      const toDistance = geographicDistanceMeters(
+        { latitude: waypoint.ciudad.lat, longitude: waypoint.ciudad.lng },
+        { latitude: to.ciudad.lat, longitude: to.ciudad.lng }
+      );
+      const waypointDate = tripRouteItemDateTime(waypoint).slice(0, 10);
+      const fromDate = tripRouteItemDateTime(from).slice(0, 10);
+      const toDate = tripRouteItemDateTime(to).slice(0, 10);
+      const minDate = fromDate && toDate ? (fromDate < toDate ? fromDate : toDate) : '';
+      const maxDate = fromDate && toDate ? (fromDate > toDate ? fromDate : toDate) : '';
+      const datePenalty = waypointDate && minDate && maxDate && (waypointDate < minDate || waypointDate > maxDate) ? 1_000_000 : 0;
+      const score = Math.max(0, fromDistance + toDistance - direct) + datePenalty;
+      const progress = fromDistance / Math.max(1, fromDistance + toDistance);
+      if (!best || score < best.score) best = { index, score, progress };
+    }
+    if (best) assigned[best.index].push({ waypoint, progress: best.progress });
+  });
+  assigned.forEach(group => group.sort((a, b) => a.progress - b.progress || tripRouteItemDateTime(a.waypoint).localeCompare(tripRouteItemDateTime(b.waypoint))));
+  const routeItems = [base[0]];
+  assigned.forEach((group, index) => routeItems.push(...group.map(item => item.waypoint), base[index + 1]));
+  const routeSet = new Set(routeItems);
+  return [...routeItems, ...items.filter(item => !routeSet.has(item))];
+}
+
+function enRouteBlogItemsForTrip(tripId) {
+  const items = [];
+  state.blogEntries.filter(entry => Number(entry.viajeId) === Number(tripId) && entry.enRuta === true).forEach(entry => {
+    if (entry.tipo === 'imagen') {
+      blogEntryImages(entry).forEach((image, index) => {
+        const point = storedImageCoordinates(image);
+        if (!point) return;
+        items.push({
+          ciudad: { id: `en-route-image-${entry.id}-${index}`, nombre: entry.descripcion || 'Foto en ruta', lat: point.latitude, lng: point.longitude },
+          firstDate: entry.fecha || '',
+          configuredOnly: true,
+          routeWaypoint: true,
+          photoPoint: true,
+          photoRecord: { fecha: entry.fecha || '', hora: entry.hora || '', descripcion: entry.descripcion || 'Foto en ruta' }
+        });
+      });
+      return;
+    }
+    const point = blogPointCoordinates(entry);
+    if (!point) return;
+    items.push({
+      ciudad: { id: `en-route-entry-${entry.id}`, nombre: entry.descripcion || 'Huella en ruta', lat: point.latitude, lng: point.longitude },
+      firstDate: entry.fecha || '',
+      configuredOnly: true,
+      routeWaypoint: true,
+      blogPoint: true,
+      pointEntry: entry
+    });
+  });
+  return items;
 }
 
 function dailyMapBlogLayers(records = []) {
@@ -6139,18 +6225,18 @@ async function createTripOverviewMapBlogImage(trip) {
   })).filter(stop => stop.city);
   const locatedStops = stops.filter(stop => lugarHasCoords(stop.city));
   if (!locatedStops.length) throw new Error('Las ciudades del viaje no tienen coordenadas para crear el mapa.');
-  const mapModel = window.TripMapModel.createTrip(locatedStops.map(stop => ({
-    stop,
-    cityId: stop.city.id,
-    name: stop.city.nombre,
-    latitude: stop.city.lat,
-    longitude: stop.city.lng,
-    number: stop.number,
-    arrivalDate: stop.arrivalDate
-  })), {
-    getName: item => item.name,
-    formatDate: date => summaryDocumentDate(date, true)
-  });
+  const routeItems = orderTripItemsWithRouteWaypoints([
+    ...locatedStops.map((stop, index) => ({
+      ciudad: stop.city,
+      firstDate: stop.arrivalDate,
+      index,
+      configuredOnly: false,
+      routeWaypoint: false,
+      stop
+    })),
+    ...enRouteBlogItemsForTrip(trip.id)
+  ]);
+  const mapModel = tripRoutePresentation(routeItems);
   const width = TRIP_MAP_WIDTH;
   const mapHeight = TRIP_MAP_HEIGHT;
   const headerHeight = 86;
@@ -6171,7 +6257,9 @@ async function createTripOverviewMapBlogImage(trip) {
   const dateRange = [trip.fechaInicio, trip.fechaFin].filter(Boolean).map(date => summaryDocumentDate(date, true)).join(' — ');
   context.fillText(dateRange || 'Fechas no indicadas', 22, 62);
 
-  const items = mapModel.routeStops.map(item => ({ ciudad: item.stop.city }));
+  const items = mapModel.routeStops.map(item => ({
+    ciudad: { lat: item.latitude, lng: item.longitude }
+  }));
   const zoom = chooseMapZoom(items, width, mapHeight);
   const world = items.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom));
   const centerWorld = {
@@ -6204,7 +6292,7 @@ async function createTripOverviewMapBlogImage(trip) {
     context.setLineDash([]);
   }
   const projectedByIndex = new Map(projectedStops.map(stop => [stop._mapIndex, stop]));
-  mapModel.markerGroups.forEach(markerGroup => {
+  mapModel.markerGroups.filter(markerGroup => !markerGroup.primary.item.routeWaypoint).forEach(markerGroup => {
     const group = markerGroup.entries.map(entry => projectedByIndex.get(entry._mapIndex)).filter(Boolean);
     const stop = group[0];
     if (!stop) return;
@@ -6528,13 +6616,13 @@ function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawR
   const dailyHasRoute = Boolean(dailyModel && dailyModel.hasRoute);
   const standardItems = withCoords.filter(item => !item.photoPoint);
   const photoItems = withCoords.filter(item => item.photoPoint);
-  const tripModel = dailyMode ? null : tripRoutePresentation(standardItems);
+  const tripModel = dailyMode ? null : tripRoutePresentation(orderTripItemsWithRouteWaypoints([...standardItems, ...photoItems.filter(item => item.routeWaypoint)]));
   const markerGroups = dailyMode
     ? standardItems.map((item, index) => ({
       group: [{ item, index }],
       presentation: dailyModel.recordMarkers.find(marker => marker.record === item.dailyRecord) || null
     }))
-    : tripModel.markerGroups.map(markerGroup => ({
+    : tripModel.markerGroups.filter(markerGroup => !markerGroup.primary.item.photoPoint).map(markerGroup => ({
       group: markerGroup.entries.map(entry => ({ item: entry.item, index: entry.item.index })),
       presentation: markerGroup
     }));
@@ -6730,13 +6818,13 @@ function renderTripMap() {
     : projectedItems.filter(item => !item.photoPoint);
   const photoItems = dailyMode ? [] : projectedItems.filter(item => item.photoPoint);
   const dailyModel = dailyMode ? dailyMapPresentation(dailyRecords) : null;
-  const tripModel = dailyMode ? null : tripRoutePresentation(standardItems);
+  const tripModel = dailyMode ? null : tripRoutePresentation(orderTripItemsWithRouteWaypoints([...standardItems, ...photoItems.filter(item => item.routeWaypoint)]));
   const pointGroups = dailyMode
     ? standardItems.map(item => ({
       items: [item],
       presentation: dailyModel.recordMarkers.find(marker => marker.record === item.dailyRecord) || null
     }))
-    : tripModel.markerGroups.map(markerGroup => ({
+    : tripModel.markerGroups.filter(markerGroup => !markerGroup.primary.item.photoPoint).map(markerGroup => ({
       items: markerGroup.entries.map(entry => entry.item),
       presentation: markerGroup
     }));
@@ -7871,12 +7959,13 @@ function renderBlog() {
         : '';
       const point = blogPointCoordinates(entry);
       const pointNote = point ? `<span class="blog-entry-note">${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}</span>` : '';
+      const routeNote = entry.enRuta ? '<span class="blog-entry-note blog-entry-route-note">En ruta</span>' : '';
       const pointOption = point ? '<option value="map">Mapa</option>' : '';
       return `<tr class="blog-day-entry" data-blog-day-entry="${escapeHtml(group.date)}" data-blog-entry-id="${entry.id}"${isOpen ? '' : ' hidden'}>
       <td>${escapeHtml(entry.hora || '-')}</td>
       <td>${escapeHtml(blogPlaceName(entry.ciudadId))}</td>
       <td>${escapeHtml(entry.descripcion || '')}</td>
-      <td>${escapeHtml(blogTypeLabel(entry.tipo))}${imageNote}${entry.featuredImage ? '<span class="blog-entry-note">Destacada</span>' : ''}${pointNote}</td>
+      <td>${escapeHtml(blogTypeLabel(entry.tipo))}${imageNote}${entry.featuredImage ? '<span class="blog-entry-note">Destacada</span>' : ''}${routeNote}${pointNote}</td>
       <td>${escapeHtml(blogPlaceName(entry.paisId))}</td>
       <td>${entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '-'}</td>
       <td>${entry.wordpressIncluded !== false ? '<span class="badge">Sí</span>' : 'No'}</td>
@@ -8077,6 +8166,7 @@ function showBlogImages(images = []) {
     $('#blog-images-map').checked = mappableCount > 0 && enabledCount === mappableCount;
     $('#blog-images-map').indeterminate = enabledCount > 0 && enabledCount < mappableCount;
   }
+  syncBlogEnRouteOption();
 }
 
 function selectBlogPrimaryImage(index) {
@@ -8101,6 +8191,52 @@ function showBlogImage(image) {
   showBlogImages(image ? [image] : []);
 }
 
+function syncBlogEnRouteOption(message = '', isError = false) {
+  const option = $('#blog-en-route-option');
+  const checkbox = $('#blog-en-route');
+  const status = $('#blog-en-route-status');
+  const available = ['texto', 'imagen', 'punto'].includes(activeBlogEntryType);
+  if (option) option.hidden = !available;
+  if (!status || !available) return;
+  if (message) {
+    status.textContent = message;
+    status.classList.toggle('error', isError);
+    return;
+  }
+  status.classList.remove('error');
+  if (!checkbox || !checkbox.checked) {
+    status.textContent = 'Usar esta entrada como huella para afinar el recorrido.';
+    return;
+  }
+  if (activeBlogEntryType === 'imagen') {
+    const located = [activeBlogImage, ...activeBlogGalleryImages].filter(image => image && storedImageCoordinates(image));
+    status.textContent = located.length ? `${located.length} ${located.length === 1 ? 'foto geolocalizada se usará' : 'fotos geolocalizadas se usarán'} en el recorrido.` : 'La entrada necesita al menos una foto con GPS.';
+    status.classList.toggle('error', !located.length);
+    return;
+  }
+  const point = blogPointFieldCoordinates();
+  status.textContent = point
+    ? `Ubicación guardada: ${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}.`
+    : activeBlogEntryType === 'texto'
+      ? 'Al activarlo se obtendrá la ubicación actual.'
+      : 'Marca primero el punto en el mapa.';
+}
+
+async function locateBlogTextEnRoute() {
+  syncBlogEnRouteOption('Obteniendo ubicación actual…');
+  const point = await currentDeviceImageLocation();
+  if (!point) {
+    if ($('#blog-en-route')) $('#blog-en-route').checked = false;
+    syncBlogEnRouteOption('No se pudo obtener la ubicación. Comprueba el permiso de localización.', true);
+    return false;
+  }
+  if ($('#blog-point-lat')) $('#blog-point-lat').value = formatCoordinate(point.latitude);
+  if ($('#blog-point-lng')) $('#blog-point-lng').value = formatCoordinate(point.longitude);
+  syncBlogEnRouteOption();
+  scheduleActiveBlogEntryDraftSave();
+  return true;
+}
+
 function setBlogEntryType(type) {
   activeBlogEntryType = type;
   if ($('#blog-entry-type-choice')) $('#blog-entry-type-choice').hidden = true;
@@ -8112,6 +8248,7 @@ function setBlogEntryType(type) {
   if ($('#blog-point-fields')) $('#blog-point-fields').hidden = type !== 'punto';
   if ($('#blog-featured-option')) $('#blog-featured-option').hidden = type !== 'imagen';
   if (type === 'punto') resetBlogPointPicker();
+  syncBlogEnRouteOption();
   if (!restoringFormDraft) scheduleActiveBlogEntryDraftSave();
 }
 
@@ -8151,7 +8288,7 @@ function restoreBlogEntryDraft(trip) {
   restoringFormDraft = true;
   try {
     if (type) setBlogEntryType(type);
-    applyFormDraftValues(['#blog-fecha', '#blog-hora', '#blog-descripcion', '#blog-wordpress', '#blog-featured', '#blog-texto'], values);
+    applyFormDraftValues(['#blog-fecha', '#blog-hora', '#blog-descripcion', '#blog-wordpress', '#blog-featured', '#blog-en-route', '#blog-texto'], values);
     applyFormDraftValues(['#blog-pais'], values);
     renderBlogCities(values['blog-ciudad'] || '');
     applyFormDraftValues(['#blog-ciudad', '#blog-point-lat', '#blog-point-lng', '#blog-images-map'], values);
@@ -8198,6 +8335,9 @@ function openBlogEntryDialog(entry = null) {
   if ($('#blog-hora')) $('#blog-hora').value = entry ? entry.hora : currentLocalTime();
   if ($('#blog-descripcion')) $('#blog-descripcion').value = entry ? entry.descripcion || '' : '';
   if ($('#blog-texto')) $('#blog-texto').value = entry ? entry.texto || '' : '';
+  if ($('#blog-en-route')) $('#blog-en-route').checked = Boolean(entry && entry.enRuta);
+  if ($('#blog-point-lat')) $('#blog-point-lat').value = entry && entry.latitude != null ? formatCoordinate(entry.latitude) : '';
+  if ($('#blog-point-lng')) $('#blog-point-lng').value = entry && entry.longitude != null ? formatCoordinate(entry.longitude) : '';
   if ($('#blog-wordpress')) $('#blog-wordpress').checked = entry ? entry.wordpressIncluded !== false : true;
   if ($('#blog-featured')) $('#blog-featured').checked = Boolean(entry && entry.tipo === 'imagen' && entry.featuredImage);
   if ($('#blog-gasto-precio')) {
@@ -8639,6 +8779,7 @@ async function saveBlogEntryForm() {
   const description = String($('#blog-descripcion').value || '').trim();
   if (!description) throw new Error('Escribe una descripción');
   const current = activeBlogEntryId ? state.blogEntries.find(entry => Number(entry.id) === activeBlogEntryId) : null;
+  const enRuta = type !== 'gasto' && Boolean($('#blog-en-route') && $('#blog-en-route').checked);
   const values = {
     viajeId: trip.id,
     fecha: $('#blog-fecha').value || currentLocalDate(),
@@ -8647,12 +8788,25 @@ async function saveBlogEntryForm() {
     descripcion: description,
     paisId: $('#blog-pais').value || null,
     ciudadId: $('#blog-ciudad').value || null,
+    enRuta,
+    latitude: null,
+    longitude: null,
     wordpressIncluded: Boolean($('#blog-wordpress') && $('#blog-wordpress').checked),
     featuredImage: type === 'imagen' && Boolean($('#blog-featured') && $('#blog-featured').checked)
   };
   if (type === 'texto') {
     values.texto = $('#blog-texto').value;
     if (!String(values.texto).trim()) throw new Error('Escribe el texto de la entrada');
+    if (enRuta) {
+      let point = blogPointFieldCoordinates();
+      if (!point) {
+        const located = await currentDeviceImageLocation();
+        if (located) point = { latitude: located.latitude, longitude: located.longitude };
+      }
+      if (!point) throw new Error('No se pudo geolocalizar el texto En ruta. Comprueba el permiso de ubicación.');
+      values.latitude = point.latitude;
+      values.longitude = point.longitude;
+    }
   }
   if (type === 'imagen') {
     if (!activeBlogImage) throw new Error('Selecciona una imagen, una galería o usa la cámara');
@@ -8670,6 +8824,13 @@ async function saveBlogEntryForm() {
       imageMapEnabled: activeBlogImage.mapEnabled === true,
       galleryImages: activeBlogGalleryImages.map(normalizeBlogImageRecord)
     });
+    if (enRuta) {
+      const locatedImage = [activeBlogImage, ...activeBlogGalleryImages].find(image => storedImageCoordinates(image));
+      const point = locatedImage ? storedImageCoordinates(locatedImage) : null;
+      if (!point) throw new Error('Una imagen En ruta necesita GPS. Elige una foto geolocalizada o usa la cámara.');
+      values.latitude = point.latitude;
+      values.longitude = point.longitude;
+    }
     if (values.featuredImage) values.wordpressIncluded = true;
     const previousFeatured = values.featuredImage ? state.blogEntries.find(entry =>
       entry.tipo === 'imagen' && entry.featuredImage &&
@@ -10372,6 +10533,11 @@ function bindEvents() {
     if (!$('#blog-wordpress').checked) $('#blog-featured').checked = false;
     scheduleActiveBlogEntryDraftSave();
   };
+  $('#blog-en-route').onchange = async () => {
+    if ($('#blog-en-route').checked && activeBlogEntryType === 'texto') await locateBlogTextEnRoute();
+    else syncBlogEnRouteOption();
+    scheduleActiveBlogEntryDraftSave();
+  };
   $('#blog-image-file').onchange = () => selectBlogImage($('#blog-image-file'), $('#blog-image-camera'));
   $('#blog-image-gallery').onchange = () => selectBlogGallery($('#blog-image-gallery'));
   $('#blog-image-camera').onchange = () => selectBlogImage($('#blog-image-camera'), $('#blog-image-file'), { useCurrentLocation: true, fromCamera: true });
@@ -10386,11 +10552,13 @@ function bindEvents() {
   };
   $('#blog-point-current').onclick = async () => {
     await useCurrentBlogPointLocation();
+    syncBlogEnRouteOption();
     scheduleActiveBlogEntryDraftSave();
   };
   $('#blog-point-search').onclick = async () => {
     try {
       await searchBlogPointLocation();
+      syncBlogEnRouteOption();
       scheduleActiveBlogEntryDraftSave();
     } catch (error) {
       setMessage('#blog-point-status', error.message || String(error), true);
@@ -10406,6 +10574,7 @@ function bindEvents() {
       blogPointPickerState.centerLat = point.latitude;
       blogPointPickerState.centerLng = point.longitude;
       renderBlogPointPicker();
+      syncBlogEnRouteOption();
       scheduleActiveBlogEntryDraftSave();
     };
   });
