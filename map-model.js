@@ -23,7 +23,6 @@
 
   function createDaily(records = [], options = {}) {
     const getCityName = options.getCityName || (record => record.cityName || record.descripcion || 'Punto');
-    const getTime = options.getTime || (record => record.hora || '--:--');
     const usableRecords = records.filter(Boolean);
     const route = [];
     const cityKeys = new Set();
@@ -57,7 +56,7 @@
     const marker = record => ({
       record,
       numberText: record.kind === 'point' ? '•' : '+',
-      labelLines: hasRoute ? [getCityName(record), getTime(record)] : [getTime(record)]
+      labelLines: [getCityName(record)]
     });
     const destinationMarkers = cityMarkers
       .map(record => ({ record, routeNumber: finiteNumber(record.routeNumber) }))

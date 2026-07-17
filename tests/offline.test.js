@@ -44,9 +44,12 @@ test('los mapas vistos se guardan en cache dinamica para uso offline', () => {
 });
 
 test('la pantalla inicial se sirve desde cache aunque no haya red disponible', () => {
-  assert.match(sw, /async function cachedNavigationResponse\(request\)/);
-  assert.match(sw, /caches\.match\(request, \{ ignoreSearch: true \}\)/);
-  assert.match(sw, /updateNavigationCache\(request\)\.catch\(\(\) => \{\}\)/);
+  const start = sw.indexOf('async function cachedNavigationResponse');
+  const end = sw.indexOf("self.addEventListener('install'", start);
+  const navigation = sw.slice(start, end);
+  assert.ok(navigation.indexOf('await updateNavigationCache(request)') < navigation.indexOf('caches.match(request, { ignoreSearch: true })'));
+  assert.match(navigation, /if \(current && current\.ok\) return current/);
+  assert.match(navigation, /caches\.match\('\.\/index\.html'\)/);
   assert.match(sw, /event\.respondWith\(cachedNavigationResponse\(event\.request\)\)/);
 });
 
@@ -56,7 +59,7 @@ test('una versión nueva provoca una sola recarga después de activar su service
   assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?await registration\.update\(\)/);
   assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
   assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
-  assert.match(sw, /const APP_VERSION = '700v171'/);
+  assert.match(sw, /const APP_VERSION = '700v172'/);
   assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
   assert.doesNotMatch(html, /window\.location\.reload\(\)/);
 });

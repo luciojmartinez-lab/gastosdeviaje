@@ -52,6 +52,10 @@ test('el mapa diario separa los puntos y los números de destino', () => {
   assert.match(styles, /\.map-destination-number circle\s*\{[\s\S]*?fill: #be123c;/);
   assert.match(app, /destinationMarkers\.forEach[\s\S]*?context\.fillStyle = '#be123c'/);
   assert.match(styles, /\.trip-vector-marker\.has-photo\s*\{[\s\S]*?pointer-events: auto !important;/);
+  assert.match(styles, /\.trip-vector-marker\.daily \.trip-vector-marker-dot\s*\{[\s\S]*?background: #7c3aed;/);
+  assert.match(styles, /\.trip-vector-photo-marker\s*\{[\s\S]*?background: #0f766e;/);
+  assert.match(app, /function dailyMapLabelLines\(record\)\s*\{[\s\S]*?return \[dailyMapCityName\(record\)\]/);
+  assert.doesNotMatch(app, /La hora aparece junto a cada punto/);
   assert.match(styles, /\.map-photo-popup\.tail-bottom::after/);
   assert.match(styles, /\.map-photo-popup\.tail-top::after/);
 });

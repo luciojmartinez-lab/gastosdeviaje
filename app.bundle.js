@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v171';
+const APP_VERSION = '700v172';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1711,7 +1711,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v171');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v172');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1743,7 +1743,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v171');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v172');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2186,7 +2186,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v171');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v172');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6352,10 +6352,6 @@ function dailyMapDateTimeLabel(record) {
   return `${date} · ${record && record.hora ? record.hora : '--:--'}`;
 }
 
-function dailyMapTimeLabel(record) {
-  return record && record.hora ? record.hora : '--:--';
-}
-
 function dailyMapCityName(record) {
   const city = state.lugares.find(item => Number(item.id) === Number(record && record.ciudadId));
   if (city && city.nombre) return city.nombre;
@@ -6363,10 +6359,8 @@ function dailyMapCityName(record) {
   return description || 'Punto';
 }
 
-function dailyMapLabelLines(record, showCity = false) {
-  return showCity
-    ? [dailyMapCityName(record), dailyMapTimeLabel(record)]
-    : [dailyMapTimeLabel(record)];
+function dailyMapLabelLines(record) {
+  return [dailyMapCityName(record)];
 }
 
 function tripMapArrivalLabelLines(item) {
@@ -6392,8 +6386,7 @@ async function loadMapTileForCanvas(descriptor) {
 
 function dailyMapPresentation(records = []) {
   return window.TripMapModel.createDaily(records, {
-    getCityName: dailyMapCityName,
-    getTime: dailyMapTimeLabel
+    getCityName: dailyMapCityName
   });
 }
 
@@ -6949,7 +6942,7 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
   const labelLines = presentation && presentation.labelLines
     ? presentation.labelLines
     : (dailyRecord
-      ? dailyMapLabelLines(dailyRecord, dailyHasRoute)
+      ? dailyMapLabelLines(dailyRecord)
       : groupedRouteItems.length
         ? tripMapArrivalLabelLines(item)
         : tripMapArrivalLabelLines(item));
@@ -7455,7 +7448,7 @@ function renderTripMap() {
     const fallbackText = dailyUsesCityFallback ? ' Los datos sin GPS exacto se muestran agrupados en su ciudad.' : '';
     const accommodationText = accommodationDestinationCount ? ' El alojamiento geolocalizado se usa como destino de la ciudad.' : '';
     const routeText = dailyRoute.length > 1 ? 'con línea entre las ciudades' : 'sin líneas';
-    info.textContent = `${dailyRecords.length} ${dailyRecords.length === 1 ? 'punto marcado' : 'puntos marcados'} el ${blogDayDateLabel(tripMapState.day)}, ${routeText}. La hora aparece junto a cada punto.${accommodationText}${fallbackText}${duplicatePhotoText}`;
+    info.textContent = `${dailyRecords.length} ${dailyRecords.length === 1 ? 'punto marcado' : 'puntos marcados'} el ${blogDayDateLabel(tripMapState.day)}, ${routeText}. La ciudad aparece junto a cada punto.${accommodationText}${fallbackText}${duplicatePhotoText}`;
     return;
   }
   if (cityMode) {

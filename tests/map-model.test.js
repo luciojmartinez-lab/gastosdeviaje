@@ -16,10 +16,10 @@ test('el recorrido diario respeta Barcelona, Varsovia y Torun aunque haya fotos 
   assert.deepEqual(model.route.map(record => record.ciudadId), [1, 2, 3]);
   assert.deepEqual(model.markers.map(marker => marker.numberText), ['+', '+', '+']);
   assert.deepEqual(model.destinationMarkers.map(marker => marker.numberText), ['1', '2', '3']);
-  assert.deepEqual(model.markers[2].labelLines, ['Torun', '21:18']);
+  assert.deepEqual(model.markers[2].labelLines, ['Torun']);
 });
 
-test('un solo destino no dibuja línea y muestra únicamente la hora', () => {
+test('un solo destino no dibuja línea y muestra el nombre de la ciudad', () => {
   const model = createDaily([
     { kind: 'city', ciudadId: 3, cityName: 'Torun', hora: '08:20', routeNumber: 3, latitude: 53.01, longitude: 18.61 },
     { kind: 'photo', ciudadId: 3, hora: '09:10', routeNumber: 3, latitude: 53.02, longitude: 18.62 }
@@ -28,7 +28,7 @@ test('un solo destino no dibuja línea y muestra únicamente la hora', () => {
   assert.deepEqual(model.route, []);
   assert.equal(model.markers[0].numberText, '+');
   assert.equal(model.destinationMarkers[0].numberText, '3');
-  assert.deepEqual(model.markers[0].labelLines, ['08:20']);
+  assert.deepEqual(model.markers[0].labelLines, ['Torun']);
 });
 
 test('las ciudades repetidas conservan todos sus números de ruta', () => {
