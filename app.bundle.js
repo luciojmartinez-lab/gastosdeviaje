@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v170';
+const APP_VERSION = '700v171';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1711,7 +1711,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v170');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v171');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1743,7 +1743,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v170');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v171');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2186,7 +2186,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v170');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v171');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6635,7 +6635,7 @@ async function createDailyMapBlogImage(records, day) {
     const point = mapWorldPoint(markerModel.record.latitude, markerModel.record.longitude, zoom);
     const x = point.x - layer.startX - 18;
     const y = headerHeight + point.y - layer.startY;
-    context.fillStyle = '#f97316';
+    context.fillStyle = '#be123c';
     context.beginPath();
     context.arc(x, y, 8, 0, Math.PI * 2);
     context.fill();
@@ -9569,7 +9569,7 @@ function chooseExpenseBlogReplacement() {
   });
 }
 
-async function addExpenseToBlog(gasto) {
+async function addExpenseToBlog(gasto, options = {}) {
   if (!gasto.viajeId) throw new Error('Este gasto no pertenece a ningún viaje');
   const existing = state.blogEntries.find(entry => entry.tipo === 'gasto' && Number(entry.sourceGastoId) === Number(gasto.id));
   const replacementMode = existing ? await chooseExpenseBlogReplacement() : 'replace-all';
@@ -9604,7 +9604,10 @@ async function addExpenseToBlog(gasto) {
   }
   setSelectedTrips([Number(gasto.viajeId)]);
   await loadAll();
-  setTab('gastos', { expenseId: gasto.id });
+  setTab('gastos', {
+    expenseId: gasto.id,
+    expenseActionAnchor: options.expenseActionAnchor || null
+  });
   return true;
 }
 
@@ -9975,6 +9978,39 @@ function scrollToExpense(expenseId, behavior = 'auto') {
   if (row) scrollElementBelowHeader(row, behavior);
 }
 
+function captureExpenseActionAnchor(expenseId) {
+  const select = $(`#tabla-gastos tbody .expense-action-select[data-gasto-action="${Number(expenseId)}"]`);
+  if (!select) return null;
+  return {
+    expenseId: Number(expenseId),
+    viewportTop: select.getBoundingClientRect().top
+  };
+}
+
+function restoreExpenseActionAnchor(anchor) {
+  const expenseId = Number(anchor && anchor.expenseId);
+  const select = $(`#tabla-gastos tbody .expense-action-select[data-gasto-action="${expenseId}"]`);
+  if (!select) {
+    if (expenseId) scrollToExpense(expenseId);
+    return;
+  }
+  const viewportTop = Number(anchor.viewportTop);
+  if (Number.isFinite(viewportTop)) {
+    const difference = select.getBoundingClientRect().top - viewportTop;
+    if (Math.abs(difference) > 1) {
+      window.scrollTo({ top: Math.max(0, window.scrollY + difference), behavior: 'auto' });
+    }
+  }
+  select.value = '';
+  select.classList.add('expense-action-return');
+  try {
+    select.focus({ preventScroll: true });
+  } catch (_) {
+    select.focus();
+  }
+  window.setTimeout(() => select.classList.remove('expense-action-return'), 4000);
+}
+
 function scrollToLastExpense(behavior = 'smooth') {
   const rows = $$('#tabla-gastos tbody .expense-row');
   if (!rows.length) return;
@@ -10011,7 +10047,8 @@ function setTab(id, options = {}) {
   if (id === 'blog') renderBlog();
   if (id === 'gastos') {
     requestAnimationFrame(() => {
-      if (options.expenseId) scrollToExpense(options.expenseId);
+      if (options.expenseActionAnchor) restoreExpenseActionAnchor(options.expenseActionAnchor);
+      else if (options.expenseId) scrollToExpense(options.expenseId);
       else scrollToLastExpense('auto');
     });
   }
@@ -11084,7 +11121,8 @@ async function handleGastoAction(id, action) {
   } else if (action === 'ticket') {
     openTicket(gasto.id);
   } else if (action === 'blog') {
-    await addExpenseToBlog(gasto);
+    const expenseActionAnchor = captureExpenseActionAnchor(gasto.id);
+    await addExpenseToBlog(gasto, { expenseActionAnchor });
   } else if (action === 'edit') {
     openEditGasto(gasto);
   } else if (action === 'dup') {

@@ -47,7 +47,10 @@ test('el mapa diario separa los puntos y los números de destino', () => {
   assert.match(styles, /\.trip-vector-marker\s*\{[\s\S]*?pointer-events: none !important;/);
   assert.match(styles, /\.trip-vector-destination-marker\s*\{[\s\S]*?z-index: 6;/);
   assert.match(styles, /\.trip-vector-destination-marker\s*\{[\s\S]*?pointer-events: none !important;/);
+  assert.match(styles, /\.trip-vector-destination-marker\s*\{[\s\S]*?background: #be123c;/);
   assert.match(styles, /\.map-destination-number\s*\{[\s\S]*?pointer-events: none;/);
+  assert.match(styles, /\.map-destination-number circle\s*\{[\s\S]*?fill: #be123c;/);
+  assert.match(app, /destinationMarkers\.forEach[\s\S]*?context\.fillStyle = '#be123c'/);
   assert.match(styles, /\.trip-vector-marker\.has-photo\s*\{[\s\S]*?pointer-events: auto !important;/);
   assert.match(styles, /\.map-photo-popup\.tail-bottom::after/);
   assert.match(styles, /\.map-photo-popup\.tail-top::after/);

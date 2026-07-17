@@ -24,13 +24,22 @@ test('al anadir un gasto al blog permanece en Gastos', () => {
   const start = app.indexOf('async function addExpenseToBlog');
   const end = app.indexOf('function blogPrintImagesHtml', start);
   const source = app.slice(start, end);
-  assert.match(source, /setTab\('gastos', \{ expenseId: gasto\.id \}\)/);
+  assert.match(source, /setTab\('gastos', \{[\s\S]*?expenseId: gasto\.id,[\s\S]*?expenseActionAnchor: options\.expenseActionAnchor \|\| null/);
   assert.doesNotMatch(source, /setTab\('blog'\)/);
 });
 
-test('al volver a Gastos conserva visible el gasto transferido y la entrada normal muestra el último', () => {
+test('al volver a Gastos recupera cerrado el desplegable usado en su posición anterior', () => {
+  assert.match(app, /function captureExpenseActionAnchor\(expenseId\)/);
+  assert.match(app, /viewportTop: select\.getBoundingClientRect\(\)\.top/);
+  assert.match(app, /function restoreExpenseActionAnchor\(anchor\)/);
+  assert.match(app, /window\.scrollTo\(\{ top: Math\.max\(0, window\.scrollY \+ difference\), behavior: 'auto' \}\)/);
+  assert.match(app, /select\.value = ''/);
+  assert.match(app, /select\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(app, /expense-action-return/);
+  assert.match(app, /addExpenseToBlog\(gasto, \{ expenseActionAnchor \}\)/);
+  assert.match(app, /if \(options\.expenseActionAnchor\) restoreExpenseActionAnchor\(options\.expenseActionAnchor\)/);
+  assert.match(styles, /\.expense-action-select\.expense-action-return/);
   assert.match(app, /function scrollToExpense\(expenseId, behavior = 'auto'\)/);
-  assert.match(app, /if \(options\.expenseId\) scrollToExpense\(options\.expenseId\)/);
   assert.match(app, /else scrollToLastExpense\('auto'\)/);
 });
 

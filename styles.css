@@ -787,6 +787,12 @@ h2 {
   padding: 7px 9px;
 }
 
+.expense-action-select.expense-action-return {
+  outline: 3px solid #0f766e;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px #ccfbf1;
+}
+
 .trip-config-action-select,
 .trip-home-action-select,
 .blog-action-select {
@@ -2329,7 +2335,7 @@ body.map-fullscreen-open {
   box-sizing: border-box;
   border: 2px solid #fff;
   border-radius: 50%;
-  background: #f97316;
+  background: #be123c;
   color: #fff;
   box-shadow: 0 1px 4px #0006;
   font-size: 9px;
@@ -2604,7 +2610,7 @@ body.map-fullscreen-open {
 }
 
 .map-destination-number circle {
-  fill: #f97316;
+  fill: #be123c;
   stroke: #fff;
   stroke-width: 2;
   filter: drop-shadow(0 1px 3px #00000055);
