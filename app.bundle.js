@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v163';
+const APP_VERSION = '700v164';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -852,6 +852,27 @@ function accommodationDestinationForTripCity(tripId, cityId, targetDate = '') {
   )[0] || null;
 }
 
+function accommodationDestinationPhotoRecord(destination, tripId, cityId) {
+  if (!destination || !destination.image) return null;
+  const image = normalizeStoredImageRecord(destination.image);
+  if (!image.data && !image.fileRef) return null;
+  const source = destination.source || {};
+  return {
+    key: photoMapRecordKey(image, `destination-${tripId}-${cityId}-${source.id || destination.order || destination.index || 0}`),
+    kind: 'photo',
+    image,
+    descripcion: source.descripcion || source.desc || photoTypeLabel(image) || 'Foto del alojamiento',
+    fecha: image.capturedDate || destination.date || source.fecha || '',
+    hora: image.capturedTime || source.hora || (source.desc ? expenseTimeValue(source) : ''),
+    paisId: source.paisId || null,
+    ciudadId: Number(cityId) || null,
+    viajeId: Number(tripId) || null,
+    latitude: destination.latitude,
+    longitude: destination.longitude,
+    source: 'destination'
+  };
+}
+
 function cityWithAccommodationDestination(city, tripId, targetDate = '') {
   if (!city) return city;
   const destination = accommodationDestinationForTripCity(tripId, city.id, targetDate);
@@ -1681,7 +1702,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v163');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v164');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1713,7 +1734,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v163');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v164');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2129,7 +2150,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v163');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v164');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5750,6 +5771,7 @@ function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip
         latitude: destination ? destination.latitude : Number(city.lat),
         longitude: destination ? destination.longitude : Number(city.lng),
         accommodationDestination: Boolean(destination),
+        accommodationPhotoRecord: accommodationDestinationPhotoRecord(destination, item.viajeId, cityId),
         paisId: countryId || null,
         ciudadId: cityId,
         count: 0
@@ -6066,7 +6088,36 @@ function closeTripMapPhotoPopup() {
   if (popup) popup.hidden = true;
 }
 
-function openTripMapPhotoPopup(encodedKeys) {
+function positionTripMapPhotoPopup(popup, anchorElement) {
+  const frame = popup && popup.closest('.trip-map-frame');
+  if (!frame || !(anchorElement instanceof Element)) {
+    popup.classList.remove('tail-top', 'tail-bottom');
+    popup.style.removeProperty('left');
+    popup.style.removeProperty('top');
+    popup.style.removeProperty('--map-photo-tail-x');
+    return;
+  }
+  const frameRect = frame.getBoundingClientRect();
+  const anchorRect = anchorElement.getBoundingClientRect();
+  const anchorX = anchorRect.left + anchorRect.width / 2 - frameRect.left;
+  const anchorY = anchorRect.top + anchorRect.height / 2 - frameRect.top;
+  const popupWidth = popup.offsetWidth;
+  const popupHeight = popup.offsetHeight;
+  const edge = 10;
+  const gap = 18;
+  const left = Math.max(edge, Math.min(frameRect.width - popupWidth - edge, anchorX - popupWidth / 2));
+  const placeAbove = anchorY >= popupHeight + gap + edge || anchorY > frameRect.height / 2;
+  const desiredTop = placeAbove ? anchorY - popupHeight - gap : anchorY + gap;
+  const top = Math.max(edge, Math.min(frameRect.height - popupHeight - edge, desiredTop));
+  const tailX = Math.max(18, Math.min(popupWidth - 18, anchorX - left));
+  popup.style.left = `${left}px`;
+  popup.style.top = `${top}px`;
+  popup.style.setProperty('--map-photo-tail-x', `${tailX}px`);
+  popup.classList.toggle('tail-bottom', placeAbove);
+  popup.classList.toggle('tail-top', !placeAbove);
+}
+
+function openTripMapPhotoPopup(encodedKeys, anchorElement = null) {
   const popup = $('#trip-map-photo-popup');
   if (!popup) return;
   const keys = decodeURIComponent(String(encodedKeys || '')).split('|').filter(Boolean);
@@ -6074,6 +6125,7 @@ function openTripMapPhotoPopup(encodedKeys) {
   if (!records.length) return;
   popup.innerHTML = `<div class="map-photo-popup-head"><strong>${records.length === 1 ? 'Foto' : `${records.length} fotos`}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-photo-popup-list">${records.map(record => `<article class="map-photo-popup-item"><button type="button" class="map-photo-thumbnail" data-open-map-photo="${escapeHtml(record.key)}" aria-label="Abrir foto"><img src="${escapeHtml(record.image.data || '')}" alt="${escapeHtml(record.descripcion || 'Foto')}"></button><div><strong>${escapeHtml(record.descripcion || 'Foto')}</strong><span>${escapeHtml(summaryDocumentDate(record.fecha, true))}${record.hora ? ` · ${escapeHtml(record.hora)}` : ''}</span></div></article>`).join('')}</div>`;
   popup.hidden = false;
+  positionTripMapPhotoPopup(popup, anchorElement);
 }
 
 function openTripMapPhoto(key) {
@@ -6732,6 +6784,24 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
   element.title = dailyRecord
     ? `${dailyRecord.descripcion || 'Punto'} · ${dailyMapDateTimeLabel(dailyRecord)}`
     : labelLines.join(' · ');
+  const accommodationPhoto = dailyRecord && dailyRecord.accommodationPhotoRecord;
+  if (accommodationPhoto) {
+    const encodedKeys = encodeURIComponent(accommodationPhoto.key);
+    element.classList.add('has-photo');
+    element.setAttribute('role', 'button');
+    element.setAttribute('tabindex', '0');
+    element.setAttribute('aria-label', `Abrir ${accommodationPhoto.descripcion || 'foto del alojamiento'}`);
+    element.dataset.mapPhotoKeys = encodedKeys;
+    const open = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openTripMapPhotoPopup(encodedKeys, element);
+    };
+    element.addEventListener('click', open);
+    element.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') open(event);
+    });
+  }
   return element;
 }
 
@@ -6753,7 +6823,7 @@ function tripVectorPhotoElement(records) {
   element.addEventListener('click', event => {
     event.preventDefault();
     event.stopPropagation();
-    openTripMapPhotoPopup(encodedKeys);
+    openTripMapPhotoPopup(encodedKeys, element);
   });
   return element;
 }
@@ -6934,6 +7004,7 @@ function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawR
     updateTripVectorZoomLabel(map, baseZoom);
   });
   map.on('zoom', () => updateTripVectorZoomLabel(map, baseZoom));
+  map.on('movestart', closeTripMapPhotoPopup);
   map.on('moveend', () => {
     const currentCenter = map.getCenter();
     tripMapState.vectorCenter = [currentCenter.lng, currentCenter.lat];
@@ -7089,6 +7160,7 @@ function renderTripMap() {
     const pointStops = group.filter(stop => stop.blogPoint);
     const dailyRecord = dailyMode ? item.dailyRecord : null;
     const dailyPhoto = Boolean(dailyRecord && dailyRecord.kind === 'photo');
+    const accommodationPhoto = dailyRecord && dailyRecord.accommodationPhotoRecord;
     const markerText = dailyRecord
       ? (dailyRecord.kind === 'point' ? '•' : '+')
       : routeStops.length
@@ -7108,15 +7180,22 @@ function renderTripMap() {
       : (pointStops.length
         ? pointStops.map(stop => `${stop.ciudad.nombre} · ${summaryDocumentDate(stop.pointEntry.fecha, true)} ${stop.pointEntry.hora || ''}`.trim()).join('\n')
         : `${cityNames.join(' / ')} · sin gastos en este viaje`);
-    const photoKeys = dailyPhoto ? encodeURIComponent(dailyRecord.key) : '';
-    const photoAction = dailyPhoto
-      ? ` role="button" tabindex="0" data-map-photo-keys="${photoKeys}" aria-label="Abrir ${escapeHtml(dailyRecord.descripcion || 'foto')}"`
+    const markerPhotoRecord = dailyPhoto ? dailyRecord : accommodationPhoto;
+    const photoKeys = markerPhotoRecord ? encodeURIComponent(markerPhotoRecord.key) : '';
+    const photoAction = markerPhotoRecord
+      ? ` role="button" tabindex="0" data-map-photo-keys="${photoKeys}" aria-label="Abrir ${escapeHtml(markerPhotoRecord.descripcion || 'foto')}"`
       : '';
-    return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction}><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dailyPhoto ? 10 : 8}"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text><text x="${labelX.toFixed(1)}" y="${(p.y - 12 - (markerLabelLines.length - 1) * 6.5).toFixed(1)}" text-anchor="${anchor}">${markerLabelText}</text><title>${escapeHtml(title)}</title></g>`;
+    return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${markerPhotoRecord ? ' map-marker-clickable' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction}><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dailyPhoto ? 10 : 8}"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text><text x="${labelX.toFixed(1)}" y="${(p.y - 12 - (markerLabelLines.length - 1) * 6.5).toFixed(1)}" text-anchor="${anchor}">${markerLabelText}</text><title>${escapeHtml(title)}</title></g>`;
   }).join('');
   tripMapPhotoLookup.clear();
   const interactivePhotoItems = dailyMode ? projectedItems.filter(item => item.photoPoint) : photoItems;
   interactivePhotoItems.forEach(item => tripMapPhotoLookup.set(item.photoRecord.key, item.photoRecord));
+  if (dailyMode) {
+    dailyRecords
+      .map(record => record.accommodationPhotoRecord)
+      .filter(Boolean)
+      .forEach(record => tripMapPhotoLookup.set(record.key, record));
+  }
   const photoMarkers = groupNearbyPhotoMapItems(photoItems).map(group => {
     const x = group.reduce((sum, item) => sum + item.point.x, 0) / group.length;
     const y = group.reduce((sum, item) => sum + item.point.y, 0) / group.length;
@@ -7191,7 +7270,7 @@ function renderTripMap() {
     const open = event => {
       event.preventDefault();
       event.stopPropagation();
-      openTripMapPhotoPopup(marker.getAttribute('data-map-photo-keys'));
+      openTripMapPhotoPopup(marker.getAttribute('data-map-photo-keys'), marker);
     };
     marker.addEventListener('click', open);
     marker.addEventListener('keydown', event => {
@@ -11829,7 +11908,7 @@ function bindEvents() {
       }
       const mapPhotoMarker = target.closest('[data-map-photo-keys]');
       if (mapPhotoMarker) {
-        openTripMapPhotoPopup(mapPhotoMarker.getAttribute('data-map-photo-keys'));
+        openTripMapPhotoPopup(mapPhotoMarker.getAttribute('data-map-photo-keys'), mapPhotoMarker);
         return;
       }
       const mapPhotoClose = target.closest('[data-map-photo-close]');

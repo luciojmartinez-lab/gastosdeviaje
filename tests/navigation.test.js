@@ -39,9 +39,16 @@ test('el mapa diario separa los puntos y los números de destino', () => {
   assert.match(app, /function tripVectorDestinationElement/);
   assert.match(app, /dailyModel\.destinationMarkers\.forEach/);
   assert.match(app, /offset: \[-18, 0\]/);
+  assert.match(app, /element\.classList\.add\('has-photo'\)/);
+  assert.match(app, /openTripMapPhotoPopup\(encodedKeys, element\)/);
+  assert.match(app, /function positionTripMapPhotoPopup\(popup, anchorElement\)/);
+  assert.match(app, /record\.accommodationPhotoRecord/);
   assert.match(app, /\$\{destinationMarkers\}\s*<\/svg>/);
   assert.match(styles, /\.trip-vector-marker\s*\{[\s\S]*?pointer-events: none !important;/);
   assert.match(styles, /\.trip-vector-destination-marker\s*\{[\s\S]*?z-index: 6;/);
   assert.match(styles, /\.trip-vector-destination-marker\s*\{[\s\S]*?pointer-events: none !important;/);
   assert.match(styles, /\.map-destination-number\s*\{[\s\S]*?pointer-events: none;/);
+  assert.match(styles, /\.trip-vector-marker\.has-photo\s*\{[\s\S]*?pointer-events: auto !important;/);
+  assert.match(styles, /\.map-photo-popup\.tail-bottom::after/);
+  assert.match(styles, /\.map-photo-popup\.tail-top::after/);
 });

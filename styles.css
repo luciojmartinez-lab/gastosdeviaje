@@ -462,7 +462,8 @@ h2 {
 .app-loading-title,
 .app-loading-credit,
 .app-loading-progress,
-.app-loading p {
+.app-loading p,
+.app-loading-release {
   position: relative;
   z-index: 2;
 }
@@ -588,6 +589,12 @@ h2 {
   font-weight: 700;
 }
 
+.app-loading-release {
+  color: #6b7280;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .app-loading.is-ready {
   opacity: 0;
   visibility: hidden;
@@ -674,6 +681,11 @@ h2 {
   .app-loading p {
     position: absolute;
     top: calc(76svh + 22px);
+  }
+
+  .app-loading-release {
+    position: absolute;
+    top: calc(76svh + 48px);
   }
 }
 
@@ -2234,6 +2246,11 @@ body.map-fullscreen-open {
   pointer-events: none !important;
 }
 
+.trip-vector-marker.has-photo {
+  cursor: pointer;
+  pointer-events: auto !important;
+}
+
 .trip-vector-marker-dot,
 .trip-vector-photo-marker {
   display: grid;
@@ -2530,6 +2547,11 @@ body.map-fullscreen-open {
   pointer-events: none;
 }
 
+.map-marker-clickable {
+  cursor: pointer;
+  pointer-events: all;
+}
+
 .map-destination-number circle {
   fill: #f97316;
   stroke: #fff;
@@ -2547,19 +2569,41 @@ body.map-fullscreen-open {
 .map-photo-popup {
   position: absolute;
   top: 10px;
-  right: 10px;
+  left: 10px;
   z-index: 6;
   width: min(310px, calc(100% - 20px));
   max-height: calc(100% - 40px);
   padding: 10px;
   border: 1px solid #cbd5e1;
-  border-radius: 12px;
-  background: #fffffff2;
+  border-radius: 8px;
+  background: #fff;
   box-shadow: 0 8px 26px #0f172a40;
-  overflow: auto;
+  overflow: visible;
   cursor: default;
   touch-action: pan-y;
   user-select: text;
+}
+
+.map-photo-popup::after {
+  content: "";
+  position: absolute;
+  left: var(--map-photo-tail-x, 28px);
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.map-photo-popup.tail-bottom::after {
+  bottom: -8px;
+  border-right: 1px solid #cbd5e1;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.map-photo-popup.tail-top::after {
+  top: -8px;
+  border-top: 1px solid #cbd5e1;
+  border-left: 1px solid #cbd5e1;
 }
 
 .map-photo-popup-head {
@@ -2573,6 +2617,8 @@ body.map-fullscreen-open {
 .map-photo-popup-list {
   display: grid;
   gap: 8px;
+  max-height: min(300px, calc(100svh - 220px));
+  overflow: auto;
 }
 
 .map-photo-popup-item {
@@ -2596,6 +2642,15 @@ body.map-fullscreen-open {
   background: #e2e8f0;
   overflow: hidden;
   cursor: pointer;
+}
+
+.map-photo-popup-item:only-child {
+  grid-template-columns: 96px minmax(0, 1fr);
+}
+
+.map-photo-popup-item:only-child .map-photo-thumbnail {
+  width: 96px;
+  height: 96px;
 }
 
 .map-photo-thumbnail img {

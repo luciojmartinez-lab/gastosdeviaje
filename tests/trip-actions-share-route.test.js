@@ -53,11 +53,13 @@ test('las entradas En ruta exigen GPS o una ubicación manual', () => {
 test('las fotos clasificadas como destino sustituyen al centro de la ciudad', () => {
   assert.match(app, /function isAccommodationExpense\(gasto\)/);
   assert.match(app, /function accommodationDestinationForTripCity\(tripId, cityId, targetDate = ''\)/);
+  assert.match(app, /function accommodationDestinationPhotoRecord\(destination, tripId, cityId\)/);
   assert.match(app, /function imageUsesAsDestination\(image\)/);
   assert.match(app, /const classifiedDestination = imageUsesAsDestination\(image\)/);
   assert.match(app, /const legacyAccommodation = !image\.photoTypeId && isAccommodationExpense\(gasto\)/);
   assert.match(app, /state\.blogEntries[\s\S]*?if \(!imageUsesAsDestination\(image\)\) return/);
   assert.match(app, /cityWithAccommodationDestination\(baseCity, scopedTrip\.id, arrivalDate\)/);
+  assert.match(app, /accommodationPhotoRecord: accommodationDestinationPhotoRecord\(destination, item\.viajeId, cityId\)/);
   assert.match(app, /distance: targetDate \? dateDistanceDays\(date, targetDate\) : 0/);
   assert.match(help, /tiene prioridad como destino real de la ciudad/);
   assert.match(help, /fotos antiguas sin clasificar se conserva como respaldo la regla del gasto de Alojamiento/);
