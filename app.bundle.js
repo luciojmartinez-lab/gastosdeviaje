@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v159';
+const APP_VERSION = '700v160';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -771,6 +771,51 @@ function expenseExtraImages(gasto) {
     ? gasto.extraImages.map(normalizeStoredImageRecord).filter(image => image.data || image.fileRef)
     : [];
 }
+
+function isAccommodationExpense(gasto) {
+  const category = state.categorias.find(item => Number(item.id) === Number(gasto && gasto.catId));
+  return normalizePlaceName(category && category.nombre) === 'alojamiento';
+}
+
+function dateDistanceDays(first, second) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(first || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(second || ''))) return Number.POSITIVE_INFINITY;
+  return Math.abs(new Date(`${first}T12:00:00Z`).getTime() - new Date(`${second}T12:00:00Z`).getTime()) / 86400000;
+}
+
+function accommodationDestinationForTripCity(tripId, cityId, targetDate = '') {
+  const candidates = [];
+  state.gastos
+    .filter(gasto => Number(gasto.viajeId) === Number(tripId) && Number(gasto.ciudadId) === Number(cityId) && isAccommodationExpense(gasto))
+    .forEach(gasto => {
+      expenseExtraImages(gasto).forEach((image, index) => {
+        const point = storedImageCoordinates(image);
+        if (!point) return;
+        const date = image.capturedDate || gasto.fecha || '';
+        candidates.push({
+          ...point,
+          date,
+          distance: targetDate ? dateDistanceDays(date, targetDate) : 0,
+          gasto,
+          image,
+          index
+        });
+      });
+    });
+  return candidates.sort((a, b) =>
+    a.distance - b.distance
+    || String(a.date || '').localeCompare(String(b.date || ''))
+    || compareGastosRouteOrder(a.gasto, b.gasto)
+    || a.index - b.index
+  )[0] || null;
+}
+
+function cityWithAccommodationDestination(city, tripId, targetDate = '') {
+  if (!city) return city;
+  const destination = accommodationDestinationForTripCity(tripId, city.id, targetDate);
+  return destination
+    ? { ...city, lat: destination.latitude, lng: destination.longitude, accommodationDestination: true }
+    : city;
+}
 async function expenseTicketBlogImage(gasto) {
   const ticketData = normalizeTicketDataValue(gasto && gasto.ticketData);
   if (!ticketData) return null;
@@ -1527,7 +1572,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v159');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v160');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1559,7 +1604,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v159');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v160');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1970,7 +2015,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v159');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v160');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4903,8 +4948,9 @@ function mapRouteCities(gastos, paisId) {
       if (paisId && Number(pais && pais.id) !== Number(paisId)) return;
       const key = Number(ciudad.id);
       if (!byCity.has(key)) {
+        const destinationCity = cityWithAccommodationDestination(ciudad, g.viajeId, g.fecha);
         byCity.set(key, {
-          ciudad,
+          ciudad: destinationCity,
           pais,
           firstDate: g.fecha || '',
           firstOrder: index,
@@ -4942,7 +4988,9 @@ function mapRouteCities(gastos, paisId) {
     }
     const seenPlanned = new Set();
     const plannedItems = plannedIds.map((id, index) => {
-      const ciudad = state.lugares.find(l => Number(l.id) === Number(id));
+      const baseCity = state.lugares.find(l => Number(l.id) === Number(id));
+      const arrivalDate = plannedArrivalDates[index] || '';
+      const ciudad = cityWithAccommodationDestination(baseCity, scopedTrip.id, arrivalDate);
       if (!ciudad || isTransitPlaceName(ciudad.nombre)) return null;
       const pais = state.lugares.find(l => Number(l.id) === Number(ciudad.parentId));
       if (paisId && Number(pais && pais.id) !== Number(paisId)) return null;
@@ -4952,7 +5000,7 @@ function mapRouteCities(gastos, paisId) {
       return {
         ciudad,
         pais,
-        firstDate: plannedArrivalDates[index] || '',
+        firstDate: arrivalDate,
         firstOrder: expenseItem ? expenseItem.firstOrder : index,
         routeOrder: index,
         count: expenseItem ? expenseItem.count : 0,
@@ -5541,6 +5589,7 @@ function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip
     const countryId = Number(item.paisId || city.parentId || 0);
     if (paisId && countryId !== Number(paisId)) return;
     if (!byCity.has(cityId)) {
+      const destination = accommodationDestinationForTripCity(item.viajeId, cityId, day);
       byCity.set(cityId, {
         key: `city-${day}-${cityId}`,
         kind: 'city',
@@ -5548,8 +5597,9 @@ function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip
         fecha: day,
         hora: item.hora || '',
         descripcion: city.nombre,
-        latitude: Number(city.lat),
-        longitude: Number(city.lng),
+        latitude: destination ? destination.latitude : Number(city.lat),
+        longitude: destination ? destination.longitude : Number(city.lng),
+        accommodationDestination: Boolean(destination),
         paisId: countryId || null,
         ciudadId: cityId,
         count: 0
@@ -5611,7 +5661,7 @@ function combineDailyMapRecords(exactRecords = [], cityRecords = [], routeOrder 
     ...record,
     routeNumber: Number.isFinite(routeIndex(record)) ? routeIndex(record) + 1 : null
   }));
-  return { records, usesCityFallback: cityRecords.length > 0 };
+  return { records, usesCityFallback: cityRecords.some(record => !record.accommodationDestination) };
 }
 
 function dailyMapItem(record) {
@@ -5626,7 +5676,8 @@ function dailyMapItem(record) {
     configuredOnly: true,
     plannedOnly: false,
     dailyPoint: true,
-    cityFallback: record.kind === 'city',
+    cityFallback: record.kind === 'city' && !record.accommodationDestination,
+    accommodationDestination: record.accommodationDestination === true,
     dailyRecord: record,
     blogPoint: record.kind === 'point',
     pointEntry: record.entry || null,
@@ -5752,6 +5803,7 @@ function tripMapItemsForCurrentScope() {
     destinationOnlyApplied,
     pointCount: visiblePoints.length,
     photoCount: photos.length,
+    accommodationDestinationCount: mapItems.filter(item => item.accommodationDestination || (item.ciudad && item.ciudad.accommodationDestination)).length,
     duplicatePhotoCount,
     availablePhotoCount: visiblePhotoRecords.length,
     dailyMode,
@@ -6223,7 +6275,11 @@ async function createTripOverviewMapBlogImage(trip) {
   const routeIds = tripCityIds(trip);
   const arrivalDates = tripRouteArrivalDates(trip, routeIds);
   const stops = routeIds.map((id, index) => ({
-    city: state.lugares.find(item => Number(item.id) === Number(id)) || null,
+    city: cityWithAccommodationDestination(
+      state.lugares.find(item => Number(item.id) === Number(id)) || null,
+      trip.id,
+      arrivalDates[index] || ''
+    ),
     number: index + 1,
     arrivalDate: arrivalDates[index] || ''
   })).filter(stop => stop.city);
@@ -6717,6 +6773,7 @@ function renderTripMap() {
     destinationOnlyApplied,
     pointCount,
     photoCount,
+    accommodationDestinationCount,
     duplicatePhotoCount,
     availablePhotoCount,
     dailyMode,
@@ -6950,8 +7007,9 @@ function renderTripMap() {
   });
   if (dailyMode) {
     const fallbackText = dailyUsesCityFallback ? ' Los datos sin GPS exacto se muestran agrupados en su ciudad.' : '';
+    const accommodationText = accommodationDestinationCount ? ' El alojamiento geolocalizado se usa como destino de la ciudad.' : '';
     const routeText = dailyRoute.length > 1 ? 'con línea entre las ciudades' : 'sin líneas';
-    info.textContent = `${dailyRecords.length} ${dailyRecords.length === 1 ? 'punto marcado' : 'puntos marcados'} el ${blogDayDateLabel(tripMapState.day)}, ${routeText}. La hora aparece junto a cada punto.${fallbackText}${duplicatePhotoText}`;
+    info.textContent = `${dailyRecords.length} ${dailyRecords.length === 1 ? 'punto marcado' : 'puntos marcados'} el ${blogDayDateLabel(tripMapState.day)}, ${routeText}. La hora aparece junto a cada punto.${accommodationText}${fallbackText}${duplicatePhotoText}`;
     return;
   }
   if (cityMode) {
@@ -6969,9 +7027,10 @@ function renderTripMap() {
   const visiblePointCount = withCoords.filter(item => item.blogPoint).length;
   const pointText = visiblePointCount ? ` ${visiblePointCount} ${visiblePointCount === 1 ? 'punto geolocalizado' : 'puntos geolocalizados'}.` : '';
   const photoText = photoCount ? ` ${photoCount} ${photoCount === 1 ? 'foto geolocalizada' : 'fotos geolocalizadas'}.` : '';
+  const accommodationText = accommodationDestinationCount ? ` ${accommodationDestinationCount} ${accommodationDestinationCount === 1 ? 'destino usa' : 'destinos usan'} la ubicación GPS del alojamiento.` : '';
   const routeLabel = shouldDrawRoute ? `Ruta: ${route || 'sin gastos con ciudad'}.` : `Ciudades: ${route || 'sin gastos con ciudad'}.`;
   const destinationText = destinationOnlyApplied ? ' Modo solo destino: se omiten la salida y el regreso.' : '';
-  info.textContent = `${cityCount} ciudades en el mapa.${pointText}${photoText} ${routeLabel}${destinationText}${configuredText}${missingText}${duplicatePhotoText}`;
+  info.textContent = `${cityCount} ciudades en el mapa.${pointText}${photoText}${accommodationText} ${routeLabel}${destinationText}${configuredText}${missingText}${duplicatePhotoText}`;
 }
 
 function mapGesturePoints() {
@@ -7985,10 +8044,15 @@ function blogPointPickerAvailable() {
 
 function syncBlogPointFieldsVisibility() {
   const visible = blogPointPickerAvailable();
+  const pointMode = activeBlogEntryType === 'punto';
   if ($('#blog-point-fields')) $('#blog-point-fields').hidden = !visible;
-  if ($('#blog-point-notes-option')) $('#blog-point-notes-option').hidden = activeBlogEntryType !== 'punto';
-  if ($('#blog-point-current')) $('#blog-point-current').hidden = activeBlogEntryType !== 'punto';
-  if (visible) renderBlogPointPicker();
+  if ($('#blog-point-notes-option')) $('#blog-point-notes-option').hidden = !pointMode;
+  if ($('#blog-point-current')) $('#blog-point-current').hidden = !pointMode;
+  if ($('#blog-point-search')) $('#blog-point-search').hidden = !pointMode;
+  if ($('#blog-point-zoom-in')) $('#blog-point-zoom-in').hidden = !pointMode;
+  if ($('#blog-point-zoom-out')) $('#blog-point-zoom-out').hidden = !pointMode;
+  if ($('#blog-point-map')) $('#blog-point-map').hidden = !pointMode;
+  if (pointMode) renderBlogPointPicker();
 }
 
 function blogPointDefaultCenter() {
@@ -8001,7 +8065,7 @@ function blogPointDefaultCenter() {
 
 function renderBlogPointPicker() {
   const container = $('#blog-point-map');
-  if (!container || !blogPointPickerAvailable()) return;
+  if (!container || activeBlogEntryType !== 'punto') return;
   const width = 640;
   const height = 280;
   const zoom = Math.max(3, Math.min(19, Number(blogPointPickerState.zoom) || 15));
@@ -8280,16 +8344,35 @@ function syncBlogEnRouteOption(message = '', isError = false) {
 
 function openBlogManualRouteLocation() {
   blogManualRouteLocationOpen = true;
-  const point = blogPointFieldCoordinates();
-  const fallback = blogPointDefaultCenter();
-  blogPointPickerState.centerLat = point ? point.latitude : fallback.latitude;
-  blogPointPickerState.centerLng = point ? point.longitude : fallback.longitude;
-  blogPointPickerState.zoom = point ? 16 : fallback.zoom;
+  let point = blogPointFieldCoordinates();
+  if (!point && activeBlogEntryType === 'imagen') {
+    const locatedImage = [activeBlogImage, ...activeBlogGalleryImages].find(image => storedImageCoordinates(image));
+    point = locatedImage ? storedImageCoordinates(locatedImage) : null;
+    if (point) {
+      $('#blog-point-lat').value = point.latitude.toFixed(6);
+      $('#blog-point-lng').value = point.longitude.toFixed(6);
+    }
+  }
   syncBlogPointFieldsVisibility();
   setMessage('#blog-point-status', point
-    ? 'Ubicación manual guardada. Puedes corregirla pulsando en el mapa.'
-    : 'Pulsa en el mapa o busca la descripción. No se usará tu ubicación actual.');
+    ? 'Coordenadas preparadas. Puedes copiarlas o corregirlas escribiendo nuevos valores.'
+    : 'Introduce manualmente la latitud y la longitud. No se usará tu ubicación actual.');
   syncBlogEnRouteOption();
+}
+
+async function copyBlogPointCoordinates() {
+  const point = blogPointFieldCoordinates();
+  if (!point) {
+    setMessage('#blog-point-status', 'Introduce una latitud y una longitud válidas antes de copiarlas.', true);
+    return;
+  }
+  const text = `${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}`;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    setMessage('#blog-point-status', `Coordenadas copiadas: ${text}`);
+    return;
+  }
+  window.prompt('Copia estas coordenadas:', text);
 }
 
 function setBlogEntryType(type) {
@@ -10597,12 +10680,12 @@ function bindEvents() {
   });
   $('#blog-pais').onchange = () => {
     renderBlogCities();
-    if (blogPointPickerAvailable() && !blogPointFieldCoordinates()) resetBlogPointPicker();
+    if (activeBlogEntryType === 'punto' && !blogPointFieldCoordinates()) resetBlogPointPicker();
     if (activeBlogEntryType === 'imagen' && activeBlogImage) showBlogImages([activeBlogImage, ...activeBlogGalleryImages]);
     scheduleActiveBlogEntryDraftSave();
   };
   $('#blog-ciudad').onchange = () => {
-    if (blogPointPickerAvailable() && !blogPointFieldCoordinates()) resetBlogPointPicker();
+    if (activeBlogEntryType === 'punto' && !blogPointFieldCoordinates()) resetBlogPointPicker();
     if (activeBlogEntryType === 'imagen' && activeBlogImage) showBlogImages([activeBlogImage, ...activeBlogGalleryImages]);
     scheduleActiveBlogEntryDraftSave();
   };
@@ -10662,11 +10745,20 @@ function bindEvents() {
       setMessage('#blog-point-status', error.message || String(error), true);
     }
   };
+  $('#blog-point-copy').onclick = async () => {
+    try {
+      await copyBlogPointCoordinates();
+    } catch (error) {
+      setMessage('#blog-point-status', 'No se pudieron copiar las coordenadas.', true);
+    }
+  };
   ['#blog-point-lat', '#blog-point-lng'].forEach(selector => {
     $(selector).onchange = () => {
       const point = blogPointFieldCoordinates();
       if (!point) {
         setMessage('#blog-point-status', 'Revisa la latitud y la longitud.', true);
+        syncBlogEnRouteOption();
+        scheduleActiveBlogEntryDraftSave();
         return;
       }
       blogPointPickerState.centerLat = point.latitude;

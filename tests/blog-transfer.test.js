@@ -71,8 +71,12 @@ test('los puntos geolocalizados admiten notas', () => {
 
 test('textos e imágenes sin GPS permiten marcar una ubicación manual', () => {
   assert.match(html, /id="blog-en-route-location"[^>]*>Añadir ubicación manualmente/);
+  assert.match(html, /id="blog-point-copy">Copiar coordenadas/);
   assert.match(app, /blogManualRouteLocationOpen && \['texto', 'imagen'\]\.includes\(activeBlogEntryType\)/);
-  assert.match(app, /No se usará tu ubicación actual/);
+  assert.match(app, /Introduce manualmente la latitud y la longitud\. No se usará tu ubicación actual/);
+  assert.match(app, /function copyBlogPointCoordinates\(\)/);
+  assert.match(app, /const text = `\$\{point\.latitude\.toFixed\(6\)\}, \$\{point\.longitude\.toFixed\(6\)\}`/);
+  assert.match(app, /if \(\$\('#blog-point-map'\)\) \$\('#blog-point-map'\)\.hidden = !pointMode/);
   assert.match(app, /values\.imageLocationSource = 'manual'/);
   assert.match(styles, /\.blog-point-actions \.btn\[hidden\]/);
 });

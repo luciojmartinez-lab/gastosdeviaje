@@ -49,3 +49,13 @@ test('las entradas En ruta exigen GPS o una ubicación manual', () => {
   assert.match(help, /marcadas «En ruta»/);
   assert.match(help, /nunca asigna automáticamente la ubicación actual/);
 });
+
+test('el alojamiento geolocalizado sustituye al centro de la ciudad como destino', () => {
+  assert.match(app, /function isAccommodationExpense\(gasto\)/);
+  assert.match(app, /function accommodationDestinationForTripCity\(tripId, cityId, targetDate = ''\)/);
+  assert.match(app, /normalizePlaceName\(category && category\.nombre\) === 'alojamiento'/);
+  assert.match(app, /cityWithAccommodationDestination\(baseCity, scopedTrip\.id, arrivalDate\)/);
+  assert.match(app, /distance: targetDate \? dateDistanceDays\(date, targetDate\) : 0/);
+  assert.match(help, /usa el alojamiento como destino/);
+  assert.match(help, /Solo cuando no existe esa información utiliza las coordenadas generales de la ciudad/);
+});
