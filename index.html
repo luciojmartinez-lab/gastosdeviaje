@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v169">
+  <link rel="manifest" href="manifest.webmanifest?v=700v170">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v169">
+  <link rel="stylesheet" href="styles.css?v=700v170">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release">Versión 700v169 · 17/07/2026</div>
+  <div class="app-loading-release"><strong>Versión 700v170</strong> · 17/07/2026</div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v169</div>
+  <div class="app-version">700v170</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -922,12 +922,25 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v169"></script>
-<script src="app.bundle.js?v=700v169"></script>
+<script src="map-model.js?v=700v170"></script>
+<script src="app.bundle.js?v=700v170"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v169';
+    const pageVersion = '700v170';
+    const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
+    let pendingUpdateVersion = '';
+    const reloadForUpdate = version => {
+      const targetVersion = String(version || pendingUpdateVersion || '').trim();
+      if (!targetVersion || refreshing) return;
+      const reloadKey = `gastos-viaje-update-${targetVersion}`;
+      if (sessionStorage.getItem(reloadKey)) return;
+      refreshing = true;
+      sessionStorage.setItem(reloadKey, '1');
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set('v', targetVersion);
+      window.location.replace(nextUrl.href);
+    };
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
         registration.waiting.postMessage({ type: 'SKIP_WAITING' });
@@ -939,21 +952,33 @@
         if (!response.ok) return;
         const latestVersion = (await response.text()).trim();
         if (!latestVersion || latestVersion === pageVersion) return;
+        pendingUpdateVersion = latestVersion;
         await registration.update();
         activateWaitingWorker(registration);
-        const reloadKey = `gastos-viaje-update-${latestVersion}`;
-        if (sessionStorage.getItem(reloadKey)) return;
-        sessionStorage.setItem(reloadKey, '1');
-        window.location.replace(`./index.html?v=${encodeURIComponent(latestVersion)}`);
+        if (navigator.serviceWorker.controller === registration.active) {
+          registration.active.postMessage({ type: 'GET_APP_VERSION' });
+        }
       } catch (_) {}
     };
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (!event.data || event.data.type !== 'APP_VERSION_ACTIVE') return;
+      const activeVersion = String(event.data.version || '').trim();
+      if (!activeVersion || activeVersion === pageVersion) return;
+      pendingUpdateVersion = activeVersion;
+      reloadForUpdate(activeVersion);
+    });
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (refreshing) return;
-      refreshing = true;
-      window.location.reload();
+      if (!hadControllerAtStart && !pendingUpdateVersion) return;
+      if (pendingUpdateVersion) {
+        reloadForUpdate(pendingUpdateVersion);
+        return;
+      }
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'GET_APP_VERSION' });
+      }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v169', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v170', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

@@ -11,17 +11,17 @@ const [html, app, help, sw, version, pkg] = await Promise.all([
   readFile(new URL('../package.json', import.meta.url), 'utf8')
 ]);
 
-test('la versiÃ³n 700v169 estÃ¡ alineada en app, cache y paquete', () => {
-  assert.equal(version.trim(), '700v169');
-  assert.match(pkg, /"version": "700\.169\.0"/);
-  assert.match(html, /styles\.css\?v=700v169/);
-  assert.match(html, /app\.bundle\.js\?v=700v169/);
-  assert.match(html, /map-model\.js\?v=700v169/);
-  assert.match(html, /sw\.js\?v=700v169/);
-  assert.match(app, /const APP_VERSION = '700v169'/);
-  assert.match(app, /image-location\.js\?v=700v169/);
-  assert.match(app, /ticket-ocr\.js\?v=700v169/);
-  assert.match(sw, /gastosdeviaje-700v169/);
+test('la versiÃ³n 700v170 estÃ¡ alineada en app, cache y paquete', () => {
+  assert.equal(version.trim(), '700v170');
+  assert.match(pkg, /"version": "700\.170\.0"/);
+  assert.match(html, /styles\.css\?v=700v170/);
+  assert.match(html, /app\.bundle\.js\?v=700v170/);
+  assert.match(html, /map-model\.js\?v=700v170/);
+  assert.match(html, /sw\.js\?v=700v170/);
+  assert.match(app, /const APP_VERSION = '700v170'/);
+  assert.match(app, /image-location\.js\?v=700v170/);
+  assert.match(app, /ticket-ocr\.js\?v=700v170/);
+  assert.match(sw, /gastosdeviaje-700v170/);
   assert.doesNotMatch(html + app + sw, /700v136|700v135|700v134|700v133|700v132|700v131|700v128/);
 });
 
@@ -38,6 +38,14 @@ test('los tipos de fotos forman parte de backups e importaciones', () => {
   assert.match(app, /items: normalizePhotoTypes\(Array\.isArray\(data\.photoTypes\) \? data\.photoTypes : DEFAULT_PHOTO_TYPES\)/);
   assert.match(app, /getOne\('appSettings', PHOTO_TYPES_SETTING_KEY\)/);
   assert.match(app, /await savePhotoTypes\(mergedTypes\)/);
+});
+
+test('los tipos de fotos se normalizan siempre en orden alfabético', () => {
+  const start = app.indexOf('function normalizePhotoTypes');
+  const end = app.indexOf('function photoTypeById', start);
+  const normalizer = app.slice(start, end);
+  assert.match(normalizer, /\.sort\(\(a, b\) =>/);
+  assert.match(normalizer, /normalizePlaceName\(a\.nombre\)\.localeCompare\(normalizePlaceName\(b\.nombre\), 'es'\)/);
 });
 
 test('Avanzado permite reducir el espacio ocupado de imÃ¡genes ya guardadas', () => {

@@ -49,3 +49,14 @@ test('la pantalla inicial se sirve desde cache aunque no haya red disponible', (
   assert.match(sw, /updateNavigationCache\(request\)\.catch\(\(\) => \{\}\)/);
   assert.match(sw, /event\.respondWith\(cachedNavigationResponse\(event\.request\)\)/);
 });
+
+test('una versión nueva provoca una sola recarga después de activar su service worker', () => {
+  assert.match(html, /const hadControllerAtStart = Boolean\(navigator\.serviceWorker\.controller\)/);
+  assert.match(html, /const reloadForUpdate = version =>/);
+  assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?await registration\.update\(\)/);
+  assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
+  assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
+  assert.match(sw, /const APP_VERSION = '700v170'/);
+  assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
+  assert.doesNotMatch(html, /window\.location\.reload\(\)/);
+});

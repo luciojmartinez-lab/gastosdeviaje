@@ -592,7 +592,12 @@ h2 {
 .app-loading-release {
   color: #6b7280;
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 600;
+}
+
+.app-loading-release strong {
+  color: #26384a;
+  font-weight: 800;
 }
 
 .app-loading.is-ready {
