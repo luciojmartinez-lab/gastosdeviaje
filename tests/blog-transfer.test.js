@@ -63,14 +63,15 @@ test('las imágenes del Blog se pueden girar manualmente', () => {
 
 test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {
   assert.match(html, /id="config-photo-types"/);
-  assert.match(html, /id="g-extra-images-type"/);
-  assert.match(html, /id="edit-gasto-extra-images-type"/);
+  assert.match(html, /id="g-extra-images-classifications"/);
+  assert.match(html, /id="edit-gasto-extra-images-classifications"/);
   assert.match(app, /photoTypeId: String\(image\.photoTypeId \|\| ''\)/);
   assert.match(app, /data-blog-image-type="\$\{index\}"/);
   assert.match(app, /function setBlogImagePhotoType\(index, typeId\)/);
   assert.match(app, /imagePhotoTypeId: activeBlogImage\.photoTypeId \|\| ''/);
   assert.match(app, /photoTypeId: entry\.imagePhotoTypeId/);
   assert.match(app, /data-expense-image-type="\$\{index\}"/);
+  assert.match(app, /data-new-expense-image-type="\$\{prefix\}-\$\{index\}"/);
   assert.match(app, /photoTypeId: selectedType \? selectedType\.id : ''/);
 });
 
@@ -86,7 +87,7 @@ test('las clasificaciones de tickets y fotos se guardan al seleccionarlas', () =
   assert.match(app, /edit-gasto-ticket-type'\)\.value = gasto\.ticketData \? String\(gasto\.ticketPhotoTypeId \|\| ''\) : ''/);
   assert.match(app, /ticketPhotoTypeId: selectedTicketType \? selectedTicketType\.id : ''/);
   assert.match(app, /photoTypeId: String\(gasto\.ticketPhotoTypeId \|\| ''\)/);
-  assert.match(html, /id="edit-gasto-extra-images-type" disabled/);
+  assert.doesNotMatch(html, /id="edit-gasto-extra-images-type"/);
   assert.match(app, /async function saveOpenExpenseImageClassifications\(\)/);
   assert.match(app, /queueExpenseClassificationSave\(id, \{ extraImages \}\)/);
   assert.match(app, /edit-gasto-cat'\)\.onchange[\s\S]*saveOpenExpenseCategoryClassification\(\)/);

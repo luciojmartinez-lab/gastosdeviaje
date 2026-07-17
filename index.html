@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v167">
+  <link rel="manifest" href="manifest.webmanifest?v=700v168">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v167">
+  <link rel="stylesheet" href="styles.css?v=700v168">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release">Versión 700v167 · 17/07/2026</div>
+  <div class="app-loading-release">Versión 700v168 · 17/07/2026</div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v167</div>
+  <div class="app-version">700v168</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -468,8 +468,7 @@
       </div>
       <p class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
       <p id="g-extra-images-selected" class="small">Ninguna imagen adicional seleccionada.</p>
-      <label for="g-extra-images-type">Clasificación solo de las imágenes seleccionadas</label>
-      <select id="g-extra-images-type" disabled><option value="">Sin clasificar</option></select>
+      <div id="g-extra-images-classifications" class="pending-expense-image-classifications"></div>
       <label class="check-option photo-map-option" id="g-extra-images-map-option" hidden><input type="checkbox" id="g-extra-images-map"> Añadir las fotos al mapa</label>
     </div>
     <div class="actions">
@@ -544,8 +543,7 @@
       </div>
       <p class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
       <p id="edit-gasto-extra-images-selected" class="small">Ninguna imagen nueva seleccionada.</p>
-      <label for="edit-gasto-extra-images-type">Clasificación solo de las imágenes que vas a añadir</label>
-      <select id="edit-gasto-extra-images-type" disabled><option value="">Sin clasificar</option></select>
+      <div id="edit-gasto-extra-images-classifications" class="pending-expense-image-classifications"></div>
       <label class="check-option photo-map-option" id="edit-gasto-extra-images-map-option" hidden><input type="checkbox" id="edit-gasto-extra-images-map"> Añadir las fotos nuevas al mapa</label>
       <div id="edit-gasto-extra-images-current" class="expense-current-images"></div>
     </div>
@@ -920,11 +918,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v167"></script>
-<script src="app.bundle.js?v=700v167"></script>
+<script src="map-model.js?v=700v168"></script>
+<script src="app.bundle.js?v=700v168"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v167';
+    const pageVersion = '700v168';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -951,7 +949,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v167', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v168', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

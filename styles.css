@@ -1348,6 +1348,34 @@ input[type="checkbox"] {
   max-width: 180px;
 }
 
+.pending-expense-image-classifications {
+  margin-top: 7px;
+}
+
+.pending-expense-image-classifications > p {
+  margin: 0 0 5px;
+}
+
+.pending-expense-image-list {
+  display: grid;
+  gap: 6px;
+}
+
+.pending-expense-image-list label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 180px);
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.pending-expense-image-list span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .photo-types-list ul {
   display: grid;
   gap: 7px;
