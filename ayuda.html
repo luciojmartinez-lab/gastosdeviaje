@@ -3,714 +3,560 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Ayuda - Cuaderno de Bitácora</title>
-  <meta name="theme-color" content="#1976d2">
-  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#0876c9">
+  <title>Manual de Cuaderno de Bitácora - 700v175</title>
   <style>
-    :root {
-      --primary: #1976d2;
-      --ink: #1f2937;
-      --muted: #6b7280;
-      --line: #e5e7eb;
-      --soft: #eef2ff;
-      --panel: #fff;
-      --bg: #f6f8fb;
-      --good: #16a34a;
-      --warn: #d97706;
+    :root{
+      --ink:#253548;
+      --muted:#5e6b78;
+      --line:#d9e1e8;
+      --soft:#f3f7fb;
+      --blue:#0876c9;
+      --blue-dark:#07578f;
+      --teal:#138b7c;
+      --orange:#d85f00;
+      --paper:#fff;
     }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--ink);
-      line-height: 1.5;
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth;scroll-padding-top:76px}
+    body{margin:0;background:#eef2f5;color:var(--ink);font:16px/1.58 Arial,sans-serif}
+    a{color:#0869ad;text-underline-offset:2px}
+    a:hover{color:#034a7d}
+    .topbar{position:sticky;top:0;z-index:20;background:#0876c9;color:#fff;box-shadow:0 2px 10px #17324c33}
+    .topbar-inner{max-width:1240px;margin:auto;min-height:62px;padding:9px 22px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+    .app-name{font-size:19px;font-weight:700}.app-name small{display:block;font-size:12px;font-weight:400;opacity:.86}
+    .top-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:9px 14px;border:1px solid #ffffff80;border-radius:6px;background:#fff;color:#07578f;text-decoration:none;font-weight:700;cursor:pointer}
+    .button.secondary{background:#ffffff16;color:#fff}
+    .layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:26px;max-width:1240px;margin:0 auto;padding:26px 22px 70px}
+    .toc{position:sticky;top:88px;align-self:start;max-height:calc(100vh - 108px);overflow:auto;background:#fff;border:1px solid var(--line);border-radius:7px;padding:18px}
+    .toc h2{font-size:18px;margin:0 0 10px}.toc ol{margin:0;padding-left:22px}.toc li{margin:7px 0}.toc a{text-decoration:none}.toc .subtoc{font-size:14px;color:var(--muted)}
+    .manual{min-width:0}
+    .intro,.section{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:34px;margin-bottom:22px}
+    .doc-meta{display:flex;gap:10px 24px;flex-wrap:wrap;margin:0 0 20px;padding:12px 15px;background:#eaf4ff;border-left:4px solid var(--blue);font-size:15px}
+    h1{margin:0 0 12px;font:700 42px/1.08 Georgia,serif;color:#183149;letter-spacing:0}
+    h2{font-size:28px;line-height:1.2;margin:0 0 16px;color:#1c3952}
+    h3{font-size:22px;line-height:1.25;margin:30px 0 12px;color:#234b69}
+    h4{font-size:18px;line-height:1.25;margin:24px 0 9px;color:#2c4c63}
+    p{margin:0 0 13px}.lead{font-size:19px;color:#425466;max-width:850px}
+    .principles,.phase-grid,.quick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:18px 0}
+    .principle,.phase,.quick{border-left:4px solid var(--teal);background:var(--soft);padding:16px}
+    .principle strong,.phase strong,.quick strong{display:block;margin-bottom:5px;color:#183e58}
+    .phase{border-left-color:var(--blue)}
+    .phase .number{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;margin-right:7px;background:var(--blue);color:#fff}
+    .callout{margin:18px 0;padding:15px 17px;border-left:4px solid var(--orange);background:#fff5e9;color:#503d2b}
+    .success{border-left-color:var(--teal);background:#ecf8f5;color:#244f47}
+    .anchor-list{display:flex;flex-wrap:wrap;gap:8px;margin:15px 0 0}
+    .anchor-list a{display:inline-block;padding:7px 10px;border:1px solid #bfd4e7;border-radius:5px;background:#f1f7fd;text-decoration:none;font-size:14px}
+    .workflow{counter-reset:workflow;margin:15px 0;padding:0;list-style:none}
+    .workflow li{counter-increment:workflow;position:relative;margin:0 0 15px;padding:3px 0 3px 45px}
+    .workflow li::before{content:counter(workflow);position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#0876c9;color:#fff;font-weight:700}
+    .workflow strong{color:#1e4663}
+    .subsection{padding-top:10px;border-top:1px solid var(--line);margin-top:30px}
+    .subsection:first-of-type{border-top:0}
+    .back{display:inline-block;margin-top:14px;font-size:14px}
+    figure{margin:20px 0 24px}
+    figure img{display:block;width:min(100%,720px);height:auto;border:1px solid #cfd8df;box-shadow:0 7px 24px #243a4c24}
+    figcaption{max-width:720px;padding:10px 0;color:var(--muted);font-size:14px}
+    .legend{max-width:720px;margin:0 0 24px;padding:0;list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px}
+    .legend li{position:relative;padding-left:32px}
+    .legend b{position:absolute;left:0;top:0;display:grid;place-items:center;width:23px;height:23px;border-radius:50%;background:var(--orange);color:#fff;font-size:13px}
+    .table-wrap{width:100%;overflow:auto;margin:14px 0 22px;border:1px solid var(--line)}
+    table{width:100%;border-collapse:collapse;background:#fff;font-size:15px}
+    th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+    th{background:#eaf4ff;color:#184d73;white-space:nowrap}tr:last-child td{border-bottom:0}
+    .control-table th:first-child,.control-table td:first-child{width:26%;font-weight:700;color:#294d68}
+    code{background:#edf2f6;padding:2px 5px;border-radius:3px}
+    .definition{display:grid;grid-template-columns:190px 1fr;border-top:1px solid var(--line)}
+    .definition dt,.definition dd{margin:0;padding:10px 0;border-bottom:1px solid var(--line)}
+    .definition dt{font-weight:700;color:#294d68;padding-right:15px}.definition dd{color:#425363}
+    .index-group{margin:17px 0}.index-group strong{display:block;margin-bottom:5px}
+    .index-group a{margin-right:12px}
+    .footer-note{margin-top:26px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+    .print-footer{display:none}
+    @media(max-width:900px){
+      html{scroll-padding-top:112px}.topbar-inner{align-items:flex-start}.top-actions{justify-content:flex-end}.layout{display:block;padding:16px 10px 50px}.toc{position:static;max-height:none;margin-bottom:16px}.intro,.section{padding:23px 18px}.principles,.phase-grid,.quick-grid,.legend{grid-template-columns:1fr}h1{font-size:34px}.definition{grid-template-columns:1fr}.definition dt{border-bottom:0;padding-bottom:2px}.definition dd{padding-top:0}.topbar{position:relative}
     }
-
-    .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 3;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 16px;
-      background: var(--primary);
-      color: #fff;
+    @media(max-width:560px){
+      .topbar-inner{padding:9px 12px}.app-name{font-size:16px}.top-actions{width:100%;display:grid;grid-template-columns:repeat(3,1fr)}.button{padding:8px 6px;font-size:13px}.intro,.section{padding:20px 14px}h1{font-size:30px}h2{font-size:25px}h3{font-size:21px}.doc-meta{display:block}.doc-meta span{display:block;margin:3px 0}.control-table th:first-child,.control-table td:first-child{width:auto}
     }
-
-    .topbar h1 {
-      flex: 1;
-      margin: 0;
-      font-size: 20px;
-      line-height: 1.1;
-    }
-
-    .topbar h1 span {
-      display: block;
-      margin-top: 3px;
-      font-size: 12px;
-      font-weight: 500;
-      opacity: 0.85;
-    }
-
-    .topbar a,
-    .help-nav a {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 36px;
-      padding: 8px 12px;
-      border-radius: 8px;
-      background: #ffffff22;
-      color: #fff;
-      text-decoration: none;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-
-    .topbar a:hover,
-    .topbar a:focus-visible {
-      background: #fff;
-      color: var(--primary);
-    }
-
-    main {
-      width: min(1120px, calc(100vw - 24px));
-      margin: 0 auto;
-      padding: 18px 0 36px;
-    }
-
-    .hero,
-    .section,
-    .screen,
-    .mini-card {
-      background: var(--panel);
-      border-radius: 8px;
-      box-shadow: 0 6px 20px #0000000d;
-    }
-
-    .hero {
-      display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
-      gap: 18px;
-      align-items: center;
-      padding: 20px;
-    }
-
-    .hero h2,
-    .section h2 {
-      margin: 0 0 8px;
-      font-size: clamp(28px, 4vw, 44px);
-      line-height: 1.05;
-    }
-
-    .hero p {
-      max-width: 64ch;
-      margin: 0 0 12px;
-      color: var(--muted);
-    }
-
-    .help-nav {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 14px;
-    }
-
-    .help-nav a {
-      background: var(--soft);
-      color: #1e40af;
-    }
-
-    .flow {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
-      margin-top: 14px;
-    }
-
-    .flow-step {
-      min-height: 98px;
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-    }
-
-    .flow-step b {
-      display: block;
-      margin-bottom: 4px;
-      color: #1e40af;
-    }
-
-    .section {
-      margin-top: 18px;
-      padding: 18px;
-    }
-
-    .section h2 {
-      font-size: clamp(24px, 3vw, 34px);
-    }
-
-    .section h3 {
-      margin: 18px 0 8px;
-      font-size: 20px;
-    }
-
-    .grid-2,
-    .grid-3 {
-      display: grid;
-      gap: 12px;
-      margin-top: 12px;
-    }
-
-    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-
-    .mini-card {
-      padding: 14px;
-      border: 1px solid var(--line);
-      box-shadow: none;
-    }
-
-    .mini-card h3 {
-      margin-top: 0;
-    }
-
-    .mini-card p,
-    li {
-      color: var(--muted);
-    }
-
-    .screen {
-      overflow: hidden;
-      border: 1px solid var(--line);
-      box-shadow: none;
-    }
-
-    .screen-top {
-      padding: 12px;
-      background: var(--primary);
-      color: #fff;
-    }
-
-    .screen-title {
-      margin: 0 0 8px;
-      font-size: 18px;
-      font-weight: 800;
-    }
-
-    .tabs {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 6px;
-    }
-
-    .tab {
-      min-height: 34px;
-      padding: 8px 6px;
-      border-radius: 8px;
-      background: #ffffff2b;
-      text-align: center;
-      font-size: 13px;
-    }
-
-    .tab.active {
-      background: #fff;
-      color: var(--primary);
-      font-weight: 800;
-    }
-
-    .screen-body {
-      display: grid;
-      gap: 10px;
-      padding: 12px;
-    }
-
-    .mock-card,
-    .mock-row,
-    .mock-table,
-    .mock-map {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-    }
-
-    .mock-card { padding: 12px; }
-
-    .mock-row {
-      display: grid;
-      grid-template-columns: 1fr auto auto;
-      gap: 8px;
-      align-items: center;
-      min-height: 48px;
-      padding: 10px;
-    }
-
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 28px;
-      padding: 5px 9px;
-      border-radius: 999px;
-      background: var(--soft);
-      color: #1e40af;
-      font-weight: 700;
-      font-size: 12px;
-    }
-
-    .metric-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .metric {
-      padding: 10px;
-      border-radius: 8px;
-      background: #f8fafc;
-    }
-
-    .metric span {
-      display: block;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .metric b {
-      display: block;
-      font-size: 18px;
-    }
-
-    .mock-table {
-      overflow: hidden;
-    }
-
-    .mock-table div {
-      display: grid;
-      grid-template-columns: 1fr 0.8fr 0.8fr 0.7fr;
-      gap: 8px;
-      padding: 9px 10px;
-      border-top: 1px solid var(--line);
-      font-size: 13px;
-    }
-
-    .mock-table div:first-child {
-      border-top: 0;
-      background: #f8fafc;
-      font-weight: 800;
-      color: var(--ink);
-    }
-
-    .mock-map {
-      position: relative;
-      min-height: 230px;
-      overflow: hidden;
-      background:
-        linear-gradient(145deg, #cfe8f3 0 48%, #e6f0de 49% 100%);
-    }
-
-    .route-line {
-      position: absolute;
-      left: 15%;
-      top: 70%;
-      width: 68%;
-      height: 4px;
-      background: #2563eb;
-      transform: rotate(-28deg);
-      transform-origin: left center;
-    }
-
-    .route-line.second {
-      left: 56%;
-      top: 40%;
-      width: 24%;
-      transform: rotate(64deg);
-    }
-
-    .pin {
-      position: absolute;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 22px;
-      height: 22px;
-      border: 3px solid #fff;
-      border-radius: 50%;
-      background: #dc2626;
-      color: #fff;
-      font-size: 10px;
-      font-weight: 900;
-      box-shadow: 0 2px 6px #0003;
-    }
-
-    .pin.p1 { left: 13%; top: 66%; }
-    .pin.p2 { left: 48%; top: 44%; }
-    .pin.p3 { left: 66%; top: 28%; }
-    .pin.p4 { left: 76%; top: 47%; }
-
-    .caption {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .callout {
-      margin-top: 12px;
-      padding: 12px;
-      border-left: 4px solid var(--primary);
-      border-radius: 8px;
-      background: #eef7ff;
-    }
-
-    .tag {
-      display: inline-flex;
-      margin: 2px 4px 2px 0;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: #f1f5f9;
-      color: #334155;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .footer-note {
-      margin-top: 18px;
-      color: var(--muted);
-      font-size: 13px;
-      text-align: center;
-    }
-
-    @media (max-width: 820px) {
-      .topbar {
-        align-items: flex-start;
-      }
-
-      .topbar h1 {
-        font-size: 18px;
-      }
-
-      .hero,
-      .grid-2,
-      .grid-3,
-      .flow {
-        grid-template-columns: 1fr;
-      }
-
-      .metric-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .mock-table {
-        overflow-x: auto;
-      }
-
-      .mock-table div {
-        min-width: 520px;
-      }
+    @page{size:A4;margin:14mm 13mm 16mm}
+    @media print{
+      body{background:#fff;color:#1f2d3a;font-size:10.5pt;line-height:1.42}
+      .topbar,.toc,.no-print,.back{display:none!important}
+      .layout{display:block;max-width:none;padding:0}.manual{width:auto}.intro,.section{border:0;border-radius:0;padding:0;margin:0 0 10mm;box-shadow:none}
+      .intro{break-after:page}h1{font-size:28pt}h2{font-size:20pt;break-after:avoid}h3{font-size:15pt;break-after:avoid}h4{font-size:12pt;break-after:avoid}
+      .subsection,.screen-start{break-before:auto}figure{break-inside:avoid;margin:4mm 0}figure img{max-height:145mm;width:auto;max-width:100%;box-shadow:none}.legend,.principles,.phase-grid,.quick-grid{break-inside:avoid}
+      .table-wrap{overflow:visible;border:0;break-inside:auto}table{font-size:8.5pt}thead{display:table-header-group}tr{break-inside:avoid}th,td{padding:5px 6px}
+      a{color:#07578f;text-decoration:none}.callout{break-inside:avoid}.print-footer{display:none!important}
     }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <a href="index.html">Volver</a>
-    <h1>Ayuda de Cuaderno de Bitácora <span>Actualizada para 700v174</span></h1>
+    <div class="topbar-inner">
+      <div class="app-name">Cuaderno de Bitácora<small>Manual completo de uso</small></div>
+      <div class="top-actions">
+        <a class="button secondary" href="index.html">Volver</a>
+        <a class="button" href="output/pdf/ayuda-cuaderno-bitacora.pdf" download>Descargar PDF</a>
+        <button class="button secondary" type="button" onclick="window.print()">Imprimir</button>
+      </div>
+    </div>
   </header>
 
-  <main>
-    <section class="hero">
-      <div>
-        <h2>Una app para entender el viaje mientras lo estás viviendo</h2>
-        <p>
-          Cuaderno de Bitácora está pensado para viajes reales: blog, documentos, varias ciudades, monedas extranjeras,
-          cuentas diferentes, transferencias, presupuesto manual y revisiones posteriores. La idea
-          no es solo guardar tickets, sino poder contestar rápido: cuánto llevo gastado, dónde, con
-          qué cuenta, en qué moneda y cómo encaja eso con el recorrido.
-        </p>
-        <p>
-          La app se organiza en seis áreas: Viajes, Gastos, Blog, Mapa, Resumen y Configuración. La ayuda
-          se irá actualizando cuando se añadan funciones importantes.
-        </p>
-        <nav class="help-nav" aria-label="Índice de ayuda">
-          <a href="#filosofia">Filosofía</a>
-          <a href="#flujo">Flujo recomendado</a>
-          <a href="#pantallas">Pantallas</a>
-          <a href="#funciones">Funciones</a>
-          <a href="#copias">Copias</a>
-        </nav>
-      </div>
+  <div class="layout">
+    <nav class="toc" id="indice" aria-label="Índice de la ayuda">
+      <h2>Índice</h2>
+      <ol>
+        <li><a href="#objetivo">Objetivo y filosofía</a></li>
+        <li><a href="#flujo">Flujo más eficiente</a></li>
+        <li><a href="#referencia">Referencia completa</a>
+          <ol class="subtoc">
+            <li><a href="#navegacion">Navegación general</a></li>
+            <li><a href="#viajes">Viajes</a></li>
+            <li><a href="#configuracion">Configuración</a></li>
+            <li><a href="#gastos">Gastos</a></li>
+            <li><a href="#blog">Blog</a></li>
+            <li><a href="#mapa">Mapa</a></li>
+            <li><a href="#resumen">Resumen</a></li>
+            <li><a href="#compartir">Compartir desde Android</a></li>
+            <li><a href="#informes">Informes y exportación</a></li>
+            <li><a href="#copias">Copias y sincronización</a></li>
+            <li><a href="#offline">Sin conexión y recuperación</a></li>
+          </ol>
+        </li>
+      </ol>
+      <p class="footer-note">Todos los enlaces azules llevan a otra parte de este manual. El botón Volver regresa a la aplicación.</p>
+    </nav>
 
-      <div class="screen" aria-label="Infografía de estructura de la app">
-        <div class="screen-top">
-          <p class="screen-title">Cuaderno de Bitácora</p>
-          <div class="tabs">
-            <span class="tab active">Viajes</span>
-            <span class="tab">Gastos</span>
-            <span class="tab">Blog</span>
-            <span class="tab">Mapa</span>
-            <span class="tab">Resumen</span>
-            <span class="tab">Config.</span>
-          </div>
+    <main class="manual">
+      <section class="intro">
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v175</span></p>
+        <h1>Manual de Cuaderno de Bitácora</h1>
+        <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
+        <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
+        <div class="anchor-list" aria-label="Accesos principales">
+          <a href="#objetivo">1. Objetivo</a><a href="#flujo">2. Flujo de trabajo</a><a href="#referencia">3. Referencia completa</a><a href="#gasto-formulario">Alta de gasto</a><a href="#blog-formulario">Alta de blog</a><a href="#mapa-controles">Controles del mapa</a><a href="#sincronizacion">Sincronización</a>
         </div>
-        <div class="screen-body">
-          <div class="metric-grid">
-            <div class="metric"><span>Filtro</span><b>Próximo viaje</b></div>
-            <div class="metric"><span>Gasto</span><b>EUR + divisa</b></div>
-            <div class="metric"><span>Ruta</span><b>Planificada</b></div>
-          </div>
-          <div class="mock-row">
-            <b>2026 A Coruña</b>
-            <span class="pill">Gastos</span>
-            <span class="pill">Resumen</span>
-          </div>
+      </section>
+
+      <section class="section" id="objetivo">
+        <h2>1. Objetivo y filosofía de la aplicación</h2>
+        <p>Cuaderno de Bitácora une dos tareas que normalmente quedan separadas: el control económico del viaje y el relato de lo vivido. La idea es <strong>configurar una vez antes de salir</strong>, registrar la información con el menor número de pulsaciones durante el viaje y revisar o publicar el resultado al terminar.</p>
+        <div class="principles">
+          <div class="principle"><strong>Un viaje como contexto de trabajo</strong>Al seleccionar un viaje, <a href="#gastos">Gastos</a>, <a href="#blog">Blog</a>, <a href="#mapa">Mapa</a> y <a href="#resumen">Resumen</a> trabajan sobre el mismo conjunto de datos.</div>
+          <div class="principle"><strong>Capturar cuando sucede</strong>Fecha, hora, ciudad, gasto, ticket, fotografía, texto y ubicación se guardan en el momento para no reconstruir el día de memoria.</div>
+          <div class="principle"><strong>Cada dato se introduce una sola vez</strong>Un <a href="#gasto-a-blog">gasto puede pasar al Blog</a> con sus imágenes. Las mismas ciudades, cuentas, categorías y clasificaciones alimentan tablas, mapas e informes.</div>
+          <div class="principle"><strong>Trabajo local y control del usuario</strong>Los datos se guardan en el dispositivo. Las <a href="#copias">copias</a> y la <a href="#sincronizacion">sincronización</a> se ejecutan de forma explícita y nunca sustituyen datos sin confirmación.</div>
+          <div class="principle"><strong>Un diario que también sirve para revisar</strong>El <a href="#resumen">Resumen</a> muestra presupuesto y desgloses; el <a href="#blog">Blog</a> organiza el relato; el <a href="#mapa">Mapa</a> reconstruye recorridos y destinos.</div>
+          <div class="principle"><strong>Uso posible sin Wi-Fi</strong>La aplicación instalada puede abrirse y registrar datos <a href="#offline">sin conexión</a>. Solo requieren internet los servicios que consultan información exterior, como mapas no vistos, localizar, tipos de cambio y sincronización.</div>
         </div>
-      </div>
-    </section>
+        <div class="callout"><strong>Principio práctico:</strong> si un dato afectará a varias partes del viaje, créalo en <a href="#configuracion">Configuración</a>. Si describe algo que acaba de ocurrir, regístralo en <a href="#gastos">Gastos</a> o <a href="#blog">Blog</a>.</div>
+        <a class="back" href="#indice">Volver al índice</a>
+      </section>
 
-    <section class="section" id="filosofia">
-      <h2>Filosofía de la aplicación</h2>
-      <div class="grid-3">
-        <article class="mini-card">
-          <h3>Cada viaje es independiente</h3>
-          <p>Los gastos, cuentas específicas, presupuestos y ciudades planificadas se leen en el contexto del viaje seleccionado.</p>
-        </article>
-        <article class="mini-card">
-          <h3>El euro es la referencia</h3>
-          <p>Puedes pagar en PLN, USD u otra moneda, pero la app conserva el equivalente en EUR para comparar presupuestos y totales.</p>
-        </article>
-        <article class="mini-card">
-          <h3>La ruta importa</h3>
-          <p>El mapa no es decorativo: ayuda a revisar el recorrido, ciudades cumplidas, paradas repetidas y tramos por país.</p>
-        </article>
-      </div>
-      <div class="callout">
-        <b>Regla mental:</b> configura primero el viaje y sus cuentas; durante el viaje añade gastos; al revisar usa Resumen, Mapa y Backups.
-      </div>
-    </section>
+      <section class="section" id="flujo">
+        <h2>2. Flujo de trabajo más eficiente</h2>
+        <p>El método recomendado tiene tres fases: preparar, registrar y cerrar. Así, durante el viaje solo se usan formularios cortos y todo queda relacionado con el viaje correcto.</p>
 
-    <section class="section" id="flujo">
-      <h2>Flujo recomendado</h2>
-      <div class="flow">
-        <div class="flow-step"><b>1. Preparar</b>Crear países, ciudades, monedas, viaje, cuentas y presupuesto.</div>
-        <div class="flow-step"><b>2. Registrar</b>Añadir gastos, ingresos/devoluciones, tickets y transferencias.</div>
-        <div class="flow-step"><b>3. Revisar</b>Consultar totales, cuentas, porcentajes, mapa y presupuesto restante.</div>
-        <div class="flow-step"><b>4. Proteger</b>Crear backup, exportar CSV o imprimir informes PDF.</div>
-      </div>
-    </section>
+        <h3>2.1 Antes del viaje: configurar una vez</h3>
+        <ol class="workflow">
+          <li><strong>Crear los destinos.</strong> En <a href="#paises-ciudades">Países / ciudades</a>, añade los países y las ciudades que visitarás. Usa <em>Localizar</em> para guardar coordenadas cuando quieras que aparezcan correctamente en el mapa.</li>
+          <li><strong>Preparar la clasificación.</strong> Revisa las <a href="#categorias">categorías y subcategorías</a> económicas y las <a href="#clasificaciones">clasificaciones de imágenes y tickets</a>. Marca como destino las clasificaciones que identifican alojamientos.</li>
+          <li><strong>Configurar dinero y formas de pago.</strong> Crea las <a href="#monedas">monedas</a> necesarias y las <a href="#cuentas">cuentas</a> o formas de pago. Introduce saldo inicial y presupuesto cuando quieras controlar lo disponible.</li>
+          <li><strong>Crear el viaje.</strong> En <a href="#crear-viaje">Crear viaje</a>, indica nombre, fechas, presupuesto, países y el orden previsto de ciudades. Este orden define la ruta planificada y los números de destino.</li>
+          <li><strong>Añadir documentación.</strong> Desde el desplegable del viaje, abre <a href="#documentos-viaje">Documentos viaje</a> y guarda reservas, billetes, seguros u otros archivos que necesites consultar.</li>
+          <li><strong>Comprobar y proteger.</strong> Ejecuta <a href="#revisar-viaje">Revisar viaje</a>, crea una <a href="#backup">copia JSON</a> y, si trabajarás con varios dispositivos, deja preparada la <a href="#sincronizacion">clave de sincronización</a>.</li>
+        </ol>
 
-    <section class="section" id="pantallas">
-      <h2>Pantallas principales</h2>
+        <h3>2.2 Durante el viaje: registrar sin perder tiempo</h3>
+        <ol class="workflow">
+          <li><strong>Seleccionar el viaje.</strong> En <a href="#viajes">Viajes</a>, marca el viaje activo. El Blog solo se habilita cuando hay exactamente uno seleccionado.</li>
+          <li><strong>Anotar cada movimiento.</strong> Usa <a href="#gasto-formulario">Añadir gastos</a>. Para varios gastos seguidos, pulsa <em>Añadir y seguir</em>; se conservarán los datos útiles para el siguiente registro.</li>
+          <li><strong>Guardar el justificante.</strong> Fotografía o elige el ticket, usa <a href="#ocr">Leer ticket</a> si conviene y asigna una <a href="#clasificaciones">clasificación</a>. Las imágenes adicionales pueden conservar GPS, clasificarse y girarse individualmente.</li>
+          <li><strong>Contar lo ocurrido.</strong> Añade al <a href="#blog-formulario">Blog</a> texto, imágenes o puntos geolocalizados. Usa <a href="#en-ruta">En ruta</a> para una huella intermedia del recorrido.</li>
+          <li><strong>Reutilizar gastos en el relato.</strong> Desde <a href="#gastos-tabla">Acciones del gasto</a>, elige <em>Añadir al blog</em>. La aplicación permanece en Gastos y conserva ese registro a la vista para continuar con el siguiente.</li>
+          <li><strong>Registrar movimientos entre cuentas.</strong> Una recarga, retirada o cambio de divisa se anota como <a href="#transferencias">transferencia</a>, no como gasto, porque el dinero solo cambia de cuenta.</li>
+          <li><strong>Comprobar el día.</strong> Revisa <a href="#mapa-dia">Mapa por día</a>, <a href="#resumen">Resumen</a>, <em>Último gasto</em> y <em>Última entrada</em>. Corrige en el momento ubicaciones, fotos o importes dudosos.</li>
+          <li><strong>Hacer copia periódica.</strong> Crea una <a href="#backup">copia completa</a> al final del día o sincroniza cuando tengas conexión.</li>
+        </ol>
 
-      <div class="grid-2">
-        <article class="screen">
-          <div class="screen-top">
-            <p class="screen-title">Viajes</p>
-            <div class="tabs"><span class="tab active">Viajes</span><span class="tab">Gastos</span><span class="tab">Blog</span><span class="tab">Mapa</span><span class="tab">Resumen</span><span class="tab">Config.</span></div>
-          </div>
-          <div class="screen-body">
-            <div class="mock-row"><b>Filtro activo</b><span class="pill">Quitar selección</span><span class="pill">Backups</span></div>
-            <div class="mock-table">
-              <div><span>Viaje</span><span>Final</span><span>Total</span><span>Acciones</span></div>
-              <div><span>A Coruña</span><span>20/07</span><span>1.000 €</span><span>Documentos</span></div>
-              <div><span>Torun</span><span>08/04</span><span>2.060 €</span><span>Editar</span></div>
-            </div>
-            <p class="caption">Al abrir, la app selecciona el viaje en curso o el próximo viaje futuro.</p>
-          </div>
-        </article>
+        <h3>2.3 Al terminar: revisar, conservar y publicar</h3>
+        <ol class="workflow">
+          <li><strong>Revisar coherencia.</strong> Abre <a href="#revisar-viaje">Revisar viaje</a> y resuelve avisos de fechas, ciudades, cuentas, archivos o datos incompletos.</li>
+          <li><strong>Comprobar gastos.</strong> Usa los <a href="#gastos-filtros">filtros</a> y el <a href="#resumen">desglose</a> por categorías, subcategorías, ciudades y cuentas.</li>
+          <li><strong>Completar el relato.</strong> Ordena y edita las <a href="#blog-tabla">entradas del Blog</a>, selecciona imágenes destacadas y verifica el mapa general y los mapas diarios.</li>
+          <li><strong>Generar salidas.</strong> Descarga el <a href="#blog-pdf">PDF del Blog</a>, los <a href="#informes">informes económicos</a>, el CSV o la exportación para WordPress.</li>
+          <li><strong>Crear una copia final.</strong> Guarda un <a href="#backup">backup JSON</a> completo fuera del navegador. La sincronización facilita trabajar en varios dispositivos, pero no sustituye una copia independiente.</li>
+        </ol>
+        <a class="back" href="#indice">Volver al índice</a>
+      </section>
 
-        <article class="screen">
-          <div class="screen-top">
-            <p class="screen-title">Gastos</p>
-            <div class="tabs"><span class="tab">Viajes</span><span class="tab active">Gastos</span><span class="tab">Blog</span><span class="tab">Mapa</span><span class="tab">Resumen</span><span class="tab">Config.</span></div>
-          </div>
-          <div class="screen-body">
-            <div class="mock-row"><b>Nuevo gasto</b><span class="pill">Gasto</span><span class="pill">Ingreso</span></div>
-            <div class="mock-table">
-              <div><span>Ciudad</span><span>Cuenta</span><span>Importe</span><span>Ticket</span></div>
-              <div><span>Madrid</span><span>Santander</span><span>38,00 €</span><span>Ver</span></div>
-              <div><span>Varsovia</span><span>Revolut PLN</span><span>61,69 PLN</span><span>-</span></div>
-            </div>
-            <p class="caption">Los ingresos o devoluciones se guardan como importes negativos y restan del gasto.</p>
-          </div>
-        </article>
+      <section class="section" id="referencia">
+        <h2>3. Referencia completa de menús y pantallas</h2>
+        <p>Esta parte describe qué hace cada menú, tabla, campo, desplegable y acción. Las capturas usan datos ficticios y los círculos naranjas se explican debajo de cada imagen.</p>
+        <div class="quick-grid">
+          <div class="quick"><strong>Preparación</strong><a href="#viajes">Viajes</a> · <a href="#configuracion">Configuración</a> · <a href="#documentos-viaje">Documentos</a></div>
+          <div class="quick"><strong>Registro</strong><a href="#gastos">Gastos</a> · <a href="#blog">Blog</a> · <a href="#compartir">Compartir</a></div>
+          <div class="quick"><strong>Consulta</strong><a href="#mapa">Mapa</a> · <a href="#resumen">Resumen</a> · <a href="#informes">Informes</a></div>
+          <div class="quick"><strong>Protección</strong><a href="#backup">Backups</a> · <a href="#sincronizacion">Sincronización</a> · <a href="#offline">Recuperación</a></div>
+        </div>
 
-        <article class="screen">
-          <div class="screen-top">
-            <p class="screen-title">Resumen</p>
-            <div class="tabs"><span class="tab">Viajes</span><span class="tab">Gastos</span><span class="tab">Blog</span><span class="tab">Mapa</span><span class="tab active">Resumen</span><span class="tab">Config.</span></div>
-          </div>
-          <div class="screen-body">
-            <div class="metric-grid">
-              <div class="metric"><span>Días</span><b>49</b></div>
-              <div class="metric"><span>Media</span><b>82,36 €/día</b></div>
-              <div class="metric"><span>Presupuesto</span><b>79%</b></div>
-            </div>
-            <div class="mock-table">
-              <div><span>Cuenta</span><span>Gastado</span><span>Restante</span><span>%</span></div>
-              <div><span>Santander</span><span>1.298 €</span><span>-498 €</span><span>162%</span></div>
-              <div><span>Revolut PLN</span><span>3.059 PLN</span><span>284 €</span><span>72%</span></div>
-            </div>
-            <p class="caption">El resumen compara gasto real, equivalente EUR, presupuesto y porcentaje usado.</p>
-          </div>
-        </article>
+        <div class="subsection" id="navegacion">
+          <h3>3.1 Cabecera y navegación general</h3>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Control</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Nombre y versión</td><td>Identifican la aplicación instalada. La portada de carga muestra además la fecha de esa versión.</td></tr>
+            <tr><td>Ayuda</td><td>Abre este manual. La ayuda puede volver a la aplicación, descargarse como PDF o imprimirse.</td></tr>
+            <tr><td>Viajes</td><td>Selecciona el contexto de trabajo y ofrece accesos a revisión, documentos, copias y sincronización.</td></tr>
+            <tr><td>Gastos</td><td>Alta, consulta, filtrado, edición y paso de movimientos al Blog.</td></tr>
+            <tr><td>Blog</td><td>Relato cronológico. Solo está activo con exactamente un viaje seleccionado.</td></tr>
+            <tr><td>Mapa</td><td>Ruta planificada y realizada, ciudades, destinos, fotos y puntos geolocalizados.</td></tr>
+            <tr><td>Resumen</td><td>Totales, presupuestos, desgloses, cuentas y documentos.</td></tr>
+            <tr><td>Configuración / Config.</td><td>Datos maestros: destinos, viajes, monedas, cuentas, transferencias, categorías, clasificaciones y mantenimiento.</td></tr>
+          </tbody></table></div>
+          <p>En móvil los nombres y botones se compactan, pero conservan el mismo significado. La selección del viaje se mantiene al cambiar de pestaña.</p>
+          <a class="back" href="#indice">Volver al índice</a>
+        </div>
 
-        <article class="screen">
-          <div class="screen-top">
-            <p class="screen-title">Mapa</p>
-            <div class="tabs"><span class="tab">Viajes</span><span class="tab">Gastos</span><span class="tab">Blog</span><span class="tab active">Mapa</span><span class="tab">Resumen</span><span class="tab">Config.</span></div>
-          </div>
-          <div class="screen-body">
-            <div class="mock-map">
-              <span class="route-line"></span>
-              <span class="route-line second"></span>
-              <span class="pin p1">1</span>
-              <span class="pin p2">2</span>
-              <span class="pin p3">3</span>
-              <span class="pin p4">4</span>
-            </div>
-            <p class="caption">Puedes alternar Planificadas/Solo gastos, filtrar por país, centrar, localizar coordenadas y modificar paradas.</p>
-          </div>
-        </article>
-      </div>
-    </section>
+        <div class="subsection screen-start" id="viajes">
+          <h3>3.2 Pantalla Viajes</h3>
+          <p>Es la entrada principal. Seleccionar un viaje limita el resto de la aplicación a sus datos y permite abrir el Blog.</p>
+          <figure><img src="assets/help/01-viajes.png" alt="Pantalla Viajes con tabla, acciones y viaje seleccionado"><figcaption>Captura explicativa de Viajes. Los datos son de ejemplo.</figcaption></figure>
+          <ol class="legend"><li><b>1</b>Pestaña activa y navegación principal.</li><li><b>2</b>Accesos rápidos a importación, backups y sincronización.</li><li><b>3</b>Desplegable de acciones propio de cada viaje.</li><li><b>4</b>La selección actúa como filtro común.</li></ol>
+          <h4 id="viajes-tabla">Tabla de viajes</h4>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Columna</th><th>Significado</th></tr></thead><tbody>
+            <tr><td>Viaje / filtro</td><td>Casilla de selección y nombre. Puede haber varios seleccionados para comparar Gastos o Resumen; el Blog exige uno solo.</td></tr>
+            <tr><td>Inicio / Final</td><td>Fechas configuradas. Se usan para días del viaje, revisiones, mapas y cálculos diarios.</td></tr>
+            <tr><td>Gastos</td><td>Número de movimientos asociados.</td></tr>
+            <tr><td>Total EUR</td><td>Total convertido a euros con los cambios guardados.</td></tr>
+            <tr><td>Presupuesto / Restante</td><td>Presupuesto global del viaje y diferencia frente al gasto acumulado.</td></tr>
+            <tr><td>Acciones</td><td><em>Revisar viaje</em>, <em>Documentos viaje</em> y <em>Editar</em>.</td></tr>
+          </tbody></table></div>
+          <h4 id="revisar-viaje">Revisar viaje</h4>
+          <p>Revisar viaje abre un informe rápido sobre la preparación y coherencia del viaje: fechas, destinos, cuentas, archivos, gastos, entradas del Blog, documentos y copia. Los avisos orientan; no modifican datos automáticamente.</p>
+          <h4 id="documentos-viaje">Documentos viaje</h4>
+          <p>Guarda reservas, billetes, seguros, PDF e imágenes vinculados al viaje. Cada documento tiene fecha, descripción y archivo. Después puede consultarse en el desplegable del viaje y en las tablas de <a href="#resumen-documentos">Documentos del Resumen</a>.</p>
+          <h4>Importación, Backups y Sincronizar</h4>
+          <p><em>Importación</em> abre directamente la zona de restauración JSON. <em>Backups</em> permite crear, guardar y consultar copias. <em>Sincronizar</em> compara este dispositivo con Netlify. Véase <a href="#copias">Copias y sincronización</a>.</p>
+          <a class="back" href="#indice">Volver al índice</a>
+        </div>
 
-    <section class="section" id="funciones">
-      <h2>Funciones por área</h2>
+        <div class="subsection screen-start" id="configuracion">
+          <h3>3.3 Configuración</h3>
+          <p>Conviene completarla antes del viaje. El menú superior de la pantalla enlaza con cada bloque: Países / ciudades, Viajes, Monedas, Cuentas, Transferencias, Categorías, Clasificaciones, Backups y Avanzado.</p>
+          <figure><img src="assets/help/02-configuracion.png" alt="Configuración de destinos, viaje y orden de ciudades"><figcaption>Ejemplo de configuración previa del viaje.</figcaption></figure>
+          <ol class="legend"><li><b>1</b>Alta de país, ciudad o lugar.</li><li><b>2</b>Localización y coordenadas.</li><li><b>3</b>Datos básicos del viaje.</li><li><b>4</b>Selección y orden de ciudades planificadas.</li><li><b>5</b>Acceso a la configuración económica y visual.</li></ol>
 
-      <h3>Compartir imágenes desde Android</h3>
-      <ul>
-        <li>Con la PWA instalada, abre una o varias fotos en Galería, pulsa Compartir y elige Cuaderno de Bitácora. La aplicación se abrirá y mostrará una ventana con miniaturas, número de fotos con GPS, viaje, destino y una descripción editable para las fotos.</li>
-        <li>Las imágenes pueden prepararse como entrada de Blog, añadirse a un gasto existente o incorporarse al formulario de un gasto nuevo. Nada se guarda automáticamente: siempre hay que completar y confirmar el formulario final.</li>
-        <li>Después de instalar una versión que añada esta función puede ser necesario desinstalar y volver a instalar la PWA para que Android registre Cuaderno de Bitácora en el menú Compartir.</li>
-      </ul>
+          <h4 id="paises-ciudades">Países, ciudades y lugares</h4>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / acción</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Nombre</td><td>Nombre del país o ciudad. Debe ser reconocible en tablas y mapas.</td></tr>
+            <tr><td>Ciudad de</td><td>Vacío crea un país; seleccionar un país crea una ciudad dentro de él.</td></tr>
+            <tr><td>Latitud / Longitud</td><td>Coordenadas del centro o referencia. Admiten seis decimales.</td></tr>
+            <tr><td>Localizar</td><td>Busca las coordenadas del nombre y del país. Necesita conexión.</td></tr>
+            <tr><td>Añadir / Guardar</td><td>Crea el lugar o guarda su edición.</td></tr>
+            <tr><td>Ver listado</td><td>Despliega el árbol de países y ciudades. Cada elemento permite localizar, editar o eliminar.</td></tr>
+          </tbody></table></div>
+          <div class="callout"><strong>Buena práctica:</strong> crea primero el país y después sus ciudades. Si una ciudad no aparece en un selector, comprueba que pertenece a uno de los países incluidos en el viaje.</div>
 
-      <h3>Viajes</h3>
-      <ul>
-        <li>Filtro global por viaje o año, con multiselección desde la tabla principal.</li>
-        <li>El desplegable Acciones de cada viaje reúne Revisar viaje, Documentos viaje y Editar. Revisar viaje abre un informe rápido con avisos de fechas, gastos, blog, mapa, documentos y backup sin modificar los datos. Gastos, Mapa y Resumen se abren desde la navegación superior.</li>
-        <li>Selección automática del viaje en curso o del próximo viaje futuro al abrir.</li>
-        <li>Presupuesto manual del viaje, separado del presupuesto de las cuentas.</li>
-        <li>Ciudades planificadas por país, con orden, eliminación, restablecimiento, editor de paradas y repetición de ciudades cuando el viaje vuelve por una ciudad.</li>
-        <li>Documentos múltiples por viaje: reservas, billetes, seguros, fotografías u otros archivos. Cada documento exige una descripción y puede añadirse desde archivos o desde la cámara.</li>
-      </ul>
+          <h4 id="crear-viaje">Crear y editar viaje</h4>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / acción</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Nombre</td><td>Identificador principal del viaje.</td></tr>
+            <tr><td>Fecha de inicio / final</td><td>Delimitan el viaje y alimentan los selectores de día, revisiones y medias diarias.</td></tr>
+            <tr><td>Presupuesto EUR</td><td>Importe global. Puede coexistir con presupuestos por cuenta.</td></tr>
+            <tr><td>Países creados</td><td>Selección múltiple de países que forman parte del viaje.</td></tr>
+            <tr><td>Ciudades planificadas</td><td>Ciudades de esos países. El orden define la ruta y los números de destino.</td></tr>
+            <tr><td>Subir / Bajar</td><td>Mueve una ciudad en la secuencia.</td></tr>
+            <tr><td>X</td><td>Quita la ciudad del viaje sin borrarla de Configuración.</td></tr>
+            <tr><td>Restablecer</td><td>Recupera el orden inicial propuesto.</td></tr>
+            <tr><td>Tabla Viajes creados</td><td>Muestra viaje, países, fechas y presupuesto. Acciones: Revisar, Documentos, Editar y Eliminar.</td></tr>
+          </tbody></table></div>
 
-      <h3>Gastos</h3>
-      <ul>
-        <li>Las acciones de cada gasto se agrupan en una lista desplegable: ver archivos, añadir al blog, editar, duplicar o eliminar. Cuando el gasto ya está en el Blog, el desplegable lo señala y permite actualizarlo. Después de añadir o actualizar en el Blog, el mismo desplegable vuelve cerrado, enfocado y en su posición anterior para poder continuar con el gasto siguiente. En la vista de tabla, un doble clic sobre la fila equivale a Editar.</li>
-        <li>Cada gasto admite un ticket o justificante principal y varias imágenes adicionales. Todos pueden seleccionarse como archivo o fotografiarse directamente con la cámara.</li>
-        <li>Si una imagen adicional conserva coordenadas GPS, aparece la opción de añadirla al mapa. La aplicación lee esas coordenadas del archivo original antes de reducir la foto y las conserva junto a la copia comprimida. La fecha y hora del gasto se toman de la imagen o, al seleccionar varias, de la primera; si el formulario ya contiene valores diferentes, pregunta antes de reemplazarlos. En Android, usa Archivos (con GPS) y entra en Almacenamiento interno → DCIM → Camera: el selector Fotos puede ocultar la ubicación por privacidad. Al usar Cámara, si Android elimina el EXIF, la aplicación intenta guardar la ubicación actual del móvil. Las imágenes que el sistema entregue sin GPS no se añaden al mapa. Cada imagen nueva o existente tiene su propio selector de clasificación; al editar el gasto también se puede girarla, activarla o desactivarla en el mapa, o quitarla.</li>
-        <li>Leer ticket analiza localmente una fotografía, imagen o la primera página de un PDF y copia al formulario una propuesta de fecha, hora, establecimiento, importe total con IVA, categoría y subcategoría. El ticket puede clasificarse igual que cualquier imagen, por ejemplo como Tren, Alojamiento o Farmacia. Todos los campos pueden revisarse y cambiarse; salvo las clasificaciones al editar, el gasto no se modifica hasta pulsar Guardar cambios o Añadir. Nada del ticket se envía a un servicio de reconocimiento: el proceso se realiza en el dispositivo. La primera lectura descarga el lector y el idioma español desde la propia aplicación; después quedan almacenados para usos posteriores.</li>
-        <li>Al editar un gasto, los cambios de categoría, subcategoría y clasificación de sus tickets o fotos se guardan en el momento de seleccionarlos. Los tipos de foto aparecen siempre por orden alfabético. Cuando corriges la categoría de un ticket leído, la aplicación también la recuerda en ese dispositivo para proponerla en futuras lecturas.</li>
-        <li>Alta rápida de gastos con fecha y hora, viaje, cuenta, moneda, categoría, subcategoría, país, ciudad, importe, tipo y descripción.</li>
-        <li>La hora actual se propone al crear el gasto; la ciudad reutiliza la última del mismo día o, si es el primer gasto, la última del día anterior.</li>
-        <li>El selector de ciudad se limita a las ciudades planificadas o ya utilizadas en el viaje.</li>
-        <li>Tipo de movimiento: gasto o ingreso/devolución. Las devoluciones se guardan como importes negativos.</li>
-        <li>Tickets y fotos asociados cuando el navegador lo permite.</li>
-        <li>Filtros por moneda, cuenta, viaje, país, ciudad, categoría, fechas y texto.</li>
-        <li>Vista de tabla o tarjetas para mejorar la lectura en móvil.</li>
-        <li>Al entrar se muestra automáticamente el gasto más reciente de la lista filtrada. El botón Último gasto permite volver a él en cualquier momento.</li>
-        <li>En móvil, Añadir gastos, Último gasto, Filtros y el selector de vista se distribuyen en una sola fila compacta. Quitar filtros aparece debajo solo cuando hay filtros activos.</li>
-      </ul>
+          <h4 id="monedas">Monedas</h4>
+          <p>EUR es la base. Para una moneda extranjera se guardan código ISO, nombre, <em>1 moneda = EUR</em> y <em>1 EUR = moneda</em>. <em>Consultar cambio actual</em> busca una referencia online; <em>Usar este cambio</em> copia el resultado al formulario. Solo una moneda con ambas equivalencias puede usarse en cuentas y gastos. La tabla permite editar o eliminar las monedas no base.</p>
 
-      <h3>Resumen y Mapa</h3>
-      <ul>
-        <li>El acceso superior Imprimir PDF abre las mismas opciones de informe que Configuración → Exportar / Importar.</li>
-        <li>En móvil, los tres indicadores principales se agrupan en una sola tarjeta compacta con separaciones.</li>
-        <li>Totales en EUR y, cuando hay divisas, totales en moneda extranjera con equivalencia.</li>
-        <li>Media diaria, presupuesto usado, restante y porcentaje de gasto.</li>
-        <li>Desglose por categoría y subcategoría.</li>
-        <li>Resumen por cuentas, con presupuesto de cuenta y presupuesto del viaje.</li>
-        <li>Mapa es una opción principal de la navegación, con selectores propios de viaje y país. Muestra paradas planificadas, puntos con gasto, puntos geolocalizados del Blog, fotos con GPS y rutas. Los trayectos se representan mediante líneas rectas discontinuas. Las entradas del Blog marcadas «En ruta» se colocan entre las paradas según su fecha, hora y posición para que la línea siga mejor el recorrido realizado. El editor de paradas parte siempre de la ruta planificada, conserva las ciudades repetidas y permite añadir cualquier ciudad de los países del viaje. Una foto GPS cuyo tipo esté marcado «Usar como punto de destino» tiene prioridad como destino real de la ciudad, tanto si procede del Blog como de un gasto. Con varias visitas elige la más próxima a la fecha de llegada. Para las fotos antiguas sin clasificar se conserva como respaldo la regla del gasto de Alojamiento; solo cuando no existe ninguna de esas ubicaciones se usan las coordenadas generales de la ciudad. Las fotos usan un signo + pequeño, pueden ocultarse con el control Fotos y se agrupan cuando están próximas. El contador naranja indica cuántas fotos contiene un grupo y el distintivo rojo muestra el número del destino en la ruta con el nombre de la ciudad a su lado. Al pulsarlas se muestran miniatura, fecha, hora y descripción. Los puntos no marcados «En ruta» no se unen al trayecto. El modo Solo destino omite la primera y la última parada y también sus fotos y puntos, para mostrar únicamente la zona central del viaje.</li>
-        <li>El selector Día incluye todas las fechas del viaje que tengan gastos o entradas del Blog. Combina los puntos y fotos con GPS exacto con las ciudades de los registros que no tienen GPS, sin perder el origen ni las escalas. Si ese día hay datos en varias ciudades, la línea sigue la cronología real de sus horas. Las fotos marcadas «En ruta» se incorporan al recorrido mediante sus coordenadas GPS exactas, aunque la ciudad asignada a la entrada sea otra; las demás fotos permanecen visibles sin desviar la línea. Como representan lugares de paso y no paradas planificadas, las marcas diarias se muestran como puntos sin números. El signo + morado identifica una ciudad o destino del día y el signo + verde identifica una foto o un grupo de fotos geolocalizadas. Cuando la ciudad tiene número de destino, su nombre aparece en negrita junto al distintivo rojo; si no tiene número, permanece junto al signo + morado. La marca de una ciudad se conserva aunque también tenga fotos con GPS, y aparece por encima de su grupo de fotos. El selector Ciudad reúne en un único mapa los puntos y fotos de esa ciudad durante todos los días del viaje, sin líneas de trayecto; Día y Ciudad son filtros alternativos. Las fotos repetidas entre Gastos y Blog se muestran una sola vez y el texto inferior avisa de cuántas se han ocultado. Las fotos se abren pulsando su punto. En un día concreto, Copiar al Blog crea o actualiza el mapa diario a las 00:00 y conserva las mismas marcas sin números; las fotos se representan aparte mediante un único símbolo + con su contador, sin repetir nombres ni horas. En Todos los días y Todas las ciudades, crea o actualiza la primera página del Blog con el nombre y las fechas del viaje, el mapa completo y una lista numerada de ciudades con su fecha real de llegada. Las llegadas se obtienen de entradas y fotos del viaje; los gastos solo se usan como alternativa si están dentro de las fechas del viaje. En el mapa general sí se mantienen los números de las paradas y las ciudades repetidas los muestran unidos por guion, por ejemplo 1-8.</li>
-        <li>El mapa interactivo utiliza cartografía vectorial: el gesto de pellizco conserva de forma continua la ampliación, el centro, los rótulos y los puntos, sin saltos al atravesar niveles enteros de zoom. El encuadre se adapta a una ciudad o a toda la ruta, con niveles adicionales de reducción para viajes largos; Pantalla completa amplía el mapa en el móvil y Tamaño normal devuelve la vista original. Localizar busca y guarda las coordenadas que falten. Los mapas de PDF y los copiados al Blog mantienen el sistema de imagen para poder imprimirse y compartirse.</li>
-        <li>El acceso Documentos reúne al final del resumen dos tablas: documentos del viaje y archivos de gastos, ordenados desde los más antiguos hasta los más recientes. Cada fila muestra fecha, descripción y un enlace para abrir el archivo.</li>
-        <li>En el resumen por cuentas, la columna EUR solo muestra equivalencia cuando la moneda original es distinta de EUR.</li>
-        <li>En móvil, los seis filtros del desglose se presentan en dos filas compactas de tres columnas.</li>
-      </ul>
+          <h4 id="cuentas">Cuentas y formas de pago</h4>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Nombre</td><td>Ejemplos: Efectivo, Tarjeta, Revolut o Cuenta bancaria.</td></tr>
+            <tr><td>Desde plantilla</td><td>Parte de una cuenta global ya creada para repetir su configuración.</td></tr>
+            <tr><td>Moneda</td><td>Moneda propia de la cuenta.</td></tr>
+            <tr><td>Viaje</td><td>Vacío crea una cuenta global; elegir un viaje crea una cuenta específica.</td></tr>
+            <tr><td>Saldo inicial</td><td>Dinero disponible antes de gastos y transferencias.</td></tr>
+            <tr><td>Presupuesto</td><td>Límite orientativo de esa cuenta.</td></tr>
+            <tr><td>Nota</td><td>Información libre sobre el uso de la cuenta.</td></tr>
+            <tr><td>Tabla</td><td>Muestra cuenta, viaje, moneda, saldo y presupuesto. Permite editar, eliminar y, cuando procede, migrar.</td></tr>
+          </tbody></table></div>
 
-      <h3>Blog</h3>
-      <ul>
-        <li>El Blog solo se activa cuando hay exactamente un viaje seleccionado.</li>
-        <li>Al entrar se muestra siempre la cabecera completa de la sección. El botón Última entrada abre su día si es necesario y lleva a la última entrada visible con los filtros actuales. Un doble clic sobre una entrada equivale a Editar. Después de guardar una edición, la misma entrada y su desplegable vuelven resaltados en la posición anterior para poder continuar sin perder el punto del listado. El menú Acciones permite compartir por Android el texto y las imágenes de una entrada; si el dispositivo no admite el menú de compartir, se copia el texto al portapapeles.</li>
-        <li>Admite entradas de gasto, imagen, texto y punto geolocalizado, ordenadas por fecha y hora. En imágenes, textos y puntos se puede activar «En ruta» para usarlos como huellas del recorrido. La aplicación nunca asigna automáticamente la ubicación actual a un texto o a una imagen sin GPS: en esos casos la casilla permanece desactivada hasta escribir manualmente la latitud y la longitud. El botón Copiar coordenadas permite reutilizar ambos valores en otra entrada. Los puntos geolocalizados admiten notas de texto, que también aparecen al compartir y en las exportaciones.</li>
-        <li>Los puntos geolocalizados pueden marcarse sobre el mapa, obtenerse de la ubicación actual o buscarse a partir de la descripción. Se evita guardar otro punto del mismo viaje a menos de 30 metros.</li>
-        <li>El listado puede filtrarse mediante desplegables por día, país y ciudad. Sus entradas se agrupan en días plegables: el último queda abierto inicialmente y los anteriores, cerrados. El PDF continúa incluyendo el blog completo del viaje.</li>
-        <li>Las entradas se agrupan automáticamente por día y ciudad. En el PDF, la primera página contiene el mapa general y su lista de ciudades, separados por una línea. A continuación, Preparativos Viaje reúne sin saltos forzados las anotaciones anteriores al inicio del viaje. El primer día del viaje comienza en una página nueva y, desde ahí, cada día conserva su propia página.</li>
-        <li>Los gastos se incorporan desde su lista de acciones y conservan una referencia interna que evita duplicados. Sus imágenes adicionales y el ticket principal pasan al Blog y se indican debajo del tipo de entrada; si el ticket es PDF, se incorpora como imagen su primera página y el PDF original permanece intacto en Gastos. Las imágenes y los tickets que son imagen se pueden girar desde Editar gasto; al añadir o actualizar el gasto en el Blog se utiliza la orientación ya guardada. En el editor del Blog también se puede girar manualmente la primera foto hacia la izquierda o la derecha. Después de añadirlos, la aplicación permanece en Gastos y conserva visible el gasto transferido.</li>
-        <li>Desde el menú Compartir de Android pueden recibirse imágenes, texto seleccionado y archivos TXT. Antes de preparar una imagen para el Blog o para un gasto nuevo se pide una descripción editable, sin imponer «Texto compartido». El texto permite elegir viaje y abre una entrada de tipo Texto para revisarla antes de guardar.</li>
-        <li>Las imágenes pueden elegirse, fotografiarse o seleccionarse varias a la vez como galería. La fecha y hora de la entrada se toman de la imagen y, en una galería, de la que esté colocada como primera. La imagen activa aparece grande; al tocar cualquier miniatura pasa a la primera posición y será la utilizada si se marca la entrada como imagen destacada. Si el formulario o una entrada existente contienen valores diferentes, la aplicación pregunta antes de reemplazarlos; después siguen pudiendo corregirse antes de guardar. Se muestran con un máximo de tres imágenes por fila. Cada foto se redimensiona y comprime automáticamente, con un objetivo aproximado de 650 KB antes de guardarse.</li>
-        <li>La ubicación GPS se lee del archivo original antes de comprimir la imagen y se conserva junto a la copia reducida. En Android, los botones Archivo (con GPS) y Varios archivos abren el selector general para poder entrar en Almacenamiento interno → DCIM → Camera; el sistema suele recordar la última carpeta utilizada. Al usar Cámara, la app solicita además la ubicación actual. Los archivos que el sistema entregue sin coordenadas no se añaden al mapa. Cada foto de una entrada, también dentro de una galería, puede recibir su propio tipo. Pulsar una miniatura en el mapa abre la imagen completa.</li>
-        <li>Cada entrada puede marcarse para WordPress. Cada día se exporta como un post independiente y inicialmente se importa como borrador.</li>
-        <li>Una imagen puede marcarse como destacada del día. Aparecerá en la parte superior del post y no se repetirá en el orden cronológico. Al sustituirla, la anterior se conserva como imagen normal.</li>
-        <li>La primera vez, descarga e instala el complemento desde WordPress → Plugins → Añadir plugin → Subir plugin. Después encontrarás el importador en Herramientas → Importar Gastos de Viaje.</li>
-        <li>Las entradas nuevas recuerdan el país y la ciudad de la última entrada del viaje.</li>
-        <li>El campo Texto utiliza la escritura normal del dispositivo. En Android puedes usar directamente el micrófono del teclado de Google para dictar.</li>
-        <li>Ver en PDF genera el relato completo del viaje con textos, importes e imágenes, sin añadir un mapa automático al final. Las imágenes horizontales normales y las galerías ocupan el 80% del ancho; la imagen destacada conserva el 100%. Las entradas pueden continuar debajo de una foto horizontal cuando queda espacio, evitando páginas con una zona inferior vacía. WordPress recibe también las coordenadas y el enlace de cada punto.</li>
-      </ul>
+          <h4 id="transferencias">Transferencias entre cuentas</h4>
+          <p>Sirven para mover dinero sin considerarlo gasto: recargas, retiradas, traspasos y cambios de moneda. La tabla se muestra desde la fecha más antigua hasta la más moderna.</p>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / columna</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Fecha</td><td>Día del movimiento.</td></tr>
+            <tr><td>Cuenta origen (sale)</td><td>Cuenta cuyo saldo disminuye.</td></tr>
+            <tr><td>Cuenta destino (entra)</td><td>Cuenta cuyo saldo aumenta.</td></tr>
+            <tr><td>Cantidad que sale</td><td>Importe descontado en la moneda de origen.</td></tr>
+            <tr><td>Cantidad que entra</td><td>Importe recibido. Es opcional si ambas cuentas usan la misma moneda.</td></tr>
+            <tr><td>Cambio</td><td>Relación calculada entre lo que sale y lo que entra.</td></tr>
+            <tr><td>Nota</td><td>Motivo del movimiento.</td></tr>
+            <tr><td>Acciones</td><td>Eliminar la transferencia.</td></tr>
+          </tbody></table></div>
 
-      <h3>Configuración</h3>
-      <div>
-        <span class="tag">Países y ciudades</span>
-        <span class="tag">Viajes</span>
-        <span class="tag">Monedas</span>
-        <span class="tag">Cuentas</span>
-        <span class="tag">Transferencias</span>
-        <span class="tag">Categorías</span>
-        <span class="tag">Clasificaciones</span>
-        <span class="tag">Backups</span>
-        <span class="tag">Avanzado</span>
-      </div>
-      <ul>
-        <li>Países y ciudades pueden guardarse con coordenadas para el mapa.</li>
-        <li>Las monedas extranjeras guardan cambio en ambos sentidos: 1 moneda = EUR y 1 EUR = moneda.</li>
-        <li>Las cuentas globales funcionan como plantillas; las cuentas de viaje son específicas del viaje.</li>
-        <li>Las acciones de los viajes creados se reúnen en un desplegable compacto.</li>
-        <li>Las transferencias mueven dinero entre cuentas y permiten cambio cuando las monedas son distintas. Con viajes seleccionados, tanto las cuentas como el listado se limitan a esos viajes.</li>
-        <li>Las categorías y subcategorías organizan el gasto y alimentan los informes.</li>
-        <li>Las clasificaciones de imágenes y tickets comienzan con Alojamiento, Comida, Paisaje, Ciudad, Retrato y Selfie. Se pueden añadir, editar o eliminar conceptos, como Tren o Farmacia, y decidir cuáles sirven como punto de destino. La clasificación se guarda dentro de cada imagen o ticket y también forma parte de los backups y la sincronización, preparada para búsquedas y galerías futuras.</li>
-        <li>En Avanzado, Reducir espacio ocupado recomprime las imágenes ya guardadas en Gastos, Blog y Documentos de viaje. Los PDF y otros documentos no se modifican.</li>
-      </ul>
-    </section>
+          <h4 id="categorias">Categorías y subcategorías</h4>
+          <p>El campo <em>Nombre</em> crea una categoría si <em>¿Subcategoría de?</em> queda vacío. Si se elige una categoría madre, crea una subcategoría. El árbol permite editar o eliminar. Esta clasificación alimenta filtros, tablas, OCR e informes.</p>
 
-    <section class="section" id="copias">
-      <h2>Backups, exportación e informes</h2>
-      <div class="grid-2">
-        <article class="mini-card">
-          <h3>Backups</h3>
-          <p>La pestaña Viajes incluye accesos rápidos a importación y backups. La app guarda en IndexedDB las últimas cinco copias completas y crea automáticamente una copia local cada vez que entras. El botón <b>Copiar a carpeta local</b> permite extraer cualquiera de esas copias internas. En navegadores compatibles puedes elegir una carpeta de copias y dejarla fijada. Cada archivo incorpora fecha, hora y milisegundos para que una copia nueva nunca sustituya a otra del mismo día. Android puede pedir que vuelvas a autorizar la carpeta después de cerrar la app; si no hay carpeta fija, podrás elegir la ubicación o se usará Descargas.</p>
-        </article>
-        <article class="mini-card">
-          <h3>Exportación</h3>
-          <p>El CSV se exporta en UTF-8 con BOM para abrirlo correctamente en Excel. Los informes PDF incluyen tablas, gráficos y el mapa cuando corresponde. Después del mapa comienza una página nueva para mantener separada la documentación.</p>
-        </article>
-        <article class="mini-card">
-          <h3>Sincronización</h3>
-          <p>Sincronizar muestra por separado la fecha real de la última copia local, la fecha de la copia en Netlify y cuándo se modificaron los datos de cada versión. Además recuerda la última sincronización confirmada de este dispositivo. Si desde entonces han cambiado este dispositivo y también la nube, avisa de conflicto y muestra tanto la opción de bajar como la de subir, creando siempre copias locales antes y después. La comparación utiliza la fecha de modificación de los datos para no reemplazar cambios por una copia más nueva que contenga información más antigua. Nunca reemplaza datos sin permiso. Antes de sincronizar crea una copia local y, al terminar, otra cuyo nombre acaba en <b>-2</b>.</p>
-          <p>La subida comprueba que la copia de la nube no haya cambiado mientras se prepara el envío. Si otro dispositivo sincroniza en ese intervalo, la app cancela la subida y pide comprobar de nuevo antes de decidir.</p>
-          <p>Los datos, tickets, imágenes adicionales de gastos, documentos de viaje e imágenes del blog se guardan por separado. Cada archivo se identifica mediante una huella digital: la app consulta primero Netlify y solo sube los que todavía no existen. Los archivos grandes se dividen en fragmentos y se reconstruyen automáticamente al recuperarlos desde la nube.</p>
-          <p>Los tickets creados con versiones antiguas se conservan aunque utilicen un formato diferente. Un ticket heredado o incompleto no impide sincronizar el resto de la copia.</p>
-        </article>
-        <article class="mini-card">
-          <h3>Clave de acceso</h3>
-          <p>La clave se genera automáticamente y puede mostrarse, copiarse o cambiarse. Usa exactamente la misma clave en los demás dispositivos. Cambiarla abre un espacio de nube diferente y no elimina las copias de la clave anterior.</p>
-        </article>
-      </div>
-      <div class="callout">
-        <b>Copias en la nube:</b> al crear un backup, la app muestra «Haciendo backup» mientras prepara la copia local; después advierte que la subida puede tardar y pregunta si quieres guardarlo también en Netlify. Durante todo el envío muestra «Subiendo copia a la nube…» y evita iniciar otra copia. Al arrancar aparece «Cargando» mientras se preparan los datos. Al entrar solo avisa cuando la versión de la nube es más reciente que la local.
-      </div>
-      <div class="callout">
-        <b>Borradores:</b> los formularios de nuevo gasto, nueva entrada de blog y creación en Configuración guardan automáticamente lo escrito en este navegador. Al volver a abrir el formulario se restaura el borrador. Guardar lo elimina; pulsar Cancelar lo descarta. La X cierra el formulario conservando el borrador. En Configuración &gt; Avanzado puedes ver cuántos borradores hay y limpiarlos manualmente; además caducan tras 30 días. Por seguridad del navegador, los archivos, tickets y fotos seleccionados no se guardan como borrador y deben volver a elegirse.
-      </div>
-      <div class="callout">
-        <b>Sin conexión:</b> la app guarda los recursos principales para poder abrirse sin internet y muestra un aviso cuando trabaja con datos locales. Los mapas ya vistos se conservan en caché en la medida que el navegador lo permite; los mapas no vistos, los cambios de moneda, la geocodificación y la sincronización necesitan conexión.
-      </div>
-    </section>
+          <h4 id="clasificaciones">Clasificaciones de imágenes y tickets</h4>
+          <p>Son independientes de la categoría económica del gasto. Los tipos iniciales son Alojamiento, Comida, Paisaje, Ciudad, Retrato y Selfie; cada ticket o fotografía puede guardar después cualquiera de esos tipos u otros nuevos, como Tren o Farmacia. Los tipos se muestran por orden alfabético.</p>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Control</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Nombre</td><td>Crea una clasificación reutilizable.</td></tr>
+            <tr><td>Usar como punto de destino</td><td>Permite que una foto GPS de ese tipo fije el destino real de la ciudad, especialmente el alojamiento.</td></tr>
+            <tr><td>Editar / Eliminar</td><td>Cambia el nombre o retira el tipo. Las clasificaciones se incluyen en backups y sincronización.</td></tr>
+          </tbody></table></div>
 
-    <p class="footer-note">Cuaderno de Bitácora 700v137. Esta ayuda forma parte de la aplicación y debe revisarse cuando se añadan funciones nuevas.</p>
-  </main>
+          <h4 id="config-backups">Backups desde Configuración</h4>
+          <p>Los botones abren <a href="#backup">Exportar / backup</a>, <a href="#sincronizacion">Sincronizar</a>, <a href="#csv">Exportar CSV</a>, <a href="#informes">Imprimir / PDF</a> e <a href="#backup-importar">Importar JSON</a>. Las últimas cinco copias completas permanecen en el dispositivo.</p>
+
+          <h4 id="avanzado">Avanzado</h4>
+          <p>Reducir espacio ocupado recomprime las imágenes ya guardadas en Gastos, Blog y Documentos de viaje; no modifica PDF ni otros documentos. En Avanzado puedes ver cuántos borradores hay y limpiarlos manualmente mediante <em>Limpiar borradores</em>. <em>Reparar / Resetear datos</em> borra caché, service worker y base local; úsalo únicamente tras tener una copia reciente y cuando la aplicación no responda.</p>
+          <a class="back" href="#indice">Volver al índice</a>
+        </div>
+
+        <div class="subsection screen-start" id="gastos">
+          <h3>3.4 Gastos</h3>
+          <p>Registra gastos, ingresos o devoluciones, con justificantes y fotos. La pestaña respeta el viaje seleccionado.</p>
+
+          <h4 id="gasto-formulario">Formulario Nuevo gasto</h4>
+          <figure><img src="assets/help/03-alta-gasto.png" alt="Formulario de alta de gasto con ticket y clasificación"><figcaption>Formulario completo de alta. La edición utiliza los mismos datos y añade controles para los archivos existentes.</figcaption></figure>
+          <ol class="legend"><li><b>1</b>Fecha, hora y viaje.</li><li><b>2</b>Cuenta y moneda asociada.</li><li><b>3</b>Categoría, subcategoría, país y ciudad.</li><li><b>4</b>Importe, tipo y descripción.</li><li><b>5</b>Ticket, clasificación e imágenes adicionales.</li></ol>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / acción</th><th>Comportamiento</th></tr></thead><tbody>
+            <tr><td>Fecha y Hora</td><td>Se propone la fecha y hora actual. Determinan el orden cronológico.</td></tr>
+            <tr><td>Viaje</td><td>Asocia el movimiento. Es necesario para añadirlo después al Blog.</td></tr>
+            <tr><td>Cuenta / Forma de pago</td><td>Selecciona la cuenta y propone su moneda.</td></tr>
+            <tr><td>Moneda</td><td>Moneda original. Debe tener equivalencias si no es EUR.</td></tr>
+            <tr><td>Categoría / Subcategoría</td><td>Clasificación económica usada por filtros e informes.</td></tr>
+            <tr><td>País / Ciudad</td><td>Destino del gasto. La ciudad se limita a las planificadas o ya usadas en el viaje y recuerda la última del día.</td></tr>
+            <tr><td>Importe</td><td>Valor en la moneda seleccionada.</td></tr>
+            <tr><td>Tipo</td><td><em>Gasto</em> descuenta; <em>Ingreso / devolución</em> se guarda como importe negativo y reduce el total gastado.</td></tr>
+            <tr><td>Descripción</td><td>Texto corto que identifica el movimiento y permite buscarlo.</td></tr>
+            <tr><td>Elegir archivo / Cámara</td><td>Añade un ticket como imagen o PDF.</td></tr>
+            <tr><td id="ocr">Leer ticket</td><td>Reconoce información del justificante en el dispositivo. El resultado debe revisarse antes de guardar.</td></tr>
+            <tr><td>Clasificación del ticket</td><td>Tipo visual independiente de la categoría económica.</td></tr>
+            <tr><td>Imágenes adicionales</td><td>Admite varias fotografías. Cada una puede conservar GPS, recibir clasificación y añadirse al mapa.</td></tr>
+            <tr><td>Añadir y salir</td><td>Guarda y cierra.</td></tr>
+            <tr><td>Añadir y seguir</td><td>Guarda y prepara otro gasto conservando el contexto útil.</td></tr>
+            <tr><td>Cancelar / X</td><td>Cancelar descarta el borrador; la X cierra y permite recuperarlo después. Los archivos deben elegirse de nuevo.</td></tr>
+          </tbody></table></div>
+
+          <h4 id="gastos-tabla">Lista, filtros y acciones</h4>
+          <figure><img src="assets/help/04-tabla-gastos.png" alt="Tabla de gastos con filtros, indicador de blog y acciones"><figcaption>Lista de gastos del viaje con datos de ejemplo.</figcaption></figure>
+          <ol class="legend"><li><b>1</b>Alta y acceso al gasto más reciente.</li><li><b>2</b>Filtros de la lista.</li><li><b>3</b>Indicadores de ticket y de paso al Blog.</li><li><b>4</b>Desplegable Acciones.</li><li><b>5</b>Doble pulsación para editar.</li></ol>
+          <h4 id="gastos-filtros">Filtros</h4>
+          <p>Se puede filtrar por moneda, cuenta, viaje, país, ciudad, categoría, subcategoría, fecha desde, fecha hasta y texto de la descripción. <em>Vista</em> alterna tabla y tarjetas. <em>Quitar filtros</em> restaura la lista completa. <em>Último gasto</em> lleva al movimiento más reciente del resultado filtrado.</p>
+          <h4>Columnas</h4>
+          <p>Hora, Ciudad, Categoría, Subcategoría, Cuenta, Moneda, Importe, equivalencia EUR, Descripción y Acciones. El pie muestra el total del filtro.</p>
+          <h4>Desplegable Acciones</h4>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Opción</th><th>Efecto</th></tr></thead><tbody>
+            <tr><td>Archivos</td><td>Abre ticket e imágenes del gasto.</td></tr>
+            <tr><td id="gasto-a-blog">Añadir al blog / Actualizar blog</td><td>Crea o actualiza la entrada enlazada. Si ya existe, <em>Aceptar</em> reemplaza datos conservando fecha y hora editadas en el Blog; <em>No aceptar</em> reemplaza también fecha y hora; <em>Cancelar</em> no cambia nada.</td></tr>
+            <tr><td>Editar</td><td>Abre todos los campos y permite sustituir, quitar, clasificar o girar tickets e imágenes.</td></tr>
+            <tr><td>Duplicar</td><td>Crea un nuevo formulario a partir del gasto actual.</td></tr>
+            <tr><td>Eliminar</td><td>Borra el movimiento tras confirmación.</td></tr>
+          </tbody></table></div>
+          <p>Una doble pulsación sobre la fila equivale a Editar. Después de editar o pasar un gasto al Blog, la aplicación vuelve al mismo registro y deja su desplegable localizado para continuar.</p>
+          <a class="back" href="#indice">Volver al índice</a>
+        </div>
+
+        <div class="subsection screen-start" id="blog">
+          <h3>3.5 Blog</h3>
+          <p>Ordena el relato por fecha y hora. Admite gastos, textos, imágenes y puntos. Solo funciona con exactamente un viaje seleccionado.</p>
+
+          <h4 id="blog-tabla">Tabla y días plegables</h4>
+          <figure><img src="assets/help/05-blog.png" alt="Blog agrupado por día con filtros y desplegables de acciones"><figcaption>Entradas agrupadas por día y ciudad.</figcaption></figure>
+          <ol class="legend"><li><b>1</b>Alta, última entrada, PDF y WordPress.</li><li><b>2</b>Filtros por día, país y ciudad.</li><li><b>3</b>Cabecera plegable de cada día.</li><li><b>4</b>Acciones de la entrada.</li><li><b>5</b>Conservación de posición tras editar.</li></ol>
+          <p>Las columnas son <strong>Hora, Ciudad, Descripción, Tipo, País, Precio, WordPress y Acciones</strong>. El último día queda abierto inicialmente; los anteriores pueden abrirse con + y cerrarse con −.</p>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Control / opción</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Añadir entrada</td><td>Abre el selector Texto, Imagen o Punto geolocalizado.</td></tr>
+            <tr><td>Última entrada</td><td>Abre el día necesario y lleva a la última entrada visible con los filtros actuales.</td></tr>
+            <tr><td id="blog-pdf">Ver en PDF</td><td>Genera el relato completo del viaje, con textos, importes e imágenes.</td></tr>
+            <tr><td>WordPress</td><td>Elige días y descarga un archivo con un post borrador por día.</td></tr>
+            <tr><td>Filtros</td><td>Día, país y ciudad. No cambian el contenido del PDF completo.</td></tr>
+            <tr><td>Compartir</td><td>Abre el menú Android con texto e imágenes; si no está disponible, copia el texto.</td></tr>
+            <tr><td>Mostrar punto / Editar / Eliminar</td><td>Localiza el punto cuando existe, abre el formulario o borra la entrada.</td></tr>
+          </tbody></table></div>
+          <p>Una doble pulsación equivale a Editar. Tras guardar, la misma entrada vuelve a quedar seleccionada en su posición anterior.</p>
+
+          <h4 id="blog-formulario">Formulario Añadir entrada</h4>
+          <figure><img src="assets/help/06-alta-blog.png" alt="Formulario de blog con tipos, ubicación, texto e imágenes"><figcaption>Ejemplo de entrada con imagen. Los campos cambian según el tipo.</figcaption></figure>
+          <ol class="legend"><li><b>1</b>Tipo: Texto, Imagen o Punto.</li><li><b>2</b>Fecha, hora, país y ciudad.</li><li><b>3</b>Descripción, texto y dictado.</li><li><b>4</b>Imágenes, clasificación y giro.</li><li><b>5</b>Guardar o cancelar.</li></ol>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / acción</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Tipo de entrada</td><td><em>Texto</em> para narración, <em>Imagen</em> para una foto o galería y <em>Punto geolocalizado</em> para una ubicación con notas.</td></tr>
+            <tr><td>Fecha / Hora</td><td>Ordenan la entrada. En imágenes se pueden proponer desde los metadatos del archivo.</td></tr>
+            <tr><td>País / Ciudad</td><td>Organizan la tabla y el mapa. Las nuevas entradas recuerdan el último destino usado.</td></tr>
+            <tr><td>Descripción</td><td>Título breve, hasta 240 caracteres.</td></tr>
+            <tr><td>Texto / Notas</td><td>Contenido extenso para textos o explicación de un punto.</td></tr>
+            <tr><td>WordPress</td><td>Incluye o excluye la entrada del post del día.</td></tr>
+            <tr><td>Imagen destacada</td><td>Usa la primera imagen como cabecera del día y evita repetirla en el orden cronológico.</td></tr>
+            <tr><td>Archivo / Varios archivos / Cámara</td><td>Añade una foto, galería o captura nueva. Tocar una miniatura la coloca como primera.</td></tr>
+            <tr><td>Tipo de foto</td><td>Clasificación individual. Puede determinar un destino cuando tiene GPS.</td></tr>
+            <tr><td>Girar</td><td>Gira la primera foto; en una galería, primero selecciona la miniatura deseada.</td></tr>
+            <tr><td>Añadir las fotos al mapa</td><td>Incluye las imágenes con GPS en el mapa.</td></tr>
+            <tr><td>Guardar original en Fotos</td><td>Conserva además el archivo original cuando el navegador lo permite.</td></tr>
+            <tr><td>Guardar entrada</td><td>Valida los campos y actualiza la tabla.</td></tr>
+            <tr><td>Cancelar / X</td><td>Cancelar descarta el borrador; X lo conserva sin guardar archivos.</td></tr>
+          </tbody></table></div>
+          <div class="callout"><strong>Dictado en Android:</strong> la aplicación utiliza el reconocimiento disponible en el navegador o el micrófono del teclado. Los avisos sonoros pertenecen al sistema; si no quieres oírlos, activa el modo <strong>No molestar</strong> antes de dictar.</div>
+
+          <h4 id="en-ruta">En ruta y puntos geolocalizados</h4>
+          <p><em>En ruta</em> convierte una entrada de texto, imagen o punto en una huella intermedia para afinar el recorrido. Requiere coordenadas válidas: se leen del GPS de la imagen o se introducen manualmente. La aplicación nunca asigna automáticamente la ubicación actual a un texto o una imagen sin GPS. Un punto ofrece Latitud, Longitud, <em>Usar ubicación actual</em>, <em>Buscar descripción</em>, <em>Copiar coordenadas</em>, zoom y selección directa sobre el mapa. La aplicación evita duplicar puntos del mismo viaje situados a menos de 30 metros.</p>
+
+          <h4>Imágenes y galerías</h4>
+          <p>La ubicación GPS se lee antes de comprimir. En Android, para conservarla, entra por <em>Archivos</em> en Almacenamiento interno → DCIM → Camera. Cada foto puede tener su clasificación. La aplicación reduce automáticamente el tamaño de almacenamiento, con un objetivo aproximado de 650 KB; el original solo se conserva cuando se solicita expresamente.</p>
+
+          <h4>WordPress</h4>
+          <p>La primera vez, descarga el importador desde el diálogo WordPress, instálalo en WordPress → Plugins → Añadir plugin → Subir plugin y después usa Herramientas → Importar Gastos de Viaje. Cada día se importa como borrador para revisarlo antes de publicar.</p>
+          <a class="back" href="#indice">Volver al índice</a>
+        </div>
+
+        <div class="subsection screen-start" id="mapa">
+          <h3>3.6 Mapa</h3>
+          <p>Combina la ruta planificada con ciudades, gastos, puntos del Blog y fotografías GPS. Los trayectos se representan mediante líneas rectas discontinuas. El mapa interactivo usa cartografía vectorial; los mapas copiados al Blog o incluidos en PDF se generan como imagen.</p>
+          <figure><img src="assets/help/07-mapa.png" alt="Mapa con filtros, ruta, destinos y grupos de fotos"><figcaption>Mapa por día con tres ciudades y fotografías geolocalizadas.</figcaption></figure>
+          <ol class="legend"><li><b>1</b>Centrar y filtros de día o ciudad.</li><li><b>2</b>Capas y modos de visualización.</li><li><b>3</b>Signo + de fotos y contador naranja.</li><li><b>4</b>Ciudad o destino con nombre.</li><li><b>5</b>Área interactiva del mapa.</li></ol>
+
+          <h4 id="mapa-controles">Controles</h4>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Control</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Centrar</td><td>Reencuadra los puntos visibles.</td></tr>
+            <tr><td>Día</td><td>Todos los días o una fecha concreta con actividad.</td></tr>
+            <tr><td>Ciudad</td><td>Todas o una ciudad. Día y Ciudad son filtros alternativos.</td></tr>
+            <tr><td>Copiar al Blog</td><td>En un día crea o actualiza el mapa diario a las 00:00; en vista general crea o actualiza la portada del viaje con mapa y ciudades.</td></tr>
+            <tr><td>Planificadas</td><td>Muestra u oculta la ruta prevista.</td></tr>
+            <tr><td>Fotos (n)</td><td>Muestra u oculta las fotografías. El número indica cuántas hay en la vista.</td></tr>
+            <tr><td>Solo destino</td><td>Centra la zona intermedia y omite la primera y última parada con sus elementos.</td></tr>
+            <tr><td>Añadir / modificar parada</td><td>Edita la ruta a partir de las ciudades planificadas, admite repeticiones y conserva el orden.</td></tr>
+            <tr><td>Localizar</td><td>Busca coordenadas que falten. Necesita conexión.</td></tr>
+            <tr><td>Pantalla completa / Tamaño normal</td><td>Amplía el mapa en móvil y vuelve al tamaño original.</td></tr>
+            <tr><td>− / +</td><td>Aleja o acerca. El gesto de pellizco también controla el zoom.</td></tr>
+          </tbody></table></div>
+
+          <h4 id="mapa-marcadores">Marcadores, colores y números</h4>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Marca</th><th>Significado</th></tr></thead><tbody>
+            <tr><td>+ morado</td><td>Ciudad o destino del día.</td></tr>
+            <tr><td>+ verde</td><td>Foto o grupo de fotos geolocalizadas. Al pulsarlo aparece un bocadillo con miniaturas, fecha, hora y descripción.</td></tr>
+            <tr><td>Contador naranja</td><td>Número de fotos agrupadas, no número de destino.</td></tr>
+            <tr><td>Distintivo rojo</td><td>Número de la ciudad en la ruta planificada. En visitas repetidas puede mostrar varios números unidos por guion.</td></tr>
+            <tr><td>Nombre de ciudad</td><td>Aparece en negrita junto a su número o junto al + morado.</td></tr>
+            <tr><td>Línea azul discontinua</td><td>Orden cronológico o planificado del recorrido.</td></tr>
+          </tbody></table></div>
+
+          <h4 id="mapa-dia">Mapa por día</h4>
+          <p>Incluye todas las fechas con gastos o Blog. Combina GPS exacto con la ciudad de los registros que no lo tienen. Las fotos marcadas «En ruta» se incorporan al trayecto mediante sus coordenadas GPS exactas; las demás permanecen visibles sin desviar la línea. Los puntos del día se muestran sin números de parada.</p>
+          <h4>Mapa por ciudad</h4>
+          <p>Reúne los puntos y fotos de esa ciudad durante todos los días, sin línea de trayecto.</p>
+          <h4>Todos los días</h4>
+          <p>Muestra la ruta completa. Las llegadas se deducen de entradas y fotos; los gastos sirven como alternativa dentro de las fechas del viaje. Las fotografías repetidas entre Gastos y Blog se representan una sola vez.</p>
+          <h4>Destino real</h4>
+          <p>Una foto GPS cuya <a href="#clasificaciones">clasificación</a> está marcada como destino tiene prioridad como destino real de la ciudad frente a sus coordenadas generales. Si hay varias visitas, se elige la foto más próxima a la llegada. Para las fotos antiguas sin clasificar se conserva como respaldo la regla del gasto de Alojamiento.</p>
+          <a class="back" href="#indice">Volver al índice</a>
+        </div>
+
+        <div class="subsection screen-start" id="resumen">
+          <h3>3.7 Resumen</h3>
+          <p>Convierte importes, compara presupuesto y gasto, desglosa resultados y reúne los documentos del viaje.</p>
+          <figure><img src="assets/help/08-resumen.png" alt="Resumen con indicadores, filtros, desglose y documentos"><figcaption>Resumen económico y documental con datos de ejemplo.</figcaption></figure>
+          <ol class="legend"><li><b>1</b>Acceso a Imprimir PDF.</li><li><b>2</b>Gasto, presupuesto y restante.</li><li><b>3</b>Filtros y tipo de desglose.</li><li><b>4</b>Tablas por categoría o cuenta.</li><li><b>5</b>Documentos del viaje y archivos de gastos.</li></ol>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Área</th><th>Contenido</th></tr></thead><tbody>
+            <tr><td>Indicadores</td><td>Total EUR, total en divisas cuando existe, media diaria, presupuesto, restante y porcentaje consumido.</td></tr>
+            <tr><td>Filtros</td><td>Moneda original, cuenta, viaje, país y ciudad.</td></tr>
+            <tr><td>Desglose</td><td>Categorías, subcategorías o ciudades.</td></tr>
+            <tr><td>Tabla por categoría</td><td>Categoría, subcategoría, total EUR y porcentaje del gasto.</td></tr>
+            <tr><td>Tabla por cuenta</td><td>Cuenta, moneda, gastado, equivalencia EUR, presupuesto, restante y porcentaje.</td></tr>
+            <tr><td>Imprimir PDF</td><td>Abre las opciones Resumen, Gastos o Todo.</td></tr>
+          </tbody></table></div>
+          <h4 id="resumen-documentos">Documentos</h4>
+          <p>Al final aparecen dos tablas: <em>Documentos del viaje</em> y <em>Archivos de gastos</em>. Se ordenan de más antiguos a más recientes y cada fila muestra fecha, descripción y enlace para abrir el archivo.</p>
+          <a class="back" href="#indice">Volver al índice</a>
+        </div>
+
+        <div class="subsection" id="compartir">
+          <h3>3.8 Compartir desde Android</h3>
+          <p>Cuaderno de Bitácora puede aparecer en el menú Compartir del teléfono.</p>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Contenido recibido</th><th>Resultado</th></tr></thead><tbody>
+            <tr><td>Una o varias imágenes</td><td>Permite elegir viaje y destino: nueva entrada del Blog o nuevo gasto. Antes se puede corregir la descripción.</td></tr>
+            <tr><td>Texto seleccionado</td><td>Permite elegir viaje y abre una entrada de tipo Texto para revisarla.</td></tr>
+            <tr><td>Archivo TXT</td><td>Se trata como texto compartido y se revisa antes de guardar.</td></tr>
+            <tr><td>Archivo incompatible</td><td>La aplicación informa de que no puede tratarlo; no se guarda como imagen.</td></tr>
+          </tbody></table></div>
+          <p>Android decide qué metadatos entrega. Para conservar GPS en fotos antiguas, suele ser más fiable elegirlas desde Archivos → Almacenamiento interno → DCIM → Camera.</p>
+          <a class="back" href="#indice">Volver al índice</a>
+        </div>
+
+        <div class="subsection" id="informes">
+          <h3>3.9 Informes, PDF, CSV y WordPress</h3>
+          <h4>Imprimir / PDF económico</h4>
+          <p>Ofrece tres salidas: <em>1. Resumen</em>, <em>2. Gastos</em> y <em>3. Todo</em>. Usa los filtros activos cuando corresponde. Los informes incluyen tablas, gráficos y mapa.</p>
+          <h4 id="csv">Exportar CSV</h4>
+          <p>Genera una tabla de movimientos con Fecha, Hora, Viaje, Categoría, Subcategoría, Cuenta, Moneda, Importe, EUR, Descripción y Archivos. Usa UTF-8 con BOM para abrir correctamente los acentos en Excel.</p>
+          <h4>PDF del Blog</h4>
+          <p>Incluye el relato completo. La primera página puede contener el mapa general y la lista de ciudades; Preparativos reúne entradas anteriores al inicio; el primer día del viaje comienza en página nueva y después cada día conserva su propia página. No se añade un mapa geolocalizado automático al final.</p>
+          <h4>WordPress</h4>
+          <p>Exporta un post por día, inicialmente como borrador, con texto, imágenes, destacados y puntos. Requiere instalar el importador incluido en la aplicación.</p>
+          <h4>PDF de esta ayuda</h4>
+          <p>El botón <strong>Descargar PDF</strong> de la parte superior guarda este manual completo. El botón <strong>Imprimir</strong> permite elegir una impresora o la opción del navegador para guardar otra copia PDF.</p>
+          <a class="back" href="#indice">Volver al índice</a>
+        </div>
+
+        <div class="subsection screen-start" id="copias">
+          <h3>3.10 Copias de seguridad y sincronización</h3>
+          <h4 id="backup">Crear y guardar copia</h4>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Control</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Exportar</td><td>Todos los viajes o un viaje.</td></tr>
+            <tr><td>Viaje</td><td>Destino de la exportación parcial.</td></tr>
+            <tr><td>Crear y guardar copia</td><td>Genera un JSON con datos y archivos. Puede preguntar si también se guarda en Netlify.</td></tr>
+            <tr><td>Elegir carpeta</td><td>Fija una carpeta compatible para futuras copias. Android puede volver a pedir permiso.</td></tr>
+            <tr><td>Olvidar</td><td>Retira la carpeta fijada sin borrar sus archivos.</td></tr>
+            <tr><td>Últimas copias</td><td>Historial de las cinco copias completas locales más recientes.</td></tr>
+          </tbody></table></div>
+          <p>Los nombres incluyen fecha, hora y milisegundos para evitar sustituciones. Durante una copia se muestra el progreso y se impide iniciar otra simultáneamente.</p>
+
+          <h4 id="backup-importar">Importar JSON</h4>
+          <p>Puede importar todos los viajes o un viaje en un destino seleccionado. Lee con atención el resumen antes de confirmar: importar modifica la base local. Conviene crear una copia previa.</p>
+
+          <h4 id="sincronizacion">Sincronizar con Netlify</h4>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Control / dato</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Clave de acceso</td><td>Identifica el espacio de copias. Debe ser exactamente la misma en todos los dispositivos.</td></tr>
+            <tr><td>Mostrar / Copiar / Cambiar clave</td><td>Gestiona la clave. Cambiarla abre otro espacio y no borra el anterior.</td></tr>
+            <tr><td>Copia en la nube</td><td>Fecha de guardado y fecha real de modificación de sus datos.</td></tr>
+            <tr><td>Última copia local</td><td>Fecha equivalente en este dispositivo.</td></tr>
+            <tr><td>Comprobar de nuevo</td><td>Actualiza la comparación antes de decidir.</td></tr>
+            <tr><td>Actualizar desde la nube</td><td>Descarga la versión remota, con copia local de protección.</td></tr>
+            <tr><td>Guardar versión local en la nube</td><td>Sube los cambios locales tras comprobar que la nube no ha cambiado.</td></tr>
+          </tbody></table></div>
+          <p>La aplicación recuerda la última sincronización confirmada de este dispositivo. Si han cambiado el dispositivo y la nube desde entonces, se muestra un conflicto y ambas opciones. La comparación usa la fecha de modificación de los datos, no solo la fecha del archivo. Antes de subir, comprueba que la copia de la nube no haya cambiado mientras se prepara el envío; si cambió, cancela la subida y pide comprobar de nuevo. Tickets, documentos e imágenes se identifican por huella y no se vuelven a subir si ya existen; los archivos grandes se dividen y reconstruyen automáticamente.</p>
+          <div class="callout"><strong>Regla de seguridad:</strong> sincronizar nunca debe ser la única copia. Conserva periódicamente un JSON en una carpeta que controles.</div>
+          <a class="back" href="#indice">Volver al índice</a>
+        </div>
+
+        <div class="subsection" id="offline">
+          <h3>3.11 Sin conexión, borradores, actualización y reparación</h3>
+          <h4>Uso sin conexión</h4>
+          <p>Después de haber instalado o cargado correctamente la versión actual, la aplicación conserva sus recursos principales y puede abrirse sin Wi-Fi ni datos. Gastos, Blog, Configuración y datos locales siguen disponibles. Los mapas ya vistos se conservan en caché en la medida que el navegador lo permite.</p>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Función</th><th>Sin internet</th></tr></thead><tbody>
+            <tr><td>Abrir la aplicación ya instalada</td><td>Sí, con la versión almacenada.</td></tr>
+            <tr><td>Crear y editar datos</td><td>Sí.</td></tr>
+            <tr><td>Mapas ya vistos</td><td>En la medida en que el navegador conserve sus recursos.</td></tr>
+            <tr><td>Mapas nuevos, Localizar y tipos de cambio</td><td>No; consultan servicios externos.</td></tr>
+            <tr><td>Sincronización y copia en Netlify</td><td>No; requieren conexión.</td></tr>
+          </tbody></table></div>
+          <h4>Borradores</h4>
+          <p>Nuevo gasto, nueva entrada del Blog y formularios de Configuración guardan automáticamente lo escrito en ese navegador. Reabrir restaura el borrador. Guardar lo elimina; Cancelar lo descarta; X cierra conservándolo. Caducan a los 30 días. Por seguridad, los archivos, tickets y fotos seleccionados no se guardan como borrador y deben elegirse de nuevo.</p>
+          <h4>Actualización de versión</h4>
+          <p>Al detectar una versión nueva, la aplicación actualiza sus recursos y puede recargarse una vez. La portada muestra versión y fecha. Si se ve primero la anterior y después la nueva, deja terminar la carga; las versiones actuales evitan recargas repetidas siempre que el navegador no conserve una caché dañada.</p>
+          <h4>Reparar / Resetear datos</h4>
+          <p>Usa primero <em>Reducir espacio ocupado</em> o cierra y abre la aplicación. Si el problema continúa, crea un backup y solo entonces utiliza <em>Reparar / Resetear datos</em>. Después tendrás que importar la copia.</p>
+          <a class="back" href="#indice">Volver al índice</a>
+        </div>
+
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 para Cuaderno de Bitácora 700v175.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+      </section>
+    </main>
+  </div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v175 · 17 de julio de 2026</div>
 </body>
 </html>
