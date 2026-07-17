@@ -38,6 +38,10 @@ test('el mapa diario separa los puntos y los números de destino', () => {
   assert.match(app, /dailyRecord\.kind === 'point' \? '•' : '\+'/);
   assert.match(app, /function tripVectorDestinationElement/);
   assert.match(app, /dailyModel\.destinationMarkers\.forEach/);
+  assert.match(app, /offset: \[-18, 0\]/);
   assert.match(app, /\$\{destinationMarkers\}\s*<\/svg>/);
+  assert.match(styles, /\.trip-vector-marker\s*\{[\s\S]*?pointer-events: none !important;/);
   assert.match(styles, /\.trip-vector-destination-marker\s*\{[\s\S]*?z-index: 6;/);
+  assert.match(styles, /\.trip-vector-destination-marker\s*\{[\s\S]*?pointer-events: none !important;/);
+  assert.match(styles, /\.map-destination-number\s*\{[\s\S]*?pointer-events: none;/);
 });

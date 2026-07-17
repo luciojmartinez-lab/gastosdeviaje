@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v162';
+const APP_VERSION = '700v163';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1681,7 +1681,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v162');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v163');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1713,7 +1713,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v162');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v163');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2129,7 +2129,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v162');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v163');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6407,8 +6407,8 @@ async function createDailyMapBlogImage(records, day) {
   });
   destinationMarkers.forEach(markerModel => {
     const point = mapWorldPoint(markerModel.record.latitude, markerModel.record.longitude, zoom);
-    const x = point.x - layer.startX + 8;
-    const y = headerHeight + point.y - layer.startY - 8;
+    const x = point.x - layer.startX - 18;
+    const y = headerHeight + point.y - layer.startY;
     context.fillStyle = '#f97316';
     context.beginPath();
     context.arc(x, y, 8, 0, Math.PI * 2);
@@ -6876,7 +6876,7 @@ function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawR
       const marker = new window.maplibregl.Marker({
         element: tripVectorDestinationElement(markerModel),
         anchor: 'center',
-        offset: [8, -8]
+        offset: [-18, 0]
       }).setLngLat([Number(markerModel.record.longitude), Number(markerModel.record.latitude)]).addTo(map);
       tripVectorMarkers.push(marker);
     });
@@ -7130,8 +7130,8 @@ function renderTripMap() {
   }).join('');
   const destinationMarkers = dailyMode ? dailyModel.destinationMarkers.map(markerModel => {
     const p = project({ ciudad: { lat: markerModel.record.latitude, lng: markerModel.record.longitude } });
-    const x = p.x + 8;
-    const y = p.y - 8;
+    const x = p.x - 18;
+    const y = p.y;
     return `<g class="map-destination-number"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"></circle><text x="${x.toFixed(1)}" y="${(y + 3).toFixed(1)}">${escapeHtml(markerModel.numberText)}</text><title>Destino ${escapeHtml(markerModel.numberText)} · ${escapeHtml(dailyMapCityName(markerModel.record))}</title></g>`;
   }).join('') : '';
   const roundedZoom = Math.round(zoom * 10) / 10;

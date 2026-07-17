@@ -2231,7 +2231,7 @@ body.map-fullscreen-open {
   z-index: 3;
   width: 20px;
   height: 20px;
-  pointer-events: none;
+  pointer-events: none !important;
 }
 
 .trip-vector-marker-dot,
@@ -2267,7 +2267,7 @@ body.map-fullscreen-open {
   font-size: 9px;
   font-weight: 900;
   line-height: 1;
-  pointer-events: none;
+  pointer-events: none !important;
 }
 
 .trip-vector-marker.configured .trip-vector-marker-dot {
@@ -2523,6 +2523,10 @@ body.map-fullscreen-open {
   font-size: 8px;
   font-weight: 900;
   text-anchor: middle;
+  pointer-events: none;
+}
+
+.map-destination-number {
   pointer-events: none;
 }
 
