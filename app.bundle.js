@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v166';
+const APP_VERSION = '700v167';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -347,7 +347,7 @@ const $$ = selector => Array.from(document.querySelectorAll(selector));
 const ADD_EXPENSE_DRAFT_FIELDS = [
   '#g-fecha', '#g-hora', '#g-viaje', '#g-cuenta', '#g-moneda',
   '#g-cat', '#g-subcat', '#g-pais', '#g-ciudad', '#g-importe',
-  '#g-tipo', '#g-desc', '#g-classification', '#g-extra-images-map', '#g-extra-images-type'
+  '#g-tipo', '#g-desc', '#g-ticket-type', '#g-extra-images-map', '#g-extra-images-type'
 ];
 const BLOG_ENTRY_DRAFT_FIELDS = [
   '#blog-fecha', '#blog-hora', '#blog-tipo', '#blog-pais', '#blog-ciudad',
@@ -895,8 +895,8 @@ async function expenseTicketBlogImage(gasto) {
       type: ticketType || 'image/jpeg',
       size: ticketInfo.blob.size,
       data: ticketInfo.data,
-      photoTypeId: String(gasto.classificationId || ''),
-      photoTypeName: String(gasto.classificationName || ''),
+      photoTypeId: String(gasto.ticketPhotoTypeId || ''),
+      photoTypeName: String(gasto.ticketPhotoTypeName || ''),
       createdAt: gasto.createdAt || ''
     });
   }
@@ -926,8 +926,8 @@ async function expenseTicketBlogImage(gasto) {
       data: await readBlobAsDataUrl(imageBlob),
       width: canvas.width,
       height: canvas.height,
-      photoTypeId: String(gasto.classificationId || ''),
-      photoTypeName: String(gasto.classificationName || ''),
+      photoTypeId: String(gasto.ticketPhotoTypeId || ''),
+      photoTypeName: String(gasto.ticketPhotoTypeName || ''),
       createdAt: gasto.createdAt || ''
     });
   } finally {
@@ -1707,7 +1707,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v166');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v167');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1739,7 +1739,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v166');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v167');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1794,9 +1794,22 @@ function clearExpenseTicketSelection(prefix) {
       ? 'Ningún ticket nuevo seleccionado.'
       : 'Ningún ticket seleccionado.';
   }
+  const typeSelect = $(`#${prefix}-ticket-type`);
+  if (typeSelect) typeSelect.value = '';
   pendingTicketOcr[prefix] = null;
   setTicketOcrStatus(prefix, '');
   syncTicketOcrAvailability(prefix);
+  syncExpenseTicketTypeAvailability(prefix);
+}
+
+function syncExpenseTicketTypeAvailability(prefix) {
+  const select = $(`#${prefix}-ticket-type`);
+  if (!select) return;
+  const selectedTicket = selectedFileInput(`#${prefix}-ticket`, `#${prefix}-ticket-camera`);
+  const currentTicket = prefix === 'edit-gasto' && !$('#edit-gasto-ticket-remove')?.checked
+    ? currentEditTicket()
+    : null;
+  select.disabled = !selectedTicket && !currentTicket?.ticketData;
 }
 
 function expenseExtraImageInputs(prefix) {
@@ -1925,6 +1938,7 @@ function syncExpenseTicketSelection(prefix, source) {
   pendingTicketOcr[prefix] = null;
   setTicketOcrStatus(prefix, 'Listo para leer en este dispositivo.');
   syncTicketOcrAvailability(prefix);
+  syncExpenseTicketTypeAvailability(prefix);
 }
 
 function normalizeTicketMerchantKey(value) {
@@ -2160,7 +2174,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v166');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v167');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -2560,7 +2574,8 @@ function renderExpenseFilesDialog(gasto) {
   if (!list || !gasto) return;
   const items = [];
   if (gasto.ticketData) {
-    items.push(`<li><span class="trip-document-info"><strong>Ticket principal</strong><span>${escapeHtml(gasto.ticketName || 'Ticket')}</span></span><button type="button" class="ghost" data-open-ticket="${gasto.id}">Abrir</button></li>`);
+    const ticketTypeLabel = photoTypeLabel({ photoTypeId: gasto.ticketPhotoTypeId, photoTypeName: gasto.ticketPhotoTypeName });
+    items.push(`<li><span class="trip-document-info"><strong>Ticket principal</strong><span>${escapeHtml(gasto.ticketName || 'Ticket')} · ${escapeHtml(ticketTypeLabel || 'Sin clasificar')}</span></span><button type="button" class="ghost" data-open-ticket="${gasto.id}">Abrir</button></li>`);
   }
   expenseExtraImages(gasto).forEach((image, index) => {
     const typeLabel = photoTypeLabel(image);
@@ -3981,7 +3996,7 @@ async function delMoneda(codigo) {
   return deleteRecord('monedas', String(codigo).toUpperCase());
 }
 
-async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, classificationId = '', classificationName = '', paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', extraImages = [] }) {
+async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', ticketPhotoTypeId = '', ticketPhotoTypeName = '', extraImages = [] }) {
   if (!hasValidCurrency(moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   const account = state.cuentas.find(c => c.id === Number(cuentaId));
   if (account && account.moneda !== moneda) throw new Error('La moneda del gasto debe coincidir con la cuenta');
@@ -3997,8 +4012,6 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     moneda,
     catId: Number(catId),
     subcatId: subcatId ? Number(subcatId) : null,
-    classificationId: String(classificationId || ''),
-    classificationName: String(classificationName || ''),
     paisId: paisId ? Number(paisId) : null,
     ciudadId: ciudadId ? Number(ciudadId) : null,
     importe: amount,
@@ -4007,6 +4020,8 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     ticketName,
     ticketType,
     ticketData,
+    ticketPhotoTypeId: String(ticketPhotoTypeId || ''),
+    ticketPhotoTypeName: String(ticketPhotoTypeName || ''),
     extraImages: Array.isArray(extraImages) ? extraImages : [],
     createdAt: now,
     updatedAt: now
@@ -4025,8 +4040,8 @@ async function updateGasto(id, patch) {
   next.cuentaId = Number(next.cuentaId);
   next.catId = Number(next.catId);
   next.subcatId = next.subcatId ? Number(next.subcatId) : null;
-  next.classificationId = String(next.classificationId || '');
-  next.classificationName = String(next.classificationName || '');
+  next.ticketPhotoTypeId = String(next.ticketPhotoTypeId || '');
+  next.ticketPhotoTypeName = String(next.ticketPhotoTypeName || '');
   next.paisId = next.paisId ? Number(next.paisId) : null;
   next.ciudadId = next.ciudadId ? Number(next.ciudadId) : null;
   next.hora = normalizeExpenseTime(next.hora) || expenseTimeValue(current) || currentLocalTime();
@@ -4075,15 +4090,16 @@ async function saveOpenExpenseCategoryClassification() {
   setMessage('#msg-edit-gasto', 'Categoría guardada');
 }
 
-async function saveOpenExpenseClassification() {
+async function saveOpenExpenseTicketClassification() {
   const id = Number($('#edit-gasto-id')?.value);
-  if (!id) return;
-  const selected = photoTypeById($('#edit-gasto-classification')?.value);
+  const current = state.gastos.find(gasto => Number(gasto.id) === id);
+  if (!id || !current?.ticketData || $('#edit-gasto-ticket-remove')?.checked) return;
+  const selected = photoTypeById($('#edit-gasto-ticket-type')?.value);
   await queueExpenseClassificationSave(id, {
-    classificationId: selected ? selected.id : '',
-    classificationName: selected ? selected.nombre : ''
+    ticketPhotoTypeId: selected ? selected.id : '',
+    ticketPhotoTypeName: selected ? selected.nombre : ''
   });
-  setMessage('#msg-edit-gasto', 'Clasificación del gasto guardada');
+  setMessage('#msg-edit-gasto', 'Clasificación del ticket guardada');
 }
 
 async function saveOpenExpenseImageClassifications() {
@@ -5497,8 +5513,8 @@ function renderPhotoTypes() {
 function renderPhotoTypeControls() {
   fillPhotoTypeSelect('#g-extra-images-type');
   fillPhotoTypeSelect('#edit-gasto-extra-images-type');
-  fillPhotoTypeSelect('#g-classification');
-  fillPhotoTypeSelect('#edit-gasto-classification');
+  fillPhotoTypeSelect('#g-ticket-type');
+  fillPhotoTypeSelect('#edit-gasto-ticket-type');
   renderPhotoTypes();
 }
 
@@ -9938,7 +9954,6 @@ function openEditGasto(gasto) {
   rememberLastValidExpenseCategory('edit-gasto');
   renderEditSubcategories();
   $('#edit-gasto-subcat').value = gasto.subcatId ? String(gasto.subcatId) : '';
-  $('#edit-gasto-classification').value = String(gasto.classificationId || '');
   $('#edit-gasto-pais').value = gasto.paisId ? String(gasto.paisId) : '';
   renderEditCiudades();
   $('#edit-gasto-ciudad').value = gasto.ciudadId ? String(gasto.ciudadId) : '';
@@ -9950,6 +9965,8 @@ function openEditGasto(gasto) {
   clearExpenseExtraImageSelection('edit-gasto');
   $('#edit-gasto-ticket-remove').checked = false;
   $('#edit-gasto-ticket-current').innerHTML = gasto.ticketData ? `Ticket actual: ${ticketLink(gasto)}` : 'Sin ticket asociado.';
+  $('#edit-gasto-ticket-type').value = gasto.ticketData ? String(gasto.ticketPhotoTypeId || '') : '';
+  syncExpenseTicketTypeAvailability('edit-gasto');
   syncTicketOcrAvailability('edit-gasto');
   renderEditExpenseImages(gasto);
   setMessage('#msg-edit-gasto', '');
@@ -9979,7 +9996,7 @@ function restoreAddExpenseDraft() {
   applyFormDraftValues(['#g-cuenta', '#g-moneda'], values);
   applyFormDraftValues(['#g-cat'], values);
   renderSubcategories();
-  applyFormDraftValues(['#g-subcat', '#g-classification'], values);
+  applyFormDraftValues(['#g-subcat', '#g-ticket-type'], values);
   applyFormDraftValues(['#g-pais'], values);
   renderCiudades();
   applyFormDraftValues(['#g-ciudad', '#g-extra-images-map', '#g-extra-images-type'], values);
@@ -11195,7 +11212,6 @@ function bindEvents() {
     handleExpenseSubcategoryChange('g');
     scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   };
-  $('#g-classification').onchange = () => scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#edit-gasto-cat').onchange = () => {
     handleExpenseCategoryChange('edit-gasto');
     saveOpenExpenseCategoryClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
@@ -11204,11 +11220,9 @@ function bindEvents() {
     handleExpenseSubcategoryChange('edit-gasto');
     saveOpenExpenseCategoryClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
-  $('#edit-gasto-classification').onchange = () => {
-    saveOpenExpenseClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
-  };
   $('#g-ticket').onchange = () => syncExpenseTicketSelection('g', 'file');
   $('#g-ticket-camera').onchange = () => syncExpenseTicketSelection('g', 'camera');
+  $('#g-ticket-type').onchange = () => scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
   $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true });
   $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true });
@@ -11216,6 +11230,9 @@ function bindEvents() {
   $('#edit-gasto-ticket').onchange = () => syncExpenseTicketSelection('edit-gasto', 'file');
   $('#edit-gasto-ticket-camera').onchange = () => syncExpenseTicketSelection('edit-gasto', 'camera');
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
+  $('#edit-gasto-ticket-type').onchange = () => {
+    saveOpenExpenseTicketClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
+  };
   $('#edit-gasto-extra-images').onchange = () => syncExpenseExtraImageSelection('edit-gasto', { applyDateTime: true });
   $('#edit-gasto-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('edit-gasto', { applyDateTime: true });
   $('#edit-gasto-extra-images-current').onchange = event => {
@@ -11223,7 +11240,13 @@ function bindEvents() {
     saveOpenExpenseImageClassifications().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
   $('#edit-gasto-ticket-remove').onchange = () => {
-    if ($('#edit-gasto-ticket-remove').checked) clearExpenseTicketSelection('edit-gasto');
+    if ($('#edit-gasto-ticket-remove').checked) {
+      clearExpenseTicketSelection('edit-gasto');
+    } else {
+      const current = currentEditTicket();
+      $('#edit-gasto-ticket-type').value = current?.ticketData ? String(current.ticketPhotoTypeId || '') : '';
+      syncExpenseTicketTypeAvailability('edit-gasto');
+    }
     syncTicketOcrAvailability('edit-gasto');
   };
   $('#g-pais').onchange = () => {
@@ -11315,11 +11338,15 @@ function bindEvents() {
         .filter((image, index) => !removedExtraImageIndexes.has(index))
         .concat(newExtraImages);
       const ticketPatch = $('#edit-gasto-ticket-remove').checked
-        ? { ticketName: '', ticketType: '', ticketData: '' }
+        ? { ticketName: '', ticketType: '', ticketData: '', ticketPhotoTypeId: '', ticketPhotoTypeName: '' }
         : ticket
           ? { ticketName: ticket.name, ticketType: ticket.type, ticketData: ticket.data }
           : { ticketName: current ? current.ticketName : '', ticketType: current ? current.ticketType : '', ticketData: current ? current.ticketData : '' };
-      const selectedClassification = photoTypeById($('#edit-gasto-classification').value);
+      const selectedTicketType = photoTypeById($('#edit-gasto-ticket-type').value);
+      if (ticketPatch.ticketData) {
+        ticketPatch.ticketPhotoTypeId = selectedTicketType ? selectedTicketType.id : '';
+        ticketPatch.ticketPhotoTypeName = selectedTicketType ? selectedTicketType.nombre : '';
+      }
       await updateGasto(id, {
         fecha: $('#edit-gasto-fecha').value || todayIso(),
         hora: $('#edit-gasto-hora').value || currentLocalTime(),
@@ -11327,8 +11354,6 @@ function bindEvents() {
         cuentaId,
         catId,
         subcatId: $('#edit-gasto-subcat').value || null,
-        classificationId: selectedClassification ? selectedClassification.id : '',
-        classificationName: selectedClassification ? selectedClassification.nombre : '',
         paisId: $('#edit-gasto-pais').value || null,
         ciudadId: $('#edit-gasto-ciudad').value || null,
         importe,
@@ -11441,7 +11466,7 @@ function bindEvents() {
       const importe = $('#g-tipo')?.value === 'ingreso' ? -Math.abs(rawImporte) : Math.abs(rawImporte);
       if (!cuentaId || !catId || importe === 0) throw new Error('Completa cuenta, categoría e importe');
       const ticket = await readFileData(selectedFileInput('#g-ticket', '#g-ticket-camera'));
-      const selectedClassification = photoTypeById($('#g-classification').value);
+      const selectedTicketType = ticket ? photoTypeById($('#g-ticket-type').value) : null;
       const extraImages = await readSelectedExpenseExtraImages('g');
       await addGasto({
         fecha,
@@ -11451,8 +11476,6 @@ function bindEvents() {
         moneda,
         catId,
         subcatId: $('#g-subcat').value || null,
-        classificationId: selectedClassification ? selectedClassification.id : '',
-        classificationName: selectedClassification ? selectedClassification.nombre : '',
         paisId: $('#g-pais').value || null,
         ciudadId: $('#g-ciudad').value || null,
         importe,
@@ -11460,6 +11483,8 @@ function bindEvents() {
         ticketName: ticket ? ticket.name : '',
         ticketType: ticket ? ticket.type : '',
         ticketData: ticket ? ticket.data : '',
+        ticketPhotoTypeId: selectedTicketType ? selectedTicketType.id : '',
+        ticketPhotoTypeName: selectedTicketType ? selectedTicketType.nombre : '',
         extraImages
       });
       clearFormDraft(addExpenseDraftKey());

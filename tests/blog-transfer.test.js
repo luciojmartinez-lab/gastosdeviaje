@@ -74,17 +74,18 @@ test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {
   assert.match(app, /photoTypeId: selectedType \? selectedType\.id : ''/);
 });
 
-test('las clasificaciones editadas de un gasto se guardan al seleccionarlas', () => {
-  assert.match(html, /id="g-classification"/);
-  assert.match(html, /id="edit-gasto-classification"/);
+test('las clasificaciones de tickets y fotos se guardan al seleccionarlas', () => {
+  assert.match(html, /id="g-ticket-type" disabled/);
+  assert.match(html, /id="edit-gasto-ticket-type" disabled/);
   assert.match(app, /function queueExpenseClassificationSave\(id, patch\)/);
   assert.match(app, /async function saveOpenExpenseCategoryClassification\(\)/);
   assert.match(app, /queueExpenseClassificationSave\(id, \{ catId, subcatId \}\)/);
-  assert.match(app, /async function saveOpenExpenseClassification\(\)/);
-  assert.match(app, /classificationId: selected \? selected\.id : ''/);
-  assert.match(app, /edit-gasto-classification'\)\.onchange[\s\S]*saveOpenExpenseClassification\(\)/);
-  assert.match(app, /edit-gasto-classification'\)\.value = String\(gasto\.classificationId \|\| ''\)/);
-  assert.match(app, /classificationId: selectedClassification \? selectedClassification\.id : ''/);
+  assert.match(app, /async function saveOpenExpenseTicketClassification\(\)/);
+  assert.match(app, /ticketPhotoTypeId: selected \? selected\.id : ''/);
+  assert.match(app, /edit-gasto-ticket-type'\)\.onchange[\s\S]*saveOpenExpenseTicketClassification\(\)/);
+  assert.match(app, /edit-gasto-ticket-type'\)\.value = gasto\.ticketData \? String\(gasto\.ticketPhotoTypeId \|\| ''\) : ''/);
+  assert.match(app, /ticketPhotoTypeId: selectedTicketType \? selectedTicketType\.id : ''/);
+  assert.match(app, /photoTypeId: String\(gasto\.ticketPhotoTypeId \|\| ''\)/);
   assert.match(html, /id="edit-gasto-extra-images-type" disabled/);
   assert.match(app, /async function saveOpenExpenseImageClassifications\(\)/);
   assert.match(app, /queueExpenseClassificationSave\(id, \{ extraImages \}\)/);
