@@ -32,9 +32,14 @@ test('los trayectos son líneas rectas discontinuas sin modos de transporte', ()
   assert.match(help, /líneas rectas discontinuas/);
 });
 
-test('las entradas En ruta geolocalizan textos y afinan el recorrido', () => {
-  assert.match(app, /async function locateBlogTextEnRoute\(\)/);
-  assert.match(app, /await currentDeviceImageLocation\(\)/);
+test('las entradas En ruta exigen GPS o una ubicación manual', () => {
+  assert.doesNotMatch(app, /function locateBlogTextEnRoute\(/);
+  assert.match(app, /function openBlogManualRouteLocation\(\)/);
+  assert.match(app, /checkbox\.disabled = !hasLocation/);
+  assert.match(app, /Añade manualmente una ubicación antes de marcar el texto/);
+  const saveStart = app.indexOf('async function saveBlogEntryForm');
+  const saveEnd = app.indexOf('function expenseBlogDescription', saveStart);
+  assert.doesNotMatch(app.slice(saveStart, saveEnd), /currentDeviceImageLocation\(/);
   assert.match(app, /enRuta: type !== 'gasto' && entry\.enRuta === true/);
   assert.match(app, /function orderTripItemsWithRouteWaypoints\(items = \[\]\)/);
   assert.match(app, /function enRouteBlogItemsForTrip\(tripId\)/);
@@ -42,5 +47,5 @@ test('las entradas En ruta geolocalizan textos y afinan el recorrido', () => {
   assert.match(app, /\.\.\.enRouteBlogItemsForTrip\(trip\.id\)/);
   assert.match(styles, /\.blog-en-route-option/);
   assert.match(help, /marcadas «En ruta»/);
-  assert.match(help, /obtiene y guarda la ubicación actual/);
+  assert.match(help, /nunca asigna automáticamente la ubicación actual/);
 });

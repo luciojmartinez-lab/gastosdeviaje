@@ -69,6 +69,14 @@ test('los puntos geolocalizados admiten notas', () => {
   assert.match(app, /texto: entry\.tipo === 'punto' \? entry\.notas \|\| '' : entry\.texto \|\| ''/);
 });
 
+test('textos e imágenes sin GPS permiten marcar una ubicación manual', () => {
+  assert.match(html, /id="blog-en-route-location"[^>]*>Añadir ubicación manualmente/);
+  assert.match(app, /blogManualRouteLocationOpen && \['texto', 'imagen'\]\.includes\(activeBlogEntryType\)/);
+  assert.match(app, /No se usará tu ubicación actual/);
+  assert.match(app, /values\.imageLocationSource = 'manual'/);
+  assert.match(styles, /\.blog-point-actions \.btn\[hidden\]/);
+});
+
 test('el Blog ya no muestra el mapa automático de puntos pero el PDF lo conserva', () => {
   assert.doesNotMatch(html, /id="blog-points-overview"/);
   assert.doesNotMatch(app, /function renderBlogPointsOverview/);

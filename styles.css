@@ -1624,6 +1624,14 @@ input[type="checkbox"] {
   flex: 1 1 220px;
 }
 
+.blog-en-route-option .btn {
+  padding: 7px 10px;
+}
+
+.blog-point-actions .btn[hidden] {
+  display: none;
+}
+
 #tabla-blog .blog-col-time { width: 60px; }
 #tabla-blog .blog-col-city { width: 110px; }
 #tabla-blog .blog-col-description { width: 315px; }
