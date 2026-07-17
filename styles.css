@@ -1331,6 +1331,40 @@ input[type="checkbox"] {
   margin: 12px 0;
 }
 
+.expense-current-image-list select {
+  min-width: 120px;
+  max-width: 180px;
+}
+
+.photo-types-list ul {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.photo-types-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.photo-types-list li span,
+.photo-types-list li div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.photo-types-list small {
+  color: #1d4ed8;
+}
+
 .shared-images-preview.shared-text-preview {
   display: block;
   max-height: min(280px, 36dvh);
@@ -1588,6 +1622,22 @@ input[type="checkbox"] {
 #tabla-blog {
   min-width: 1050px;
   table-layout: fixed;
+}
+
+#blog-primary-photo-type-field {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+#blog-primary-photo-type-field[hidden] {
+  display: none;
+}
+
+.blog-gallery-preview select {
+  width: 100%;
+  margin-top: 5px;
+  font-size: 12px;
 }
 
 .blog-image-picker-actions[hidden] {

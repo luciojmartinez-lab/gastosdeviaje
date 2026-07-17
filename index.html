@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v160">
+  <link rel="manifest" href="manifest.webmanifest?v=700v161">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v160">
+  <link rel="stylesheet" href="styles.css?v=700v161">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -38,7 +38,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v160</div>
+  <div class="app-version">700v161</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -240,6 +240,7 @@
         <a class="btn ghost" href="#config-cuentas">Cuentas</a>
         <a class="btn ghost" href="#config-transferencias">Transferencias</a>
         <a class="btn ghost" href="#config-categorias">Categorías</a>
+        <a class="btn ghost" href="#config-photo-types">Tipos de fotos</a>
         <a class="btn ghost" href="#config-backups">Backups</a>
         <a class="btn ghost" href="#config-avanzado">Avanzado</a>
       </div>
@@ -362,6 +363,17 @@
       <div id="categorias-tree" class="category-tree"></div>
     </div>
 
+    <div class="card compact-config-form" id="config-photo-types">
+      <h2>Tipos de fotos</h2>
+      <p class="small">Clasifica cada foto y decide qué tipos pueden señalar el destino real del alojamiento.</p>
+      <div class="row">
+        <div><label>Nombre</label><input id="photo-type-name" placeholder="Museo, transporte..."></div>
+        <label class="check-option"><input type="checkbox" id="photo-type-destination"> Usar como punto de destino</label>
+      </div>
+      <div class="actions"><button class="btn" id="btn-add-photo-type" type="button">Añadir tipo</button><span id="msg-photo-type" class="small"></span></div>
+      <div id="photo-types-list" class="photo-types-list"></div>
+    </div>
+
     <div class="card" id="config-backups">
       <h2>Exportar / Importar</h2>
       <div class="actions">
@@ -453,6 +465,8 @@
       </div>
       <p class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
       <p id="g-extra-images-selected" class="small">Ninguna imagen adicional seleccionada.</p>
+      <label for="g-extra-images-type">Tipo de las fotos seleccionadas</label>
+      <select id="g-extra-images-type"><option value="">Sin clasificar</option></select>
       <label class="check-option photo-map-option" id="g-extra-images-map-option" hidden><input type="checkbox" id="g-extra-images-map"> Añadir las fotos al mapa</label>
     </div>
     <div class="actions">
@@ -522,6 +536,8 @@
       </div>
       <p class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
       <p id="edit-gasto-extra-images-selected" class="small">Ninguna imagen nueva seleccionada.</p>
+      <label for="edit-gasto-extra-images-type">Tipo de las fotos nuevas</label>
+      <select id="edit-gasto-extra-images-type"><option value="">Sin clasificar</option></select>
       <label class="check-option photo-map-option" id="edit-gasto-extra-images-map-option" hidden><input type="checkbox" id="edit-gasto-extra-images-map"> Añadir las fotos nuevas al mapa</label>
       <div id="edit-gasto-extra-images-current" class="expense-current-images"></div>
     </div>
@@ -675,6 +691,7 @@
           <span id="blog-original-status" class="small"></span>
         </div>
         <img id="blog-image-preview" class="blog-image-preview" alt="Vista previa" hidden>
+        <label id="blog-primary-photo-type-field" hidden>Tipo de foto<select id="blog-primary-photo-type"><option value="">Sin clasificar</option></select></label>
         <div id="blog-image-rotate-actions" class="actions blog-image-rotate-actions" hidden>
           <button type="button" class="btn ghost" id="blog-image-rotate-left">Girar a la izquierda</button>
           <button type="button" class="btn ghost" id="blog-image-rotate-right">Girar a la derecha</button>
@@ -895,11 +912,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v160"></script>
-<script src="app.bundle.js?v=700v160"></script>
+<script src="map-model.js?v=700v161"></script>
+<script src="app.bundle.js?v=700v161"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v160';
+    const pageVersion = '700v161';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -926,7 +943,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v160', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v161', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

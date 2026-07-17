@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v160';
+const APP_VERSION = '700v161';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -10,6 +10,7 @@ const FORM_DRAFT_MAX_AGE_DAYS = 30;
 const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
 const SYNC_STATE_STORAGE = 'gastos_viaje_sync_state_v1';
 const BACKUP_DIRECTORY_SETTING_KEY = 'backupDirectory';
+const PHOTO_TYPES_SETTING_KEY = 'photoTypes';
 const SYNC_ENDPOINT = '/api/travel-sync';
 const LOCAL_BACKUP_LIMIT = 5;
 const CLOUD_ATTACHMENT_CHUNK_CHARS = 2_500_000;
@@ -17,6 +18,14 @@ const CLOUD_ATTACHMENT_CHECK_BATCH = 75;
 const BLOG_IMAGE_TARGET_BYTES = 650 * 1024;
 const BLOG_IMAGE_OUTPUT_LIMIT = 1_100_000;
 const BLOG_IMAGE_MAX_DIMENSION = 1600;
+const DEFAULT_PHOTO_TYPES = [
+  { id: 'alojamiento', nombre: 'Alojamiento', useAsDestination: true },
+  { id: 'comida', nombre: 'Comida', useAsDestination: false },
+  { id: 'paisaje', nombre: 'Paisaje', useAsDestination: false },
+  { id: 'ciudad', nombre: 'Ciudad', useAsDestination: false },
+  { id: 'retrato', nombre: 'Retrato', useAsDestination: false },
+  { id: 'selfie', nombre: 'Selfie', useAsDestination: false }
+];
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const TRIP_MAP_WIDTH = 920;
 const TRIP_MAP_HEIGHT = 460;
@@ -338,7 +347,7 @@ const $$ = selector => Array.from(document.querySelectorAll(selector));
 const ADD_EXPENSE_DRAFT_FIELDS = [
   '#g-fecha', '#g-hora', '#g-viaje', '#g-cuenta', '#g-moneda',
   '#g-cat', '#g-subcat', '#g-pais', '#g-ciudad', '#g-importe',
-  '#g-tipo', '#g-desc', '#g-extra-images-map'
+  '#g-tipo', '#g-desc', '#g-extra-images-map', '#g-extra-images-type'
 ];
 const BLOG_ENTRY_DRAFT_FIELDS = [
   '#blog-fecha', '#blog-hora', '#blog-tipo', '#blog-pais', '#blog-ciudad',
@@ -689,6 +698,7 @@ const state = {
   selectedViajeIds: [],
   cuentas: [],
   categorias: [],
+  photoTypes: [],
   lugares: [],
   gastos: [],
   viajes: [],
@@ -754,6 +764,8 @@ function normalizeStoredImageRecord(image = {}) {
     latitude,
     longitude,
     locationSource: String(image.locationSource || ''),
+    photoTypeId: String(image.photoTypeId || ''),
+    photoTypeName: String(image.photoTypeName || ''),
     mapEnabled: image.mapEnabled === true && hasExactPoint,
     capturedDate: String(image.capturedDate || ''),
     capturedTime: String(image.capturedTime || ''),
@@ -784,27 +796,58 @@ function dateDistanceDays(first, second) {
 
 function accommodationDestinationForTripCity(tripId, cityId, targetDate = '') {
   const candidates = [];
+  const append = ({ image, date = '', priority, order = '', source, index = 0 }) => {
+    const point = storedImageCoordinates(image);
+    if (!point) return;
+    candidates.push({
+      ...point,
+      date,
+      priority,
+      distance: targetDate ? dateDistanceDays(date, targetDate) : 0,
+      source,
+      image,
+      index,
+      order
+    });
+  };
   state.gastos
-    .filter(gasto => Number(gasto.viajeId) === Number(tripId) && Number(gasto.ciudadId) === Number(cityId) && isAccommodationExpense(gasto))
+    .filter(gasto => Number(gasto.viajeId) === Number(tripId) && Number(gasto.ciudadId) === Number(cityId))
     .forEach(gasto => {
       expenseExtraImages(gasto).forEach((image, index) => {
-        const point = storedImageCoordinates(image);
-        if (!point) return;
+        const classifiedDestination = imageUsesAsDestination(image);
+        const legacyAccommodation = !image.photoTypeId && isAccommodationExpense(gasto);
+        if (!classifiedDestination && !legacyAccommodation) return;
         const date = image.capturedDate || gasto.fecha || '';
-        candidates.push({
-          ...point,
-          date,
-          distance: targetDate ? dateDistanceDays(date, targetDate) : 0,
-          gasto,
+        append({
           image,
+          date,
+          priority: classifiedDestination ? 0 : 1,
+          order: `${gasto.fecha || ''}T${expenseTimeValue(gasto) || '00:00'}-${gasto.id || 0}`,
+          source: gasto,
+          index
+        });
+      });
+    });
+  state.blogEntries
+    .filter(entry => Number(entry.viajeId) === Number(tripId) && Number(entry.ciudadId) === Number(cityId))
+    .forEach(entry => {
+      blogEntryImages(entry).forEach((image, index) => {
+        if (!imageUsesAsDestination(image)) return;
+        append({
+          image,
+          date: image.capturedDate || entry.fecha || '',
+          priority: 0,
+          order: `${entry.fecha || ''}T${entry.hora || '00:00'}-${entry.id || 0}`,
+          source: entry,
           index
         });
       });
     });
   return candidates.sort((a, b) =>
-    a.distance - b.distance
+    a.priority - b.priority
+    || a.distance - b.distance
     || String(a.date || '').localeCompare(String(b.date || ''))
-    || compareGastosRouteOrder(a.gasto, b.gasto)
+    || String(a.order || '').localeCompare(String(b.order || ''))
     || a.index - b.index
   )[0] || null;
 }
@@ -1043,6 +1086,72 @@ function lugarHasCoords(lugar) {
 
 function normalizePlaceName(name) {
   return String(name || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function normalizePhotoTypes(types = []) {
+  const seen = new Set();
+  return (Array.isArray(types) ? types : []).map((type, index) => {
+    const nombre = String(type && type.nombre || '').trim();
+    const id = String(type && type.id || '').trim() || `foto-${index + 1}`;
+    if (!nombre || seen.has(id)) return null;
+    seen.add(id);
+    return { id, nombre, useAsDestination: type.useAsDestination === true };
+  }).filter(Boolean);
+}
+
+function photoTypeById(id) {
+  return state.photoTypes.find(type => String(type.id) === String(id || '')) || null;
+}
+
+function photoTypeLabel(image) {
+  const configured = photoTypeById(image && image.photoTypeId);
+  return configured ? configured.nombre : String(image && image.photoTypeName || '').trim();
+}
+
+function imageUsesAsDestination(image) {
+  const configured = photoTypeById(image && image.photoTypeId);
+  return Boolean(configured && configured.useAsDestination && storedImageCoordinates(image));
+}
+
+function photoTypeOptionsHtml(selectedId = '') {
+  return `<option value="">Sin clasificar</option>${state.photoTypes.map(type => `<option value="${escapeHtml(type.id)}"${String(type.id) === String(selectedId || '') ? ' selected' : ''}>${escapeHtml(type.nombre)}${type.useAsDestination ? ' · destino' : ''}</option>`).join('')}`;
+}
+
+async function savePhotoTypes(types) {
+  const normalized = normalizePhotoTypes(types);
+  await putRecord('appSettings', {
+    key: PHOTO_TYPES_SETTING_KEY,
+    items: normalized,
+    updatedAt: new Date().toISOString()
+  });
+  state.photoTypes = normalized;
+  setLocalDataUpdatedAt();
+  renderPhotoTypeControls();
+}
+
+async function addPhotoType({ nombre, useAsDestination = false }) {
+  const cleanName = String(nombre || '').trim();
+  if (!cleanName) throw new Error('Escribe el nombre del tipo de foto');
+  if (state.photoTypes.some(type => normalizePlaceName(type.nombre) === normalizePlaceName(cleanName))) throw new Error('Ese tipo de foto ya existe');
+  const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `foto-${Date.now()}-${Math.random()}`;
+  await savePhotoTypes([...state.photoTypes, { id, nombre: cleanName, useAsDestination }]);
+}
+
+async function updatePhotoType(id, patch) {
+  const current = photoTypeById(id);
+  if (!current) throw new Error('No se encuentra el tipo de foto');
+  const nombre = String(patch.nombre || current.nombre).trim();
+  if (!nombre) throw new Error('Escribe el nombre del tipo de foto');
+  if (state.photoTypes.some(type => type.id !== current.id && normalizePlaceName(type.nombre) === normalizePlaceName(nombre))) throw new Error('Ese tipo de foto ya existe');
+  await savePhotoTypes(state.photoTypes.map(type => type.id === current.id
+    ? { ...type, nombre, useAsDestination: patch.useAsDestination === true }
+    : type));
+}
+
+async function deletePhotoType(id) {
+  const current = photoTypeById(id);
+  if (!current) return;
+  await savePhotoTypes(state.photoTypes.filter(type => type.id !== current.id));
 }
 
 function isTransitPlaceName(name) {
@@ -1572,7 +1681,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v160');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v161');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1604,7 +1713,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v160');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v161');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1669,6 +1778,7 @@ function expenseExtraImageInputs(prefix) {
     file: $(`#${prefix}-extra-images`),
     camera: $(`#${prefix}-extra-images-camera`),
     status: $(`#${prefix}-extra-images-selected`),
+    typeSelect: $(`#${prefix}-extra-images-type`),
     mapOption: $(`#${prefix}-extra-images-map-option`),
     mapCheckbox: $(`#${prefix}-extra-images-map`)
   };
@@ -1704,6 +1814,7 @@ function clearExpenseExtraImageSelection(prefix) {
   }
   if (inputs.mapOption) inputs.mapOption.hidden = true;
   if (inputs.mapCheckbox) inputs.mapCheckbox.checked = false;
+  if (inputs.typeSelect) inputs.typeSelect.value = '';
 }
 
 async function syncExpenseExtraImageSelection(prefix, options = {}) {
@@ -1749,6 +1860,7 @@ async function syncExpenseExtraImageSelection(prefix, options = {}) {
 async function readSelectedExpenseExtraImages(prefix) {
   const inputs = expenseExtraImageInputs(prefix);
   const records = selectedExpenseExtraImageRecords(prefix);
+  const selectedType = photoTypeById($(`#${prefix}-extra-images-type`)?.value);
   const images = [];
   for (let index = 0; index < records.length; index += 1) {
     if (inputs.status) inputs.status.textContent = `Preparando imagen ${index + 1} de ${records.length}...`;
@@ -1757,6 +1869,8 @@ async function readSelectedExpenseExtraImages(prefix) {
     const addToMap = Boolean(inputs.mapCheckbox && inputs.mapCheckbox.checked && hasExactPoint);
     images.push({
       ...image,
+      photoTypeId: selectedType ? selectedType.id : '',
+      photoTypeName: selectedType ? selectedType.nombre : '',
       mapEnabled: addToMap,
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
       createdAt: new Date().toISOString()
@@ -2015,7 +2129,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v160');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v161');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -2418,7 +2532,8 @@ function renderExpenseFilesDialog(gasto) {
     items.push(`<li><span class="trip-document-info"><strong>Ticket principal</strong><span>${escapeHtml(gasto.ticketName || 'Ticket')}</span></span><button type="button" class="ghost" data-open-ticket="${gasto.id}">Abrir</button></li>`);
   }
   expenseExtraImages(gasto).forEach((image, index) => {
-    items.push(`<li><span class="trip-document-info"><strong>Imagen adicional ${index + 1}</strong><span>${escapeHtml(image.name || 'Imagen')}</span></span><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir</button></li>`);
+    const typeLabel = photoTypeLabel(image);
+    items.push(`<li><span class="trip-document-info"><strong>Imagen adicional ${index + 1}</strong><span>${escapeHtml(image.name || 'Imagen')}${typeLabel ? ` · ${escapeHtml(typeLabel)}` : ' · Sin clasificar'}</span></span><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir</button></li>`);
   });
   list.innerHTML = items.length
     ? `<ul class="trip-document-list expense-file-list">${items.join('')}</ul>`
@@ -2453,7 +2568,7 @@ function renderEditExpenseImages(gasto) {
       const mapControl = point
         ? `<label><input type="checkbox" data-map-expense-image="${index}"${checked}> Mapa</label>`
         : '<span class="small">Sin GPS</span>';
-      return `<li><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir ${escapeHtml(image.name || `imagen ${index + 1}`)}</button>${mapControl}<label><input type="checkbox" data-remove-expense-image="${index}"> Quitar</label></li>`;
+      return `<li><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir ${escapeHtml(image.name || `imagen ${index + 1}`)}</button><select data-expense-image-type="${index}" aria-label="Tipo de ${escapeHtml(image.name || `imagen ${index + 1}`)}">${photoTypeOptionsHtml(image.photoTypeId)}</select>${mapControl}<label><input type="checkbox" data-remove-expense-image="${index}"> Quitar</label></li>`;
     }).join('')}</ul>`
     : '<p class="small">No hay imágenes adicionales.</p>';
 }
@@ -3561,6 +3676,8 @@ function blogEntryImages(entry) {
       latitude: entry.imageLatitude,
       longitude: entry.imageLongitude,
       locationSource: entry.imageLocationSource,
+      photoTypeId: entry.imagePhotoTypeId,
+      photoTypeName: entry.imagePhotoTypeName,
       mapEnabled: entry.imageMapEnabled,
       createdAt: entry.createdAt
     }));
@@ -3635,6 +3752,8 @@ async function addBlogEntry(data) {
     imageLatitude: type === 'imagen' ? storedImageCoordinate(data.imageLatitude, -90, 90) : null,
     imageLongitude: type === 'imagen' ? storedImageCoordinate(data.imageLongitude, -180, 180) : null,
     imageLocationSource: type === 'imagen' ? String(data.imageLocationSource || '') : '',
+    imagePhotoTypeId: type === 'imagen' ? String(data.imagePhotoTypeId || '') : '',
+    imagePhotoTypeName: type === 'imagen' ? String(data.imagePhotoTypeName || '') : '',
     imageMapEnabled: type === 'imagen' && data.imageMapEnabled === true,
     galleryImages,
     sourceGastoId: type === 'gasto' && data.sourceGastoId ? Number(data.sourceGastoId) : null,
@@ -3690,10 +3809,12 @@ function normalizeImportedBlogEntry(entry = {}) {
     imageWidth: Math.max(0, Number(entry.imageWidth) || 0),
     imageHeight: Math.max(0, Number(entry.imageHeight) || 0),
     imageId: String(entry.imageId || ''),
-    imageLatitude: type === 'imagen' ? storedImageCoordinate(entry.imageLatitude, -90, 90) : null,
-    imageLongitude: type === 'imagen' ? storedImageCoordinate(entry.imageLongitude, -180, 180) : null,
-    imageLocationSource: type === 'imagen' ? String(entry.imageLocationSource || '') : '',
-    imageMapEnabled: type === 'imagen' && entry.imageMapEnabled === true,
+    imageLatitude: ['imagen', 'gasto'].includes(type) ? storedImageCoordinate(entry.imageLatitude, -90, 90) : null,
+    imageLongitude: ['imagen', 'gasto'].includes(type) ? storedImageCoordinate(entry.imageLongitude, -180, 180) : null,
+    imageLocationSource: ['imagen', 'gasto'].includes(type) ? String(entry.imageLocationSource || '') : '',
+    imagePhotoTypeId: ['imagen', 'gasto'].includes(type) ? String(entry.imagePhotoTypeId || '') : '',
+    imagePhotoTypeName: ['imagen', 'gasto'].includes(type) ? String(entry.imagePhotoTypeName || '') : '',
+    imageMapEnabled: ['imagen', 'gasto'].includes(type) && entry.imageMapEnabled === true,
     galleryImages: Array.isArray(entry.galleryImages)
       ? entry.galleryImages.map(normalizeBlogImageRecord).filter(image => image.data || image.fileRef)
       : [],
@@ -3953,7 +4074,7 @@ async function delTransferencia(id) {
 }
 
 async function loadAll() {
-  const [cuentas, categorias, lugares, gastos, viajes, viajeDocumentos, blogEntries, monedas, transferencias] = await Promise.all([
+  const [cuentas, categorias, lugares, gastos, viajes, viajeDocumentos, blogEntries, monedas, transferencias, photoTypeSetting] = await Promise.all([
     getAll('cuentas'),
     getAll('categorias'),
     getAll('lugares'),
@@ -3962,10 +4083,16 @@ async function loadAll() {
     getAll('tripDocuments'),
     getAll('blogEntries'),
     getAll('monedas'),
-    getAll('transferencias')
+    getAll('transferencias'),
+    getOne('appSettings', PHOTO_TYPES_SETTING_KEY)
   ]);
   state.cuentas = cuentas.sort(byName);
   state.categorias = sortCategoriasHierarchical(categorias);
+  state.photoTypes = normalizePhotoTypes(photoTypeSetting && photoTypeSetting.items);
+  if (!photoTypeSetting) {
+    state.photoTypes = normalizePhotoTypes(DEFAULT_PHOTO_TYPES);
+    await putRecord('appSettings', { key: PHOTO_TYPES_SETTING_KEY, items: state.photoTypes, updatedAt: new Date().toISOString() });
+  }
   state.lugares = sortLugaresHierarchical(lugares);
   state.gastos = gastos.map(g => ({
     ...g,
@@ -4004,6 +4131,7 @@ function renderAll() {
   renderViajes();
   renderMonedasConfig();
   renderCategorias();
+  renderPhotoTypeControls();
   renderLugares();
   renderGastosTabla();
   renderBackupStatus();
@@ -5260,6 +5388,28 @@ function routeCityOptionsHtml(options, selectedId = '') {
   return `<option value="">(elige ciudad)</option>${options
     .map(option => `<option value="${escapeHtml(option.value)}"${selected === String(option.value) ? ' selected' : ''}>${escapeHtml(option.label)}</option>`)
     .join('')}`;
+}
+
+function fillPhotoTypeSelect(selector) {
+  const select = $(selector);
+  if (!select) return;
+  const selected = select.value;
+  select.innerHTML = photoTypeOptionsHtml(selected);
+  if ([...select.options].some(option => option.value === selected)) select.value = selected;
+}
+
+function renderPhotoTypes() {
+  const container = $('#photo-types-list');
+  if (!container) return;
+  container.innerHTML = state.photoTypes.length
+    ? `<ul>${state.photoTypes.map(type => `<li><span><strong>${escapeHtml(type.nombre)}</strong>${type.useAsDestination ? '<small>Destino de alojamiento</small>' : ''}</span><div><button type="button" class="ghost" data-edit-photo-type="${escapeHtml(type.id)}">Editar</button><button type="button" class="ghost" data-delete-photo-type="${escapeHtml(type.id)}">Eliminar</button></div></li>`).join('')}</ul>`
+    : '<p class="small">No hay tipos de fotos configurados.</p>';
+}
+
+function renderPhotoTypeControls() {
+  fillPhotoTypeSelect('#g-extra-images-type');
+  fillPhotoTypeSelect('#edit-gasto-extra-images-type');
+  renderPhotoTypes();
 }
 
 function moveRouteStop(fromIndex, toIndex) {
@@ -7454,6 +7604,7 @@ function buildBackupData(scope = 'all', tripId = null) {
     backupScope: 'all',
     cuentas: state.cuentas,
     categorias: state.categorias,
+    photoTypes: state.photoTypes,
     lugares: state.lugares,
     gastos: state.gastos,
     viajes: state.viajes,
@@ -7486,6 +7637,7 @@ function buildTripBackupData(tripId) {
     backupScope: 'trip',
     cuentas,
     categorias: state.categorias,
+    photoTypes: state.photoTypes,
     lugares: state.lugares,
     gastos,
     viajes: [trip],
@@ -7501,6 +7653,11 @@ async function importAll(data) {
     throw new Error('Archivo no válido');
   }
   await clearStores(['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'tripDocuments', 'blogEntries', 'monedas', 'transferencias']);
+  await putRecord('appSettings', {
+    key: PHOTO_TYPES_SETTING_KEY,
+    items: normalizePhotoTypes(Array.isArray(data.photoTypes) ? data.photoTypes : DEFAULT_PHOTO_TYPES),
+    updatedAt: new Date().toISOString()
+  });
   await ensureBaseCurrency();
   for (const m of data.monedas || []) {
     const codigo = String(m.codigo || '').toUpperCase();
@@ -7620,6 +7777,13 @@ async function importTripBackup(data, targetTripId) {
   const sourceTrip = data.viajes[0];
   const sourceTripId = Number(sourceTrip.id);
   const now = new Date().toISOString();
+  if (Array.isArray(data.photoTypes) && data.photoTypes.length) {
+    const mergedTypes = [...state.photoTypes];
+    data.photoTypes.forEach(type => {
+      if (!mergedTypes.some(existing => existing.id === type.id)) mergedTypes.push(type);
+    });
+    await savePhotoTypes(mergedTypes);
+  }
 
   for (const l of data.lugares || []) {
     if (l.id == null || state.lugares.some(existing => Number(existing.id) === Number(l.id))) continue;
@@ -8161,6 +8325,7 @@ function clearBlogImageSelection() {
     $('#blog-image-preview').hidden = true;
     $('#blog-image-preview').removeAttribute('src');
   }
+  if ($('#blog-primary-photo-type-field')) $('#blog-primary-photo-type-field').hidden = true;
   if ($('#blog-image-rotate-actions')) $('#blog-image-rotate-actions').hidden = true;
   if ($('#blog-gallery-preview')) {
     $('#blog-gallery-preview').hidden = true;
@@ -8216,9 +8381,13 @@ function showBlogImages(images = []) {
     $('#blog-image-preview').src = normalized[0] ? normalized[0].data : '';
     $('#blog-image-preview').hidden = normalized.length === 0;
   }
+  if ($('#blog-primary-photo-type-field')) {
+    $('#blog-primary-photo-type-field').hidden = normalized.length !== 1;
+    $('#blog-primary-photo-type').innerHTML = photoTypeOptionsHtml(normalized[0] ? normalized[0].photoTypeId : '');
+  }
   if ($('#blog-image-rotate-actions')) $('#blog-image-rotate-actions').hidden = normalized.length === 0;
   if ($('#blog-gallery-preview')) {
-    $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure class="${index === 0 ? 'is-primary' : ''}"><button type="button" data-blog-primary-image="${index}" title="Usar como primera imagen"><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"></button><figcaption>${index === 0 ? '<strong>Primera</strong> · ' : ''}${escapeHtml(image.name)} · ${storedImageCoordinates(image) ? 'GPS' : 'sin GPS'}</figcaption></figure>`).join('');
+    $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure class="${index === 0 ? 'is-primary' : ''}"><button type="button" data-blog-primary-image="${index}" title="Usar como primera imagen"><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"></button><figcaption>${index === 0 ? '<strong>Primera</strong> · ' : ''}${escapeHtml(image.name)} · ${storedImageCoordinates(image) ? 'GPS' : 'sin GPS'}</figcaption><select data-blog-image-type="${index}" aria-label="Tipo de ${escapeHtml(image.name || `imagen ${index + 1}`)}">${photoTypeOptionsHtml(image.photoTypeId)}</select></figure>`).join('');
     $('#blog-gallery-preview').hidden = normalized.length <= 1;
   }
   if ($('#blog-images-map-option')) {
@@ -8254,6 +8423,20 @@ function setActiveBlogImagesMapEnabled(enabled) {
 
 function showBlogImage(image) {
   showBlogImages(image ? [image] : []);
+}
+
+function setBlogImagePhotoType(index, typeId) {
+  const images = [activeBlogImage, ...activeBlogGalleryImages].filter(Boolean);
+  const imageIndex = Number(index);
+  if (!Number.isInteger(imageIndex) || imageIndex < 0 || imageIndex >= images.length) return;
+  const type = photoTypeById(typeId);
+  images[imageIndex] = {
+    ...images[imageIndex],
+    photoTypeId: type ? type.id : '',
+    photoTypeName: type ? type.nombre : ''
+  };
+  showBlogImages(images);
+  scheduleActiveBlogEntryDraftSave();
 }
 
 async function rotateActiveBlogImage(direction) {
@@ -8960,6 +9143,8 @@ async function saveBlogEntryForm() {
       imageLatitude: activeBlogImage.latitude,
       imageLongitude: activeBlogImage.longitude,
       imageLocationSource: activeBlogImage.locationSource || '',
+      imagePhotoTypeId: activeBlogImage.photoTypeId || '',
+      imagePhotoTypeName: photoTypeLabel(activeBlogImage),
       imageMapEnabled: activeBlogImage.mapEnabled === true,
       galleryImages: activeBlogGalleryImages.map(normalizeBlogImageRecord)
     });
@@ -9001,6 +9186,8 @@ async function saveBlogEntryForm() {
       imageLatitude: activeBlogImage.latitude,
       imageLongitude: activeBlogImage.longitude,
       imageLocationSource: activeBlogImage.locationSource || '',
+      imagePhotoTypeId: activeBlogImage.photoTypeId || '',
+      imagePhotoTypeName: photoTypeLabel(activeBlogImage),
       imageMapEnabled: activeBlogImage.mapEnabled === true,
       galleryImages: activeBlogGalleryImages.map(normalizeBlogImageRecord)
     });
@@ -9603,7 +9790,7 @@ function restoreAddExpenseDraft() {
   applyFormDraftValues(['#g-subcat'], values);
   applyFormDraftValues(['#g-pais'], values);
   renderCiudades();
-  applyFormDraftValues(['#g-ciudad', '#g-extra-images-map'], values);
+  applyFormDraftValues(['#g-ciudad', '#g-extra-images-map', '#g-extra-images-type'], values);
   setMessage('#msg-gasto', 'Borrador restaurado. Si habías elegido tickets o fotos, tendrás que volver a seleccionarlos.');
   return true;
 }
@@ -10462,6 +10649,9 @@ function openFormDialog({ title, fields, onSubmit }) {
       const options = (field.options || []).map(option => `<option value="${escapeHtml(option.value)}"${selected === String(option.value) ? ' selected' : ''}>${escapeHtml(option.label)}</option>`).join('');
       return `<div class="form-field form-field-${escapeHtml(field.name)} form-field-select"><label>${escapeHtml(field.label)}</label><select id="form-field-${escapeHtml(field.name)}">${placeholder}${options}</select></div>`;
     }
+    if (field.type === 'checkbox') {
+      return `<div class="form-field form-field-${escapeHtml(field.name)} form-field-checkbox"><label class="check-option"><input id="form-field-${escapeHtml(field.name)}" type="checkbox"${field.value ? ' checked' : ''}> ${escapeHtml(field.label)}</label></div>`;
+    }
     return `<div class="form-field form-field-${escapeHtml(field.name)} form-field-input"><label>${escapeHtml(field.label)}</label><input id="form-field-${escapeHtml(field.name)}" type="${field.type || 'text'}"${step}${min} value="${value}"></div>`;
   }).join('');
   $$('#form-dialog-fields [data-form-move]').forEach(button => {
@@ -10521,7 +10711,7 @@ function closeFormDialog() {
 function formDialogValues() {
   const values = {};
   $$('#form-dialog-fields input').forEach(input => {
-    values[input.id.replace('form-field-', '')] = input.value;
+    values[input.id.replace('form-field-', '')] = input.type === 'checkbox' ? input.checked : input.value;
   });
   $$('#form-dialog-fields select').forEach(select => {
     values[select.id.replace('form-field-', '')] = select.multiple
@@ -10562,6 +10752,7 @@ async function resetDataValue(option) {
       for (const reg of regs) await reg.unregister();
     }
     await clearStores(stores);
+    if (value === 'todo') await deleteRecord('appSettings', PHOTO_TYPES_SETTING_KEY);
     if (value === 'todo' || value === 'monedas') await ensureBaseCurrency();
     if (value === 'todo' || value === 'cuentas') await seedDefaultAccounts();
     if (value === 'todo' || value === 'categorias') await seedDefaultCategories();
@@ -10727,6 +10918,11 @@ function bindEvents() {
     const button = event.target.closest('[data-blog-primary-image]');
     if (button) selectBlogPrimaryImage(button.dataset.blogPrimaryImage);
   };
+  $('#blog-gallery-preview').onchange = event => {
+    const select = event.target.closest('[data-blog-image-type]');
+    if (select) setBlogImagePhotoType(select.dataset.blogImageType, select.value);
+  };
+  $('#blog-primary-photo-type').onchange = () => setBlogImagePhotoType(0, $('#blog-primary-photo-type').value);
   $('#blog-images-map').onchange = () => {
     setActiveBlogImagesMapEnabled($('#blog-images-map').checked);
     scheduleActiveBlogEntryDraftSave();
@@ -10814,6 +11010,7 @@ function bindEvents() {
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
   $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true });
   $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true });
+  $('#g-extra-images-type').onchange = () => scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#edit-gasto-ticket').onchange = () => syncExpenseTicketSelection('edit-gasto', 'file');
   $('#edit-gasto-ticket-camera').onchange = () => syncExpenseTicketSelection('edit-gasto', 'camera');
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
@@ -10900,8 +11097,11 @@ function bindEvents() {
           const hasExactPoint = Boolean(storedImageCoordinates(image));
           const checked = Boolean($(`[data-map-expense-image="${index}"]`)?.checked);
           const mapEnabled = Boolean(checked && hasExactPoint);
+          const selectedType = photoTypeById($(`[data-expense-image-type="${index}"]`)?.value);
           return {
             ...image,
+            photoTypeId: selectedType ? selectedType.id : '',
+            photoTypeName: selectedType ? selectedType.nombre : '',
             mapEnabled
           };
         })
@@ -11252,6 +11452,20 @@ function bindEvents() {
       await loadAll();
     } catch (err) {
       setMessage('#msg-cat', err.message || String(err), true);
+    }
+  };
+
+  $('#btn-add-photo-type').onclick = async () => {
+    try {
+      await addPhotoType({
+        nombre: $('#photo-type-name').value,
+        useAsDestination: $('#photo-type-destination').checked
+      });
+      $('#photo-type-name').value = '';
+      $('#photo-type-destination').checked = false;
+      setMessage('#msg-photo-type', 'Tipo de foto guardado');
+    } catch (err) {
+      setMessage('#msg-photo-type', err.message || String(err), true);
     }
   };
 
@@ -11652,6 +11866,26 @@ function bindEvents() {
         tripMapState.destinationOnly = !tripMapState.destinationOnly;
         resetTripMapView();
         renderTripMap();
+        return;
+      }
+      if (target.dataset.editPhotoType) {
+        const type = photoTypeById(target.dataset.editPhotoType);
+        if (!type) return;
+        openFormDialog({
+          title: 'Editar tipo de foto',
+          fields: [
+            { name: 'nombre', label: 'Nombre', value: type.nombre },
+            { name: 'useAsDestination', label: 'Usar como punto de destino', type: 'checkbox', value: type.useAsDestination }
+          ],
+          onSubmit: values => updatePhotoType(type.id, values)
+        });
+        return;
+      }
+      if (target.dataset.deletePhotoType) {
+        const type = photoTypeById(target.dataset.deletePhotoType);
+        if (type && confirm(`¿Eliminar el tipo de foto ${type.nombre}? Las fotos conservarán el nombre guardado, pero quedarán fuera de este filtro.`)) {
+          await deletePhotoType(type.id);
+        }
         return;
       }
       if (target.dataset.delCuenta) {

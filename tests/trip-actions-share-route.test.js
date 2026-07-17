@@ -50,12 +50,25 @@ test('las entradas En ruta exigen GPS o una ubicación manual', () => {
   assert.match(help, /nunca asigna automáticamente la ubicación actual/);
 });
 
-test('el alojamiento geolocalizado sustituye al centro de la ciudad como destino', () => {
+test('las fotos clasificadas como destino sustituyen al centro de la ciudad', () => {
   assert.match(app, /function isAccommodationExpense\(gasto\)/);
   assert.match(app, /function accommodationDestinationForTripCity\(tripId, cityId, targetDate = ''\)/);
-  assert.match(app, /normalizePlaceName\(category && category\.nombre\) === 'alojamiento'/);
+  assert.match(app, /function imageUsesAsDestination\(image\)/);
+  assert.match(app, /const classifiedDestination = imageUsesAsDestination\(image\)/);
+  assert.match(app, /const legacyAccommodation = !image\.photoTypeId && isAccommodationExpense\(gasto\)/);
+  assert.match(app, /state\.blogEntries[\s\S]*?if \(!imageUsesAsDestination\(image\)\) return/);
   assert.match(app, /cityWithAccommodationDestination\(baseCity, scopedTrip\.id, arrivalDate\)/);
   assert.match(app, /distance: targetDate \? dateDistanceDays\(date, targetDate\) : 0/);
-  assert.match(help, /usa el alojamiento como destino/);
-  assert.match(help, /Solo cuando no existe esa información utiliza las coordenadas generales de la ciudad/);
+  assert.match(help, /tiene prioridad como destino real de la ciudad/);
+  assert.match(help, /fotos antiguas sin clasificar se conserva como respaldo la regla del gasto de Alojamiento/);
+});
+
+test('los tipos de fotos son configurables e incluyen Selfie', () => {
+  assert.match(app, /const PHOTO_TYPES_SETTING_KEY = 'photoTypes'/);
+  for (const name of ['Alojamiento', 'Comida', 'Paisaje', 'Ciudad', 'Retrato', 'Selfie']) {
+    assert.match(app, new RegExp(`nombre: '${name}'`));
+  }
+  assert.match(app, /async function savePhotoTypes\(types\)/);
+  assert.match(app, /photoTypes: state\.photoTypes/);
+  assert.match(help, /Alojamiento, Comida, Paisaje, Ciudad, Retrato y Selfie/);
 });

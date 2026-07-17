@@ -61,6 +61,19 @@ test('las imágenes del Blog se pueden girar manualmente', () => {
   assert.match(styles, /\.blog-image-rotate-actions/);
 });
 
+test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {
+  assert.match(html, /id="config-photo-types"/);
+  assert.match(html, /id="g-extra-images-type"/);
+  assert.match(html, /id="edit-gasto-extra-images-type"/);
+  assert.match(app, /photoTypeId: String\(image\.photoTypeId \|\| ''\)/);
+  assert.match(app, /data-blog-image-type="\$\{index\}"/);
+  assert.match(app, /function setBlogImagePhotoType\(index, typeId\)/);
+  assert.match(app, /imagePhotoTypeId: activeBlogImage\.photoTypeId \|\| ''/);
+  assert.match(app, /photoTypeId: entry\.imagePhotoTypeId/);
+  assert.match(app, /data-expense-image-type="\$\{index\}"/);
+  assert.match(app, /photoTypeId: selectedType \? selectedType\.id : ''/);
+});
+
 test('los puntos geolocalizados admiten notas', () => {
   assert.match(html, /id="blog-point-notes"/);
   assert.match(app, /notas: type === 'punto' \? String\(data\.notas \|\| ''\) : ''/);
