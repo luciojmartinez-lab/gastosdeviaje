@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v173';
+const APP_VERSION = '700v174';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -40,6 +40,7 @@ let currentCloudMetadata = null;
 let backupDirectorySettingCache;
 let activeTripDocumentsId = null;
 let activeBlogEntryId = null;
+let activeBlogEntryAnchor = null;
 let activeBlogEntryType = '';
 let activeBlogImage = null;
 let activeBlogGalleryImages = [];
@@ -1711,7 +1712,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v173');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v174');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1743,7 +1744,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v173');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v174');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2186,7 +2187,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v173');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v174');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5877,6 +5878,7 @@ function dailyMapRecordsForScope(scopedTripIds, paisId) {
         fecha: entry.fecha || '',
         hora: entry.hora || '',
         descripcion: entry.descripcion || 'Punto',
+        enRuta: entry.enRuta === true,
         paisId: entry.paisId || null,
         ciudadId: entry.ciudadId || null,
         latitude: point.latitude,
@@ -8952,6 +8954,7 @@ function restoreBlogEntryDraft(trip) {
 
 function closeBlogEntryDialog() {
   activeBlogEntryId = null;
+  activeBlogEntryAnchor = null;
   activeBlogEntryType = '';
   blogManualRouteLocationOpen = false;
   activeBlogImage = null;
@@ -8971,6 +8974,7 @@ function openBlogEntryDialog(entry = null) {
     return;
   }
   activeBlogEntryId = entry ? Number(entry.id) : null;
+  activeBlogEntryAnchor = entry ? captureBlogEntryAnchor(entry.id) : null;
   activeBlogEntryType = '';
   blogManualRouteLocationOpen = false;
   clearBlogImageSelection();
@@ -9425,6 +9429,9 @@ async function saveBlogEntryForm() {
   const description = String($('#blog-descripcion').value || '').trim();
   if (!description) throw new Error('Escribe una descripción');
   const current = activeBlogEntryId ? state.blogEntries.find(entry => Number(entry.id) === activeBlogEntryId) : null;
+  const blogEntryAnchor = current
+    ? (activeBlogEntryAnchor || captureBlogEntryAnchor(current.id))
+    : null;
   const enRuta = type !== 'gasto' && Boolean($('#blog-en-route') && $('#blog-en-route').checked);
   const values = {
     viajeId: trip.id,
@@ -9542,7 +9549,7 @@ async function saveBlogEntryForm() {
   }
   closeBlogEntryDialog();
   await loadAll();
-  setTab('blog');
+  setTab('blog', { blogEntryAnchor });
 }
 
 function expenseBlogDescription(gasto) {
@@ -9992,6 +9999,52 @@ function restoreExpenseActionAnchor(anchor) {
   window.setTimeout(() => select.classList.remove('expense-action-return'), 4000);
 }
 
+function captureBlogEntryAnchor(entryId) {
+  const id = Number(entryId);
+  const select = $(`#tabla-blog tbody .blog-action-select[data-blog-action="${id}"]`);
+  const row = $(`#tabla-blog tbody .blog-day-entry[data-blog-entry-id="${id}"]`);
+  const target = select || row;
+  if (!target) return null;
+  return {
+    entryId: id,
+    viewportTop: target.getBoundingClientRect().top,
+    scrollY: window.scrollY
+  };
+}
+
+function restoreBlogEntryAnchor(anchor) {
+  const entryId = Number(anchor && anchor.entryId);
+  const row = $(`#tabla-blog tbody .blog-day-entry[data-blog-entry-id="${entryId}"]`);
+  const select = $(`#tabla-blog tbody .blog-action-select[data-blog-action="${entryId}"]`);
+  const target = select || row;
+  if (!target) {
+    const scrollY = Number(anchor && anchor.scrollY);
+    if (Number.isFinite(scrollY)) window.scrollTo({ top: Math.max(0, scrollY), behavior: 'auto' });
+    return;
+  }
+  const viewportTop = Number(anchor && anchor.viewportTop);
+  if (Number.isFinite(viewportTop)) {
+    const difference = target.getBoundingClientRect().top - viewportTop;
+    if (Math.abs(difference) > 1) {
+      window.scrollTo({ top: Math.max(0, window.scrollY + difference), behavior: 'auto' });
+    }
+  }
+  if (select) {
+    select.value = '';
+    select.classList.add('blog-action-return');
+    try {
+      select.focus({ preventScroll: true });
+    } catch (_) {
+      select.focus();
+    }
+  }
+  if (row) row.classList.add('blog-entry-return');
+  window.setTimeout(() => {
+    select?.classList.remove('blog-action-return');
+    row?.classList.remove('blog-entry-return');
+  }, 4000);
+}
+
 function scrollToLastExpense(behavior = 'smooth') {
   const rows = $$('#tabla-gastos tbody .expense-row');
   if (!rows.length) return;
@@ -10025,7 +10078,16 @@ function setTab(id, options = {}) {
   });
   if (id === 'mapa') renderMapPaises();
   if (id === 'resumen') renderResumen();
-  if (id === 'blog') renderBlog();
+  if (id === 'blog') {
+    renderBlog();
+    const anchoredEntry = options.blogEntryAnchor
+      ? state.blogEntries.find(entry => Number(entry.id) === Number(options.blogEntryAnchor.entryId))
+      : null;
+    if (anchoredEntry && anchoredEntry.fecha && !openBlogDays.has(anchoredEntry.fecha)) {
+      openBlogDays.add(anchoredEntry.fecha);
+      renderBlog();
+    }
+  }
   if (id === 'gastos') {
     requestAnimationFrame(() => {
       if (options.expenseActionAnchor) restoreExpenseActionAnchor(options.expenseActionAnchor);
@@ -10033,7 +10095,13 @@ function setTab(id, options = {}) {
       else scrollToLastExpense('auto');
     });
   }
-  if (id === 'blog') scrollToSectionStart(id);
+  if (id === 'blog') {
+    if (options.blogEntryAnchor) {
+      requestAnimationFrame(() => restoreBlogEntryAnchor(options.blogEntryAnchor));
+    } else {
+      scrollToSectionStart(id);
+    }
+  }
 }
 
 function applySelectedTrip(id) {

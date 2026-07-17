@@ -68,6 +68,21 @@ test('las fotos se agrupan sin alterar los marcadores de ciudades', () => {
   assert.equal(model.photoGroups[0].count, 2);
 });
 
+test('una foto En ruta usa su GPS exacto en el recorrido diario', () => {
+  const model = createDaily([
+    { kind: 'city', ciudadId: 1, cityName: 'Barcelona', hora: '10:00', latitude: 41.38, longitude: 2.17 },
+    { kind: 'photo', ciudadId: 2, hora: '11:26', enRuta: true, latitude: 41.65, longitude: -0.88 },
+    { kind: 'city', ciudadId: 2, cityName: 'Madrid', hora: '13:00', latitude: 40.42, longitude: -3.70 },
+    { kind: 'photo', ciudadId: 2, hora: '14:00', enRuta: false, latitude: 39.47, longitude: -0.38 },
+    { kind: 'point', ciudadId: 2, hora: '15:00', enRuta: false, latitude: 38.99, longitude: -1.86 }
+  ]);
+
+  assert.deepEqual(model.route.map(record => record.kind), ['city', 'photo', 'city']);
+  assert.equal(model.route[1].longitude, -0.88);
+  assert.equal(model.records.filter(record => record.kind === 'photo').length, 2);
+  assert.equal(model.records.filter(record => record.kind === 'point').length, 1);
+});
+
 test('el PDF recorta solo el mapa y deja fuera la lista incrustada', () => {
   const layout = createOverviewPrintLayout({
     sourceWidth: 920,

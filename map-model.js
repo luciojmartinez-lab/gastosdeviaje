@@ -24,13 +24,19 @@
   function createDaily(records = [], options = {}) {
     const getCityName = options.getCityName || (record => record.cityName || record.descripcion || 'Punto');
     const usableRecords = records.filter(Boolean);
+    const routeRecords = usableRecords.filter(record => record.kind === 'city' || record.enRuta === true);
     const route = [];
-    const cityKeys = new Set();
+    const routeKeys = new Set();
     let previousKey = '';
 
-    usableRecords.forEach((record, index) => {
-      const key = locationKey(record, index);
-      cityKeys.add(key);
+    routeRecords.forEach((record, index) => {
+      const latitude = finiteNumber(record && (record.latitude ?? record.lat));
+      const longitude = finiteNumber(record && (record.longitude ?? record.lng));
+      const exactPoint = (record.kind === 'point' || record.kind === 'photo') && latitude != null && longitude != null;
+      const key = exactPoint
+        ? `point-${latitude.toFixed(4)}-${longitude.toFixed(4)}`
+        : locationKey(record, index);
+      routeKeys.add(key);
       if (key === previousKey) {
         if (record.kind === 'city') route[route.length - 1] = record;
         return;
@@ -38,7 +44,7 @@
       route.push(record);
       previousKey = key;
     });
-    const visibleRoute = cityKeys.size > 1 ? route : [];
+    const visibleRoute = routeKeys.size > 1 ? route : [];
     const hasRoute = visibleRoute.length > 1;
     const cityMarkers = usableRecords.filter(record => record.kind === 'city');
     const routeMarkers = cityMarkers.length

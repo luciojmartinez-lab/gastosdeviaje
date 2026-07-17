@@ -43,6 +43,21 @@ test('al volver a Gastos recupera cerrado el desplegable usado en su posición a
   assert.match(app, /else scrollToLastExpense\('auto'\)/);
 });
 
+test('al editar una entrada del Blog vuelve a su desplegable y conserva la posición', () => {
+  assert.match(app, /function captureBlogEntryAnchor\(entryId\)/);
+  assert.match(app, /viewportTop: target\.getBoundingClientRect\(\)\.top/);
+  assert.match(app, /activeBlogEntryAnchor = entry \? captureBlogEntryAnchor\(entry\.id\) : null/);
+  assert.match(app, /const blogEntryAnchor = current[\s\S]*?activeBlogEntryAnchor \|\| captureBlogEntryAnchor\(current\.id\)/);
+  assert.match(app, /setTab\('blog', \{ blogEntryAnchor \}\)/);
+  assert.match(app, /function restoreBlogEntryAnchor\(anchor\)/);
+  assert.match(app, /window\.scrollTo\(\{ top: Math\.max\(0, window\.scrollY \+ difference\), behavior: 'auto' \}\)/);
+  assert.match(app, /select\.classList\.add\('blog-action-return'\)/);
+  assert.match(app, /row\.classList\.add\('blog-entry-return'\)/);
+  assert.match(app, /if \(options\.blogEntryAnchor\)[\s\S]*?restoreBlogEntryAnchor\(options\.blogEntryAnchor\)/);
+  assert.match(styles, /\.blog-action-select\.blog-action-return/);
+  assert.match(styles, /\.blog-day-entry\.blog-entry-return > td/);
+});
+
 test('las imágenes del gasto y los tickets que son foto pasan al Blog', () => {
   assert.match(app, /function expenseBlogImages\(gasto\)/);
   assert.match(app, /fileLooksLikeImage\(\{ type: ticketType, name: ticketName \}\)/);

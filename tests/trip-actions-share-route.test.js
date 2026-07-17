@@ -45,8 +45,10 @@ test('las entradas En ruta exigen GPS o una ubicación manual', () => {
   assert.match(app, /function enRouteBlogItemsForTrip\(tripId\)/);
   assert.match(app, /tripRoutePresentation\(orderTripItemsWithRouteWaypoints/);
   assert.match(app, /\.\.\.enRouteBlogItemsForTrip\(trip\.id\)/);
+  assert.match(app, /function dailyMapRecordsForScope[\s\S]*?enRuta: entry\.enRuta === true/);
   assert.match(styles, /\.blog-en-route-option/);
   assert.match(help, /marcadas «En ruta»/);
+  assert.match(help, /coordenadas GPS exactas/);
   assert.match(help, /nunca asigna automáticamente la ubicación actual/);
 });
 
