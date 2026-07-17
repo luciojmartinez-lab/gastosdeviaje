@@ -1,16 +1,16 @@
-const CACHE_NAME = 'gastosdeviaje-700v164-offline-start';
+const CACHE_NAME = 'gastosdeviaje-700v165-offline-start';
 const MAP_RUNTIME_CACHE = 'cuaderno-bitacora-map-runtime-v1';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname;
 const APP_SHELL_REQUIRED = [
   './',
   './index.html',
-  './styles.css?v=700v164',
-  './map-model.js?v=700v164',
-  './app.bundle.js?v=700v164',
+  './styles.css?v=700v165',
+  './map-model.js?v=700v165',
+  './app.bundle.js?v=700v165',
   './vendor/maplibre/maplibre-gl.css?v=5.24.0',
   './vendor/maplibre/maplibre-gl.js?v=5.24.0',
-  './manifest.webmanifest?v=700v164',
+  './manifest.webmanifest?v=700v165',
   './version.txt',
   './assets/bitacora-splash.png',
   './assets/bitacora-splash-mobile.png',
@@ -19,8 +19,8 @@ const APP_SHELL_REQUIRED = [
 const APP_SHELL_OPTIONAL = [
   './assets/app-icon-192.png',
   './assets/app-icon-512.png',
-  './ticket-ocr.js?v=700v164',
-  './image-location.js?v=700v164',
+  './ticket-ocr.js?v=700v165',
+  './image-location.js?v=700v165',
   './ayuda.html',
   './vendor/pdfjs/pdf.min.mjs',
   './vendor/pdfjs/pdf.worker.min.mjs',

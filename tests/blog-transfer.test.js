@@ -74,6 +74,16 @@ test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {
   assert.match(app, /photoTypeId: selectedType \? selectedType\.id : ''/);
 });
 
+test('las clasificaciones editadas de un gasto se guardan al seleccionarlas', () => {
+  assert.match(app, /function queueExpenseClassificationSave\(id, patch\)/);
+  assert.match(app, /async function saveOpenExpenseCategoryClassification\(\)/);
+  assert.match(app, /queueExpenseClassificationSave\(id, \{ catId, subcatId \}\)/);
+  assert.match(app, /async function saveOpenExpenseImageClassifications\(\)/);
+  assert.match(app, /queueExpenseClassificationSave\(id, \{ extraImages \}\)/);
+  assert.match(app, /edit-gasto-cat'\)\.onchange[\s\S]*saveOpenExpenseCategoryClassification\(\)/);
+  assert.match(app, /edit-gasto-extra-images-current'\)\.onchange[\s\S]*saveOpenExpenseImageClassifications\(\)/);
+});
+
 test('los puntos geolocalizados admiten notas', () => {
   assert.match(html, /id="blog-point-notes"/);
   assert.match(app, /notas: type === 'punto' \? String\(data\.notas \|\| ''\) : ''/);

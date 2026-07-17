@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v164';
+const APP_VERSION = '700v165';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -712,6 +712,7 @@ let latestCurrencyQuote = null;
 const TICKET_OCR_LEARNING_KEY = 'cuaderno_bitacora_ticket_categories_v1';
 const pendingTicketOcr = { g: null, 'edit-gasto': null };
 let ticketOcrModulePromise = null;
+let pendingExpenseClassificationSave = Promise.resolve();
 
 const collator = new Intl.Collator('es', { sensitivity: 'base' });
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -1702,7 +1703,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v164');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v165');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1734,7 +1735,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v164');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v165');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2150,7 +2151,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v164');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v165');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4035,6 +4036,48 @@ async function updateGasto(id, patch) {
     await updateCuenta(newAccount.id, { saldoActual: +(numberValue(newAccount.saldoActual) - next.importe).toFixed(2) });
   }
   return saved;
+}
+
+function queueExpenseClassificationSave(id, patch) {
+  const gastoId = Number(id);
+  const operation = pendingExpenseClassificationSave
+    .catch(() => {})
+    .then(async () => {
+      const saved = await updateRecord('gastos', gastoId, patch);
+      const index = state.gastos.findIndex(gasto => Number(gasto.id) === gastoId);
+      if (index >= 0) state.gastos[index] = saved;
+      return saved;
+    });
+  pendingExpenseClassificationSave = operation.catch(() => {});
+  return operation;
+}
+
+async function saveOpenExpenseCategoryClassification() {
+  const id = Number($('#edit-gasto-id')?.value);
+  const catId = Number($('#edit-gasto-cat')?.value);
+  if (!id || !catId) return;
+  const subcatId = Number($('#edit-gasto-subcat')?.value) || null;
+  await queueExpenseClassificationSave(id, { catId, subcatId });
+  rememberTicketCategory('edit-gasto');
+  setMessage('#msg-edit-gasto', 'Clasificación guardada');
+}
+
+async function saveOpenExpenseImageClassifications() {
+  const id = Number($('#edit-gasto-id')?.value);
+  const current = state.gastos.find(gasto => Number(gasto.id) === id);
+  if (!id || !current) return;
+  const extraImages = expenseExtraImages(current).map((image, index) => {
+    const selectedType = photoTypeById($(`[data-expense-image-type="${index}"]`)?.value);
+    const hasExactPoint = Boolean(storedImageCoordinates(image));
+    return {
+      ...image,
+      photoTypeId: selectedType ? selectedType.id : '',
+      photoTypeName: selectedType ? selectedType.nombre : '',
+      mapEnabled: Boolean($(`[data-map-expense-image="${index}"]`)?.checked && hasExactPoint)
+    };
+  });
+  await queueExpenseClassificationSave(id, { extraImages });
+  setMessage('#msg-edit-gasto', 'Clasificación de fotos guardada');
 }
 
 async function delGasto(id) {
@@ -11125,8 +11168,14 @@ function bindEvents() {
     handleExpenseSubcategoryChange('g');
     scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   };
-  $('#edit-gasto-cat').onchange = () => handleExpenseCategoryChange('edit-gasto');
-  $('#edit-gasto-subcat').onchange = () => handleExpenseSubcategoryChange('edit-gasto');
+  $('#edit-gasto-cat').onchange = () => {
+    handleExpenseCategoryChange('edit-gasto');
+    saveOpenExpenseCategoryClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
+  };
+  $('#edit-gasto-subcat').onchange = () => {
+    handleExpenseSubcategoryChange('edit-gasto');
+    saveOpenExpenseCategoryClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
+  };
   $('#g-ticket').onchange = () => syncExpenseTicketSelection('g', 'file');
   $('#g-ticket-camera').onchange = () => syncExpenseTicketSelection('g', 'camera');
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
@@ -11138,6 +11187,10 @@ function bindEvents() {
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
   $('#edit-gasto-extra-images').onchange = () => syncExpenseExtraImageSelection('edit-gasto', { applyDateTime: true });
   $('#edit-gasto-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('edit-gasto', { applyDateTime: true });
+  $('#edit-gasto-extra-images-current').onchange = event => {
+    if (!event.target.closest('[data-expense-image-type], [data-map-expense-image]')) return;
+    saveOpenExpenseImageClassifications().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
+  };
   $('#edit-gasto-ticket-remove').onchange = () => {
     if ($('#edit-gasto-ticket-remove').checked) clearExpenseTicketSelection('edit-gasto');
     syncTicketOcrAvailability('edit-gasto');
@@ -11204,6 +11257,7 @@ function bindEvents() {
   $('#edit-gasto-form').onsubmit = async event => {
     event.preventDefault();
     try {
+      await pendingExpenseClassificationSave;
       const id = Number($('#edit-gasto-id').value);
       const cuentaId = $('#edit-gasto-cuenta').value;
       const catId = $('#edit-gasto-cat').value;
