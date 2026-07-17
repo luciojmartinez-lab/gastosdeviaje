@@ -75,9 +75,17 @@ test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {
 });
 
 test('las clasificaciones editadas de un gasto se guardan al seleccionarlas', () => {
+  assert.match(html, /id="g-classification"/);
+  assert.match(html, /id="edit-gasto-classification"/);
   assert.match(app, /function queueExpenseClassificationSave\(id, patch\)/);
   assert.match(app, /async function saveOpenExpenseCategoryClassification\(\)/);
   assert.match(app, /queueExpenseClassificationSave\(id, \{ catId, subcatId \}\)/);
+  assert.match(app, /async function saveOpenExpenseClassification\(\)/);
+  assert.match(app, /classificationId: selected \? selected\.id : ''/);
+  assert.match(app, /edit-gasto-classification'\)\.onchange[\s\S]*saveOpenExpenseClassification\(\)/);
+  assert.match(app, /edit-gasto-classification'\)\.value = String\(gasto\.classificationId \|\| ''\)/);
+  assert.match(app, /classificationId: selectedClassification \? selectedClassification\.id : ''/);
+  assert.match(html, /id="edit-gasto-extra-images-type" disabled/);
   assert.match(app, /async function saveOpenExpenseImageClassifications\(\)/);
   assert.match(app, /queueExpenseClassificationSave\(id, \{ extraImages \}\)/);
   assert.match(app, /edit-gasto-cat'\)\.onchange[\s\S]*saveOpenExpenseCategoryClassification\(\)/);

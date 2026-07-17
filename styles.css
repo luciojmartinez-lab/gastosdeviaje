@@ -3179,6 +3179,11 @@ footer {
     grid-template-columns: minmax(0, 2fr) minmax(86px, 0.8fr);
   }
 
+  .expense-dialog-form .add-class-fields > div:last-child,
+  .expense-dialog-form .edit-class-fields > div:last-child {
+    grid-column: 1 / -1;
+  }
+
   .expense-dialog-form .add-amount-fields,
   .expense-dialog-form .edit-amount-fields {
     grid-template-columns: 0.72fr 0.68fr 1.6fr;

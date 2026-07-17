@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v165">
+  <link rel="manifest" href="manifest.webmanifest?v=700v166">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v165">
+  <link rel="stylesheet" href="styles.css?v=700v166">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release">Versión 700v165 · 17/07/2026</div>
+  <div class="app-loading-release">Versión 700v166 · 17/07/2026</div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v165</div>
+  <div class="app-version">700v166</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -241,7 +241,7 @@
         <a class="btn ghost" href="#config-cuentas">Cuentas</a>
         <a class="btn ghost" href="#config-transferencias">Transferencias</a>
         <a class="btn ghost" href="#config-categorias">Categorías</a>
-        <a class="btn ghost" href="#config-photo-types">Tipos de fotos</a>
+        <a class="btn ghost" href="#config-photo-types">Clasificaciones</a>
         <a class="btn ghost" href="#config-backups">Backups</a>
         <a class="btn ghost" href="#config-avanzado">Avanzado</a>
       </div>
@@ -365,8 +365,8 @@
     </div>
 
     <div class="card compact-config-form" id="config-photo-types">
-      <h2>Tipos de fotos</h2>
-      <p class="small">Clasifica cada foto y decide qué tipos pueden señalar el destino real del alojamiento.</p>
+      <h2>Clasificaciones de gastos y fotos</h2>
+      <p class="small">Usa los mismos conceptos para clasificar gastos completos y fotos; también puedes decidir cuáles señalan el destino real del alojamiento.</p>
       <div class="row">
         <div><label>Nombre</label><input id="photo-type-name" placeholder="Museo, transporte..."></div>
         <label class="check-option"><input type="checkbox" id="photo-type-destination"> Usar como punto de destino</label>
@@ -430,6 +430,7 @@
     <div class="row add-class-fields">
       <div><label>Categoría</label><select id="g-cat"></select></div>
       <div><label>Subcategoría</label><select id="g-subcat"></select></div>
+      <div><label>Clasificación del gasto</label><select id="g-classification"></select></div>
     </div>
     <div class="row add-location-fields">
       <div><label>País</label><select id="g-pais"></select></div>
@@ -466,8 +467,8 @@
       </div>
       <p class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
       <p id="g-extra-images-selected" class="small">Ninguna imagen adicional seleccionada.</p>
-      <label for="g-extra-images-type">Tipo de las fotos seleccionadas</label>
-      <select id="g-extra-images-type"><option value="">Sin clasificar</option></select>
+      <label for="g-extra-images-type">Clasificación solo de las imágenes seleccionadas</label>
+      <select id="g-extra-images-type" disabled><option value="">Sin clasificar</option></select>
       <label class="check-option photo-map-option" id="g-extra-images-map-option" hidden><input type="checkbox" id="g-extra-images-map"> Añadir las fotos al mapa</label>
     </div>
     <div class="actions">
@@ -498,6 +499,7 @@
     <div class="row edit-class-fields">
       <div><label>Categoría</label><select id="edit-gasto-cat"></select></div>
       <div><label>Subcategoría</label><select id="edit-gasto-subcat"></select></div>
+      <div><label>Clasificación del gasto</label><select id="edit-gasto-classification"></select></div>
     </div>
     <div class="row edit-location-fields">
       <div><label>País</label><select id="edit-gasto-pais"></select></div>
@@ -537,8 +539,8 @@
       </div>
       <p class="small">Para conservar el GPS en Android, entra por Archivos en Almacenamiento interno &gt; DCIM &gt; Camera.</p>
       <p id="edit-gasto-extra-images-selected" class="small">Ninguna imagen nueva seleccionada.</p>
-      <label for="edit-gasto-extra-images-type">Tipo de las fotos nuevas</label>
-      <select id="edit-gasto-extra-images-type"><option value="">Sin clasificar</option></select>
+      <label for="edit-gasto-extra-images-type">Clasificación solo de las imágenes que vas a añadir</label>
+      <select id="edit-gasto-extra-images-type" disabled><option value="">Sin clasificar</option></select>
       <label class="check-option photo-map-option" id="edit-gasto-extra-images-map-option" hidden><input type="checkbox" id="edit-gasto-extra-images-map"> Añadir las fotos nuevas al mapa</label>
       <div id="edit-gasto-extra-images-current" class="expense-current-images"></div>
     </div>
@@ -913,11 +915,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v165"></script>
-<script src="app.bundle.js?v=700v165"></script>
+<script src="map-model.js?v=700v166"></script>
+<script src="app.bundle.js?v=700v166"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v165';
+    const pageVersion = '700v166';
     let refreshing = false;
     const activateWaitingWorker = registration => {
       if (registration && registration.waiting) {
@@ -944,7 +946,7 @@
       window.location.reload();
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v165', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v166', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

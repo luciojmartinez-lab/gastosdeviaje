@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v165';
+const APP_VERSION = '700v166';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -347,7 +347,7 @@ const $$ = selector => Array.from(document.querySelectorAll(selector));
 const ADD_EXPENSE_DRAFT_FIELDS = [
   '#g-fecha', '#g-hora', '#g-viaje', '#g-cuenta', '#g-moneda',
   '#g-cat', '#g-subcat', '#g-pais', '#g-ciudad', '#g-importe',
-  '#g-tipo', '#g-desc', '#g-extra-images-map', '#g-extra-images-type'
+  '#g-tipo', '#g-desc', '#g-classification', '#g-extra-images-map', '#g-extra-images-type'
 ];
 const BLOG_ENTRY_DRAFT_FIELDS = [
   '#blog-fecha', '#blog-hora', '#blog-tipo', '#blog-pais', '#blog-ciudad',
@@ -895,6 +895,8 @@ async function expenseTicketBlogImage(gasto) {
       type: ticketType || 'image/jpeg',
       size: ticketInfo.blob.size,
       data: ticketInfo.data,
+      photoTypeId: String(gasto.classificationId || ''),
+      photoTypeName: String(gasto.classificationName || ''),
       createdAt: gasto.createdAt || ''
     });
   }
@@ -924,6 +926,8 @@ async function expenseTicketBlogImage(gasto) {
       data: await readBlobAsDataUrl(imageBlob),
       width: canvas.width,
       height: canvas.height,
+      photoTypeId: String(gasto.classificationId || ''),
+      photoTypeName: String(gasto.classificationName || ''),
       createdAt: gasto.createdAt || ''
     });
   } finally {
@@ -1703,7 +1707,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v165');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v166');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1735,7 +1739,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v165');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v166');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -1836,7 +1840,10 @@ function clearExpenseExtraImageSelection(prefix) {
   }
   if (inputs.mapOption) inputs.mapOption.hidden = true;
   if (inputs.mapCheckbox) inputs.mapCheckbox.checked = false;
-  if (inputs.typeSelect) inputs.typeSelect.value = '';
+  if (inputs.typeSelect) {
+    inputs.typeSelect.value = '';
+    inputs.typeSelect.disabled = true;
+  }
 }
 
 async function syncExpenseExtraImageSelection(prefix, options = {}) {
@@ -1847,8 +1854,10 @@ async function syncExpenseExtraImageSelection(prefix, options = {}) {
     inputs.status.textContent = prefix === 'edit-gasto' ? 'Ninguna imagen nueva seleccionada.' : 'Ninguna imagen adicional seleccionada.';
     if (inputs.mapOption) inputs.mapOption.hidden = true;
     if (inputs.mapCheckbox) inputs.mapCheckbox.checked = false;
+    if (inputs.typeSelect) inputs.typeSelect.disabled = true;
     return;
   }
+  if (inputs.typeSelect) inputs.typeSelect.disabled = false;
   inputs.status.textContent = `Comprobando ubicación de ${files.length} ${files.length === 1 ? 'imagen' : 'imágenes'}...`;
   const records = selectedExpenseExtraImageRecords(prefix);
   const pointsPromise = Promise.all(records.map(record => imageGpsForFile(record.file, { useCurrentLocation: record.useCurrentLocation })));
@@ -2151,7 +2160,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v165');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v166');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3972,7 +3981,7 @@ async function delMoneda(codigo) {
   return deleteRecord('monedas', String(codigo).toUpperCase());
 }
 
-async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', extraImages = [] }) {
+async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, classificationId = '', classificationName = '', paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', extraImages = [] }) {
   if (!hasValidCurrency(moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   const account = state.cuentas.find(c => c.id === Number(cuentaId));
   if (account && account.moneda !== moneda) throw new Error('La moneda del gasto debe coincidir con la cuenta');
@@ -3988,6 +3997,8 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     moneda,
     catId: Number(catId),
     subcatId: subcatId ? Number(subcatId) : null,
+    classificationId: String(classificationId || ''),
+    classificationName: String(classificationName || ''),
     paisId: paisId ? Number(paisId) : null,
     ciudadId: ciudadId ? Number(ciudadId) : null,
     importe: amount,
@@ -4014,6 +4025,8 @@ async function updateGasto(id, patch) {
   next.cuentaId = Number(next.cuentaId);
   next.catId = Number(next.catId);
   next.subcatId = next.subcatId ? Number(next.subcatId) : null;
+  next.classificationId = String(next.classificationId || '');
+  next.classificationName = String(next.classificationName || '');
   next.paisId = next.paisId ? Number(next.paisId) : null;
   next.ciudadId = next.ciudadId ? Number(next.ciudadId) : null;
   next.hora = normalizeExpenseTime(next.hora) || expenseTimeValue(current) || currentLocalTime();
@@ -4059,7 +4072,18 @@ async function saveOpenExpenseCategoryClassification() {
   const subcatId = Number($('#edit-gasto-subcat')?.value) || null;
   await queueExpenseClassificationSave(id, { catId, subcatId });
   rememberTicketCategory('edit-gasto');
-  setMessage('#msg-edit-gasto', 'Clasificación guardada');
+  setMessage('#msg-edit-gasto', 'Categoría guardada');
+}
+
+async function saveOpenExpenseClassification() {
+  const id = Number($('#edit-gasto-id')?.value);
+  if (!id) return;
+  const selected = photoTypeById($('#edit-gasto-classification')?.value);
+  await queueExpenseClassificationSave(id, {
+    classificationId: selected ? selected.id : '',
+    classificationName: selected ? selected.nombre : ''
+  });
+  setMessage('#msg-edit-gasto', 'Clasificación del gasto guardada');
 }
 
 async function saveOpenExpenseImageClassifications() {
@@ -5473,6 +5497,8 @@ function renderPhotoTypes() {
 function renderPhotoTypeControls() {
   fillPhotoTypeSelect('#g-extra-images-type');
   fillPhotoTypeSelect('#edit-gasto-extra-images-type');
+  fillPhotoTypeSelect('#g-classification');
+  fillPhotoTypeSelect('#edit-gasto-classification');
   renderPhotoTypes();
 }
 
@@ -9912,6 +9938,7 @@ function openEditGasto(gasto) {
   rememberLastValidExpenseCategory('edit-gasto');
   renderEditSubcategories();
   $('#edit-gasto-subcat').value = gasto.subcatId ? String(gasto.subcatId) : '';
+  $('#edit-gasto-classification').value = String(gasto.classificationId || '');
   $('#edit-gasto-pais').value = gasto.paisId ? String(gasto.paisId) : '';
   renderEditCiudades();
   $('#edit-gasto-ciudad').value = gasto.ciudadId ? String(gasto.ciudadId) : '';
@@ -9952,7 +9979,7 @@ function restoreAddExpenseDraft() {
   applyFormDraftValues(['#g-cuenta', '#g-moneda'], values);
   applyFormDraftValues(['#g-cat'], values);
   renderSubcategories();
-  applyFormDraftValues(['#g-subcat'], values);
+  applyFormDraftValues(['#g-subcat', '#g-classification'], values);
   applyFormDraftValues(['#g-pais'], values);
   renderCiudades();
   applyFormDraftValues(['#g-ciudad', '#g-extra-images-map', '#g-extra-images-type'], values);
@@ -11168,6 +11195,7 @@ function bindEvents() {
     handleExpenseSubcategoryChange('g');
     scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   };
+  $('#g-classification').onchange = () => scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#edit-gasto-cat').onchange = () => {
     handleExpenseCategoryChange('edit-gasto');
     saveOpenExpenseCategoryClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
@@ -11175,6 +11203,9 @@ function bindEvents() {
   $('#edit-gasto-subcat').onchange = () => {
     handleExpenseSubcategoryChange('edit-gasto');
     saveOpenExpenseCategoryClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
+  };
+  $('#edit-gasto-classification').onchange = () => {
+    saveOpenExpenseClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
   $('#g-ticket').onchange = () => syncExpenseTicketSelection('g', 'file');
   $('#g-ticket-camera').onchange = () => syncExpenseTicketSelection('g', 'camera');
@@ -11288,6 +11319,7 @@ function bindEvents() {
         : ticket
           ? { ticketName: ticket.name, ticketType: ticket.type, ticketData: ticket.data }
           : { ticketName: current ? current.ticketName : '', ticketType: current ? current.ticketType : '', ticketData: current ? current.ticketData : '' };
+      const selectedClassification = photoTypeById($('#edit-gasto-classification').value);
       await updateGasto(id, {
         fecha: $('#edit-gasto-fecha').value || todayIso(),
         hora: $('#edit-gasto-hora').value || currentLocalTime(),
@@ -11295,6 +11327,8 @@ function bindEvents() {
         cuentaId,
         catId,
         subcatId: $('#edit-gasto-subcat').value || null,
+        classificationId: selectedClassification ? selectedClassification.id : '',
+        classificationName: selectedClassification ? selectedClassification.nombre : '',
         paisId: $('#edit-gasto-pais').value || null,
         ciudadId: $('#edit-gasto-ciudad').value || null,
         importe,
@@ -11407,6 +11441,7 @@ function bindEvents() {
       const importe = $('#g-tipo')?.value === 'ingreso' ? -Math.abs(rawImporte) : Math.abs(rawImporte);
       if (!cuentaId || !catId || importe === 0) throw new Error('Completa cuenta, categoría e importe');
       const ticket = await readFileData(selectedFileInput('#g-ticket', '#g-ticket-camera'));
+      const selectedClassification = photoTypeById($('#g-classification').value);
       const extraImages = await readSelectedExpenseExtraImages('g');
       await addGasto({
         fecha,
@@ -11416,6 +11451,8 @@ function bindEvents() {
         moneda,
         catId,
         subcatId: $('#g-subcat').value || null,
+        classificationId: selectedClassification ? selectedClassification.id : '',
+        classificationName: selectedClassification ? selectedClassification.nombre : '',
         paisId: $('#g-pais').value || null,
         ciudadId: $('#g-ciudad').value || null,
         importe,
