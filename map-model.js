@@ -56,14 +56,15 @@
     const marker = record => ({
       record,
       numberText: record.kind === 'point' ? '•' : '+',
-      labelLines: [getCityName(record)]
+      labelLines: finiteNumber(record.routeNumber) > 0 ? [] : [getCityName(record)]
     });
     const destinationMarkers = cityMarkers
       .map(record => ({ record, routeNumber: finiteNumber(record.routeNumber) }))
       .filter(markerModel => markerModel.routeNumber > 0)
       .map(markerModel => ({
         record: markerModel.record,
-        numberText: String(markerModel.routeNumber)
+        numberText: String(markerModel.routeNumber),
+        labelLines: [getCityName(markerModel.record)]
       }));
 
     return {

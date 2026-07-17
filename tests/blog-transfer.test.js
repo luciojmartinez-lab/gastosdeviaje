@@ -137,11 +137,12 @@ test('textos e imágenes sin GPS permiten marcar una ubicación manual', () => {
   assert.match(styles, /\.blog-point-actions \.btn\[hidden\]/);
 });
 
-test('el Blog ya no muestra el mapa automático de puntos pero el PDF lo conserva', () => {
+test('el Blog y su PDF no añaden un mapa automático de puntos al final', () => {
   assert.doesNotMatch(html, /id="blog-points-overview"/);
   assert.doesNotMatch(app, /function renderBlogPointsOverview/);
-  assert.match(app, /function blogPrintPointMapHtml\(entries\)/);
-  assert.match(app, /<h1>Mapa de puntos geolocalizados<\/h1>/);
+  assert.doesNotMatch(app, /function blogPrintPointMapHtml\(entries\)/);
+  assert.doesNotMatch(app, /<h1>Mapa de puntos geolocalizados<\/h1>/);
+  assert.doesNotMatch(app, /blogPrintPointMapHtml\(timeline\)/);
 });
 
 test('el PDF del Blog usa 80 por ciento para imágenes normales y aprovecha el espacio inferior', () => {

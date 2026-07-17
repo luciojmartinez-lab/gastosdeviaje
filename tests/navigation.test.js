@@ -38,7 +38,7 @@ test('el mapa diario separa los puntos y los números de destino', () => {
   assert.match(app, /dailyRecord\.kind === 'point' \? '•' : '\+'/);
   assert.match(app, /function tripVectorDestinationElement/);
   assert.match(app, /dailyModel\.destinationMarkers\.forEach/);
-  assert.match(app, /offset: \[-18, 0\]/);
+  assert.match(app, /offset: \[labelOnLeft \? -18 : 18, 0\]/);
   assert.match(app, /element\.classList\.add\('has-photo'\)/);
   assert.match(app, /openTripMapPhotoPopup\(encodedKeys, element\)/);
   assert.match(app, /function positionTripMapPhotoPopup\(popup, anchorElement\)/);
@@ -48,6 +48,11 @@ test('el mapa diario separa los puntos y los números de destino', () => {
   assert.match(styles, /\.trip-vector-destination-marker\s*\{[\s\S]*?z-index: 6;/);
   assert.match(styles, /\.trip-vector-destination-marker\s*\{[\s\S]*?pointer-events: none !important;/);
   assert.match(styles, /\.trip-vector-destination-marker\s*\{[\s\S]*?background: #be123c;/);
+  assert.match(app, /function tripVectorDestinationElement\(markerModel, labelOnLeft\)[\s\S]*?trip-vector-destination-label[\s\S]*?markerModel\.labelLines\[0\]/);
+  assert.match(styles, /\.trip-vector-destination-label\s*\{[\s\S]*?font-size: 13px;[\s\S]*?font-weight: 900;/);
+  assert.match(styles, /\.trip-vector-destination-marker\.label-right \.trip-vector-destination-label\s*\{[\s\S]*?left: 20px;[\s\S]*?text-align: left;/);
+  assert.match(app, /const labelOnLeft = p\.x >= width \/ 2;[\s\S]*?class="map-destination-label"[\s\S]*?text-anchor="\$\{labelOnLeft \? 'end' : 'start'\}"/);
+  assert.match(styles, /\.map-destination-number \.map-destination-label\s*\{[\s\S]*?font-size: 13px;[\s\S]*?font-weight: 900;/);
   assert.match(styles, /\.map-destination-number\s*\{[\s\S]*?pointer-events: none;/);
   assert.match(styles, /\.map-destination-number circle\s*\{[\s\S]*?fill: #be123c;/);
   assert.match(app, /destinationMarkers\.forEach[\s\S]*?context\.fillStyle = '#be123c'/);

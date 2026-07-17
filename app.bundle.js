@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v172';
+const APP_VERSION = '700v173';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1711,7 +1711,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v172');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v173');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1743,7 +1743,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v172');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v173');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2186,7 +2186,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v172');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v173');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6600,14 +6600,6 @@ async function createDailyMapBlogImage(records, day) {
     const point = mapWorldPoint(record.latitude, record.longitude, zoom);
     const x = point.x - layer.startX;
     const y = headerHeight + point.y - layer.startY;
-    context.font = '700 14px system-ui, sans-serif';
-    const textWidth = Math.max(...labelLines.map(label => context.measureText(label).width));
-    const labelOnLeft = x + textWidth + 28 > width;
-    const labelX = labelOnLeft ? x - textWidth - 18 : x + 15;
-    const preferredLabelY = index % 2 === 0 ? y - 12 : y + 22;
-    const labelY = Math.max(headerHeight + 20, Math.min(headerHeight + mapHeight - 10 - (labelLines.length - 1) * 17, preferredLabelY));
-    context.fillStyle = '#ffffffdd';
-    context.fillRect(labelX - 4, labelY - 15, textWidth + 8, 20 + (labelLines.length - 1) * 17);
     context.fillStyle = '#7c3aed';
     context.beginPath();
     context.arc(x, y, 10, 0, Math.PI * 2);
@@ -6619,14 +6611,25 @@ async function createDailyMapBlogImage(records, day) {
     context.font = '800 10px system-ui, sans-serif';
     context.textAlign = 'center';
     context.fillText(markerModel.numberText, x, y + 3.5);
-    context.textAlign = 'left';
-    context.fillStyle = '#111827';
-    context.font = '700 14px system-ui, sans-serif';
-    labelLines.forEach((label, lineIndex) => context.fillText(label, labelX, labelY + lineIndex * 17));
+    if (labelLines.length) {
+      context.font = '900 16px system-ui, sans-serif';
+      const textWidth = Math.max(...labelLines.map(label => context.measureText(label).width));
+      const labelOnLeft = x + textWidth + 28 > width;
+      const labelX = labelOnLeft ? x - textWidth - 18 : x + 15;
+      const preferredLabelY = index % 2 === 0 ? y - 12 : y + 22;
+      const labelY = Math.max(headerHeight + 20, Math.min(headerHeight + mapHeight - 10 - (labelLines.length - 1) * 19, preferredLabelY));
+      context.textAlign = 'left';
+      context.fillStyle = '#ffffffdd';
+      context.fillRect(labelX - 4, labelY - 17, textWidth + 8, 22 + (labelLines.length - 1) * 19);
+      context.fillStyle = '#111827';
+      labelLines.forEach((label, lineIndex) => context.fillText(label, labelX, labelY + lineIndex * 19));
+    }
   });
   destinationMarkers.forEach(markerModel => {
     const point = mapWorldPoint(markerModel.record.latitude, markerModel.record.longitude, zoom);
-    const x = point.x - layer.startX - 18;
+    const pointX = point.x - layer.startX;
+    const labelOnLeft = pointX >= width / 2;
+    const x = pointX + (labelOnLeft ? -18 : 18);
     const y = headerHeight + point.y - layer.startY;
     context.fillStyle = '#be123c';
     context.beginPath();
@@ -6639,6 +6642,16 @@ async function createDailyMapBlogImage(records, day) {
     context.font = '900 9px system-ui, sans-serif';
     context.textAlign = 'center';
     context.fillText(markerModel.numberText, x, y + 3);
+    const cityName = markerModel.labelLines[0] || dailyMapCityName(markerModel.record);
+    context.font = '900 16px system-ui, sans-serif';
+    context.lineWidth = 5;
+    context.lineJoin = 'round';
+    context.strokeStyle = '#ffffff';
+    context.fillStyle = '#111827';
+    context.textAlign = labelOnLeft ? 'right' : 'left';
+    const labelX = x + (labelOnLeft ? -12 : 12);
+    context.strokeText(cityName, labelX, y + 5);
+    context.fillText(cityName, labelX, y + 5);
   });
   context.textAlign = 'left';
   context.fillStyle = '#ffffffdd';
@@ -6947,7 +6960,8 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
         ? tripMapArrivalLabelLines(item)
         : tripMapArrivalLabelLines(item));
   label.textContent = labelLines.join('\n');
-  element.append(dot, label);
+  element.append(dot);
+  if (labelLines.length) element.append(label);
   element.title = dailyRecord
     ? `${dailyRecord.descripcion || 'Punto'} · ${dailyMapDateTimeLabel(dailyRecord)}`
     : labelLines.join(' · ');
@@ -6972,10 +6986,15 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
   return element;
 }
 
-function tripVectorDestinationElement(markerModel) {
+function tripVectorDestinationElement(markerModel, labelOnLeft) {
   const element = document.createElement('span');
-  element.className = 'trip-vector-destination-marker';
-  element.textContent = markerModel.numberText;
+  element.className = `trip-vector-destination-marker ${labelOnLeft ? 'label-left' : 'label-right'}`;
+  const number = document.createElement('span');
+  number.textContent = markerModel.numberText;
+  const label = document.createElement('span');
+  label.className = 'trip-vector-destination-label';
+  label.textContent = markerModel.labelLines[0] || dailyMapCityName(markerModel.record);
+  element.append(number, label);
   element.title = `Destino ${markerModel.numberText} · ${dailyMapCityName(markerModel.record)}`;
   return element;
 }
@@ -7110,10 +7129,11 @@ function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawR
   });
   if (dailyMode) {
     dailyModel.destinationMarkers.forEach(markerModel => {
+      const labelOnLeft = Number(markerModel.record.longitude) >= Number(center[0]);
       const marker = new window.maplibregl.Marker({
-        element: tripVectorDestinationElement(markerModel),
+        element: tripVectorDestinationElement(markerModel, labelOnLeft),
         anchor: 'center',
-        offset: [-18, 0]
+        offset: [labelOnLeft ? -18 : 18, 0]
       }).setLngLat([Number(markerModel.record.longitude), Number(markerModel.record.latitude)]).addTo(map);
       tripVectorMarkers.push(marker);
     });
@@ -7338,6 +7358,9 @@ function renderTripMap() {
       ? presentation.labelLines
       : [cityNames.join(' / ')];
     const markerLabelText = markerLabelLines.map((line, lineIndex) => `<tspan x="${labelX.toFixed(1)}" dy="${lineIndex ? 13 : 0}">${escapeHtml(line)}</tspan>`).join('');
+    const markerLabel = markerLabelLines.length
+      ? `<text x="${labelX.toFixed(1)}" y="${(p.y - 12 - (markerLabelLines.length - 1) * 6.5).toFixed(1)}" text-anchor="${anchor}">${markerLabelText}</text>`
+      : '';
     const title = dailyRecord
       ? `${dailyRecord.descripcion || 'Punto'} · ${dailyMapDateTimeLabel(dailyRecord)}`
       : routeStops.length
@@ -7352,7 +7375,7 @@ function renderTripMap() {
     const photoAction = markerPhotoRecord
       ? ` role="button" tabindex="0" data-map-photo-keys="${photoKeys}" aria-label="Abrir ${escapeHtml(markerPhotoRecord.descripcion || 'foto')}"`
       : '';
-    return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${markerPhotoRecord ? ' map-marker-clickable' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction}><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dailyPhoto ? 10 : 8}"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text><text x="${labelX.toFixed(1)}" y="${(p.y - 12 - (markerLabelLines.length - 1) * 6.5).toFixed(1)}" text-anchor="${anchor}">${markerLabelText}</text><title>${escapeHtml(title)}</title></g>`;
+    return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${markerPhotoRecord ? ' map-marker-clickable' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction}><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dailyPhoto ? 10 : 8}"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text>${markerLabel}<title>${escapeHtml(title)}</title></g>`;
   }).join('');
   tripMapPhotoLookup.clear();
   const interactivePhotoItems = dailyMode ? projectedItems.filter(item => item.photoPoint) : photoItems;
@@ -7376,9 +7399,12 @@ function renderTripMap() {
   }).join('');
   const destinationMarkers = dailyMode ? dailyModel.destinationMarkers.map(markerModel => {
     const p = project({ ciudad: { lat: markerModel.record.latitude, lng: markerModel.record.longitude } });
-    const x = p.x - 18;
+    const labelOnLeft = p.x >= width / 2;
+    const x = p.x + (labelOnLeft ? -18 : 18);
     const y = p.y;
-    return `<g class="map-destination-number"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"></circle><text x="${x.toFixed(1)}" y="${(y + 3).toFixed(1)}">${escapeHtml(markerModel.numberText)}</text><title>Destino ${escapeHtml(markerModel.numberText)} · ${escapeHtml(dailyMapCityName(markerModel.record))}</title></g>`;
+    const cityName = markerModel.labelLines[0] || dailyMapCityName(markerModel.record);
+    const labelX = x + (labelOnLeft ? -12 : 12);
+    return `<g class="map-destination-number"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"></circle><text class="number" x="${x.toFixed(1)}" y="${(y + 3).toFixed(1)}">${escapeHtml(markerModel.numberText)}</text><text class="map-destination-label" x="${labelX.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="${labelOnLeft ? 'end' : 'start'}">${escapeHtml(cityName)}</text><title>Destino ${escapeHtml(markerModel.numberText)} · ${escapeHtml(cityName)}</title></g>`;
   }).join('') : '';
   const roundedZoom = Math.round(zoom * 10) / 10;
   const roundedDelta = Math.round(tripMapState.zoomDelta * 10) / 10;
@@ -9640,34 +9666,6 @@ function blogPrintEntryHtml(entry, options = {}) {
   </article>`;
 }
 
-function blogPrintPointMapHtml(entries) {
-  const points = (entries || []).filter(entry => entry.tipo === 'punto' && blogPointCoordinates(entry));
-  if (!points.length) return '';
-  const width = TRIP_MAP_WIDTH;
-  const height = TRIP_MAP_HEIGHT;
-  const items = points.map(entry => {
-    const point = blogPointCoordinates(entry);
-    return { entry, ciudad: { lat: point.latitude, lng: point.longitude } };
-  });
-  const zoom = items.length === 1 ? 15 : chooseMapZoom(items, width, height);
-  const world = items.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom));
-  const centerWorld = {
-    x: (Math.min(...world.map(point => point.x)) + Math.max(...world.map(point => point.x))) / 2,
-    y: (Math.min(...world.map(point => point.y)) + Math.max(...world.map(point => point.y))) / 2
-  };
-  const center = mapLatLngFromWorldPoint(centerWorld.x, centerWorld.y, zoom);
-  const layer = mapTileLayer(center.latitude, center.longitude, zoom, width, height);
-  const markers = items.map((item, index) => {
-    const point = mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom);
-    const x = point.x - layer.startX;
-    const y = point.y - layer.startY;
-    const labelX = x + 12 > width - 180 ? x - 12 : x + 12;
-    const anchor = x + 12 > width - 180 ? 'end' : 'start';
-    return `<g class="blog-print-map-marker"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"></circle><text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" class="number">${index + 1}</text><text x="${labelX.toFixed(1)}" y="${(y - 10).toFixed(1)}" text-anchor="${anchor}">${escapeHtml(item.entry.descripcion || 'Punto')}</text></g>`;
-  }).join('');
-  return `<section class="blog-print-map"><h1>Mapa de puntos geolocalizados</h1><div class="blog-print-map-frame"><div class="map-tiles">${layer.html.replace(/ loading="lazy"/g, '')}</div><svg viewBox="0 0 ${width} ${height}" aria-label="Mapa de puntos geolocalizados">${markers}</svg><div class="map-attribution">© OpenStreetMap · © CARTO</div></div></section>`;
-}
-
 function blogPrintFeaturedHtml(entry) {
   const image = entry ? blogEntryImages(entry)[0] : null;
   if (!image || !image.data) return '';
@@ -9748,8 +9746,7 @@ function blogPrintBodyHtml(trip, entries) {
   return [
     blogPrintOverviewHtml(overview, trip),
     blogPrintPreparationsHtml(preparations),
-    groupBlogEntriesByDay(travelEntries).map(blogPrintDayHtml).join(''),
-    blogPrintPointMapHtml(timeline)
+    groupBlogEntriesByDay(travelEntries).map(blogPrintDayHtml).join('')
   ].filter(Boolean).join('');
 }
 
@@ -9920,15 +9917,6 @@ function printBlog() {
     .blog-print-point { display: flex; flex-wrap: wrap; gap: 3mm 7mm; align-items: center; margin-top: 4mm; padding: 4mm; border: 1px solid #c4b5fd; border-radius: 3mm; background: #f5f3ff; font-size: 11px; }
     .blog-print-point p { flex-basis: 100%; margin: 0; white-space: pre-line; }
     .blog-print-point a { color: #5b21b6; }
-    .blog-print-map { break-before: page; page-break-before: always; }
-    .blog-print-map-frame { position: relative; width: 100%; height: 118mm; overflow: hidden; border: 1px solid #dbe3ef; border-radius: 3mm; background: #cfe8f3; }
-    .blog-print-map-frame .map-tiles, .blog-print-map-frame svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-    .blog-print-map-frame svg { z-index: 2; }
-    .blog-print-map-frame .map-tile { position: absolute; object-fit: cover; }
-    .blog-print-map-frame .map-attribution { position: absolute; z-index: 3; right: 1mm; bottom: 1mm; padding: 1mm; background: #ffffffcc; font-size: 7px; }
-    .blog-print-map-marker circle { fill: #7c3aed; stroke: #fff; stroke-width: 3; }
-    .blog-print-map-marker text { fill: #111827; font-size: 13px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 4px; }
-    .blog-print-map-marker .number { fill: #fff; stroke: none; font-size: 9px; text-anchor: middle; }
     .blog-print-featured { margin: 0 0 8mm; text-align: center; }
     .blog-print-featured .blog-print-image { width: 100%; max-width: 100%; }
     .blog-print-featured figcaption { margin-top: 2mm; color: #64748b; font-size: 11px; }
