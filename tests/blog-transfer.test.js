@@ -61,6 +61,20 @@ test('las imágenes del Blog se pueden girar manualmente', () => {
   assert.match(styles, /\.blog-image-rotate-actions/);
 });
 
+test('los tickets e imágenes de Gastos se giran antes de actualizar el Blog', () => {
+  assert.match(html, /id="edit-gasto-ticket-rotate-left"/);
+  assert.match(html, /id="edit-gasto-ticket-rotate-right"/);
+  assert.match(app, /async function rotateRasterImageRecord\(image, direction\)/);
+  assert.match(app, /async function rotateOpenExpenseTicket\(direction\)/);
+  assert.match(app, /async function rotateOpenExpenseImage\(imageIndex, direction\)/);
+  assert.match(app, /data-rotate-expense-image="\$\{index\}"/);
+  assert.match(app, /ticketData: rotated\.data/);
+  assert.match(app, /queueExpenseClassificationSave\(id, \{ extraImages \}\)/);
+  assert.match(app, /function queueExpenseMediaSave\(callback\)/);
+  assert.match(app, /await pendingExpenseMediaSave;[\s\S]*await pendingExpenseClassificationSave;/);
+  assert.match(styles, /\.expense-image-rotate-actions/);
+});
+
 test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {
   assert.match(html, /id="config-photo-types"/);
   assert.match(html, /id="g-extra-images-classifications"/);

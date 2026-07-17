@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v168';
+const APP_VERSION = '700v169';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -713,6 +713,7 @@ const TICKET_OCR_LEARNING_KEY = 'cuaderno_bitacora_ticket_categories_v1';
 const pendingTicketOcr = { g: null, 'edit-gasto': null };
 let ticketOcrModulePromise = null;
 let pendingExpenseClassificationSave = Promise.resolve();
+let pendingExpenseMediaSave = Promise.resolve();
 
 const collator = new Intl.Collator('es', { sensitivity: 'base' });
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -1707,7 +1708,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v168');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v169');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1739,7 +1740,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v168');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v169');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2182,7 +2183,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v168');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v169');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -2567,6 +2568,19 @@ function openTicket(gastoId) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+function expenseTicketIsRasterImage(gasto) {
+  if (!gasto?.ticketData) return false;
+  const ticketData = normalizeTicketDataValue(gasto.ticketData);
+  return /^data:image\//i.test(ticketData)
+    || fileLooksLikeImage({ type: gasto.ticketType, name: gasto.ticketName });
+}
+
+function syncEditExpenseTicketRotation(gasto = currentEditTicket()) {
+  const controls = $('#edit-gasto-ticket-rotate');
+  if (!controls) return;
+  controls.hidden = Boolean($('#edit-gasto-ticket-remove')?.checked) || !expenseTicketIsRasterImage(gasto);
+}
+
 function openExpenseImage(gastoId, imageIndex) {
   const gasto = state.gastos.find(g => Number(g.id) === Number(gastoId));
   const image = expenseExtraImages(gasto)[Number(imageIndex)];
@@ -2622,7 +2636,8 @@ function renderEditExpenseImages(gasto) {
       const mapControl = point
         ? `<label><input type="checkbox" data-map-expense-image="${index}"${checked}> Mapa</label>`
         : '<span class="small">Sin GPS</span>';
-      return `<li><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir ${escapeHtml(image.name || `imagen ${index + 1}`)}</button><select data-expense-image-type="${index}" aria-label="Tipo de ${escapeHtml(image.name || `imagen ${index + 1}`)}">${photoTypeOptionsHtml(image.photoTypeId)}</select>${mapControl}<label><input type="checkbox" data-remove-expense-image="${index}"> Quitar</label></li>`;
+      const rotateControls = `<span class="expense-image-rotate-actions"><button type="button" class="ghost icon-btn" data-rotate-expense-image="${index}" data-rotate-direction="left" title="Girar a la izquierda" aria-label="Girar ${escapeHtml(image.name || `imagen ${index + 1}`)} a la izquierda">&#8634;</button><button type="button" class="ghost icon-btn" data-rotate-expense-image="${index}" data-rotate-direction="right" title="Girar a la derecha" aria-label="Girar ${escapeHtml(image.name || `imagen ${index + 1}`)} a la derecha">&#8635;</button></span>`;
+      return `<li><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir ${escapeHtml(image.name || `imagen ${index + 1}`)}</button><select data-expense-image-type="${index}" aria-label="Tipo de ${escapeHtml(image.name || `imagen ${index + 1}`)}">${photoTypeOptionsHtml(image.photoTypeId)}</select>${rotateControls}${mapControl}<label><input type="checkbox" data-remove-expense-image="${index}"> Quitar</label></li>`;
     }).join('')}</ul>`
     : '<p class="small">No hay imágenes adicionales.</p>';
 }
@@ -4088,6 +4103,14 @@ function queueExpenseClassificationSave(id, patch) {
   return operation;
 }
 
+function queueExpenseMediaSave(callback) {
+  const operation = pendingExpenseMediaSave
+    .catch(() => {})
+    .then(callback);
+  pendingExpenseMediaSave = operation.catch(() => {});
+  return operation;
+}
+
 async function saveOpenExpenseCategoryClassification() {
   const id = Number($('#edit-gasto-id')?.value);
   const catId = Number($('#edit-gasto-cat')?.value);
@@ -4110,11 +4133,8 @@ async function saveOpenExpenseTicketClassification() {
   setMessage('#msg-edit-gasto', 'Clasificación del ticket guardada');
 }
 
-async function saveOpenExpenseImageClassifications() {
-  const id = Number($('#edit-gasto-id')?.value);
-  const current = state.gastos.find(gasto => Number(gasto.id) === id);
-  if (!id || !current) return;
-  const extraImages = expenseExtraImages(current).map((image, index) => {
+function editExpenseImagesFromControls(gasto) {
+  return expenseExtraImages(gasto).map((image, index) => {
     const selectedType = photoTypeById($(`[data-expense-image-type="${index}"]`)?.value);
     const hasExactPoint = Boolean(storedImageCoordinates(image));
     return {
@@ -4124,8 +4144,66 @@ async function saveOpenExpenseImageClassifications() {
       mapEnabled: Boolean($(`[data-map-expense-image="${index}"]`)?.checked && hasExactPoint)
     };
   });
+}
+
+async function saveOpenExpenseImageClassifications() {
+  const id = Number($('#edit-gasto-id')?.value);
+  const current = state.gastos.find(gasto => Number(gasto.id) === id);
+  if (!id || !current) return;
+  const extraImages = editExpenseImagesFromControls(current);
   await queueExpenseClassificationSave(id, { extraImages });
   setMessage('#msg-edit-gasto', 'Clasificación de fotos guardada');
+}
+
+async function rotateOpenExpenseImage(imageIndex, direction) {
+  const id = Number($('#edit-gasto-id')?.value);
+  const current = state.gastos.find(gasto => Number(gasto.id) === id);
+  const index = Number(imageIndex);
+  if (!id || !current || !Number.isInteger(index)) return;
+  const removedIndexes = new Set($$('[data-remove-expense-image]:checked').map(input => Number(input.dataset.removeExpenseImage)));
+  const extraImages = editExpenseImagesFromControls(current);
+  if (!extraImages[index]) throw new Error('No se encuentra la imagen para girarla.');
+  extraImages[index] = normalizeStoredImageRecord(await rotateRasterImageRecord(extraImages[index], direction));
+  const saved = await queueExpenseClassificationSave(id, { extraImages });
+  renderEditExpenseImages(saved);
+  removedIndexes.forEach(removedIndex => {
+    const checkbox = $(`[data-remove-expense-image="${removedIndex}"]`);
+    if (checkbox) checkbox.checked = true;
+  });
+  setMessage('#msg-edit-gasto', 'Imagen girada y guardada');
+}
+
+async function rotateOpenExpenseTicket(direction) {
+  const id = Number($('#edit-gasto-id')?.value);
+  const current = state.gastos.find(gasto => Number(gasto.id) === id);
+  if (!id || !expenseTicketIsRasterImage(current)) throw new Error('El ticket actual no es una imagen que se pueda girar.');
+  const ticket = ticketDataInfo(current.ticketData, current.ticketType || 'image/jpeg');
+  const rotated = await rotateRasterImageRecord({
+    name: current.ticketName || 'ticket',
+    type: current.ticketType || ticket.blob.type || 'image/jpeg',
+    size: ticket.blob.size,
+    data: ticket.data
+  }, direction);
+  const saved = await queueExpenseClassificationSave(id, {
+    ticketName: rotated.name,
+    ticketType: rotated.type,
+    ticketData: rotated.data
+  });
+  $('#edit-gasto-ticket-current').innerHTML = `Ticket actual: ${ticketLink(saved)}`;
+  syncEditExpenseTicketRotation(saved);
+  setMessage('#msg-edit-gasto', 'Ticket girado y guardado');
+}
+
+async function handleOpenExpenseTicketRotation(direction) {
+  const buttons = $$('#edit-gasto-ticket-rotate button');
+  buttons.forEach(button => { button.disabled = true; });
+  try {
+    await queueExpenseMediaSave(() => rotateOpenExpenseTicket(direction));
+  } catch (err) {
+    setMessage('#msg-edit-gasto', err.message || String(err), true);
+  } finally {
+    buttons.forEach(button => { button.disabled = false; });
+  }
 }
 
 async function delGasto(id) {
@@ -8654,17 +8732,17 @@ function setBlogImagePhotoType(index, typeId) {
   scheduleActiveBlogEntryDraftSave();
 }
 
-async function rotateActiveBlogImage(direction) {
-  if (!activeBlogImage || !activeBlogImage.data) return;
+async function rotateRasterImageRecord(image, direction) {
+  if (!image || !image.data) throw new Error('No se encuentra la imagen para girarla.');
   const quarterTurn = direction === 'left' ? -1 : 1;
   const source = new Image();
   await new Promise((resolve, reject) => {
     source.onload = resolve;
     source.onerror = () => reject(new Error('No se pudo abrir la imagen para girarla.'));
-    source.src = activeBlogImage.data;
+    source.src = image.data;
   });
-  const sourceWidth = source.naturalWidth || activeBlogImage.width;
-  const sourceHeight = source.naturalHeight || activeBlogImage.height;
+  const sourceWidth = source.naturalWidth || image.width;
+  const sourceHeight = source.naturalHeight || image.height;
   if (!sourceWidth || !sourceHeight) throw new Error('La imagen no tiene dimensiones válidas.');
   const canvas = document.createElement('canvas');
   canvas.width = sourceHeight;
@@ -8677,16 +8755,21 @@ async function rotateActiveBlogImage(direction) {
   context.drawImage(source, -sourceWidth / 2, -sourceHeight / 2, sourceWidth, sourceHeight);
   source.src = '';
   const blob = await canvasToJpeg(canvas, 0.92);
-  const rotated = normalizeBlogImageRecord({
-    ...activeBlogImage,
-    name: String(activeBlogImage.name || 'imagen').replace(/\.[^.]+$/, '') + '.jpg',
+  return {
+    ...image,
+    name: String(image.name || 'imagen').replace(/\.[^.]+$/, '') + '.jpg',
     type: 'image/jpeg',
     size: blob.size,
     data: await readBlobAsDataUrl(blob),
     fileRef: '',
     width: canvas.width,
     height: canvas.height
-  });
+  };
+}
+
+async function rotateActiveBlogImage(direction) {
+  if (!activeBlogImage || !activeBlogImage.data) return;
+  const rotated = normalizeBlogImageRecord(await rotateRasterImageRecord(activeBlogImage, direction));
   showBlogImages([rotated, ...activeBlogGalleryImages]);
   scheduleActiveBlogEntryDraftSave();
   setMessage('#msg-blog-entry', 'Imagen girada. Guarda la entrada para conservar el cambio.');
@@ -9975,6 +10058,7 @@ function openEditGasto(gasto) {
   $('#edit-gasto-ticket-current').innerHTML = gasto.ticketData ? `Ticket actual: ${ticketLink(gasto)}` : 'Sin ticket asociado.';
   $('#edit-gasto-ticket-type').value = gasto.ticketData ? String(gasto.ticketPhotoTypeId || '') : '';
   syncExpenseTicketTypeAvailability('edit-gasto');
+  syncEditExpenseTicketRotation(gasto);
   syncTicketOcrAvailability('edit-gasto');
   renderEditExpenseImages(gasto);
   setMessage('#msg-edit-gasto', '');
@@ -11240,11 +11324,24 @@ function bindEvents() {
   $('#edit-gasto-ticket-type').onchange = () => {
     saveOpenExpenseTicketClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
+  $('#edit-gasto-ticket-rotate-left').onclick = () => handleOpenExpenseTicketRotation('left');
+  $('#edit-gasto-ticket-rotate-right').onclick = () => handleOpenExpenseTicketRotation('right');
   $('#edit-gasto-extra-images').onchange = () => syncExpenseExtraImageSelection('edit-gasto', { applyDateTime: true, resetClassifications: true });
   $('#edit-gasto-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('edit-gasto', { applyDateTime: true, resetClassifications: true });
   $('#edit-gasto-extra-images-current').onchange = event => {
     if (!event.target.closest('[data-expense-image-type], [data-map-expense-image]')) return;
     saveOpenExpenseImageClassifications().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
+  };
+  $('#edit-gasto-extra-images-current').onclick = event => {
+    const button = event.target.closest('[data-rotate-expense-image]');
+    if (!button) return;
+    const buttons = Array.from(button.parentElement.querySelectorAll('button'));
+    buttons.forEach(item => { item.disabled = true; });
+    queueExpenseMediaSave(() => rotateOpenExpenseImage(button.dataset.rotateExpenseImage, button.dataset.rotateDirection))
+      .catch(err => {
+        buttons.forEach(item => { item.disabled = false; });
+        setMessage('#msg-edit-gasto', err.message || String(err), true);
+      });
   };
   $('#edit-gasto-ticket-remove').onchange = () => {
     if ($('#edit-gasto-ticket-remove').checked) {
@@ -11255,6 +11352,7 @@ function bindEvents() {
       syncExpenseTicketTypeAvailability('edit-gasto');
     }
     syncTicketOcrAvailability('edit-gasto');
+    syncEditExpenseTicketRotation();
   };
   $('#g-pais').onchange = () => {
     renderCiudades();
@@ -11318,6 +11416,7 @@ function bindEvents() {
   $('#edit-gasto-form').onsubmit = async event => {
     event.preventDefault();
     try {
+      await pendingExpenseMediaSave;
       await pendingExpenseClassificationSave;
       const id = Number($('#edit-gasto-id').value);
       const cuentaId = $('#edit-gasto-cuenta').value;
@@ -11329,19 +11428,7 @@ function bindEvents() {
       const ticket = await readFileData(selectedFileInput('#edit-gasto-ticket', '#edit-gasto-ticket-camera'));
       const newExtraImages = await readSelectedExpenseExtraImages('edit-gasto');
       const removedExtraImageIndexes = new Set($$('[data-remove-expense-image]:checked').map(input => Number(input.dataset.removeExpenseImage)));
-      const extraImages = expenseExtraImages(current)
-        .map((image, index) => {
-          const hasExactPoint = Boolean(storedImageCoordinates(image));
-          const checked = Boolean($(`[data-map-expense-image="${index}"]`)?.checked);
-          const mapEnabled = Boolean(checked && hasExactPoint);
-          const selectedType = photoTypeById($(`[data-expense-image-type="${index}"]`)?.value);
-          return {
-            ...image,
-            photoTypeId: selectedType ? selectedType.id : '',
-            photoTypeName: selectedType ? selectedType.nombre : '',
-            mapEnabled
-          };
-        })
+      const extraImages = editExpenseImagesFromControls(current)
         .filter((image, index) => !removedExtraImageIndexes.has(index))
         .concat(newExtraImages);
       const ticketPatch = $('#edit-gasto-ticket-remove').checked

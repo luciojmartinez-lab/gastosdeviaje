@@ -1020,6 +1020,7 @@ input[type="checkbox"] {
 
 .expense-current-image-list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -1346,6 +1347,23 @@ input[type="checkbox"] {
 .expense-current-image-list select {
   min-width: 120px;
   max-width: 180px;
+}
+
+.expense-image-rotate-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.expense-image-rotate-actions[hidden] {
+  display: none;
+}
+
+.expense-image-rotate-actions .icon-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
 }
 
 .pending-expense-image-classifications {
