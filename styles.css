@@ -2251,6 +2251,25 @@ body.map-fullscreen-open {
   line-height: 1;
 }
 
+.trip-vector-destination-marker {
+  position: absolute;
+  z-index: 6;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #f97316;
+  color: #fff;
+  box-shadow: 0 1px 4px #0006;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+}
+
 .trip-vector-marker.configured .trip-vector-marker-dot {
   background: #2563eb;
 }
@@ -2505,6 +2524,20 @@ body.map-fullscreen-open {
   font-weight: 900;
   text-anchor: middle;
   pointer-events: none;
+}
+
+.map-destination-number circle {
+  fill: #f97316;
+  stroke: #fff;
+  stroke-width: 2;
+  filter: drop-shadow(0 1px 3px #00000055);
+}
+
+.map-destination-number text {
+  fill: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  text-anchor: middle;
 }
 
 .map-photo-popup {

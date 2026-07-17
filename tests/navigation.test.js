@@ -30,11 +30,14 @@ test('el editor del mapa conserva la ruta planificada y las ciudades repetidas',
   assert.doesNotMatch(app, /mapCityIds\.length \? mapCityIds : configuredCityIds/);
 });
 
-test('el mapa diario ordena la línea por hora y muestra puntos sin números', () => {
+test('el mapa diario separa los puntos y los números de destino', () => {
   const start = app.indexOf('function combineDailyMapRecords');
   const end = app.indexOf('function dailyMapItem', start);
   const source = app.slice(start, end);
   assert.ok(source.indexOf('chronology(a).localeCompare(chronology(b))') < source.indexOf('routeIndex(a) - routeIndex(b)'));
-  assert.match(app, /dailyRecord\.kind === 'photo' \? '\+' : '•'/);
-  assert.match(app, /dailyPhoto \? '\+' : '•'/);
+  assert.match(app, /dailyRecord\.kind === 'point' \? '•' : '\+'/);
+  assert.match(app, /function tripVectorDestinationElement/);
+  assert.match(app, /dailyModel\.destinationMarkers\.forEach/);
+  assert.match(app, /\$\{destinationMarkers\}\s*<\/svg>/);
+  assert.match(styles, /\.trip-vector-destination-marker\s*\{[\s\S]*?z-index: 6;/);
 });

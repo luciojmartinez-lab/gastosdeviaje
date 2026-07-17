@@ -56,9 +56,16 @@
 
     const marker = record => ({
       record,
-      numberText: record.kind === 'photo' ? '+' : '•',
+      numberText: record.kind === 'point' ? '•' : '+',
       labelLines: hasRoute ? [getCityName(record), getTime(record)] : [getTime(record)]
     });
+    const destinationMarkers = cityMarkers
+      .map(record => ({ record, routeNumber: finiteNumber(record.routeNumber) }))
+      .filter(markerModel => markerModel.routeNumber > 0)
+      .map(markerModel => ({
+        record: markerModel.record,
+        numberText: String(markerModel.routeNumber)
+      }));
 
     return {
       records: usableRecords,
@@ -66,6 +73,7 @@
       hasRoute,
       routeMarkers,
       markers: routeMarkers.map(marker),
+      destinationMarkers,
       recordMarkers: usableRecords.map(marker),
       exactPoints: usableRecords.filter(record => record.kind === 'point'),
       photoGroups: [...photoGroups.values()].map(group => ({
