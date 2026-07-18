@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const helpPath = path.join(root, 'ayuda.html');
+const indexPath = path.join(root, 'index.html');
 const pdfPath = path.join(root, 'output', 'pdf', 'ayuda-cuaderno-bitacora.pdf');
 
 test('la ayuda identifica fecha y versión y contiene las tres partes principales', async () => {
@@ -13,7 +14,7 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
 
   assert.match(html, /Fecha de creación:<\/strong> 17 de julio de 2026/);
   assert.match(html, /Última actualización:<\/strong> 18 de julio de 2026/);
-  assert.match(html, /Versión documentada:<\/strong> 700v176/);
+  assert.match(html, /Versión documentada:<\/strong> 700v177/);
   assert.match(html, /id="objetivo"/);
   assert.match(html, /1\. Objetivo y filosofía de la aplicación/);
   assert.match(html, /id="flujo"/);
@@ -22,6 +23,33 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
   assert.match(html, /3\. Referencia completa de menús y pantallas/);
   assert.match(html, /El PDF respeta los filtros activos del Blog: día, país, ciudad o cualquier combinación/);
   assert.doesNotMatch(html, /No cambian el contenido del PDF completo/);
+});
+
+test('todos los modales tienen ayuda contextual con un destino documentado', async () => {
+  const [index, app, help, styles] = await Promise.all([
+    readFile(indexPath, 'utf8'),
+    readFile(path.join(root, 'app.bundle.js'), 'utf8'),
+    readFile(helpPath, 'utf8'),
+    readFile(path.join(root, 'styles.css'), 'utf8')
+  ]);
+  const dialogIds = [...index.matchAll(/<dialog\s+id="([^"]+)"\s+class="[^"]*\bmodal\b/g)].map(match => match[1]);
+  const mapStart = app.indexOf('const DIALOG_HELP_TARGETS = {');
+  const mapEnd = app.indexOf('\n};', mapStart);
+  const helpMap = app.slice(mapStart, mapEnd);
+  const targets = new Map([...helpMap.matchAll(/'([^']+-dialog)': '([^']+)'/g)].map(match => [match[1], match[2]]));
+  const helpIds = new Set([...help.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
+
+  assert.equal(dialogIds.length, 15);
+  assert.equal(targets.size, dialogIds.length);
+  for (const dialogId of dialogIds) {
+    assert.ok(targets.has(dialogId), `Falta ayuda contextual para ${dialogId}`);
+    assert.ok(helpIds.has(targets.get(dialogId)), `Falta el destino #${targets.get(dialogId)} de ${dialogId}`);
+  }
+  assert.match(app, /function installDialogHelpLinks\(\)[\s\S]*?link\.textContent = 'i'/);
+  assert.match(app, /installDialogHelpLinks\(\);[\s\S]*?bindEvents\(\)/);
+  assert.match(app, /function openFormDialog\(\{ title, fields, onSubmit, helpTarget = 'referencia' \}\)/);
+  assert.equal((app.match(/\n\s+helpTarget: '/g) || []).length, 7);
+  assert.match(styles, /\.dialog-help \{[\s\S]*?border-radius: 50%/);
 });
 
 test('todos los hipervínculos internos de la ayuda tienen destino', async () => {

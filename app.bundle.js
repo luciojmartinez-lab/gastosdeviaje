@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v176';
+const APP_VERSION = '700v177';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -26,6 +26,23 @@ const DEFAULT_PHOTO_TYPES = [
   { id: 'retrato', nombre: 'Retrato', useAsDestination: false },
   { id: 'selfie', nombre: 'Selfie', useAsDestination: false }
 ];
+const DIALOG_HELP_TARGETS = {
+  'add-gasto-dialog': 'gasto-formulario',
+  'edit-gasto-dialog': 'gasto-formulario',
+  'expense-files-dialog': 'gasto-archivos',
+  'form-dialog': 'referencia',
+  'route-dialog': 'ruta-paradas',
+  'trip-documents-dialog': 'documentos-viaje',
+  'trip-review-dialog': 'revisar-viaje',
+  'blog-entry-dialog': 'blog-formulario',
+  'expense-blog-replace-dialog': 'gasto-a-blog',
+  'shared-images-dialog': 'compartir',
+  'wordpress-export-dialog': 'wordpress-exportar',
+  'print-dialog': 'informe-pdf',
+  'backup-dialog': 'backup',
+  'sync-dialog': 'sincronizacion',
+  'backup-result-dialog': 'backup'
+};
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const TRIP_MAP_WIDTH = 920;
 const TRIP_MAP_HEIGHT = 460;
@@ -344,6 +361,38 @@ async function clearStores(names) {
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => Array.from(document.querySelectorAll(selector));
+
+function dialogHelpHref(target) {
+  return `ayuda.html#${encodeURIComponent(target || 'referencia')}`;
+}
+
+function setDialogHelpTarget(dialogId, target) {
+  const link = $(`#${dialogId} .dialog-help`);
+  if (link) link.href = dialogHelpHref(target);
+}
+
+function installDialogHelpLinks() {
+  $$('dialog.modal').forEach(dialog => {
+    const target = DIALOG_HELP_TARGETS[dialog.id] || 'referencia';
+    const link = document.createElement('a');
+    link.className = 'dialog-help';
+    link.href = dialogHelpHref(target);
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = 'i';
+    link.title = 'Abrir ayuda de esta pantalla';
+    link.setAttribute('aria-label', 'Abrir ayuda de esta pantalla');
+    const head = dialog.querySelector('.modal-head');
+    if (head) {
+      const closeButton = head.querySelector('.icon-btn');
+      head.insertBefore(link, closeButton || null);
+    } else {
+      link.classList.add('dialog-help-floating');
+      const form = dialog.querySelector('form');
+      if (form) form.prepend(link);
+    }
+  });
+}
 
 const ADD_EXPENSE_DRAFT_FIELDS = [
   '#g-fecha', '#g-hora', '#g-viaje', '#g-cuenta', '#g-moneda',
@@ -1712,7 +1761,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v176');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v177');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1744,7 +1793,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v176');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v177');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2187,7 +2236,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v176');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v177');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -8269,6 +8318,7 @@ function openEditViajeDialog(v) {
   if (!v) return;
   openFormDialog({
     title: 'Editar viaje',
+    helpTarget: 'crear-viaje',
     fields: [
       { name: 'nombre', label: 'Nombre', value: v.nombre },
       { name: 'fechaInicio', label: 'Fecha de inicio', type: 'date', value: v.fechaInicio },
@@ -9745,14 +9795,15 @@ function blogPrintPreparationsHtml(entries) {
   </section>`;
 }
 
-function blogPrintBodyHtml(trip, entries) {
-  const overview = entries.find(entry => isTripOverviewBlogEntry(entry, trip)) || null;
+function blogPrintBodyHtml(trip, entries, options = {}) {
+  const overviewEntries = Array.isArray(options.overviewEntries) ? options.overviewEntries : entries;
+  const overview = overviewEntries.find(entry => isTripOverviewBlogEntry(entry, trip)) || null;
   const timeline = entries.filter(entry => !isTripOverviewBlogEntry(entry, trip));
   const preparations = trip.fechaInicio ? timeline.filter(entry => String(entry.fecha || '') < trip.fechaInicio) : [];
   const travelEntries = trip.fechaInicio ? timeline.filter(entry => String(entry.fecha || '') >= trip.fechaInicio) : timeline;
   return [
     blogPrintOverviewHtml(overview, trip),
-    blogPrintPreparationsHtml(preparations),
+    preparations.length ? blogPrintPreparationsHtml(preparations) : '',
     groupBlogEntriesByDay(travelEntries).map(blogPrintDayHtml).join('')
   ].filter(Boolean).join('');
 }
@@ -9892,7 +9943,7 @@ function printBlog() {
     alert('No hay entradas del Blog que coincidan con los filtros seleccionados.');
     return;
   }
-  const body = blogPrintBodyHtml(trip, entries);
+  const body = blogPrintBodyHtml(trip, entries, { overviewEntries: allEntries });
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blog · ${escapeHtml(trip.nombre)}</title><style>
     @page { size: A4; margin: 12mm; }
     * { box-sizing: border-box; }
@@ -11016,11 +11067,12 @@ function printSection(section) {
   win.document.close();
 }
 
-function openFormDialog({ title, fields, onSubmit }) {
+function openFormDialog({ title, fields, onSubmit, helpTarget = 'referencia' }) {
   const dialog = $('#form-dialog');
   const container = $('#form-dialog-fields');
   if (!dialog || !container) return;
   $('#form-dialog-title').textContent = title;
+  setDialogHelpTarget('form-dialog', helpTarget);
   container.innerHTML = fields.map(field => {
     const value = escapeHtml(field.value ?? '');
     const step = field.step ? ` step="${escapeHtml(field.step)}"` : '';
@@ -11162,6 +11214,7 @@ async function resetDataValue(option) {
 async function resetDataPrompt() {
   openFormDialog({
     title: 'Resetear datos',
+    helpTarget: 'avanzado',
     fields: [{ name: 'opcion', label: 'Escribe: todo, categorías, monedas, cuentas, viajes, gastos, blog o transferencias', value: 'todo' }],
     onSubmit: values => resetDataValue(values.opcion)
   });
@@ -12300,6 +12353,7 @@ function bindEvents() {
         if (!type) return;
         openFormDialog({
           title: 'Editar tipo de foto',
+          helpTarget: 'clasificaciones',
           fields: [
             { name: 'nombre', label: 'Nombre', value: type.nombre },
             { name: 'useAsDestination', label: 'Usar como punto de destino', type: 'checkbox', value: type.useAsDestination }
@@ -12328,6 +12382,7 @@ function bindEvents() {
         if (!c) return;
         openFormDialog({
           title: 'Editar cuenta',
+          helpTarget: 'cuentas',
           fields: [
             { name: 'nombre', label: 'Nombre', value: c.nombre },
             { name: 'presupuesto', label: 'Presupuesto', type: 'number', step: '0.01', value: c.presupuesto || 0 },
@@ -12355,6 +12410,7 @@ function bindEvents() {
         if (!m) return;
         openFormDialog({
           title: `Editar ${m.codigo}`,
+          helpTarget: 'monedas',
           fields: [
             { name: 'codigo', label: 'Código', value: m.codigo },
             { name: 'nombre', label: 'Nombre', value: m.nombre || '' },
@@ -12371,6 +12427,7 @@ function bindEvents() {
         if (!c) return;
         openFormDialog({
           title: 'Editar categoría',
+          helpTarget: 'categorias',
           fields: [{ name: 'nombre', label: 'Nombre', value: c.nombre }],
           onSubmit: values => updateCategoria(c.id, { nombre: values.nombre.trim() || c.nombre })
         });
@@ -12389,6 +12446,7 @@ function bindEvents() {
         if (!l) return;
         openFormDialog({
           title: 'Editar lugar',
+          helpTarget: 'paises-ciudades',
           fields: [
             { name: 'nombre', label: 'Nombre', value: l.nombre },
             { name: 'lat', label: 'Latitud', type: 'number', step: '0.000001', value: l.lat ?? '' },
@@ -12604,6 +12662,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   try {
     const hasSharedLaunch = new URL(window.location.href).searchParams.has('shared') || new URL(window.location.href).searchParams.has('shared_error');
     updateOfflineStatus();
+    installDialogHelpLinks();
     bindEvents();
     ensureSyncKey();
     await withDataTrackingPaused(seedIfEmpty);

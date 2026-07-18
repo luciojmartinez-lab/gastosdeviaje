@@ -1309,6 +1309,7 @@ input[type="checkbox"] {
 }
 
 .modal form {
+  position: relative;
   padding: 16px;
 }
 
@@ -1321,12 +1322,47 @@ input[type="checkbox"] {
 }
 
 .modal-head h2 {
+  min-width: 0;
   margin: 0;
+  line-height: 1.15;
+}
+
+.dialog-help {
+  display: inline-grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  place-items: center;
+  border: 2px solid #0876c9;
+  border-radius: 50%;
+  color: #075f9f;
+  background: #eff7ff;
+  font-family: Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.dialog-help:hover,
+.dialog-help:focus-visible {
+  color: #ffffff;
+  background: #0876c9;
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.dialog-help-floating {
+  position: absolute;
+  z-index: 1;
+  top: 10px;
+  right: 10px;
 }
 
 .backup-result {
   margin-top: 0;
-  padding: 12px;
+  padding: 12px 54px 12px 12px;
   border: 1px solid #bfdbfe;
   border-radius: 8px;
   background: #eff6ff;

@@ -176,7 +176,9 @@ test('el PDF del Blog respeta los filtros activos de día, país y ciudad', () =
   assert.match(printBlogSource, /const allEntries = blogEntriesForTrip\(trip\.id\)/);
   assert.match(printBlogSource, /const entries = filteredBlogEntries\(allEntries\)/);
   assert.match(printBlogSource, /No hay entradas del Blog que coincidan con los filtros seleccionados/);
-  assert.match(printBlogSource, /blogPrintBodyHtml\(trip, entries\)/);
+  assert.match(printBlogSource, /blogPrintBodyHtml\(trip, entries, \{ overviewEntries: allEntries \}\)/);
+  assert.match(app, /const overviewEntries = Array\.isArray\(options\.overviewEntries\) \? options\.overviewEntries : entries/);
+  assert.match(app, /preparations\.length \? blogPrintPreparationsHtml\(preparations\) : ''/);
 });
 
 test('los gastos permiten doble clic para editar y señalan si ya están en el Blog', () => {
