@@ -1,6 +1,7 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v181';
+const APP_VERSION = '700v182';
+const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1794,7 +1795,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v181');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v182');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1826,7 +1827,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v181');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v182');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2269,7 +2270,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v181');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v182');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3162,7 +3163,7 @@ function buildTripReview(trip) {
     blogItems.push(tripReviewItem('ok', 'Entradas de blog', `${reviewPlural(entries.length, 'entrada')} en el viaje.`));
   }
   const missingEntryDate = entries.filter(entry => !entry.fecha);
-  const missingEntryCity = entries.filter(entry => !entry.ciudadId);
+  const missingEntryCity = entries.filter(entry => !entry.ciudadId && entry.enTransito !== true);
   const imageEntriesWithoutImage = entries.filter(entry => entry.tipo === 'imagen' && !blogEntryImages(entry).length);
   const pointEntriesWithoutCoordinates = entries.filter(entry => entry.tipo === 'punto' && !blogPointCoordinates(entry));
   if (missingEntryDate.length) blogItems.push(tripReviewItem('error', `${reviewPlural(missingEntryDate.length, 'entrada')} sin fecha`, tripReviewSample(missingEntryDate, tripReviewEntryLabel)));
@@ -3895,6 +3896,7 @@ async function addBlogEntry(data) {
     descripcion: description,
     paisId: data.paisId ? Number(data.paisId) : null,
     ciudadId: data.ciudadId ? Number(data.ciudadId) : null,
+    enTransito: data.enTransito === true,
     texto: type === 'texto' ? String(data.texto || '') : '',
     notas: type === 'punto' ? String(data.notas || '') : '',
     imageName: type === 'imagen' ? String(data.imageName || 'imagen.jpg') : '',
@@ -3955,6 +3957,7 @@ function normalizeImportedBlogEntry(entry = {}) {
     descripcion: String(entry.descripcion || '').trim() || (type === 'gasto' ? 'Gasto' : 'Entrada del blog'),
     paisId: entry.paisId ? Number(entry.paisId) : null,
     ciudadId: entry.ciudadId ? Number(entry.ciudadId) : null,
+    enTransito: entry.enTransito === true,
     texto: String(entry.texto || ''),
     notas: type === 'punto' ? String(entry.notas || '') : '',
     imageName: String(entry.imageName || ''),
@@ -8311,6 +8314,10 @@ function blogPlaceName(id) {
   return id ? (state.lugares.find(item => Number(item.id) === Number(id)) || {}).nombre || '-' : '-';
 }
 
+function blogEntryCityName(entry) {
+  return entry && entry.enTransito === true ? 'En tránsito' : blogPlaceName(entry && entry.ciudadId);
+}
+
 function blogEntriesForTrip(tripId) {
   return state.blogEntries
     .filter(entry => Number(entry.viajeId) === Number(tripId))
@@ -8325,7 +8332,7 @@ function blogDayDateLabel(value) {
 }
 
 function blogDayHeading(date, entries = []) {
-  const cities = [...new Set(entries.map(entry => blogPlaceName(entry.ciudadId)).filter(name => name && name !== '-'))];
+  const cities = [...new Set(entries.map(blogEntryCityName).filter(name => name && name !== '-'))];
   const countries = [...new Set(entries.map(entry => blogPlaceName(entry.paisId)).filter(name => name && name !== '-'))];
   const places = cities.length ? cities : countries;
   return `Día ${blogDayDateLabel(date)}${places.length ? ` — ${places.join(' / ')}` : ''}`;
@@ -8414,13 +8421,16 @@ function syncBlogFilterOptions(trip, entries) {
   fillSelect('#blog-filter-date', dates, '(todos los días)');
   fillSelect('#blog-filter-country', countries, '(todos los países)');
   const selectedCountry = Number(countryField ? countryField.value : 0);
-  const cityIds = [...new Set(entries
-    .filter(entry => !selectedCountry || Number(entry.paisId) === selectedCountry)
+  const countryEntries = entries.filter(entry => !selectedCountry || Number(entry.paisId) === selectedCountry);
+  const cityIds = [...new Set(countryEntries
     .map(entry => Number(entry.ciudadId))
     .filter(Boolean))];
   const cities = cityIds
     .map(id => ({ value: String(id), label: blogPlaceName(id) }))
     .sort((a, b) => collator.compare(a.label, b.label));
+  if (countryEntries.some(entry => entry.enTransito === true)) {
+    cities.unshift({ value: BLOG_TRANSIT_CITY_VALUE, label: 'En tránsito' });
+  }
   fillSelect('#blog-filter-city', cities, '(todas las ciudades)');
   [dateField, countryField, cityField].forEach(field => {
     if (field) field.disabled = !entries.length;
@@ -8430,11 +8440,12 @@ function syncBlogFilterOptions(trip, entries) {
 function filteredBlogEntries(entries) {
   const date = $('#blog-filter-date') ? $('#blog-filter-date').value : '';
   const countryId = Number($('#blog-filter-country') ? $('#blog-filter-country').value : 0);
-  const cityId = Number($('#blog-filter-city') ? $('#blog-filter-city').value : 0);
+  const cityValue = $('#blog-filter-city') ? $('#blog-filter-city').value : '';
+  const cityId = Number(cityValue);
   return entries.filter(entry =>
     (!date || entry.fecha === date) &&
     (!countryId || Number(entry.paisId) === countryId) &&
-    (!cityId || Number(entry.ciudadId) === cityId)
+    (!cityValue || (cityValue === BLOG_TRANSIT_CITY_VALUE ? entry.enTransito === true : Number(entry.ciudadId) === cityId))
   );
 }
 
@@ -8450,7 +8461,7 @@ function syncOpenBlogDays(trip, entries) {
 }
 
 function blogEntryShareText(entry) {
-  const place = [blogPlaceName(entry.paisId), blogPlaceName(entry.ciudadId)].filter(value => value && value !== '-').join(' · ');
+  const place = [blogPlaceName(entry.paisId), blogEntryCityName(entry)].filter(value => value && value !== '-').join(' · ');
   const lines = [
     entry.descripcion || blogTypeLabel(entry.tipo),
     [summaryDocumentDate(entry.fecha, true), entry.hora || '', place].filter(Boolean).join(' · ')
@@ -8556,7 +8567,7 @@ function renderBlog() {
       const pointOption = point ? '<option value="map">Mapa</option>' : '';
       return `<tr class="blog-day-entry" data-blog-day-entry="${escapeHtml(group.date)}" data-blog-entry-id="${entry.id}"${isOpen ? '' : ' hidden'}>
       <td>${escapeHtml(entry.hora || '-')}</td>
-      <td>${escapeHtml(blogPlaceName(entry.ciudadId))}</td>
+      <td>${escapeHtml(blogEntryCityName(entry))}</td>
       <td>${escapeHtml(entry.descripcion || '')}${notes ? `<span class="blog-entry-note blog-entry-point-notes">${escapeHtml(notes)}</span>` : ''}</td>
       <td>${escapeHtml(blogTypeLabel(entry.tipo))}${imageNote}${entry.featuredImage ? '<span class="blog-entry-note">Destacada</span>' : ''}${routeNote}${pointNote}</td>
       <td>${escapeHtml(blogPlaceName(entry.paisId))}</td>
@@ -8593,6 +8604,7 @@ function renderBlogCities(selected = '') {
     .filter(item => !allowed.size || allowed.has(Number(item.id)) || Number(item.id) === Number(selected))
     .map(item => ({ value: String(item.id), label: item.nombre }))
     .sort((a, b) => collator.compare(a.label, b.label));
+  options.unshift({ value: BLOG_TRANSIT_CITY_VALUE, label: 'En tránsito' });
   fillSelect('#blog-ciudad', options, '(sin ciudad)');
   if ($('#blog-ciudad')) $('#blog-ciudad').value = selected ? String(selected) : '';
 }
@@ -9109,12 +9121,12 @@ function openBlogEntryDialog(entry = null) {
   const locationSource = entry || lastEntry;
   renderBlogCountries(locationSource ? locationSource.paisId : '');
   if (entry) {
-    renderBlogCities(entry.ciudadId);
+    renderBlogCities(entry.enTransito === true ? BLOG_TRANSIT_CITY_VALUE : entry.ciudadId);
     setBlogEntryType(entry.tipo);
     if (blogEntryImages(entry).length) showBlogImages(blogEntryImages(entry));
     if (entry.tipo === 'punto') resetBlogPointPicker(entry);
   } else if (lastEntry) {
-    renderBlogCities(lastEntry.ciudadId);
+    renderBlogCities(lastEntry.enTransito === true ? BLOG_TRANSIT_CITY_VALUE : lastEntry.ciudadId);
   }
   if ($('#msg-blog-entry')) setMessage('#msg-blog-entry', '');
   if (!entry) restoreBlogEntryDraft(trip);
@@ -9555,6 +9567,7 @@ async function saveBlogEntryForm() {
     ? (activeBlogEntryAnchor || captureBlogEntryAnchor(current.id))
     : null;
   const enRuta = type !== 'gasto' && Boolean($('#blog-en-route') && $('#blog-en-route').checked);
+  const cityValue = $('#blog-ciudad').value;
   const values = {
     viajeId: trip.id,
     fecha: $('#blog-fecha').value || currentLocalDate(),
@@ -9562,7 +9575,8 @@ async function saveBlogEntryForm() {
     tipo: type,
     descripcion: description,
     paisId: $('#blog-pais').value || null,
-    ciudadId: $('#blog-ciudad').value || null,
+    ciudadId: cityValue && cityValue !== BLOG_TRANSIT_CITY_VALUE ? cityValue : null,
+    enTransito: cityValue === BLOG_TRANSIT_CITY_VALUE,
     enRuta,
     latitude: null,
     longitude: null,
@@ -9735,6 +9749,7 @@ async function addExpenseToBlog(gasto, options = {}) {
     descripcion: expenseBlogDescription(gasto),
     paisId: gasto.paisId || null,
     ciudadId: gasto.ciudadId || null,
+    enTransito: false,
     sourceGastoId: Number(gasto.id),
     gastoImporte: numberValue(gasto.importe),
     gastoMoneda: gasto.moneda || 'EUR',
@@ -9780,7 +9795,7 @@ function blogPrintImagesHtml(images, description) {
 }
 
 function blogPrintEntryHtml(entry, options = {}) {
-  const place = [blogPlaceName(entry.paisId), blogPlaceName(entry.ciudadId)].filter(value => value && value !== '-').join(' · ');
+  const place = [blogPlaceName(entry.paisId), blogEntryCityName(entry)].filter(value => value && value !== '-').join(' · ');
   const price = entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '';
   const text = entry.tipo === 'texto' && entry.texto
     ? `<div class="blog-print-text">${escapeHtml(entry.texto).replace(/\r?\n/g, '<br>')}</div>`
@@ -9858,7 +9873,7 @@ function blogPrintOverviewHtml(entry, trip) {
 }
 
 function blogPrintPreparationDayHtml(group, index) {
-  const placeNames = [...new Set(group.entries.flatMap(entry => [blogPlaceName(entry.ciudadId), blogPlaceName(entry.paisId)]).filter(name => name && name !== '-'))];
+  const placeNames = [...new Set(group.entries.flatMap(entry => [blogEntryCityName(entry), blogPlaceName(entry.paisId)]).filter(name => name && name !== '-'))];
   return `<div class="blog-print-preparation-day${index ? ' separated' : ''}">
     <h2>${escapeHtml(blogDayDateLabel(group.date))}${placeNames.length ? ` — ${escapeHtml(placeNames.join(' / '))}` : ''}</h2>
     ${group.entries.map(entry => blogPrintEntryHtml(entry)).join('')}
@@ -9909,7 +9924,7 @@ function wordpressExportEntry(entry, trip) {
     tipo: entry.tipo,
     descripcion: entry.descripcion || '',
     pais: blogPlaceName(entry.paisId) === '-' ? '' : blogPlaceName(entry.paisId),
-    ciudad: blogPlaceName(entry.ciudadId) === '-' ? '' : blogPlaceName(entry.ciudadId),
+    ciudad: blogEntryCityName(entry) === '-' ? '' : blogEntryCityName(entry),
     texto: entry.tipo === 'punto' ? entry.notas || '' : entry.texto || '',
     notas: entry.tipo === 'punto' ? entry.notas || '' : '',
     gastoImporte: numberValue(entry.gastoImporte),
@@ -9993,7 +10008,7 @@ function exportBlogToWordPress() {
       date: group.date,
       title: titleByDate.get(group.date) || blogDayHeading(group.date, group.entries),
       countries: [...new Set(group.entries.map(entry => blogPlaceName(entry.paisId)).filter(value => value && value !== '-'))],
-      cities: [...new Set(group.entries.map(entry => blogPlaceName(entry.ciudadId)).filter(value => value && value !== '-'))],
+      cities: [...new Set(group.entries.map(blogEntryCityName).filter(value => value && value !== '-'))],
       entries: group.entries.map(entry => wordpressExportEntry(entry, trip))
     }))
   };

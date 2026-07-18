@@ -211,6 +211,22 @@ test('el PDF del Blog respeta los filtros activos de día, país y ciudad', () =
   assert.match(app, /preparations\.length \? blogPrintPreparationsHtml\(preparations\) : ''/);
 });
 
+test('el Blog permite identificar y filtrar entradas En tránsito', () => {
+  assert.match(app, /const BLOG_TRANSIT_CITY_VALUE = '__transit__'/);
+  assert.match(app, /options\.unshift\(\{ value: BLOG_TRANSIT_CITY_VALUE, label: 'En tránsito' \}\)/);
+  assert.match(app, /enTransito: cityValue === BLOG_TRANSIT_CITY_VALUE/);
+  assert.match(app, /function blogEntryCityName\(entry\)[\s\S]*?'En tránsito'/);
+  assert.match(app, /cities\.unshift\(\{ value: BLOG_TRANSIT_CITY_VALUE, label: 'En tránsito' \}\)/);
+  assert.match(app, /cityValue === BLOG_TRANSIT_CITY_VALUE \? entry\.enTransito === true/);
+  assert.match(app, /renderBlogCities\(entry\.enTransito === true \? BLOG_TRANSIT_CITY_VALUE : entry\.ciudadId\)/);
+  assert.match(app, /missingEntryCity = entries\.filter\(entry => !entry\.ciudadId && entry\.enTransito !== true\)/);
+  assert.match(app, /function blogDayHeading\(date, entries = \[\]\)[\s\S]*entries\.map\(blogEntryCityName\)/);
+  assert.match(app, /<td>\$\{escapeHtml\(blogEntryCityName\(entry\)\)\}<\/td>/);
+  assert.match(app, /function blogPrintEntryHtml\(entry, options = \{\}\)[\s\S]*blogEntryCityName\(entry\)/);
+  assert.match(app, /ciudad: blogEntryCityName\(entry\) === '-' \? '' : blogEntryCityName\(entry\)/);
+  assert.match(help, /marcar <em>En tránsito<\/em> cuando la entrada sucede durante un desplazamiento/);
+});
+
 test('los gastos permiten doble clic para editar y señalan si ya están en el Blog', () => {
   assert.match(app, /const expensesInBlog = new Set\(state\.blogEntries/);
   assert.match(app, /✓ Ya está en el Blog \(actualizar\)/);
@@ -237,7 +253,7 @@ test('la tabla del blog prioriza hora, ciudad y descripcion', () => {
   assert.match(styles, /\.blog-col-time \{ width: 60px; \}/);
   assert.match(styles, /\.blog-col-city \{ width: 110px; \}/);
   assert.match(styles, /\.blog-col-description \{ width: 315px; \}/);
-  assert.match(app, /entry\.hora \|\| '-'[\s\S]*?entry\.ciudadId[\s\S]*?entry\.descripcion[\s\S]*?blogTypeLabel\(entry\.tipo\)[\s\S]*?entry\.paisId/);
+  assert.match(app, /entry\.hora \|\| '-'[\s\S]*?blogEntryCityName\(entry\)[\s\S]*?entry\.descripcion[\s\S]*?blogTypeLabel\(entry\.tipo\)[\s\S]*?entry\.paisId/);
 });
 
 test('las transferencias se muestran de antiguas a modernas', () => {
