@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v179</title>
+  <title>Manual de Cuaderno de Bitácora - 700v180</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     if (helpParams.get('embedded') === '1') {
@@ -185,7 +185,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 18 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v179</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 18 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v180</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -442,31 +442,54 @@
           <p>Una doble pulsación equivale a Editar. Tras guardar, la misma entrada vuelve a quedar seleccionada en su posición anterior.</p>
 
           <h4 id="blog-formulario">Formulario Añadir entrada</h4>
-          <figure><img src="assets/help/06-alta-blog.png" alt="Formulario de blog con tipos, ubicación, texto e imágenes"><figcaption>Ejemplo de entrada con imagen. Los campos cambian según el tipo.</figcaption></figure>
-          <ol class="legend"><li><b>1</b>Tipo: Texto, Imagen o Punto.</li><li><b>2</b>Fecha, hora, país y ciudad.</li><li><b>3</b>Descripción, texto y dictado.</li><li><b>4</b>Imágenes, clasificación y giro.</li><li><b>5</b>Guardar o cancelar.</li></ol>
-          <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / acción</th><th>Uso</th></tr></thead><tbody>
-            <tr><td>Tipo de entrada</td><td><em>Texto</em> para narración, <em>Imagen</em> para una foto o galería y <em>Punto geolocalizado</em> para una ubicación con notas.</td></tr>
-            <tr><td>Fecha / Hora</td><td>Ordenan la entrada. En imágenes se pueden proponer desde los metadatos del archivo.</td></tr>
-            <tr><td>País / Ciudad</td><td>Organizan la tabla y el mapa. Las nuevas entradas recuerdan el último destino usado.</td></tr>
-            <tr><td>Descripción</td><td>Título breve, hasta 240 caracteres.</td></tr>
-            <tr><td>Texto / Notas</td><td>Contenido extenso para textos o explicación de un punto.</td></tr>
-            <tr><td>WordPress</td><td>Incluye o excluye la entrada del post del día.</td></tr>
-            <tr><td>Imagen destacada</td><td>Usa la primera imagen como cabecera del día y evita repetirla en el orden cronológico.</td></tr>
-            <tr><td>Archivo / Varios archivos / Cámara</td><td>Añade una foto, galería o captura nueva. Tocar una miniatura la coloca como primera.</td></tr>
-            <tr><td>Tipo de foto</td><td>Clasificación individual. Puede determinar un destino cuando tiene GPS.</td></tr>
-            <tr><td>Girar</td><td>Gira la primera foto; en una galería, primero selecciona la miniatura deseada.</td></tr>
-            <tr><td>Añadir las fotos al mapa</td><td>Incluye las imágenes con GPS en el mapa.</td></tr>
-            <tr><td>Guardar original en Fotos</td><td>Conserva además el archivo original cuando el navegador lo permite.</td></tr>
-            <tr><td>Guardar entrada</td><td>Valida los campos y actualiza la tabla.</td></tr>
-            <tr><td>Cancelar / X</td><td>Cancelar descarta el borrador; X lo conserva sin guardar archivos.</td></tr>
+          <p>Al abrir el formulario se elige <a href="#blog-formulario-texto">Texto</a>, <a href="#blog-formulario-imagen">Imagen</a> o <a href="#blog-formulario-punto">Punto geolocalizado</a>. Después de elegir, el cuadro cambia y el botón <strong>i</strong> abre directamente la explicación de ese tipo.</p>
+          <p>Los tres tipos comparten Fecha, Hora, País, Ciudad, Descripción, inclusión en WordPress y los botones Guardar entrada y Cancelar. Fecha y hora ordenan el relato; país y ciudad alimentan los filtros y el mapa; la descripción es un título breve de hasta 240 caracteres.</p>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Acción común</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>En ruta</td><td>Convierte la entrada en una huella intermedia del recorrido. Una imagen puede usar su GPS; un texto sin GPS requiere introducir una ubicación manual.</td></tr>
+            <tr><td>Incluir en WordPress</td><td>Incluye o excluye la entrada del post correspondiente a ese día.</td></tr>
+            <tr><td>Guardar entrada</td><td>Valida los campos específicos del tipo, guarda los cambios y vuelve a la misma entrada de la tabla.</td></tr>
+            <tr><td>Cancelar / X</td><td>Cancelar descarta el borrador; X cierra conservando el texto del borrador, pero no los archivos elegidos.</td></tr>
           </tbody></table></div>
-          <div class="callout"><strong>Dictado en Android:</strong> la aplicación utiliza el reconocimiento disponible en el navegador o el micrófono del teclado. Los avisos sonoros pertenecen al sistema; si no quieres oírlos, activa el modo <strong>No molestar</strong> antes de dictar.</div>
+
+          <h4 id="blog-formulario-texto">Entrada de Texto</h4>
+          <p>Añade una narración sin imagen obligatoria. El campo <em>Texto</em> admite el contenido extenso y <em>Descripción</em> actúa como título en la tabla, PDF y WordPress.</p>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / acción</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Texto</td><td>Relato completo de lo ocurrido. Es obligatorio en este tipo de entrada.</td></tr>
+            <tr><td>En ruta</td><td>Permite usar el texto para ajustar la ruta. Pulsa <em>Añadir ubicación manualmente</em> e introduce latitud y longitud; la aplicación no toma automáticamente la posición del teléfono.</td></tr>
+          </tbody></table></div>
+
+          <h4 id="blog-formulario-imagen">Entrada de Imagen o galería</h4>
+          <figure><img src="assets/help/06-alta-blog.png" alt="Formulario de imagen del Blog con galería, clasificación, giro y eliminación"><figcaption>Entrada de Imagen. Cada miniatura dispone de clasificación y de la acción Quitar.</figcaption></figure>
+          <ol class="legend"><li><b>1</b>Tipo Imagen y datos comunes.</li><li><b>2</b>Archivo, varios archivos o cámara.</li><li><b>3</b>Primera imagen y vista previa.</li><li><b>4</b>Clasificación, giro, mapa y Quitar.</li><li><b>5</b>Guardar o cancelar.</li></ol>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / acción</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Archivo (con GPS)</td><td>Elige una fotografía desde Archivos. En Android es la vía más fiable para conservar el GPS original.</td></tr>
+            <tr><td>Varios archivos</td><td>Crea una galería. La fecha y la hora pueden proponerse desde los metadatos de la primera fotografía.</td></tr>
+            <tr><td>Cámara</td><td>Toma una foto nueva y, si Android lo permite, asocia la ubicación actual.</td></tr>
+            <tr><td>Primera imagen</td><td>Toca una miniatura para convertirla en primera. Es la que se gira y la que se usa como destacada.</td></tr>
+            <tr><td>Tipo de foto</td><td>Clasificación individual de cada imagen. Una clasificación configurada como destino puede determinar el alojamiento o destino real del mapa.</td></tr>
+            <tr><td>Girar</td><td>Gira la primera fotografía. Para girar otra, conviértela antes en primera.</td></tr>
+            <tr><td>Quitar</td><td>Marca una fotografía para eliminarla de la entrada al guardar. Si era la primera, la siguiente pasa a ocupar ese lugar.</td></tr>
+            <tr><td>Usar como imagen destacada</td><td>Usa la primera fotografía como cabecera del día y obliga a incluir la entrada en WordPress.</td></tr>
+            <tr><td>Añadir las fotos al mapa</td><td>Incluye las fotografías que tengan GPS. Las que no tengan coordenadas no desplazan la ruta.</td></tr>
+            <tr><td>En ruta</td><td>Usa el GPS de una imagen para afinar el trayecto. Si ninguna lo tiene, permite añadir una ubicación manual.</td></tr>
+            <tr><td>Guardar original en Fotos</td><td>Conserva además el archivo original cuando el navegador lo permite. La copia guardada en la aplicación tiene un objetivo aproximado de 650 KB.</td></tr>
+          </tbody></table></div>
+
+          <h4 id="blog-formulario-punto">Entrada de Punto geolocalizado</h4>
+          <figure><img src="assets/help/06-punto-blog.png" alt="Formulario de punto geolocalizado con coordenadas y selector de mapa"><figcaption>Entrada de Punto con coordenadas, búsqueda y selección directa en el mapa.</figcaption></figure>
+          <ol class="legend"><li><b>1</b>Tipo Punto y datos comunes.</li><li><b>2</b>Notas del punto.</li><li><b>3</b>Latitud y longitud.</li><li><b>4</b>Ubicación actual, búsqueda, copia y zoom.</li><li><b>5</b>Selección directa sobre el mapa.</li></ol>
+          <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / acción</th><th>Uso</th></tr></thead><tbody>
+            <tr><td>Notas del punto</td><td>Información extensa sobre el lugar; la descripción sigue siendo su título breve.</td></tr>
+            <tr><td>Latitud / Longitud</td><td>Coordenadas exactas. Se pueden escribir o corregir manualmente.</td></tr>
+            <tr><td>Usar ubicación actual</td><td>Solicita al teléfono la posición disponible y muestra su precisión aproximada.</td></tr>
+            <tr><td>Buscar descripción</td><td>Busca la descripción junto con la ciudad y el país; hay que comprobar el resultado en el mapa.</td></tr>
+            <tr><td>Copiar coordenadas</td><td>Copia latitud y longitud para revisarlas o reutilizarlas.</td></tr>
+            <tr><td>− / + y mapa</td><td>Ajustan el zoom. Tocar el mapa coloca o corrige el punto.</td></tr>
+            <tr><td>Punto cercano existente</td><td>Si ya hay otro punto del viaje a menos de 30 metros, la aplicación muestra su nombre y distancia. Aceptar reutiliza exactamente sus coordenadas en la nueva entrada; cancelar permite escoger otro lugar.</td></tr>
+          </tbody></table></div>
 
           <h4 id="en-ruta">En ruta y puntos geolocalizados</h4>
-          <p><em>En ruta</em> convierte una entrada de texto, imagen o punto en una huella intermedia para afinar el recorrido. Requiere coordenadas válidas: se leen del GPS de la imagen o se introducen manualmente. La aplicación nunca asigna automáticamente la ubicación actual a un texto o una imagen sin GPS. Un punto ofrece Latitud, Longitud, <em>Usar ubicación actual</em>, <em>Buscar descripción</em>, <em>Copiar coordenadas</em>, zoom y selección directa sobre el mapa. La aplicación evita duplicar puntos del mismo viaje situados a menos de 30 metros.</p>
-
-          <h4>Imágenes y galerías</h4>
-          <p>La ubicación GPS se lee antes de comprimir. En Android, para conservarla, entra por <em>Archivos</em> en Almacenamiento interno → DCIM → Camera. Cada foto puede tener su clasificación. La aplicación reduce automáticamente el tamaño de almacenamiento, con un objetivo aproximado de 650 KB; el original solo se conserva cuando se solicita expresamente.</p>
+          <p><em>En ruta</em> convierte una entrada de texto, imagen o punto en una huella intermedia para afinar el recorrido. Requiere coordenadas válidas: se leen del GPS de la imagen o se introducen manualmente. La aplicación nunca asigna automáticamente la ubicación actual a un texto o una imagen sin GPS. Los puntos cercanos pueden reutilizarse de forma deliberada para representar un nuevo paso por el mismo lugar sin tener que alejarse físicamente.</p>
 
           <h4 id="wordpress-exportar">WordPress</h4>
           <p>La primera vez, descarga el importador desde el diálogo WordPress, instálalo en WordPress → Plugins → Añadir plugin → Subir plugin y después usa Herramientas → Importar Gastos de Viaje. Cada día se importa como borrador para revisarlo antes de publicar.</p>
@@ -613,10 +636,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 18 de julio de 2026 para Cuaderno de Bitácora 700v179.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 18 de julio de 2026 para Cuaderno de Bitácora 700v180.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v179 · 18 de julio de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v180 · 18 de julio de 2026</div>
 </body>
 </html>

@@ -1609,7 +1609,7 @@ input[type="checkbox"] {
   min-width: 0;
 }
 
-.blog-gallery-preview button {
+.blog-gallery-preview .blog-gallery-select {
   display: block;
   width: 100%;
   padding: 0;
@@ -1619,9 +1619,18 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
-.blog-gallery-preview figure.is-primary button {
+.blog-gallery-preview figure.is-primary .blog-gallery-select {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgb(37 99 235 / 18%);
+}
+
+.blog-gallery-preview .blog-gallery-remove {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-color: #fecaca;
+  color: #b91c1c;
+  font-size: 12px;
 }
 
 .blog-gallery-preview img {

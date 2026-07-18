@@ -30,6 +30,13 @@ test('el editor del mapa conserva la ruta planificada y las ciudades repetidas',
   assert.doesNotMatch(app, /mapCityIds\.length \? mapCityIds : configuredCityIds/);
 });
 
+test('al volver al Blog se recupera el inicio horizontal de la tabla', () => {
+  assert.match(app, /function resetBlogTableHorizontalScroll\(\)/);
+  assert.match(app, /wrapper\.scrollLeft = 0/);
+  assert.match(app, /const previousTab = state\.activeTab/);
+  assert.match(app, /if \(previousTab !== 'blog'\) resetBlogTableHorizontalScroll\(\)/);
+});
+
 test('el mapa diario separa los puntos y los números de destino', () => {
   const start = app.indexOf('function combineDailyMapRecords');
   const end = app.indexOf('function dailyMapItem', start);

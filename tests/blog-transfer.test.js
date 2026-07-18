@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [html, app, styles] = await Promise.all([
+const [html, app, styles, help] = await Promise.all([
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
-  readFile(new URL('../styles.css', import.meta.url), 'utf8')
+  readFile(new URL('../styles.css', import.meta.url), 'utf8'),
+  readFile(new URL('../ayuda.html', import.meta.url), 'utf8')
 ]);
 
 test('al reemplazar un gasto existente en el blog permite conservar o reemplazar fecha y hora', () => {
@@ -81,8 +82,18 @@ test('las imágenes del Blog se pueden girar manualmente', () => {
   assert.match(app, /width: canvas\.width,[\s\S]*height: canvas\.height/);
   assert.match(app, /isExpenseWithImages = activeBlogEntryType === 'gasto' && hasImages/);
   assert.match(app, /if \(blogEntryImages\(entry\)\.length\) showBlogImages\(blogEntryImages\(entry\)\)/);
-  assert.match(app, /if \(type === 'gasto' && activeBlogImage\)[\s\S]*galleryImages: activeBlogGalleryImages\.map\(normalizeBlogImageRecord\)/);
+  assert.match(app, /if \(type === 'gasto'\)[\s\S]*galleryImages: activeBlogGalleryImages\.map\(normalizeBlogImageRecord\)/);
   assert.match(styles, /\.blog-image-rotate-actions/);
+});
+
+test('cada imagen de una entrada del Blog se puede quitar al editar', () => {
+  assert.match(app, /data-blog-remove-image="\$\{index\}"/);
+  assert.match(app, /function removeBlogImage\(index\)/);
+  assert.match(app, /images\.splice\(imageIndex, 1\)/);
+  assert.match(app, /se quitará al guardar la entrada/);
+  assert.match(app, /removeBlogImage\(removeButton\.dataset\.blogRemoveImage\)/);
+  assert.match(styles, /\.blog-gallery-preview \.blog-gallery-remove/);
+  assert.match(help, /<tr><td>Quitar<\/td><td>Marca una fotografía para eliminarla de la entrada al guardar/);
 });
 
 test('los tickets e imágenes de Gastos se giran antes de actualizar el Blog', () => {
@@ -138,6 +149,14 @@ test('los puntos geolocalizados admiten notas', () => {
   assert.match(app, /values\.notas = String\(\$\('#blog-point-notes'\)/);
   assert.match(app, /entry\.tipo === 'punto' && entry\.notas/);
   assert.match(app, /texto: entry\.tipo === 'punto' \? entry\.notas \|\| '' : entry\.texto \|\| ''/);
+});
+
+test('un punto cercano puede reutilizarse en una nueva entrada', () => {
+  assert.match(app, /const duplicatePoint = duplicate \? blogPointCoordinates\(duplicate\) : null/);
+  assert.match(app, /Ya existe el punto «\$\{duplicate\.descripcion\}» a \$\{distance\} m\. ¿Quieres usar esa misma ubicación para esta entrada\?/);
+  assert.match(app, /values\.latitude = duplicatePoint \? duplicatePoint\.latitude : point\.latitude/);
+  assert.match(app, /values\.longitude = duplicatePoint \? duplicatePoint\.longitude : point\.longitude/);
+  assert.match(help, /Aceptar reutiliza exactamente sus coordenadas en la nueva entrada/);
 });
 
 test('textos e imágenes sin GPS permiten marcar una ubicación manual', () => {
@@ -198,6 +217,7 @@ test('el Blog usa el campo de texto normal sin dictado propio', () => {
   assert.match(html, /<textarea id="blog-texto"/);
   assert.doesNotMatch(html, /blog-voice|Dictar por voz/);
   assert.doesNotMatch(app, /SpeechRecognition|startBlogDictation|blogDictationSession/);
+  assert.doesNotMatch(help, /dictado|modo No molestar/i);
 });
 
 test('la tabla del blog prioriza hora, ciudad y descripcion', () => {

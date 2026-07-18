@@ -14,7 +14,7 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
 
   assert.match(html, /Fecha de creación:<\/strong> 17 de julio de 2026/);
   assert.match(html, /Última actualización:<\/strong> 18 de julio de 2026/);
-  assert.match(html, /Versión documentada:<\/strong> 700v179/);
+  assert.match(html, /Versión documentada:<\/strong> 700v180/);
   assert.match(html, /id="objetivo"/);
   assert.match(html, /1\. Objetivo y filosofía de la aplicación/);
   assert.match(html, /id="flujo"/);
@@ -56,6 +56,11 @@ test('todos los modales tienen ayuda contextual con un destino documentado', asy
   assert.match(help, /manual\.replaceChildren\(context\)/);
   assert.match(app, /installDialogHelpLinks\(\);[\s\S]*?bindEvents\(\)/);
   assert.match(app, /function openFormDialog\(\{ title, fields, onSubmit, helpTarget = 'referencia' \}\)/);
+  assert.match(app, /texto: 'blog-formulario-texto'[\s\S]*?imagen: 'blog-formulario-imagen'[\s\S]*?punto: 'blog-formulario-punto'/);
+  assert.match(app, /setDialogHelpTarget\('blog-entry-dialog', helpTarget\)/);
+  for (const target of ['blog-formulario-texto', 'blog-formulario-imagen', 'blog-formulario-punto']) {
+    assert.ok(helpIds.has(target), `Falta la ayuda dinámica #${target}`);
+  }
   assert.equal((app.match(/\n\s+helpTarget: '/g) || []).length, 7);
   assert.match(styles, /\.dialog-help \{[\s\S]*?border-radius: 50%/);
   assert.match(styles, /\.context-help-modal \{[\s\S]*?height: min\(840px/);
@@ -77,7 +82,7 @@ test('las capturas explicativas y el PDF descargable están publicados', async (
   const serviceWorker = await readFile(path.join(root, 'sw.js'), 'utf8');
   const images = [...html.matchAll(/<img\s+src="([^"]+)"/g)].map(match => match[1]);
 
-  assert.equal(images.length, 8);
+  assert.equal(images.length, 9);
   for (const image of images) {
     const file = path.join(root, image.replaceAll('/', path.sep));
     await access(file);

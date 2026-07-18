@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v179';
+const APP_VERSION = '700v180';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1794,7 +1794,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v179');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v180');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1826,7 +1826,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v179');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v180');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2269,7 +2269,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v179');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v180');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -8758,7 +8758,9 @@ function showBlogImages(images = []) {
   const located = normalized.filter(storedImageCoordinates);
   const enabledCount = normalized.filter(image => image.mapEnabled && storedImageCoordinates(image)).length;
   if ($('#blog-image-status')) {
-    if (normalized.length === 1) {
+    if (!normalized.length) {
+      $('#blog-image-status').textContent = 'Ninguna imagen seleccionada.';
+    } else if (normalized.length === 1) {
       const locationText = located.length
         ? (normalized[0].locationSource === 'device'
           ? 'con ubicación actual del móvil'
@@ -8790,8 +8792,8 @@ function showBlogImages(images = []) {
   }
   if ($('#blog-image-rotate-actions')) $('#blog-image-rotate-actions').hidden = normalized.length === 0;
   if ($('#blog-gallery-preview')) {
-    $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure class="${index === 0 ? 'is-primary' : ''}"><button type="button" data-blog-primary-image="${index}" title="Usar como primera imagen"><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"></button><figcaption>${index === 0 ? '<strong>Primera</strong> · ' : ''}${escapeHtml(image.name)} · ${storedImageCoordinates(image) ? 'GPS' : 'sin GPS'}</figcaption><select data-blog-image-type="${index}" aria-label="Tipo de ${escapeHtml(image.name || `imagen ${index + 1}`)}">${photoTypeOptionsHtml(image.photoTypeId)}</select></figure>`).join('');
-    $('#blog-gallery-preview').hidden = normalized.length <= 1;
+    $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure class="${index === 0 ? 'is-primary' : ''}"><button type="button" class="blog-gallery-select" data-blog-primary-image="${index}" title="Usar como primera imagen"><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"></button><figcaption>${index === 0 ? '<strong>Primera</strong> · ' : ''}${escapeHtml(image.name)} · ${storedImageCoordinates(image) ? 'GPS' : 'sin GPS'}</figcaption><select data-blog-image-type="${index}" aria-label="Tipo de ${escapeHtml(image.name || `imagen ${index + 1}`)}">${photoTypeOptionsHtml(image.photoTypeId)}</select><button type="button" class="ghost blog-gallery-remove" data-blog-remove-image="${index}" aria-label="Quitar ${escapeHtml(image.name || `imagen ${index + 1}`)}">Quitar</button></figure>`).join('');
+    $('#blog-gallery-preview').hidden = normalized.length === 0;
   }
   if ($('#blog-images-map-option')) {
     $('#blog-images-map-option').hidden = located.length === 0;
@@ -8814,6 +8816,16 @@ function selectBlogPrimaryImage(index) {
   images.unshift(selected);
   showBlogImages(images);
   applyBlogImageDateTime(selected);
+}
+
+function removeBlogImage(index) {
+  const images = [activeBlogImage, ...activeBlogGalleryImages].filter(Boolean);
+  const imageIndex = Number(index);
+  if (!Number.isInteger(imageIndex) || imageIndex < 0 || imageIndex >= images.length) return;
+  const [removed] = images.splice(imageIndex, 1);
+  showBlogImages(images);
+  setMessage('#msg-blog-entry', `${removed.name || 'Imagen'} se quitará al guardar la entrada.`);
+  scheduleActiveBlogEntryDraftSave();
 }
 
 function setActiveBlogImagesMapEnabled(enabled) {
@@ -8969,6 +8981,12 @@ async function copyBlogPointCoordinates() {
 function setBlogEntryType(type) {
   activeBlogEntryType = type;
   blogManualRouteLocationOpen = false;
+  const helpTarget = {
+    texto: 'blog-formulario-texto',
+    imagen: 'blog-formulario-imagen',
+    punto: 'blog-formulario-punto'
+  }[type] || 'blog-formulario';
+  setDialogHelpTarget('blog-entry-dialog', helpTarget);
   if ($('#blog-entry-type-choice')) $('#blog-entry-type-choice').hidden = true;
   if ($('#blog-entry-fields')) $('#blog-entry-fields').hidden = false;
   if ($('#blog-tipo')) $('#blog-tipo').value = blogTypeLabel(type);
@@ -9062,6 +9080,7 @@ function openBlogEntryDialog(entry = null) {
   activeBlogEntryId = entry ? Number(entry.id) : null;
   activeBlogEntryAnchor = entry ? captureBlogEntryAnchor(entry.id) : null;
   activeBlogEntryType = '';
+  setDialogHelpTarget('blog-entry-dialog', 'blog-formulario');
   blogManualRouteLocationOpen = false;
   clearBlogImageSelection();
   if ($('#blog-entry-title')) $('#blog-entry-title').textContent = entry ? 'Editar entrada del blog' : `Añadir entrada · ${trip.nombre}`;
@@ -9603,21 +9622,22 @@ async function saveBlogEntryForm() {
       await updateBlogEntry(previousFeatured.id, { featuredImage: false });
     }
   }
-  if (type === 'gasto' && activeBlogImage) {
+  if (type === 'gasto') {
+    const image = activeBlogImage;
     Object.assign(values, {
-      imageName: activeBlogImage.name,
-      imageType: activeBlogImage.type,
-      imageSize: activeBlogImage.size,
-      imageData: activeBlogImage.data,
-      imageWidth: activeBlogImage.width,
-      imageHeight: activeBlogImage.height,
-      imageId: activeBlogImage.id || '',
-      imageLatitude: activeBlogImage.latitude,
-      imageLongitude: activeBlogImage.longitude,
-      imageLocationSource: activeBlogImage.locationSource || '',
-      imagePhotoTypeId: activeBlogImage.photoTypeId || '',
-      imagePhotoTypeName: photoTypeLabel(activeBlogImage),
-      imageMapEnabled: activeBlogImage.mapEnabled === true,
+      imageName: image ? image.name : '',
+      imageType: image ? image.type : '',
+      imageSize: image ? image.size : 0,
+      imageData: image ? image.data : '',
+      imageWidth: image ? image.width : 0,
+      imageHeight: image ? image.height : 0,
+      imageId: image ? image.id || '' : '',
+      imageLatitude: image ? image.latitude : null,
+      imageLongitude: image ? image.longitude : null,
+      imageLocationSource: image ? image.locationSource || '' : '',
+      imagePhotoTypeId: image ? image.photoTypeId || '' : '',
+      imagePhotoTypeName: image ? photoTypeLabel(image) : '',
+      imageMapEnabled: Boolean(image && image.mapEnabled === true),
       galleryImages: activeBlogGalleryImages.map(normalizeBlogImageRecord)
     });
   }
@@ -9630,9 +9650,14 @@ async function saveBlogEntryForm() {
       Number(entry.id) !== Number(current && current.id) &&
       geographicDistanceMeters(entry, point) < 30
     );
-    if (duplicate) throw new Error(`Ya existe el punto «${duplicate.descripcion}» a menos de 30 metros.`);
-    values.latitude = point.latitude;
-    values.longitude = point.longitude;
+    const duplicatePoint = duplicate ? blogPointCoordinates(duplicate) : null;
+    if (duplicate && duplicatePoint) {
+      const distance = Math.max(0, Math.round(geographicDistanceMeters(duplicate, point)));
+      const useExisting = confirm(`Ya existe el punto «${duplicate.descripcion}» a ${distance} m. ¿Quieres usar esa misma ubicación para esta entrada?`);
+      if (!useExisting) throw new Error('No se ha guardado. Marca otra ubicación o acepta usar el punto existente.');
+    }
+    values.latitude = duplicatePoint ? duplicatePoint.latitude : point.latitude;
+    values.longitude = duplicatePoint ? duplicatePoint.longitude : point.longitude;
     values.notas = String($('#blog-point-notes') ? $('#blog-point-notes').value : '').trim();
   }
   if (current) {
@@ -10176,8 +10201,14 @@ function scrollToLastBlogEntry() {
   scrollElementBelowHeader(target);
 }
 
+function resetBlogTableHorizontalScroll() {
+  const wrapper = $('#tabla-blog')?.closest('.table-wrap');
+  if (wrapper) wrapper.scrollLeft = 0;
+}
+
 function setTab(id, options = {}) {
   if (id === 'blog' && !selectedBlogTrip()) return;
+  const previousTab = state.activeTab;
   if (id !== 'mapa' && tripVectorMap) destroyTripVectorMap();
   state.activeTab = id;
   ['viajes', 'gastos', 'blog', 'mapa', 'resumen', 'config'].forEach(tab => {
@@ -10188,6 +10219,7 @@ function setTab(id, options = {}) {
   if (id === 'resumen') renderResumen();
   if (id === 'blog') {
     renderBlog();
+    if (previousTab !== 'blog') resetBlogTableHorizontalScroll();
     const anchoredEntry = options.blogEntryAnchor
       ? state.blogEntries.find(entry => Number(entry.id) === Number(options.blogEntryAnchor.entryId))
       : null;
@@ -11418,6 +11450,11 @@ function bindEvents() {
   };
   $('#blog-save-original').onclick = saveBlogCameraOriginal;
   $('#blog-gallery-preview').onclick = event => {
+    const removeButton = event.target.closest('[data-blog-remove-image]');
+    if (removeButton) {
+      removeBlogImage(removeButton.dataset.blogRemoveImage);
+      return;
+    }
     const button = event.target.closest('[data-blog-primary-image]');
     if (button) selectBlogPrimaryImage(button.dataset.blogPrimaryImage);
   };

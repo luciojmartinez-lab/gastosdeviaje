@@ -1,17 +1,17 @@
-const APP_VERSION = '700v179';
-const CACHE_NAME = 'gastosdeviaje-700v179-offline-start';
+const APP_VERSION = '700v180';
+const CACHE_NAME = 'gastosdeviaje-700v180-offline-start';
 const MAP_RUNTIME_CACHE = 'cuaderno-bitacora-map-runtime-v1';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname;
 const APP_SHELL_REQUIRED = [
   './',
   './index.html',
-  './styles.css?v=700v179',
-  './map-model.js?v=700v179',
-  './app.bundle.js?v=700v179',
+  './styles.css?v=700v180',
+  './map-model.js?v=700v180',
+  './app.bundle.js?v=700v180',
   './vendor/maplibre/maplibre-gl.css?v=5.24.0',
   './vendor/maplibre/maplibre-gl.js?v=5.24.0',
-  './manifest.webmanifest?v=700v179',
+  './manifest.webmanifest?v=700v180',
   './version.txt',
   './assets/bitacora-splash.png',
   './assets/bitacora-splash-mobile.png',
@@ -20,8 +20,8 @@ const APP_SHELL_REQUIRED = [
 const APP_SHELL_OPTIONAL = [
   './assets/app-icon-192.png',
   './assets/app-icon-512.png',
-  './ticket-ocr.js?v=700v179',
-  './image-location.js?v=700v179',
+  './ticket-ocr.js?v=700v180',
+  './image-location.js?v=700v180',
   './ayuda.html',
   './assets/help/01-viajes.png',
   './assets/help/02-configuracion.png',
@@ -29,6 +29,7 @@ const APP_SHELL_OPTIONAL = [
   './assets/help/04-tabla-gastos.png',
   './assets/help/05-blog.png',
   './assets/help/06-alta-blog.png',
+  './assets/help/06-punto-blog.png',
   './assets/help/07-mapa.png',
   './assets/help/08-resumen.png',
   './output/pdf/ayuda-cuaderno-bitacora.pdf',
