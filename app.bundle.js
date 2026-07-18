@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v182';
+const APP_VERSION = '700v183';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -1571,6 +1571,12 @@ function inclusiveDateDays(start, end) {
   return Math.floor((endTime - startTime) / 86400000) + 1;
 }
 
+function tripDailyExpenseAverage(totalEur, days) {
+  const dayCount = Number(days);
+  if (!Number.isFinite(dayCount) || dayCount <= 0) return null;
+  return (Number(totalEur) || 0) / dayCount;
+}
+
 function summaryDays(gastos) {
   const selected = selectedTrips();
   const trips = selected.length ? selected : state.viajes;
@@ -1795,7 +1801,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v182');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v183');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1827,7 +1833,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v182');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v183');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2270,7 +2276,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v182');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v183');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4943,7 +4949,7 @@ function renderViajesHome() {
   info.textContent = selectedTripsLabel();
   if (!state.viajes.length) {
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td colspan="9">Todavía no hay viajes. Puedes crearlos en Configuración.</td>';
+    tr.innerHTML = '<td colspan="10">Todavía no hay viajes. Puedes crearlos en Configuración.</td>';
     tbody.appendChild(tr);
     return;
   }
@@ -4957,7 +4963,7 @@ function renderViajesHome() {
     const yearChecked = yearTrips.every(v => selectedIds.has(v.id));
     const header = document.createElement('tr');
     header.className = 'group-row';
-    header.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-year="${escapeHtml(year)}"${yearChecked ? ' checked' : ''}> <span>Año ${escapeHtml(year)}</span></label></td><td colspan="8">Selecciona el año para sumar todos sus viajes</td>`;
+    header.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-year="${escapeHtml(year)}"${yearChecked ? ' checked' : ''}> <span>Año ${escapeHtml(year)}</span></label></td><td colspan="9">Selecciona el año para sumar todos sus viajes</td>`;
     tbody.appendChild(header);
     const yearInput = header.querySelector('input[data-trip-year]');
     let yearExpenses = 0;
@@ -4968,6 +4974,7 @@ function renderViajesHome() {
       const expenses = state.gastos.filter(g => g.viajeId === v.id);
       const days = inclusiveDateDays(v.fechaInicio, v.fechaFin);
       const total = expenses.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
+      const dailyAverage = tripDailyExpenseAverage(total, days);
       const budget = effectiveTripBudget(v);
       const remaining = budget ? budget - total : null;
       yearExpenses += expenses.length;
@@ -4977,13 +4984,14 @@ function renderViajesHome() {
       const tr = document.createElement('tr');
       if (remaining !== null && remaining < 0) tr.className = 'warning-row';
       const documentCount = tripDocumentsFor(v.id).length;
-      tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${days || '-'}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><select class="trip-home-action-select" data-trip-home-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}"><option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="edit">Editar</option></select></td>`;
+      tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${days || '-'}</td><td>${dailyAverage === null ? '-' : fmtCurrency(dailyAverage, 'EUR')}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><select class="trip-home-action-select" data-trip-home-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}"><option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="edit">Editar</option></select></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
     const yearRemaining = yearBudget ? yearBudget - yearTotal : null;
+    const yearDailyAverage = tripDailyExpenseAverage(yearTotal, yearDays);
     subtotal.className = yearRemaining !== null && yearRemaining < 0 ? 'warning-row' : 'subtotal-row';
-    subtotal.innerHTML = `<td colspan="3">Subtotal ${escapeHtml(year)}</td><td>${yearDays || '-'}</td><td>${yearExpenses}</td><td>${fmtCurrency(yearTotal, 'EUR')}</td><td>${yearBudget ? fmtCurrency(yearBudget, 'EUR') : '-'}</td><td>${yearRemaining === null ? '-' : fmtCurrency(yearRemaining, 'EUR')}</td><td></td>`;
+    subtotal.innerHTML = `<td colspan="3">Subtotal ${escapeHtml(year)}</td><td>${yearDays || '-'}</td><td>${yearDailyAverage === null ? '-' : fmtCurrency(yearDailyAverage, 'EUR')}</td><td>${yearExpenses}</td><td>${fmtCurrency(yearTotal, 'EUR')}</td><td>${yearBudget ? fmtCurrency(yearBudget, 'EUR') : '-'}</td><td>${yearRemaining === null ? '-' : fmtCurrency(yearRemaining, 'EUR')}</td><td></td>`;
     tbody.appendChild(subtotal);
     if (yearInput) yearInput.indeterminate = !yearChecked && yearTrips.some(v => selectedIds.has(v.id));
   });
