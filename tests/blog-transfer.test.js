@@ -171,6 +171,17 @@ test('textos e imágenes sin GPS permiten marcar una ubicación manual', () => {
   assert.match(styles, /\.blog-point-actions \.btn\[hidden\]/);
 });
 
+test('el selector de punto es legible y conserva En ruta al editar en movil', () => {
+  assert.match(html, /class="blog-point-zoom-actions" role="group" aria-label="Zoom del mapa"/);
+  assert.match(styles, /\.blog-point-actions \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\) auto/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*\.blog-point-actions \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /\.blog-point-map-frame \{[\s\S]*aspect-ratio: 16 \/ 9/);
+  assert.match(app, /const width = 640;\s+const height = 360;/);
+  assert.match(app, /function resetBlogPointPicker\(entry = null\)[\s\S]*renderBlogPointPicker\(\);\s+syncBlogEnRouteOption\(\);/);
+  assert.match(app, /if \(type === 'punto'\) resetBlogPointPicker\(blogPointFieldCoordinates\(\)\)/);
+  assert.match(help, /las coordenadas guardadas se restauran en el mapa y mantienen disponible la opción/);
+});
+
 test('el Blog y su PDF no añaden un mapa automático de puntos al final', () => {
   assert.doesNotMatch(html, /id="blog-points-overview"/);
   assert.doesNotMatch(app, /function renderBlogPointsOverview/);

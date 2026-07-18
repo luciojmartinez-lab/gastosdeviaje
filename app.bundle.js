@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v180';
+const APP_VERSION = '700v181';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1794,7 +1794,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v180');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v181');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1826,7 +1826,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v180');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v181');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2269,7 +2269,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v180');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v181');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -8634,7 +8634,7 @@ function renderBlogPointPicker() {
   const container = $('#blog-point-map');
   if (!container || activeBlogEntryType !== 'punto') return;
   const width = 640;
-  const height = 280;
+  const height = 360;
   const zoom = Math.max(3, Math.min(19, Number(blogPointPickerState.zoom) || 15));
   const layer = mapTileLayer(blogPointPickerState.centerLat, blogPointPickerState.centerLng, zoom, width, height);
   const selected = blogPointFieldCoordinates();
@@ -8671,6 +8671,7 @@ function resetBlogPointPicker(entry = null) {
   blogPointPickerState.zoom = point ? 16 : fallback.zoom;
   setMessage('#blog-point-status', point ? 'Punto guardado. Puedes corregirlo pulsando en el mapa.' : 'Pulsa en el mapa para marcar el punto.');
   renderBlogPointPicker();
+  syncBlogEnRouteOption();
 }
 
 function selectBlogPointFromMap(event, frame) {
@@ -8995,7 +8996,7 @@ function setBlogEntryType(type) {
   if ($('#blog-text-fields')) $('#blog-text-fields').hidden = type !== 'texto';
   syncBlogPointFieldsVisibility();
   if ($('#blog-featured-option')) $('#blog-featured-option').hidden = type !== 'imagen';
-  if (type === 'punto') resetBlogPointPicker();
+  if (type === 'punto') resetBlogPointPicker(blogPointFieldCoordinates());
   syncBlogEnRouteOption();
   if (!restoringFormDraft) scheduleActiveBlogEntryDraftSave();
 }
