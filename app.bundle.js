@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v178';
+const APP_VERSION = '700v179';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -1564,10 +1564,10 @@ function selectedTrips() {
 
 function inclusiveDateDays(start, end) {
   if (!start || !end) return 0;
-  const startDate = new Date(`${start}T00:00:00`);
-  const endDate = new Date(`${end}T00:00:00`);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0;
-  return Math.max(1, Math.ceil((endDate - startDate) / 86400000) + 1);
+  const startTime = Date.parse(`${start}T00:00:00Z`);
+  const endTime = Date.parse(`${end}T00:00:00Z`);
+  if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime < startTime) return 0;
+  return Math.floor((endTime - startTime) / 86400000) + 1;
 }
 
 function summaryDays(gastos) {
@@ -1794,7 +1794,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v178');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v179');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1826,7 +1826,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v178');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v179');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2269,7 +2269,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v178');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v179');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4940,7 +4940,7 @@ function renderViajesHome() {
   info.textContent = selectedTripsLabel();
   if (!state.viajes.length) {
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td colspan="8">Todavía no hay viajes. Puedes crearlos en Configuración.</td>';
+    tr.innerHTML = '<td colspan="9">Todavía no hay viajes. Puedes crearlos en Configuración.</td>';
     tbody.appendChild(tr);
     return;
   }
@@ -4954,30 +4954,33 @@ function renderViajesHome() {
     const yearChecked = yearTrips.every(v => selectedIds.has(v.id));
     const header = document.createElement('tr');
     header.className = 'group-row';
-    header.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-year="${escapeHtml(year)}"${yearChecked ? ' checked' : ''}> <span>Año ${escapeHtml(year)}</span></label></td><td colspan="7">Selecciona el año para sumar todos sus viajes</td>`;
+    header.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-year="${escapeHtml(year)}"${yearChecked ? ' checked' : ''}> <span>Año ${escapeHtml(year)}</span></label></td><td colspan="8">Selecciona el año para sumar todos sus viajes</td>`;
     tbody.appendChild(header);
     const yearInput = header.querySelector('input[data-trip-year]');
     let yearExpenses = 0;
+    let yearDays = 0;
     let yearTotal = 0;
     let yearBudget = 0;
     yearTrips.forEach(v => {
       const expenses = state.gastos.filter(g => g.viajeId === v.id);
+      const days = inclusiveDateDays(v.fechaInicio, v.fechaFin);
       const total = expenses.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
       const budget = effectiveTripBudget(v);
       const remaining = budget ? budget - total : null;
       yearExpenses += expenses.length;
+      yearDays += days;
       yearTotal += total;
       yearBudget += budget;
       const tr = document.createElement('tr');
       if (remaining !== null && remaining < 0) tr.className = 'warning-row';
       const documentCount = tripDocumentsFor(v.id).length;
-      tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><select class="trip-home-action-select" data-trip-home-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}"><option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="edit">Editar</option></select></td>`;
+      tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${days || '-'}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><select class="trip-home-action-select" data-trip-home-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}"><option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="edit">Editar</option></select></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
     const yearRemaining = yearBudget ? yearBudget - yearTotal : null;
     subtotal.className = yearRemaining !== null && yearRemaining < 0 ? 'warning-row' : 'subtotal-row';
-    subtotal.innerHTML = `<td colspan="3">Subtotal ${escapeHtml(year)}</td><td>${yearExpenses}</td><td>${fmtCurrency(yearTotal, 'EUR')}</td><td>${yearBudget ? fmtCurrency(yearBudget, 'EUR') : '-'}</td><td>${yearRemaining === null ? '-' : fmtCurrency(yearRemaining, 'EUR')}</td><td></td>`;
+    subtotal.innerHTML = `<td colspan="3">Subtotal ${escapeHtml(year)}</td><td>${yearDays || '-'}</td><td>${yearExpenses}</td><td>${fmtCurrency(yearTotal, 'EUR')}</td><td>${yearBudget ? fmtCurrency(yearBudget, 'EUR') : '-'}</td><td>${yearRemaining === null ? '-' : fmtCurrency(yearRemaining, 'EUR')}</td><td></td>`;
     tbody.appendChild(subtotal);
     if (yearInput) yearInput.indeterminate = !yearChecked && yearTrips.some(v => selectedIds.has(v.id));
   });

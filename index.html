@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v178">
+  <link rel="manifest" href="manifest.webmanifest?v=700v179">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v178">
+  <link rel="stylesheet" href="styles.css?v=700v179">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v178 · 18/07/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v179 · 18/07/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v178</div>
+  <div class="app-version">700v179</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -59,7 +59,7 @@
         <span class="backup-actions"><button class="btn ghost" id="btn-import-home" onclick="openBackupDialogSafe('import')" type="button">Importación</button><button class="btn ghost" id="btn-backup-home" onclick="openBackupDialogSafe('backup')" type="button">Backups</button><button class="btn ghost" id="btn-sync-home" type="button">Sincronizar</button></span>
       </div>
       <div class="table-wrap">
-        <table id="tabla-viajes-home"><thead><tr><th>Viaje / filtro</th><th>Inicio</th><th>Final</th><th>Gastos</th><th>Total EUR</th><th>Presupuesto</th><th>Restante</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-viajes-home"><thead><tr><th>Viaje / filtro</th><th>Inicio</th><th>Final</th><th>Días</th><th>Gastos</th><th>Total EUR</th><th>Presupuesto</th><th>Restante</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
   </section>
@@ -932,11 +932,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v178"></script>
-<script src="app.bundle.js?v=700v178"></script>
+<script src="map-model.js?v=700v179"></script>
+<script src="app.bundle.js?v=700v179"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v178';
+    const pageVersion = '700v179';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -988,7 +988,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v178', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v179', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
