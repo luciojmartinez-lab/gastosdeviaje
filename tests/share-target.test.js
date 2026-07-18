@@ -73,3 +73,15 @@ test('el texto compartido abre una entrada de Blog revisable', () => {
   assert.match(app, /if \(!files\.length\) \{[\s\S]*?setBlogEntryType\('texto'\)[\s\S]*?#blog-texto/);
   assert.match(app, /Texto listo para añadir al Blog/);
 });
+
+test('el contenido compartido se prepara antes de mostrar el diálogo', () => {
+  assert.match(app, /async function openSharedImagesDialog\(payload\)/);
+  assert.match(app, /await Promise\.all\(\[[\s\S]*?waitForSharedPreviewImages\(\)[\s\S]*?updateSharedImagesGpsSummary\(payload\)/);
+  const openStart = app.indexOf('async function openSharedImagesDialog(payload)');
+  const openEnd = app.indexOf('\nfunction closeSharedImagesDialog()', openStart);
+  const source = app.slice(openStart, openEnd);
+  assert.ok(source.indexOf('await Promise.all([') < source.indexOf('dialog.showModal()'));
+  assert.match(app, /await openSharedImagesDialog\(\{ \.\.\.metadata, files \}\)/);
+  assert.match(app, /APP_HAS_SHARED_LAUNCH[\s\S]*?Preparando contenido compartido/);
+  assert.match(app, /APP_HAS_SHARED_LAUNCH \? 15000 : APP_LOADING_MAX_MS/);
+});

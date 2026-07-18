@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v177';
+const APP_VERSION = '700v178';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -70,6 +70,7 @@ let currentImageLocationPromise = null;
 let lastCurrentImageLocation = null;
 let pendingSharedImagesPayload = null;
 let sharedImagePreviewUrls = [];
+let activeContextHelpTrigger = null;
 const tripMapPhotoLookup = new Map();
 let tripVectorMap = null;
 let tripVectorMarkers = [];
@@ -362,34 +363,66 @@ async function clearStores(names) {
 const $ = selector => document.querySelector(selector);
 const $$ = selector => Array.from(document.querySelectorAll(selector));
 
-function dialogHelpHref(target) {
-  return `ayuda.html#${encodeURIComponent(target || 'referencia')}`;
+function setDialogHelpTarget(dialogId, target) {
+  const button = $(`#${dialogId} .dialog-help`);
+  if (button) button.dataset.helpTarget = target || 'referencia';
 }
 
-function setDialogHelpTarget(dialogId, target) {
-  const link = $(`#${dialogId} .dialog-help`);
-  if (link) link.href = dialogHelpHref(target);
+function closeContextHelp() {
+  const dialog = $('#context-help-dialog');
+  if (!dialog) return;
+  if (dialog.open && dialog.close) dialog.close();
+  else {
+    dialog.removeAttribute('open');
+    restoreContextHelpFocus();
+  }
+}
+
+function restoreContextHelpFocus() {
+  const frame = $('#context-help-frame');
+  if (frame) frame.src = 'about:blank';
+  const trigger = activeContextHelpTrigger;
+  activeContextHelpTrigger = null;
+  if (trigger && trigger.isConnected) {
+    try {
+      trigger.focus({ preventScroll: true });
+    } catch (_) {
+      trigger.focus();
+    }
+  }
+}
+
+function openContextHelp(target, trigger) {
+  const dialog = $('#context-help-dialog');
+  const frame = $('#context-help-frame');
+  if (!dialog || !frame) return;
+  activeContextHelpTrigger = trigger || document.activeElement;
+  frame.src = `ayuda.html?embedded=1&target=${encodeURIComponent(target || 'referencia')}`;
+  if (dialog.open) return;
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
 }
 
 function installDialogHelpLinks() {
   $$('dialog.modal').forEach(dialog => {
+    if (dialog.id === 'context-help-dialog') return;
     const target = DIALOG_HELP_TARGETS[dialog.id] || 'referencia';
-    const link = document.createElement('a');
-    link.className = 'dialog-help';
-    link.href = dialogHelpHref(target);
-    link.target = '_blank';
-    link.rel = 'noopener';
-    link.textContent = 'i';
-    link.title = 'Abrir ayuda de esta pantalla';
-    link.setAttribute('aria-label', 'Abrir ayuda de esta pantalla');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'dialog-help';
+    button.dataset.helpTarget = target;
+    button.textContent = 'i';
+    button.title = 'Abrir ayuda de esta pantalla';
+    button.setAttribute('aria-label', 'Abrir ayuda de esta pantalla');
+    button.onclick = () => openContextHelp(button.dataset.helpTarget, button);
     const head = dialog.querySelector('.modal-head');
     if (head) {
       const closeButton = head.querySelector('.icon-btn');
-      head.insertBefore(link, closeButton || null);
+      head.insertBefore(button, closeButton || null);
     } else {
-      link.classList.add('dialog-help-floating');
+      button.classList.add('dialog-help-floating');
       const form = dialog.querySelector('form');
-      if (form) form.prepend(link);
+      if (form) form.prepend(button);
     }
   });
 }
@@ -1761,7 +1794,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v177');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v178');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1793,7 +1826,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v177');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v178');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2236,7 +2269,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v177');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v178');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -9312,7 +9345,19 @@ async function updateSharedImagesGpsSummary(payload) {
   summary.textContent = `${payload.files.length} ${payload.files.length === 1 ? 'imagen recibida' : 'imágenes recibidas'} · ${located} con GPS${located < payload.files.length ? ` · ${payload.files.length - located} sin GPS` : ''}.`;
 }
 
-function openSharedImagesDialog(payload) {
+function waitForSharedPreviewImages() {
+  const images = $$('#shared-images-preview img');
+  if (!images.length) return Promise.resolve();
+  const ready = Promise.all(images.map(image => image.complete
+    ? Promise.resolve()
+    : new Promise(resolve => {
+      image.addEventListener('load', resolve, { once: true });
+      image.addEventListener('error', resolve, { once: true });
+    })));
+  return Promise.race([ready, new Promise(resolve => window.setTimeout(resolve, 3000))]);
+}
+
+async function openSharedImagesDialog(payload) {
   payload = { ...payload, files: Array.isArray(payload?.files) ? payload.files : [] };
   pendingSharedImagesPayload = payload;
   revokeSharedImagePreviewUrls();
@@ -9355,12 +9400,16 @@ function openSharedImagesDialog(payload) {
   if (descriptionLabel) descriptionLabel.textContent = payload.files.length === 1 ? 'Descripción de la foto' : 'Descripción de las fotos';
   if ($('#msg-shared-images')) setMessage('#msg-shared-images', '');
   syncSharedImagesDestination();
+  await Promise.all([
+    waitForSharedPreviewImages(),
+    updateSharedImagesGpsSummary(payload).catch(error => {
+      if ($('#shared-images-summary')) $('#shared-images-summary').textContent = `No se pudo comprobar el GPS: ${error.message || error}`;
+    })
+  ]);
+  if (pendingSharedImagesPayload !== payload) return;
   const dialog = $('#shared-images-dialog');
   if (dialog?.showModal) dialog.showModal();
   else dialog?.setAttribute('open', 'open');
-  updateSharedImagesGpsSummary(payload).catch(error => {
-    if ($('#shared-images-summary')) $('#shared-images-summary').textContent = `No se pudo comprobar el GPS: ${error.message || error}`;
-  });
 }
 
 function closeSharedImagesDialog() {
@@ -9469,7 +9518,7 @@ async function consumeSharedImagesLaunch() {
   }));
   await deleteSharedLaunchCache(metadataUrl, descriptors);
   if (!files.length && !sharedPayloadText(metadata)) throw new Error('No se recibió contenido compatible.');
-  openSharedImagesDialog({ ...metadata, files });
+  await openSharedImagesDialog({ ...metadata, files });
 }
 
 async function saveBlogEntryForm() {
@@ -11248,6 +11297,8 @@ function bindEvents() {
   $('#tab-mapa').onclick = () => setTab('mapa');
   $('#tab-resumen').onclick = () => setTab('resumen');
   $('#tab-config').onclick = () => setTab('config');
+  $('#context-help-close').onclick = closeContextHelp;
+  $('#context-help-dialog').onclose = restoreContextHelpFocus;
   $('#btn-clear-trip').onclick = () => {
     applySelectedTrip(null);
     setTab('viajes');
@@ -12596,6 +12647,13 @@ function bindEvents() {
 const APP_LOADING_STARTED_AT = Date.now();
 const APP_LOADING_MIN_MS = 4000;
 const APP_LOADING_MAX_MS = 8000;
+const APP_HAS_SHARED_LAUNCH = new URL(window.location.href).searchParams.has('shared')
+  || new URL(window.location.href).searchParams.has('shared_error');
+
+if (APP_HAS_SHARED_LAUNCH) {
+  const loadingMessage = $('#app-loading p');
+  if (loadingMessage) loadingMessage.textContent = 'Preparando contenido compartido...';
+}
 
 function finishAppLoading() {
   const loading = $('#app-loading');
@@ -12646,7 +12704,7 @@ async function saveBlogCameraOriginal() {
   updateBlogOriginalActions('Descarga iniciada. En algunos móviles se guarda en Descargas.');
 }
 
-window.setTimeout(finishAppLoading, APP_LOADING_MAX_MS);
+window.setTimeout(finishAppLoading, APP_HAS_SHARED_LAUNCH ? 15000 : APP_LOADING_MAX_MS);
 
 function updateOfflineStatus() {
   const status = $('#offline-status');
@@ -12660,7 +12718,6 @@ window.addEventListener('offline', updateOfflineStatus);
 
 window.addEventListener('DOMContentLoaded', async () => {
   try {
-    const hasSharedLaunch = new URL(window.location.href).searchParams.has('shared') || new URL(window.location.href).searchParams.has('shared_error');
     updateOfflineStatus();
     installDialogHelpLinks();
     bindEvents();
@@ -12675,8 +12732,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       console.warn('No se pudo crear la copia local de entrada', error);
     }
     renderBackupStatus();
-    finishAppLoading();
-    if (hasSharedLaunch) {
+    if (APP_HAS_SHARED_LAUNCH) {
       try {
         await consumeSharedImagesLaunch();
       } catch (error) {
@@ -12685,6 +12741,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     } else {
       await checkCloudOnEntry();
     }
+    finishAppLoading();
   } finally {
     finishAppLoading();
   }
