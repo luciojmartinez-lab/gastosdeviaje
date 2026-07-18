@@ -168,6 +168,17 @@ test('el PDF del Blog usa 80 por ciento para imágenes normales y aprovecha el e
   assert.match(app, /class="blog-print-entry-heading"/);
 });
 
+test('el PDF del Blog respeta los filtros activos de día, país y ciudad', () => {
+  assert.match(app, /function filteredBlogEntries\(entries\)[\s\S]*?entry\.fecha === date[\s\S]*?entry\.paisId\) === countryId[\s\S]*?entry\.ciudadId\) === cityId/);
+  const printStart = app.indexOf('function printBlog()');
+  const printEnd = app.indexOf('\nasync function seedIfEmpty()', printStart);
+  const printBlogSource = app.slice(printStart, printEnd);
+  assert.match(printBlogSource, /const allEntries = blogEntriesForTrip\(trip\.id\)/);
+  assert.match(printBlogSource, /const entries = filteredBlogEntries\(allEntries\)/);
+  assert.match(printBlogSource, /No hay entradas del Blog que coincidan con los filtros seleccionados/);
+  assert.match(printBlogSource, /blogPrintBodyHtml\(trip, entries\)/);
+});
+
 test('los gastos permiten doble clic para editar y señalan si ya están en el Blog', () => {
   assert.match(app, /const expensesInBlog = new Set\(state\.blogEntries/);
   assert.match(app, /✓ Ya está en el Blog \(actualizar\)/);
