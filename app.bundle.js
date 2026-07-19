@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v186';
+const APP_VERSION = '700v187';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -65,6 +65,7 @@ let activeBlogGalleryImages = [];
 let activeBlogCameraOriginalFile = null;
 let blogManualRouteLocationOpen = false;
 let imageLocationModulePromise = null;
+let blogSharePdfModulePromise = null;
 const imageGpsCache = new WeakMap();
 const imageDateTimeCache = new WeakMap();
 let currentImageLocationPromise = null;
@@ -1812,7 +1813,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v186');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v187');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1844,7 +1845,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v186');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v187');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2287,7 +2288,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v186');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v187');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -8515,27 +8516,281 @@ function blogEntryShareText(entry) {
   return lines.filter(Boolean).join('\n');
 }
 
+function blogShareWrappedLines(context, value, maxWidth) {
+  const lines = [];
+  String(value || '').split(/\r?\n/).forEach(paragraph => {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean).flatMap(word => {
+      if (context.measureText(word).width <= maxWidth) return [word];
+      const parts = [];
+      let part = '';
+      for (const character of [...word]) {
+        const candidate = `${part}${character}`;
+        if (part && context.measureText(candidate).width > maxWidth) {
+          parts.push(part);
+          part = character;
+        } else {
+          part = candidate;
+        }
+      }
+      if (part) parts.push(part);
+      return parts;
+    });
+    if (!words.length) {
+      lines.push('');
+      return;
+    }
+    let line = '';
+    words.forEach(word => {
+      const candidate = line ? `${line} ${word}` : word;
+      if (!line || context.measureText(candidate).width <= maxWidth) {
+        line = candidate;
+      } else {
+        lines.push(line);
+        line = word;
+      }
+    });
+    if (line) lines.push(line);
+  });
+  return lines;
+}
+
+function loadBlogShareImage(record) {
+  return new Promise(resolve => {
+    if (!record || !record.data) {
+      resolve(null);
+      return;
+    }
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = record.data;
+  });
+}
+
+function canvasJpegBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (blob) resolve(blob);
+      else reject(new Error('No se pudo preparar la imagen para compartir'));
+    }, 'image/jpeg', 0.9);
+  });
+}
+
+async function createBlogEntryShareCanvas(entry) {
+  const width = 1080;
+  const margin = 64;
+  const contentWidth = width - (margin * 2);
+  const gap = 24;
+  const imageRecords = blogEntryImages(entry).filter(image => image.data);
+  const loadedImages = (await Promise.all(imageRecords.map(loadBlogShareImage))).filter(Boolean);
+  const measuringCanvas = document.createElement('canvas');
+  const context = measuringCanvas.getContext('2d');
+  if (!context) throw new Error('El navegador no permite preparar la tarjeta para compartir');
+
+  const heading = blogDayHeading(entry.fecha, [entry]);
+  const place = [blogPlaceName(entry.paisId), blogEntryCityName(entry)].filter(value => value && value !== '-').join(' · ');
+  const typeDetail = entry.tipo === 'gasto'
+    ? `${blogTypeLabel(entry.tipo)} · ${fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR')}`
+    : blogTypeLabel(entry.tipo);
+  const metadata = [
+    [summaryDocumentDate(entry.fecha, true), entry.hora || ''].filter(Boolean).join(' · '),
+    place,
+    typeDetail
+  ].filter(Boolean).join('     ');
+  const description = entry.descripcion || blogTypeLabel(entry.tipo);
+  const bodyText = entry.tipo === 'texto' ? entry.texto : entry.tipo === 'punto' ? entry.notas : '';
+
+  context.font = '700 48px Arial, sans-serif';
+  const headingLines = blogShareWrappedLines(context, heading, contentWidth);
+  context.font = '400 25px Arial, sans-serif';
+  const metadataLines = blogShareWrappedLines(context, metadata, contentWidth);
+  context.font = '600 36px Arial, sans-serif';
+  const descriptionLines = blogShareWrappedLines(context, description, contentWidth);
+  context.font = '400 29px Arial, sans-serif';
+  const bodyLines = bodyText ? blogShareWrappedLines(context, bodyText, contentWidth) : [];
+
+  const columnCount = loadedImages.length > 1 ? 2 : 1;
+  const columnWidth = columnCount === 2 ? (contentWidth - gap) / 2 : Math.min(contentWidth, 760);
+  const maximumImageHeight = loadedImages.length > 12 ? 340 : loadedImages.length > 1 ? 520 : 900;
+  const imageLayouts = loadedImages.map(image => {
+    const scale = Math.min(columnWidth / image.naturalWidth, maximumImageHeight / image.naturalHeight);
+    return { image, width: Math.round(image.naturalWidth * scale), height: Math.round(image.naturalHeight * scale) };
+  });
+  const imageRows = [];
+  for (let index = 0; index < imageLayouts.length; index += columnCount) {
+    const row = imageLayouts.slice(index, index + columnCount);
+    imageRows.push({ images: row, height: Math.max(...row.map(item => item.height)) });
+  }
+
+  const headingHeight = headingLines.length * 58;
+  const metadataHeight = metadataLines.length * 34;
+  const descriptionHeight = descriptionLines.length * 44;
+  const bodyHeight = bodyLines.length ? bodyLines.length * 40 + 16 : 0;
+  const imagesHeight = imageRows.length
+    ? imageRows.reduce((total, row) => total + row.height, 0) + gap * (imageRows.length - 1) + 34
+    : 0;
+  const height = Math.max(720, margin + headingHeight + 18 + metadataHeight + 38 + descriptionHeight + bodyHeight + imagesHeight + 92);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = Math.ceil(height);
+  const draw = canvas.getContext('2d');
+  if (!draw) throw new Error('El navegador no permite preparar la tarjeta para compartir');
+  draw.fillStyle = '#fff';
+  draw.fillRect(0, 0, canvas.width, canvas.height);
+
+  let y = margin;
+  const drawLines = (lines, lineHeight) => {
+    lines.forEach(line => {
+      y += lineHeight;
+      if (line) draw.fillText(line, margin, y);
+    });
+  };
+  draw.fillStyle = '#1f2937';
+  draw.font = '700 48px Arial, sans-serif';
+  drawLines(headingLines, 58);
+  y += 18;
+  draw.fillStyle = '#64748b';
+  draw.font = '400 25px Arial, sans-serif';
+  drawLines(metadataLines, 34);
+  y += 38;
+  draw.fillStyle = '#1f2937';
+  draw.font = '600 36px Arial, sans-serif';
+  drawLines(descriptionLines, 44);
+  if (bodyLines.length) {
+    y += 16;
+    draw.font = '400 29px Arial, sans-serif';
+    drawLines(bodyLines, 40);
+  }
+  if (imageRows.length) {
+    y += 34;
+    imageRows.forEach((row, rowIndex) => {
+      row.images.forEach((item, columnIndex) => {
+        const columnX = columnCount === 1 ? margin + (contentWidth - item.width) / 2 : margin + columnIndex * (columnWidth + gap);
+        const imageY = y + (row.height - item.height) / 2;
+        draw.drawImage(item.image, columnX, imageY, item.width, item.height);
+      });
+      y += row.height;
+      if (rowIndex < imageRows.length - 1) y += gap;
+    });
+  }
+  draw.strokeStyle = '#dbe3ef';
+  draw.lineWidth = 2;
+  draw.beginPath();
+  draw.moveTo(margin, canvas.height - 66);
+  draw.lineTo(width - margin, canvas.height - 66);
+  draw.stroke();
+  draw.fillStyle = '#64748b';
+  draw.font = '600 22px Arial, sans-serif';
+  draw.fillText('Cuaderno de Bitácora', margin, canvas.height - 28);
+
+  return canvas;
+}
+
+function blogSharePdfSliceHeight(canvas, sourceY, maximumHeight) {
+  if (sourceY + maximumHeight >= canvas.height) return canvas.height - sourceY;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) return maximumHeight;
+  const minimumHeight = Math.max(Math.floor(maximumHeight * 0.75), maximumHeight - 360);
+  let blankRows = 0;
+  try {
+    for (let height = maximumHeight; height >= minimumHeight; height -= 2) {
+      const pixels = context.getImageData(0, sourceY + height - 1, canvas.width, 1).data;
+      let blank = true;
+      for (let offset = 0; offset < pixels.length; offset += 32) {
+        if (pixels[offset] < 246 || pixels[offset + 1] < 246 || pixels[offset + 2] < 246) {
+          blank = false;
+          break;
+        }
+      }
+      blankRows = blank ? blankRows + 1 : 0;
+      if (blankRows >= 4) return Math.max(1, height);
+    }
+  } catch (error) {
+    console.warn('No se pudo ajustar el salto de página del PDF', error);
+  }
+  return maximumHeight;
+}
+
+async function blogShareCanvasPdfBlob(canvas) {
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const margin = 24;
+  const drawWidth = pageWidth - (margin * 2);
+  const pointsPerPixel = drawWidth / canvas.width;
+  const pixelsPerPage = Math.max(1, Math.floor((pageHeight - (margin * 2)) / pointsPerPixel));
+  const pageImages = [];
+  let sourceY = 0;
+  while (sourceY < canvas.height) {
+    const maximumHeight = Math.min(pixelsPerPage, canvas.height - sourceY);
+    const sourceHeight = blogSharePdfSliceHeight(canvas, sourceY, maximumHeight);
+    const pageCanvas = document.createElement('canvas');
+    pageCanvas.width = canvas.width;
+    pageCanvas.height = sourceHeight;
+    const pageContext = pageCanvas.getContext('2d');
+    if (!pageContext) throw new Error('El navegador no permite preparar las páginas del PDF');
+    pageContext.fillStyle = '#fff';
+    pageContext.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+    pageContext.drawImage(canvas, 0, sourceY, canvas.width, sourceHeight, 0, 0, canvas.width, sourceHeight);
+    const jpeg = await canvasJpegBlob(pageCanvas);
+    pageImages.push({
+      bytes: new Uint8Array(await jpeg.arrayBuffer()),
+      width: pageCanvas.width,
+      height: pageCanvas.height,
+      drawHeight: sourceHeight * pointsPerPixel
+    });
+    sourceY += sourceHeight;
+  }
+
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v187');
+  const pdfBuilder = await blogSharePdfModulePromise;
+  return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
+}
+
+async function createBlogEntrySharePdf(entry) {
+  const canvas = await createBlogEntryShareCanvas(entry);
+  const blob = await blogShareCanvasPdfBlob(canvas);
+  const description = entry.descripcion || blogTypeLabel(entry.tipo);
+  const fileName = `entrada-blog-${entry.fecha || currentLocalDate()}-${slugFilePart(description)}.pdf`;
+  return new File([blob], fileName, { type: 'application/pdf' });
+}
+
+function downloadBlogEntrySharePdf(file) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = file.name;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 async function shareBlogEntry(entry) {
   if (!entry) return;
   const title = entry.descripcion || 'Entrada del Blog';
   const text = blogEntryShareText(entry);
-  const files = blogEntryImages(entry).map((image, index) => {
-    if (!image.data) return null;
-    const type = image.type || 'image/jpeg';
-    const extension = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg';
-    const name = image.name || `imagen-blog-${index + 1}.${extension}`;
-    return new File([dataUrlToBlob(image.data, type)], name, { type });
-  }).filter(Boolean);
+  let sharePdf = null;
+  try {
+    sharePdf = await createBlogEntrySharePdf(entry);
+  } catch (error) {
+    console.warn('No se pudo crear el PDF de la entrada del Blog', error);
+  }
   if (navigator.share) {
     try {
       const payload = { title, text };
-      if (files.length && (!navigator.canShare || navigator.canShare({ files }))) payload.files = files;
+      if (sharePdf && (!navigator.canShare || navigator.canShare({ files: [sharePdf] }))) payload.files = [sharePdf];
       await navigator.share(payload);
       return;
     } catch (error) {
       if (error && error.name === 'AbortError') return;
       console.warn('No se pudo compartir la entrada del Blog', error);
     }
+  }
+  if (sharePdf) {
+    downloadBlogEntrySharePdf(sharePdf);
+    alert('La entrada se ha descargado como PDF para que puedas compartirla desde Descargas.');
+    return;
   }
   if (navigator.clipboard && navigator.clipboard.writeText) {
     await navigator.clipboard.writeText(text);
@@ -8614,7 +8869,7 @@ function renderBlog() {
       <td>${escapeHtml(blogPlaceName(entry.paisId))}</td>
       <td>${entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '-'}</td>
       <td>${entry.wordpressIncluded !== false ? '<span class="badge">Sí</span>' : 'No'}</td>
-      <td class="blog-entry-actions"><select class="blog-action-select" data-blog-action="${entry.id}" aria-label="Acciones de ${escapeHtml(entry.descripcion || 'la entrada')}"><option value="">Acciones</option><option value="share">Compartir</option>${pointOption}<option value="edit">Editar</option><option value="delete">Eliminar</option></select></td>
+      <td class="blog-entry-actions"><select class="blog-action-select" data-blog-action="${entry.id}" aria-label="Acciones de ${escapeHtml(entry.descripcion || 'la entrada')}"><option value="">Acciones</option><option value="share">Compartir como PDF</option>${pointOption}<option value="edit">Editar</option><option value="delete">Eliminar</option></select></td>
     </tr>`;
     }).join('')}
   `;

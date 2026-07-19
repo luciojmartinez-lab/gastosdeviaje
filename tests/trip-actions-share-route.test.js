@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [app, styles, help, sw] = await Promise.all([
+const [app, styles, help, sw, sharePdf] = await Promise.all([
   readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
   readFile(new URL('../styles.css', import.meta.url), 'utf8'),
   readFile(new URL('../ayuda.html', import.meta.url), 'utf8'),
-  readFile(new URL('../sw.js', import.meta.url), 'utf8')
+  readFile(new URL('../sw.js', import.meta.url), 'utf8'),
+  readFile(new URL('../share-pdf.js', import.meta.url), 'utf8')
 ]);
 
 test('Viajes muestra sus acciones en un desplegable', () => {
@@ -15,12 +16,20 @@ test('Viajes muestra sus acciones en un desplegable', () => {
   assert.match(styles, /\.trip-home-action-select/);
 });
 
-test('las entradas del Blog se pueden compartir con texto e imágenes', () => {
+test('las entradas del Blog se comparten como un PDF real', () => {
   assert.match(app, /async function shareBlogEntry\(entry\)/);
+  assert.match(app, /async function createBlogEntrySharePdf\(entry\)/);
+  assert.match(app, /function blogSharePdfSliceHeight\(canvas, sourceY, maximumHeight\)/);
+  assert.match(app, /context\.measureText\(word\)\.width <= maxWidth/);
+  assert.match(app, /return new File\(\[blob\], fileName, \{ type: 'application\/pdf' \}\)/);
+  assert.match(sharePdf, /\/MediaBox \[0 0 \$\{pageWidth\} \$\{pageHeight\}\]/);
+  assert.match(app, /payload\.files = \[sharePdf\]/);
   assert.match(app, /navigator\.share\(payload\)/);
+  assert.match(app, /downloadBlogEntrySharePdf\(sharePdf\)/);
   assert.match(app, /navigator\.clipboard\.writeText\(text\)/);
-  assert.match(app, /<option value="share">Compartir<\/option>/);
+  assert.match(app, /<option value="share">Compartir como PDF<\/option>/);
   assert.match(app, /handleBlogAction\(blogActionId, action\)/);
+  assert.match(help, /PDF real[\s\S]*?páginas A4[\s\S]*?<code>about:blank<\/code>/);
 });
 
 test('los trayectos son líneas rectas discontinuas sin modos de transporte', () => {
