@@ -26,6 +26,17 @@ FECHA: 19/07/26 HORA: 1020
 AUTORIZACION 123456
 IMPORTE EUR 7,10`;
 
+const milleniumReceiptOcr = `MILLENIUM
+MARTA RODRIGUEZ GAVIEIRO
+FRA SIMP: COMPROBANTE FECHA: 18/07/2026
+UNID. DESCRIPCION PRECIO IMPORTE
+1,000 CANA / CLARA 2,80 2,80
+1,000 PATATAS ALIOLI 5,50 5,50
+BASE 7,55 IVA 10,00 IMP. IVA 0,75
+TOTAL IMPORTE
+8,30
+PENDIENTE DE COBRO 8,30`;
+
 test('distingue un ticket comercial de un justificante de tarjeta', () => {
   assert.equal(detectTicketDocumentType(shopReceipt), 'receipt');
   assert.equal(detectTicketDocumentType(cardCopy), 'card_payment');
@@ -59,6 +70,15 @@ test('elige Total o Importe y no confunde IVA ni base imponible', () => {
   assert.equal(extractTicketTotal('BASE IMPONIBLE 10,00\nIVA 21% 2,10\nTOTAL\n12,10 EUR'), 12.1);
   assert.equal(extractTicketTotal('IMPORTE IVA: 2,10\nT0TAL A PAGAR 12,10 EUR'), 12.1);
   assert.equal(extractTicketTotal('BASE IMPONIBLE 10,00\nIVA 21% 2,10\nEFECTIVO 12,10'), null);
+  assert.equal(extractTicketTotal(milleniumReceiptOcr), 8.3);
+  assert.equal(extractTicketTotal('UNID DESCRIPCION PRECIO IMPORTE\n1,000 CANA CLARA 2,80 2,80'), null);
+  assert.equal(extractTicketTotal('IMPORTE\n2,80 2,80'), null);
+  assert.equal(extractTicketTotal('PENDIENTE DE COBRO 8,30'), 8.3);
+});
+
+test('mantiene el comercio del encabezado y descarta líneas de productos', () => {
+  assert.equal(extractTicketMerchant(milleniumReceiptOcr), 'MILLENIUM');
+  assert.equal(extractTicketMerchant('FACTURA SIMPLIFICADA\nFECHA 18/07/2026\nUNID DESCRIPCION PRECIO IMPORTE\nCANA CLARA 2,80'), '');
 });
 
 test('tolera una O leída dentro de un importe', () => {
@@ -83,6 +103,8 @@ test('la interfaz avisa cuando no encuentra un total inequívoco', () => {
 
 test('la ayuda explica la lectura diferenciada y conservadora', () => {
   const help = readFileSync(new URL('../ayuda.html', import.meta.url), 'utf8');
-  assert.match(help, /distingue un ticket comercial de una copia o justificante de pago con tarjeta/);
+  assert.match(help, /Distingue un ticket comercial de una copia o justificante de pago con tarjeta/);
+  assert.match(help, /no considera «Importe» cuando es el encabezado de una tabla de productos/);
+  assert.match(help, /Pendiente de cobro/);
   assert.match(help, /conserva el importe del formulario sin sustituirlo/);
 });

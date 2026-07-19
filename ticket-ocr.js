@@ -12,7 +12,7 @@ export const normalizeTicketText = value => String(value || '')
   .toLowerCase();
 
 const normalizeTicketConcepts = value => normalizeTicketText(value)
-  .replace(/\bt[o0]tal\b/g, 'total')
+  .replace(/\bt[o0]ta[l1i]\b/g, 'total')
   .replace(/\bimp[o0]rte\b/g, 'importe');
 
 const ticketLines = text => String(text || '').split(/\r?\n/).map(cleanLine).filter(Boolean);
@@ -147,21 +147,28 @@ export function extractTicketTotal(text) {
   lines.forEach((line, index) => {
     const normalized = normalizeTicketConcepts(line);
     const amounts = amountsInLine(line);
-    const hasBestLabel = /\btotal\s+(?:a\s+)?pagar\b|\bimporte\s+total\b|\btotal\s+(?:compra|operacion|ticket)\b/.test(normalized);
+    const hasBestLabel = /\btotal\s+(?:a\s+)?pagar\b|\b(?:importe\s+total|total\s+importe)\b|\btotal\s+(?:compra|operacion|ticket)\b/.test(normalized);
     const hasTotalLabel = /\btotal\b/.test(normalized) && !/\bsubtotal\b/.test(normalized);
     const hasAmountLabel = /\bimporte\b|\ba\s+pagar\b|\bimporte\s+cobrado\b/.test(normalized);
+    const hasPaymentDueLabel = /\bpendiente\s+de\s+cobro\b|\bcobro\s+pendiente\b/.test(normalized);
+    const tableHeader = /\b(?:unid(?:ad)?|cant(?:idad)?|descripcion|articulo|precio)\b/.test(normalized);
     const taxBreakdown = /\biva\b|i\.v\.a/.test(normalized) && !/iva\s+incl|impuestos\s+incl/.test(normalized);
     const excluded = /\bsubtotal\b|base\s+imponible|base\s+iva|cuota\s+iva|cambio|entregado|efectivo|descuento|propina/.test(normalized)
       || taxBreakdown;
-    let labelScore = hasBestLabel ? 120 : hasTotalLabel ? 105 : hasAmountLabel ? 90 : 0;
+    let labelScore = hasBestLabel ? 130 : hasTotalLabel ? 115 : hasPaymentDueLabel ? 105 : hasAmountLabel ? 95 : 0;
+    if (tableHeader && !hasTotalLabel) labelScore = 0;
+    if (hasAmountLabel && !hasTotalLabel && !hasPaymentDueLabel && amounts.length > 1) labelScore = 0;
     if (excluded) labelScore -= 120;
     if (labelScore > 0 && amounts.length) {
       candidates.push({ value: amounts.at(-1), score: labelScore + (/\beur\b|€/i.test(line) ? 10 : 0) + index / Math.max(lines.length, 1) });
     }
-    if (labelScore > 0 && !amounts.length && index + 1 < lines.length) {
+    const labelOnly = /^(?:total(?:\s+(?:importe|a\s+pagar|compra|operacion|ticket))?|importe(?:\s+(?:total|cobrado))?|a\s+pagar|pendiente\s+de\s+cobro|cobro\s+pendiente)(?:\s+(?:eur|euro|euros))?$/.test(
+      normalized.replace(/[-_=.:]/g, ' ').replace(/\s+/g, ' ').trim()
+    );
+    if (labelScore > 0 && labelOnly && !amounts.length && index + 1 < lines.length) {
       const followingAmounts = amountsInLine(lines[index + 1]);
       const followingNormalized = normalizeTicketConcepts(lines[index + 1]);
-      if (followingAmounts.length && !/subtotal|base\s+imponible|\biva\b|cambio|entregado/.test(followingNormalized)) {
+      if (followingAmounts.length === 1 && !/subtotal|base\s+imponible|\biva\b|cambio|entregado/.test(followingNormalized)) {
         candidates.push({ value: followingAmounts.at(-1), score: labelScore - 8 });
       }
     }
@@ -183,6 +190,9 @@ export function extractTicketMerchant(text) {
   }).filter(item => item && /[a-záéíóúüñ]{3}/i.test(item.value) && !/^\d+$/.test(item.value));
   if (explicit.length) return explicit.sort((a, b) => b.score - a.score)[0].value;
   const bankHeaderIndex = lines.findIndex(line => BANK_BRAND_LINE.test(line));
+  const receiptBodyIndex = documentType === 'receipt'
+    ? lines.findIndex(line => /\b(?:unid(?:ad)?|cant(?:idad)?|descripcion|articulo)\b.*\b(?:precio|importe)\b/i.test(normalizeTicketText(line)))
+    : -1;
   const candidates = lines.map((line, index) => {
     const letters = line.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g) || [];
     const uppercase = line.match(/[A-ZÁÉÍÓÚÜÑ]/g) || [];
@@ -195,13 +205,16 @@ export function extractTicketMerchant(text) {
     if (letters.length && uppercase.length / letters.length > 0.65) score += 5;
     if (/\d{2}[\/.-]\d{2}/.test(line) || /\d{1,2}:\d{2}/.test(line)) score -= 15;
     if (documentType === 'receipt' && index <= 2) score += 12 - index * 2;
+    if (documentType === 'receipt' && receiptBodyIndex >= 0 && index >= receiptBodyIndex) score -= 35;
+    if (amountsInLine(line).length) score -= 20;
     if (documentType === 'card_payment' && bankHeaderIndex >= 0 && index > bankHeaderIndex && index <= bankHeaderIndex + 8
       && !BANK_BRAND_LINE.test(line) && !PAYMENT_TERMINAL_LINE.test(line)) {
       score += 28 - (index - bankHeaderIndex) * 2;
     }
     return { value: line.replace(/^[^\p{L}\d]+|[^\p{L}\d.)]+$/gu, ''), score };
   }).filter(item => item.value);
-  return candidates.sort((a, b) => b.score - a.score)[0]?.value || '';
+  const best = candidates.sort((a, b) => b.score - a.score)[0];
+  return best?.score > 0 ? best.value : '';
 }
 
 export function extractTicketFields(text) {
@@ -241,8 +254,12 @@ async function prepareImage(source) {
   const image = await imageFromBlob(blob);
   const sourceWidth = image.width || image.naturalWidth;
   const sourceHeight = image.height || image.naturalHeight;
-  const maxWidth = 2200;
-  const scale = Math.min(1, maxWidth / Math.max(sourceWidth, 1));
+  const maxWidth = 2000;
+  const preferredWidth = 1600;
+  const scale = Math.min(
+    maxWidth / Math.max(sourceWidth, 1),
+    Math.max(1, preferredWidth / Math.max(sourceWidth, 1))
+  );
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(sourceWidth * scale));
   canvas.height = Math.max(1, Math.round(sourceHeight * scale));
