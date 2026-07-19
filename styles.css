@@ -1878,7 +1878,8 @@ input[type="checkbox"] {
   overflow-wrap: anywhere;
 }
 
-.blog-day-row th {
+.blog-day-row th,
+.expense-day-row td {
   padding: 12px 14px;
   background: #e8f1ff;
   color: #174a7c;
@@ -1886,7 +1887,8 @@ input[type="checkbox"] {
   text-align: left;
 }
 
-.blog-day-toggle {
+.blog-day-toggle,
+.expense-day-toggle {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -1901,7 +1903,8 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
-.blog-day-toggle span {
+.blog-day-toggle > span:first-child,
+.expense-day-toggle > span:first-child {
   display: inline-grid;
   flex: 0 0 24px;
   width: 24px;
@@ -1913,7 +1916,14 @@ input[type="checkbox"] {
   line-height: 1;
 }
 
-.blog-day-entry[hidden] {
+.expense-day-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.blog-day-entry[hidden],
+#tabla-gastos .expense-row[hidden],
+#tabla-gastos .subtotal-row[hidden] {
   display: none;
 }
 

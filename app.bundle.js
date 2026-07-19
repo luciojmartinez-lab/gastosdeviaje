@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v183';
+const APP_VERSION = '700v184';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -79,6 +79,8 @@ let tripVectorPhotoMarkers = [];
 let tripVectorMapFailed = false;
 let openBlogDays = new Set();
 let openBlogDaysScope = '';
+let openExpenseGroups = new Set();
+let openExpenseGroupsScope = '';
 let backupCloudUploadInProgress = false;
 let blogFilterTripId = null;
 const blogPointPickerState = {
@@ -1801,7 +1803,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v183');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v184');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1833,7 +1835,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v183');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v184');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2276,7 +2278,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v183');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v184');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5107,6 +5109,17 @@ function clearExpenseFilters() {
   renderResumen();
 }
 
+function expenseGroupKey(expense) {
+  return `${expense.fecha || ''}|${expense.viajeId || ''}`;
+}
+
+function syncOpenExpenseGroups(groupKeys) {
+  const scope = groupKeys.join(',');
+  if (openExpenseGroupsScope === scope) return;
+  openExpenseGroupsScope = scope;
+  openExpenseGroups = new Set(groupKeys.length ? [groupKeys[groupKeys.length - 1]] : []);
+}
+
 function renderGastosTabla() {
   const tbody = $('#tabla-gastos tbody');
   tbody.innerHTML = '';
@@ -5119,18 +5132,21 @@ function renderGastosTabla() {
   if ($('#btn-last-expense')) $('#btn-last-expense').disabled = !rows.length;
   const byGroup = {};
   rows.forEach(g => {
-    const key = `${g.fecha || ''}|${g.viajeId || ''}`;
+    const key = expenseGroupKey(g);
     (byGroup[key] = byGroup[key] || []).push(g);
   });
-  let totalEur = 0;
-  Object.keys(byGroup).sort((a, b) => {
+  const groupKeys = Object.keys(byGroup).sort((a, b) => {
     const [dateA, tripA] = a.split('|');
     const [dateB, tripB] = b.split('|');
     if (dateA !== dateB) return dateA.localeCompare(dateB);
     const nameA = (state.viajes.find(v => v.id === Number(tripA)) || {}).nombre || '';
     const nameB = (state.viajes.find(v => v.id === Number(tripB)) || {}).nombre || '';
     return collator.compare(nameA, nameB);
-  }).forEach(key => {
+  });
+  syncOpenExpenseGroups(groupKeys);
+  const tableView = ($('#f-view') ? $('#f-view').value : 'table') === 'table';
+  let totalEur = 0;
+  groupKeys.forEach(key => {
     const [date, tripId] = key.split('|');
     const groupTrip = state.viajes.find(v => v.id === Number(tripId));
     const paisNames = gastosPaisNames(byGroup[key]);
@@ -5138,10 +5154,14 @@ function renderGastosTabla() {
       groupTrip ? `<span class="group-chip trip-chip">${escapeHtml(groupTrip.nombre)}</span>` : '',
       ...paisNames.map(name => `<span class="group-chip country-chip">${escapeHtml(name)}</span>`)
     ].filter(Boolean).join(' ');
-    const title = `${fmtDate(date)}${chips ? ` ${chips}` : ''}`;
+    const dateTitle = date ? `Día ${blogDayDateLabel(date)}` : 'Sin fecha';
+    const title = `${dateTitle}${chips ? ` ${chips}` : ''}`;
+    const isOpen = !tableView || openExpenseGroups.has(key);
     const header = document.createElement('tr');
-    header.className = 'group-row';
-    header.innerHTML = `<td colspan="10"><b>${title}</b></td>`;
+    header.className = tableView ? 'group-row expense-day-row' : 'group-row';
+    header.innerHTML = tableView
+      ? `<td colspan="10"><button type="button" class="expense-day-toggle" data-expense-group-toggle="${escapeHtml(key)}" aria-expanded="${isOpen}"><span aria-hidden="true">${isOpen ? '−' : '+'}</span><span class="expense-day-title">${title}</span></button></td>`
+      : `<td colspan="10"><b>${title}</b></td>`;
     tbody.appendChild(header);
     let subtotalEur = 0;
     byGroup[key].sort(compareExpensesChronologically).forEach(g => {
@@ -5154,6 +5174,8 @@ function renderGastosTabla() {
       const tr = document.createElement('tr');
       tr.className = 'expense-row';
       tr.dataset.gastoId = String(g.id);
+      tr.dataset.expenseGroupEntry = key;
+      tr.hidden = !isOpen;
       const attachmentCount = expenseAttachmentCount(g);
       const filesOption = attachmentCount
         ? `<option value="files">Ver archivos (${attachmentCount})</option>`
@@ -5169,6 +5191,8 @@ function renderGastosTabla() {
     });
     const subtotal = document.createElement('tr');
     subtotal.className = 'subtotal-row';
+    subtotal.dataset.expenseGroupEntry = key;
+    subtotal.hidden = !isOpen;
     subtotal.innerHTML = `<td colspan="7" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="2"></td>`;
     tbody.appendChild(subtotal);
   });
@@ -10120,7 +10144,15 @@ function scrollToSectionStart(id) {
 
 function scrollToExpense(expenseId, behavior = 'auto') {
   const row = $(`#tabla-gastos tbody .expense-row[data-gasto-id="${Number(expenseId)}"]`);
-  if (row) scrollElementBelowHeader(row, behavior);
+  if (!row) return;
+  const groupKey = row.dataset.expenseGroupEntry || '';
+  if (row.hidden && groupKey) {
+    openExpenseGroups.add(groupKey);
+    renderGastosTabla();
+    requestAnimationFrame(() => scrollToExpense(expenseId, behavior));
+    return;
+  }
+  scrollElementBelowHeader(row, behavior);
 }
 
 function captureExpenseActionAnchor(expenseId) {
@@ -10134,6 +10166,14 @@ function captureExpenseActionAnchor(expenseId) {
 
 function restoreExpenseActionAnchor(anchor) {
   const expenseId = Number(anchor && anchor.expenseId);
+  const row = $(`#tabla-gastos tbody .expense-row[data-gasto-id="${expenseId}"]`);
+  const groupKey = row ? row.dataset.expenseGroupEntry || '' : '';
+  if (row && row.hidden && groupKey) {
+    openExpenseGroups.add(groupKey);
+    renderGastosTabla();
+    requestAnimationFrame(() => restoreExpenseActionAnchor(anchor));
+    return;
+  }
   const select = $(`#tabla-gastos tbody .expense-action-select[data-gasto-action="${expenseId}"]`);
   if (!select) {
     if (expenseId) scrollToExpense(expenseId);
@@ -10205,7 +10245,18 @@ function restoreBlogEntryAnchor(anchor) {
 function scrollToLastExpense(behavior = 'smooth') {
   const rows = $$('#tabla-gastos tbody .expense-row');
   if (!rows.length) return;
-  scrollElementBelowHeader(rows[rows.length - 1], behavior);
+  const target = rows[rows.length - 1];
+  const groupKey = target.dataset.expenseGroupEntry || '';
+  if (target.hidden && groupKey) {
+    openExpenseGroups.add(groupKey);
+    renderGastosTabla();
+    requestAnimationFrame(() => {
+      const refreshedRows = $$('#tabla-gastos tbody .expense-row');
+      scrollElementBelowHeader(refreshedRows[refreshedRows.length - 1], behavior);
+    });
+    return;
+  }
+  scrollElementBelowHeader(target, behavior);
 }
 
 function scrollToLastBlogEntry() {
@@ -10412,7 +10463,7 @@ function setExpenseViewMode(value) {
   if ($('#f-view')) $('#f-view').value = view;
   if ($('#f-view-mobile')) $('#f-view-mobile').value = view;
   localStorage.setItem(EXPENSE_VIEW_KEY, view);
-  applyExpenseViewMode();
+  renderGastosTabla();
 }
 
 function openPrintDialog() {
@@ -11077,6 +11128,13 @@ function printableSectionHtml(id) {
   clone.querySelectorAll('.map-tile').forEach(el => {
     el.removeAttribute('loading');
     el.setAttribute('decoding', 'sync');
+  });
+  clone.querySelectorAll('[data-expense-group-entry]').forEach(el => el.removeAttribute('hidden'));
+  clone.querySelectorAll('[data-expense-group-toggle]').forEach(button => {
+    const label = button.querySelector('.expense-day-title');
+    const heading = document.createElement('b');
+    heading.innerHTML = label ? label.innerHTML : button.textContent.replace(/^[+−]\s*/, '');
+    button.replaceWith(heading);
   });
   clone.querySelectorAll('.section-head, .filters-card, .row4, .action-col, .expense-action-select, button, input, select, label').forEach(el => el.remove());
   clone.querySelectorAll('#tabla-gastos .group-row td[colspan="10"]').forEach(el => el.setAttribute('colspan', '9'));
@@ -12187,6 +12245,14 @@ function bindEvents() {
       if (openBlogDays.has(date)) openBlogDays.delete(date);
       else openBlogDays.add(date);
       renderBlog();
+      return;
+    }
+    const expenseGroupToggle = target.closest('[data-expense-group-toggle]');
+    if (expenseGroupToggle) {
+      const key = expenseGroupToggle.dataset.expenseGroupToggle;
+      if (openExpenseGroups.has(key)) openExpenseGroups.delete(key);
+      else openExpenseGroups.add(key);
+      renderGastosTabla();
       return;
     }
     const editBlogButton = target.closest('[data-edit-blog]');
