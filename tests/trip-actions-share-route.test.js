@@ -23,8 +23,9 @@ test('las entradas del Blog se comparten como un PDF real', () => {
   assert.match(app, /context\.measureText\(word\)\.width <= maxWidth/);
   assert.match(app, /return new File\(\[blob\], fileName, \{ type: 'application\/pdf' \}\)/);
   assert.match(sharePdf, /\/MediaBox \[0 0 \$\{pageWidth\} \$\{pageHeight\}\]/);
-  assert.match(app, /payload\.files = \[sharePdf\]/);
-  assert.match(app, /navigator\.share\(payload\)/);
+  assert.match(app, /const canSharePdf = sharePdf && navigator\.share/);
+  assert.match(app, /navigator\.share\(\{ files: \[sharePdf\] \}\)/);
+  assert.doesNotMatch(app, /navigator\.share\(\{ files: \[sharePdf\], title|navigator\.share\(\{ title, text, files/);
   assert.match(app, /downloadBlogEntrySharePdf\(sharePdf\)/);
   assert.match(app, /navigator\.clipboard\.writeText\(text\)/);
   assert.match(app, /<option value="share">Compartir como PDF<\/option>/);
