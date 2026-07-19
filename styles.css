@@ -980,7 +980,25 @@ input[type="checkbox"] {
 
 .expense-dialog-form .add-amount-fields,
 .expense-dialog-form .edit-amount-fields {
-  grid-template-columns: minmax(80px, 0.32fr) minmax(90px, 0.34fr) minmax(280px, 1.7fr);
+  grid-template-columns: minmax(110px, 0.7fr) minmax(150px, 1fr);
+}
+
+.expense-dialog-form .expense-description-field {
+  grid-column: 1 / -1;
+}
+
+.expense-dialog-form .expense-description-field textarea {
+  display: block;
+  width: 100%;
+  min-height: 84px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: #fff;
+  font: inherit;
+  line-height: 1.4;
+  resize: vertical;
 }
 
 .expense-dialog-form .add-top-fields,
@@ -3460,7 +3478,7 @@ footer {
 
   .expense-dialog-form .add-amount-fields,
   .expense-dialog-form .edit-amount-fields {
-    grid-template-columns: 0.72fr 0.68fr 1.6fr;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   }
 
   .expense-dialog-form label {
@@ -3470,11 +3488,16 @@ footer {
   }
 
   .expense-dialog-form input,
-  .expense-dialog-form select {
+  .expense-dialog-form select,
+  .expense-dialog-form .expense-description-field textarea {
     min-height: 34px;
     padding: 7px 9px;
     border-radius: 7px;
     font-size: 14px;
+  }
+
+  .expense-dialog-form .expense-description-field textarea {
+    min-height: 76px;
   }
 
   .expense-dialog-form input[type="file"] {

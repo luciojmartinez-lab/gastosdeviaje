@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [html, app, help] = await Promise.all([
+const [html, app, help, styles] = await Promise.all([
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
-  readFile(new URL('../ayuda.html', import.meta.url), 'utf8')
+  readFile(new URL('../ayuda.html', import.meta.url), 'utf8'),
+  readFile(new URL('../styles.css', import.meta.url), 'utf8')
 ]);
 
 test('los borradores tienen almacenamiento local y restauracion generica', () => {
@@ -31,6 +32,14 @@ test('nuevo gasto guarda borrador y lo descarta solo al cancelar o guardar', () 
   assert.match(app, /clearFormDraft\(addExpenseDraftKey\(\)\)/);
   assert.match(app, /discardAddExpenseDraft\(\);\s+closeAddGasto\(\);/);
   assert.match(app, /Si hab.as elegido tickets o fotos, tendr.s que volver a seleccionarlos/);
+});
+
+test('la descripción del gasto usa un cuadro amplio de varias líneas', () => {
+  assert.match(html, /<textarea id="g-desc" rows="3"/);
+  assert.match(html, /<textarea id="edit-gasto-desc" rows="3"/);
+  assert.match(styles, /\.expense-description-field textarea[\s\S]*?min-height: 84px/);
+  assert.match(styles, /\.expense-description-field \{[\s\S]*?grid-column: 1 \/ -1/);
+  assert.match(help, /Cuadro amplio de varias líneas/);
 });
 
 test('blog nuevo guarda borrador por viaje y mantiene tipo de entrada', () => {
