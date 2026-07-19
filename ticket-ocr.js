@@ -11,6 +11,27 @@ export const normalizeTicketText = value => String(value || '')
   .replace(/[\u0300-\u036f]/g, '')
   .toLowerCase();
 
+const normalizeTicketConcepts = value => normalizeTicketText(value)
+  .replace(/\bt[o0]tal\b/g, 'total')
+  .replace(/\bimp[o0]rte\b/g, 'importe');
+
+const ticketLines = text => String(text || '').split(/\r?\n/).map(cleanLine).filter(Boolean);
+
+const TICKET_MONTHS = {
+  ene: 1, enero: 1,
+  feb: 2, febrero: 2,
+  mar: 3, marzo: 3,
+  abr: 4, abril: 4,
+  may: 5, mayo: 5,
+  jun: 6, junio: 6,
+  jul: 7, julio: 7,
+  ago: 8, agosto: 8,
+  sep: 9, sept: 9, septiembre: 9, set: 9, setiembre: 9,
+  oct: 10, octubre: 10,
+  nov: 11, noviembre: 11,
+  dic: 12, diciembre: 12
+};
+
 function validDateParts(day, month, year) {
   const fullYear = year < 100 ? 2000 + year : year;
   const date = new Date(fullYear, month - 1, day);
@@ -19,44 +40,69 @@ function validDateParts(day, month, year) {
 }
 
 export function extractTicketDate(text) {
-  const lines = String(text || '').split(/\r?\n/).map(cleanLine).filter(Boolean);
+  const lines = ticketLines(text);
   const candidates = [];
   lines.forEach((line, index) => {
-    const normalized = normalizeTicketText(line);
+    const normalized = normalizeTicketConcepts(line);
+    const labeled = /\b(fecha|date|fec)\b/.test(normalized);
     const regex = /\b(0?[1-9]|[12]\d|3[01])[\/.-](0?[1-9]|1[0-2])[\/.-](\d{2}|\d{4})\b/g;
     let match;
     while ((match = regex.exec(line))) {
       const value = validDateParts(Number(match[1]), Number(match[2]), Number(match[3]));
-      if (value) candidates.push({ value, score: (normalized.includes('fecha') ? 10 : 0) - index * 0.05 });
+      if (value) candidates.push({ value, score: (labeled ? 35 : 12) - index * 0.05 });
+    }
+    const isoRegex = /\b(\d{4})[\/.-](0?[1-9]|1[0-2])[\/.-](0?[1-9]|[12]\d|3[01])\b/g;
+    while ((match = isoRegex.exec(line))) {
+      const value = validDateParts(Number(match[3]), Number(match[2]), Number(match[1]));
+      if (value) candidates.push({ value, score: (labeled ? 35 : 14) - index * 0.05 });
+    }
+    const monthRegex = /\b(0?[1-9]|[12]\d|3[01])[\s/.-]+(ene(?:ro)?|feb(?:rero)?|mar(?:zo)?|abr(?:il)?|may(?:o)?|jun(?:io)?|jul(?:io)?|ago(?:sto)?|sep(?:t(?:iembre)?)?|set(?:iembre)?|oct(?:ubre)?|nov(?:iembre)?|dic(?:iembre)?)[\s/.-]+(\d{2}|\d{4})\b/g;
+    while ((match = monthRegex.exec(normalized))) {
+      const month = TICKET_MONTHS[match[2]];
+      const value = month ? validDateParts(Number(match[1]), month, Number(match[3])) : '';
+      if (value) candidates.push({ value, score: (labeled ? 35 : 16) - index * 0.05 });
+    }
+    if (labeled) {
+      const spacedRegex = /\b(0?[1-9]|[12]\d|3[01])\s+(0?[1-9]|1[0-2])\s+(\d{2}|\d{4})\b/g;
+      while ((match = spacedRegex.exec(normalized))) {
+        const value = validDateParts(Number(match[1]), Number(match[2]), Number(match[3]));
+        if (value) candidates.push({ value, score: 28 - index * 0.05 });
+      }
     }
   });
   return candidates.sort((a, b) => b.score - a.score)[0]?.value || '';
 }
 
 export function extractTicketTime(text) {
-  const lines = String(text || '').split(/\r?\n/).map(cleanLine).filter(Boolean);
+  const lines = ticketLines(text);
   const candidates = [];
   lines.forEach((line, index) => {
     const normalized = normalizeTicketText(line);
-    const regex = /\b([01]?\d|2[0-3])[:.]([0-5]\d)(?::[0-5]\d)?\b/g;
+    const labeled = /\b(hora|time)\b/.test(normalized);
+    const sharesLineWithDate = /\b(?:0?[1-9]|[12]\d|3[01])[\/.-](?:0?[1-9]|1[0-2])[\/.-](?:\d{2}|\d{4})\b|\b\d{4}[\/.-](?:0?[1-9]|1[0-2])[\/.-](?:0?[1-9]|[12]\d|3[01])\b/.test(normalized);
+    const regex = /\b([01]?\d|2[0-3])\s*([:.h])\s*([0-5]\d)(?::[0-5]\d)?\b/gi;
     let match;
     while ((match = regex.exec(line))) {
-      const beforeMatch = normalized.slice(Math.max(0, match.index - 10), match.index);
-      const explicitlyLabeled = /hora\s*[:.-]?\s*$/.test(beforeMatch);
-      const sharesLineWithDate = /\b(0?[1-9]|[12]\d|3[01])[\/.-](0?[1-9]|1[0-2])[\/.-](\d{2}|\d{4})\b/.test(normalized);
+      if (match[2] === '.' && !labeled && !sharesLineWithDate) continue;
       candidates.push({
-        value: `${String(Number(match[1])).padStart(2, '0')}:${match[2]}`,
-        score: (explicitlyLabeled ? 25 : (normalized.includes('hora') ? 5 : 0))
-          - (sharesLineWithDate && !explicitlyLabeled ? 20 : 0)
-          - index * 0.05
+        value: `${String(Number(match[1])).padStart(2, '0')}:${match[3]}`,
+        score: (labeled ? 35 : 12) + (sharesLineWithDate ? 12 : 0) - index * 0.05
       });
+    }
+    if (labeled) {
+      const compactRegex = /\b([01]\d|2[0-3])([0-5]\d)\b/g;
+      while ((match = compactRegex.exec(normalized))) {
+        candidates.push({ value: `${match[1]}:${match[2]}`, score: 30 - index * 0.05 });
+      }
     }
   });
   return candidates.sort((a, b) => b.score - a.score)[0]?.value || '';
 }
 
 export function parseTicketAmount(value) {
-  let raw = String(value || '').replace(/[^\d,.-]/g, '');
+  let raw = String(value || '')
+    .replace(/(?<=\d)[oO](?=\d|\b)/g, '0')
+    .replace(/[^\d,.-]/g, '');
   if (!raw) return null;
   const comma = raw.lastIndexOf(',');
   const dot = raw.lastIndexOf('.');
@@ -75,43 +121,67 @@ export function parseTicketAmount(value) {
 }
 
 function amountsInLine(line) {
-  const matches = String(line || '').match(/(?:\d{1,3}(?:[.\s]\d{3})+|\d+)(?:[,.]\d{2})/g) || [];
+  const numericText = String(line || '').replace(/(?<=\d)[oO](?=\d|\b)/g, '0');
+  const matches = numericText.match(/(?:\d{1,3}(?:[.\s]\d{3})+|\d+)(?:[,.]\d{1,2})/g) || [];
   return matches.map(parseTicketAmount).filter(value => Number.isFinite(value));
 }
 
-export function extractTicketTotal(text) {
-  const lines = String(text || '').split(/\r?\n/).map(cleanLine).filter(Boolean);
-  const candidates = [];
-  lines.forEach((line, index) => {
-    const normalized = normalizeTicketText(line);
-    const amounts = amountsInLine(line);
-    if (!amounts.length) return;
-    let score = 0;
-    if (/total\s+(a\s+)?pagar|importe\s+total|total\s+(eur|€)/.test(normalized)) score += 30;
-    else if (/\ba\s+pagar\b/.test(normalized)) score += 25;
-    else if (/\btotal\b/.test(normalized)) score += 20;
-    if (/\beur\b|\u20ac/i.test(line)) score += 20;
-    if (/^\s*(?:\d{1,3}(?:[.\s]\d{3})+|\d+)[,.]\d{2}\s*(?:eur|\u20ac)\s*$/i.test(line)) score += 10;
-    if (/subtotal|base\s+imponible|\biva\b|i\.v\.a|cambio|entregado|efectivo|tarjeta|descuento/.test(normalized)) score -= 25;
-    if (/\bfecha\b|\b(0?[1-9]|[12]\d|3[01])[\/.-](0?[1-9]|1[0-2])[\/.-](\d{2}|\d{4})\b/.test(normalized)) score -= 40;
-    if (/\bhora\b|\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/.test(normalized)) score -= 30;
-    if (/total/.test(normalized) && /iva incl|impuestos incl/.test(normalized)) score += 5;
-    score += index / Math.max(lines.length, 1);
-    candidates.push({ value: amounts.at(-1), score });
-  });
-  const strong = candidates.filter(item => item.score >= 15).sort((a, b) => b.score - a.score);
-  if (strong.length) return strong[0].value;
-  const fallback = candidates.filter(item => item.value > 0 && item.score > -20).sort((a, b) => b.value - a.value);
-  return fallback[0]?.value ?? null;
+const CARD_PAYMENT_SIGNALS = /\b(copia\s+(?:cliente|comercio)|justificante|autorizacion|terminal|operacion|transaccion|contactless|tpv|datafono|visa|mastercard|redsys|servired|getnet|global\s+payments)\b/g;
+const RECEIPT_SIGNALS = /\b(ticket|factura\s+simplificada|base\s+imponible|subtotal|articulo|unidades|cambio|mesa|iva)\b/g;
+
+export function detectTicketDocumentType(text) {
+  const normalized = normalizeTicketText(text);
+  const cardSignals = normalized.match(CARD_PAYMENT_SIGNALS) || [];
+  const receiptSignals = normalized.match(RECEIPT_SIGNALS) || [];
+  let cardScore = cardSignals.length * 2;
+  let receiptScore = receiptSignals.length * 2;
+  if (/copia\s+(?:para\s+el\s+)?cliente|copia\s+comercio/.test(normalized)) cardScore += 5;
+  if (/factura\s+simplificada|base\s+imponible|desglose\s+iva/.test(normalized)) receiptScore += 5;
+  if (/\b(?:bbva|santander|caixabank|bankinter|sabadell|ing|unicaja|abanca|revolut|comercia|worldline)\b/.test(normalized)) cardScore += 2;
+  return cardScore >= 6 && cardScore > receiptScore ? 'card_payment' : 'receipt';
 }
 
-const MERCHANT_EXCLUSIONS = /^(ticket|factura|simplificada|copia|cliente|fecha|hora|mesa|caja|cajero|nif|cif|n\.i\.f|tel|telefono|www\.|https?|gracias|iva|total|subtotal|importe|direccion|domicilio|articulo|descripcion|unidades)/i;
+export function extractTicketTotal(text) {
+  const lines = ticketLines(text);
+  const candidates = [];
+  lines.forEach((line, index) => {
+    const normalized = normalizeTicketConcepts(line);
+    const amounts = amountsInLine(line);
+    const hasBestLabel = /\btotal\s+(?:a\s+)?pagar\b|\bimporte\s+total\b|\btotal\s+(?:compra|operacion|ticket)\b/.test(normalized);
+    const hasTotalLabel = /\btotal\b/.test(normalized) && !/\bsubtotal\b/.test(normalized);
+    const hasAmountLabel = /\bimporte\b|\ba\s+pagar\b|\bimporte\s+cobrado\b/.test(normalized);
+    const taxBreakdown = /\biva\b|i\.v\.a/.test(normalized) && !/iva\s+incl|impuestos\s+incl/.test(normalized);
+    const excluded = /\bsubtotal\b|base\s+imponible|base\s+iva|cuota\s+iva|cambio|entregado|efectivo|descuento|propina/.test(normalized)
+      || taxBreakdown;
+    let labelScore = hasBestLabel ? 120 : hasTotalLabel ? 105 : hasAmountLabel ? 90 : 0;
+    if (excluded) labelScore -= 120;
+    if (labelScore > 0 && amounts.length) {
+      candidates.push({ value: amounts.at(-1), score: labelScore + (/\beur\b|€/i.test(line) ? 10 : 0) + index / Math.max(lines.length, 1) });
+    }
+    if (labelScore > 0 && !amounts.length && index + 1 < lines.length) {
+      const followingAmounts = amountsInLine(lines[index + 1]);
+      const followingNormalized = normalizeTicketConcepts(lines[index + 1]);
+      if (followingAmounts.length && !/subtotal|base\s+imponible|\biva\b|cambio|entregado/.test(followingNormalized)) {
+        candidates.push({ value: followingAmounts.at(-1), score: labelScore - 8 });
+      }
+    }
+  });
+  return candidates.filter(item => item.value > 0).sort((a, b) => b.score - a.score)[0]?.value ?? null;
+}
+
+const MERCHANT_EXCLUSIONS = /^(ticket|factura|simplificada|copia|cliente|fecha|hora|mesa|caja|cajero|nif|cif|n\.i\.f|tel|telefono|www\.|https?|gracias|iva|total|subtotal|importe|direccion|domicilio|articulo|descripcion|unidades|venta|compra|operacion|transaccion|autorizacion|terminal|contactless|aprobada|aceptada)/i;
 const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|cp\s*\d|codigo postal|tlf|telefono|madrid|barcelona)\b/i;
 const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet)$/i;
 const PAYMENT_TERMINAL_LINE = /^(?:venta\b|compra\b|visa\b|mastercard\b|contactless\b|aut(?:orizacion)?[:.\s]|op(?:eracion)?[:.\s]|tran(?:saccion)?[:.\s]|terminal[:.\s]|app\s+(?:bbva|santander|caixabank|sabadell))/i;
 
 export function extractTicketMerchant(text) {
-  const lines = String(text || '').split(/\r?\n/).map(cleanLine).filter(Boolean).slice(0, 18);
+  const lines = ticketLines(text).slice(0, 24);
+  const documentType = detectTicketDocumentType(text);
+  const explicit = lines.map((line, index) => {
+    const match = line.match(/^\s*(?:comercio|establecimiento|merchant|nombre\s+comercio)\s*[:.-]\s*(.+)$/i);
+    return match ? { value: cleanLine(match[1]), score: 100 - index } : null;
+  }).filter(item => item && /[a-záéíóúüñ]{3}/i.test(item.value) && !/^\d+$/.test(item.value));
+  if (explicit.length) return explicit.sort((a, b) => b.score - a.score)[0].value;
   const bankHeaderIndex = lines.findIndex(line => BANK_BRAND_LINE.test(line));
   const candidates = lines.map((line, index) => {
     const letters = line.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g) || [];
@@ -124,9 +194,10 @@ export function extractTicketMerchant(text) {
     if (/\b(sa|s\.a\.|sl|s\.l\.|s\.l\.u\.|sociedad|restaurante|hotel|bar|cafeteria|supermercado)\b/i.test(line)) score += 7;
     if (letters.length && uppercase.length / letters.length > 0.65) score += 5;
     if (/\d{2}[\/.-]\d{2}/.test(line) || /\d{1,2}:\d{2}/.test(line)) score -= 15;
-    if (bankHeaderIndex >= 0 && index > bankHeaderIndex && index <= bankHeaderIndex + 4
+    if (documentType === 'receipt' && index <= 2) score += 12 - index * 2;
+    if (documentType === 'card_payment' && bankHeaderIndex >= 0 && index > bankHeaderIndex && index <= bankHeaderIndex + 8
       && !BANK_BRAND_LINE.test(line) && !PAYMENT_TERMINAL_LINE.test(line)) {
-      score += 21 - (index - bankHeaderIndex) * 3;
+      score += 28 - (index - bankHeaderIndex) * 2;
     }
     return { value: line.replace(/^[^\p{L}\d]+|[^\p{L}\d.)]+$/gu, ''), score };
   }).filter(item => item.value);
@@ -135,6 +206,7 @@ export function extractTicketMerchant(text) {
 
 export function extractTicketFields(text) {
   return {
+    documentType: detectTicketDocumentType(text),
     date: extractTicketDate(text),
     time: extractTicketTime(text),
     merchant: extractTicketMerchant(text),

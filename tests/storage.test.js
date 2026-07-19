@@ -11,18 +11,18 @@ const [html, app, help, sw, version, pkg] = await Promise.all([
   readFile(new URL('../package.json', import.meta.url), 'utf8')
 ]);
 
-test('la versiÃ³n 700v190 estÃ¡ alineada en app, cache y paquete', () => {
-  assert.equal(version.trim(), '700v190');
-  assert.match(pkg, /"version": "700\.190\.0"/);
-  assert.match(html, /styles\.css\?v=700v190/);
-  assert.match(html, /app\.bundle\.js\?v=700v190/);
-  assert.match(html, /map-model\.js\?v=700v190/);
-  assert.match(html, /sw\.js\?v=700v190/);
-  assert.match(app, /const APP_VERSION = '700v190'/);
-  assert.match(app, /image-location\.js\?v=700v190/);
-  assert.match(app, /ticket-ocr\.js\?v=700v190/);
-  assert.match(app, /share-pdf\.js\?v=700v190/);
-  assert.match(sw, /gastosdeviaje-700v190/);
+test('la versiÃ³n 700v191 estÃ¡ alineada en app, cache y paquete', () => {
+  assert.equal(version.trim(), '700v191');
+  assert.match(pkg, /"version": "700\.191\.0"/);
+  assert.match(html, /styles\.css\?v=700v191/);
+  assert.match(html, /app\.bundle\.js\?v=700v191/);
+  assert.match(html, /map-model\.js\?v=700v191/);
+  assert.match(html, /sw\.js\?v=700v191/);
+  assert.match(app, /const APP_VERSION = '700v191'/);
+  assert.match(app, /image-location\.js\?v=700v191/);
+  assert.match(app, /ticket-ocr\.js\?v=700v191/);
+  assert.match(app, /share-pdf\.js\?v=700v191/);
+  assert.match(sw, /gastosdeviaje-700v191/);
   assert.doesNotMatch(html + app + sw, /700v136|700v135|700v134|700v133|700v132|700v131|700v128/);
 });
 
