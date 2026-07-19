@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v184';
+const APP_VERSION = '700v185';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -1186,6 +1186,15 @@ function gastosPaisNames(gastos) {
   return names;
 }
 
+function gastosDestinoCiudadName(gastos) {
+  const ordered = (gastos || []).slice().sort(compareExpensesChronologically);
+  for (let index = ordered.length - 1; index >= 0; index -= 1) {
+    const cityName = gastoCiudadLabel(ordered[index]);
+    if (cityName && cityName !== '-') return cityName;
+  }
+  return '';
+}
+
 function gastoMatchesLugarFilters(g, paisId, ciudadId) {
   if (ciudadId && Number(g.ciudadId) !== Number(ciudadId)) return false;
   if (!paisId) return true;
@@ -1803,7 +1812,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v184');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v185');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1835,7 +1844,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v184');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v185');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2278,7 +2287,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v184');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v185');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5147,11 +5156,11 @@ function renderGastosTabla() {
   const tableView = ($('#f-view') ? $('#f-view').value : 'table') === 'table';
   let totalEur = 0;
   groupKeys.forEach(key => {
-    const [date, tripId] = key.split('|');
-    const groupTrip = state.viajes.find(v => v.id === Number(tripId));
+    const [date] = key.split('|');
+    const destinationCity = gastosDestinoCiudadName(byGroup[key]);
     const paisNames = gastosPaisNames(byGroup[key]);
     const chips = [
-      groupTrip ? `<span class="group-chip trip-chip">${escapeHtml(groupTrip.nombre)}</span>` : '',
+      destinationCity ? `<span class="group-chip city-chip">${escapeHtml(destinationCity)}</span>` : '',
       ...paisNames.map(name => `<span class="group-chip country-chip">${escapeHtml(name)}</span>`)
     ].filter(Boolean).join(' ');
     const dateTitle = date ? `Día ${blogDayDateLabel(date)}` : 'Sin fecha';

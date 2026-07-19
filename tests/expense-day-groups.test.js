@@ -23,6 +23,15 @@ test('Gastos en vista Tabla agrupa y pliega los movimientos por día', () => {
   assert.match(styles, /#tabla-gastos \.expense-row\[hidden\][\s\S]*#tabla-gastos \.subtotal-row\[hidden\]/);
 });
 
+test('la cabecera diaria muestra la ciudad de destino y los países, no el viaje', () => {
+  assert.match(app, /function gastosDestinoCiudadName\(gastos\)[\s\S]*sort\(compareExpensesChronologically\)[\s\S]*index = ordered\.length - 1/);
+  assert.match(app, /const destinationCity = gastosDestinoCiudadName\(byGroup\[key\]\)/);
+  assert.match(app, /destinationCity \? `<span class="group-chip city-chip">/);
+  assert.doesNotMatch(app, /group-chip trip-chip/);
+  assert.match(styles, /\.city-chip \{/);
+  assert.match(help, /Si durante el día hay gastos en varias ciudades, se toma como destino la última ciudad registrada cronológicamente/);
+});
+
 test('Tarjetas, Último gasto, retorno e impresión no pierden movimientos plegados', () => {
   assert.match(app, /const isOpen = !tableView \|\| openExpenseGroups\.has\(key\)/);
   assert.match(app, /function setExpenseViewMode\(value\)[\s\S]*renderGastosTabla\(\)/);
