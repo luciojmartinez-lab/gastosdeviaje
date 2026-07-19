@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v196</title>
+  <title>Manual de Cuaderno de Bitácora - 700v197</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     if (helpParams.get('embedded') === '1') {
@@ -185,7 +185,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 19 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v196</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 19 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v197</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -396,7 +396,7 @@
             <tr><td>Tipo</td><td><em>Gasto</em> descuenta; <em>Ingreso / devolución</em> se guarda como importe negativo y reduce el total gastado.</td></tr>
             <tr><td>Descripción</td><td>Cuadro amplio de varias líneas para identificar el movimiento y revisar el texto completo mientras se escribe. Después permite localizarlo mediante los filtros.</td></tr>
             <tr><td>Elegir archivo / Cámara</td><td>Añade un ticket como imagen o PDF.</td></tr>
-            <tr><td id="ocr">Leer ticket</td><td>Detecta el papel dentro de la fotografía, recorta el fondo, amplía las imágenes pequeñas y reconoce el justificante íntegramente en el dispositivo. Para identificar el comercio localiza la primera banda real de texto, la convierte a blanco y negro y la vuelve a leer en modo de una sola línea. Solo acepta esa lectura aislada cuando alcanza una confianza suficiente, rechaza fragmentos que contengan etiquetas como Fecha u Hora y evita que las lecturas auxiliares la sustituyan después. También reconoce la estructura habitual anterior a TEL/NIF para separar el comercio del fondo y, si el nombre difiere solo una o dos letras de un establecimiento ya corregido en gastos anteriores, recupera la grafía conocida. Si la primera lectura general no obtiene comercio, fecha o total, realiza además lecturas separadas de la cabecera y la zona de importes. Distingue un ticket comercial de una copia o justificante de pago con tarjeta. En un pago con tarjeta descarta la cabecera del banco o sistema y busca el comercio indicado después. Admite fechas numéricas, ISO o con el mes escrito, y horas junto a la fecha o etiquetadas como Hora. Si el OCR confunde el año pero el día y el mes encajan en las fechas del viaje seleccionado, utiliza el año de ese viaje y lo indica en el resultado. Para proponer el importe exige una línea asociada a <strong>Total</strong>, <strong>Importe</strong>, <strong>A pagar</strong> o <strong>Pendiente de cobro</strong>; no considera «Importe» cuando es el encabezado de una tabla de productos y descarta subtotal, base imponible, IVA, efectivo entregado, cambio, descuento y propina. Si no encuentra un total claro, conserva el importe del formulario sin sustituirlo. Al leer desde <strong>Editar gasto</strong>, completa solo los campos vacíos: nunca sustituye una fecha, hora, importe, descripción, categoría o subcategoría que ya figure en el gasto. Las sugerencias de categoría se basan únicamente en el nombre del comercio, no en las líneas del ticket. Si el nombre contiene bar, restaurante, cafetería, panadería, pastelería, heladería, taberna, cervecería o supermercado, propone <strong>Comida</strong>. Solo propone la subcategoría específica cuando existe entre las subcategorías configuradas de Comida; si no existe, la deja vacía. Esta regla explícita tiene prioridad sobre clasificaciones aprendidas anteriormente. El mensaje final diferencia los datos reconocidos, los completados y los conservados. Toda propuesta debe revisarse antes de guardar.</td></tr>
+            <tr><td id="ocr">Leer ticket</td><td>Reconoce el justificante íntegramente en el dispositivo, sin enviarlo a la nube. Primero detecta las cuatro esquinas del papel, elimina la mayor parte del fondo, corrige la perspectiva y compensa sombras, iluminación desigual y pliegues. El procesamiento se realiza en una tarea temporal que se cierra al terminar para liberar memoria. Después hace dos lecturas complementarias del documento ya enderezado: una versión normalizada conserva mejor fecha e importes y otra versión de contraste adaptativo refuerza el título y el texto térmico. Combina únicamente los campos claros de ambas. Si todavía falta algún dato, realiza lecturas separadas de la primera línea, la cabecera y la zona de importes. Para el comercio rechaza fragmentos cortos, etiquetas como Fecha u Hora, direcciones, bancos y sistemas de pago; también elimina caracteres sueltos creados por los bordes del papel. Si el nombre difiere solo una o dos letras de un establecimiento ya corregido en gastos anteriores, recupera la grafía conocida. Distingue un ticket comercial de una copia o justificante de pago con tarjeta. En un pago con tarjeta descarta la cabecera del banco o sistema y busca el comercio indicado después. Admite fechas numéricas, ISO o con el mes escrito, y horas junto a la fecha o etiquetadas como Hora. Si el OCR confunde el año pero el día y el mes encajan en las fechas del viaje seleccionado, utiliza el año de ese viaje y lo indica en el resultado. Para proponer el importe exige una línea asociada a <strong>Total</strong>, <strong>Importe</strong>, <strong>A pagar</strong> o <strong>Pendiente de cobro</strong>. También admite que, al interpretar columnas o pliegues, la cifra quede desplazada a la línea inmediatamente anterior o posterior a esa etiqueta. No considera «Importe» cuando es el encabezado de una tabla de productos y descarta subtotal, base imponible, IVA, efectivo entregado, cambio, descuento y propina. Si no encuentra un total claro, conserva el importe del formulario sin sustituirlo. Al leer desde <strong>Editar gasto</strong>, completa solo los campos vacíos: nunca sustituye una fecha, hora, importe, descripción, categoría o subcategoría que ya figure en el gasto. Las sugerencias de categoría se basan únicamente en el nombre del comercio, no en las líneas del ticket. Si el nombre contiene bar, restaurante, cafetería, panadería, pastelería, heladería, taberna, cervecería o supermercado, propone <strong>Comida</strong>. Solo propone la subcategoría específica cuando existe entre las subcategorías configuradas de Comida; si no existe, la deja vacía. Esta regla explícita tiene prioridad sobre clasificaciones aprendidas anteriormente. El mensaje final diferencia los datos reconocidos, los completados y los conservados. Toda propuesta debe revisarse antes de guardar.</td></tr>
             <tr><td>Clasificación del ticket</td><td>Tipo visual independiente de la categoría económica.</td></tr>
             <tr><td>Imágenes adicionales</td><td>Admite varias fotografías. Cada una puede conservar GPS, recibir clasificación y añadirse al mapa.</td></tr>
             <tr><td>Añadir y salir</td><td>Guarda y cierra.</td></tr>
@@ -626,6 +626,7 @@
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Función</th><th>Sin internet</th></tr></thead><tbody>
             <tr><td>Abrir la aplicación ya instalada</td><td>Sí, con la versión almacenada.</td></tr>
             <tr><td>Crear y editar datos</td><td>Sí.</td></tr>
+            <tr><td>Leer tickets</td><td>Sí, una vez cargada por completo la versión actual; el enderezado y el OCR funcionan localmente.</td></tr>
             <tr><td>Mapas ya vistos</td><td>En la medida en que el navegador conserve sus recursos.</td></tr>
             <tr><td>Mapas nuevos, Localizar y tipos de cambio</td><td>No; consultan servicios externos.</td></tr>
             <tr><td>Sincronización y copia en Netlify</td><td>No; requieren conexión.</td></tr>
@@ -639,10 +640,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 19 de julio de 2026 para Cuaderno de Bitácora 700v196.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 19 de julio de 2026 para Cuaderno de Bitácora 700v197.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v196 · 19 de julio de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v197 · 19 de julio de 2026</div>
 </body>
 </html>

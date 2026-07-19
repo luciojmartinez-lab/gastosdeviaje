@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [html, app, styles, sw, help] = await Promise.all([
+const [html, app, styles, sw, help, ticketImageWorker] = await Promise.all([
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
   readFile(new URL('../styles.css', import.meta.url), 'utf8'),
   readFile(new URL('../sw.js', import.meta.url), 'utf8'),
-  readFile(new URL('../ayuda.html', import.meta.url), 'utf8')
+  readFile(new URL('../ayuda.html', import.meta.url), 'utf8'),
+  readFile(new URL('../ticket-image-worker.js', import.meta.url), 'utf8')
 ]);
 
 test('la app muestra estado claro cuando trabaja sin conexion', () => {
@@ -30,6 +31,17 @@ test('el service worker separa cache critica y opcional para no romper la instal
   assert.match(sw, /\.\/vendor\/pdfjs\/pdf\.min\.mjs/);
   assert.match(sw, /\.\/vendor\/tesseract\/tesseract\.esm\.min\.js/);
   assert.match(sw, /\.\/vendor\/tesseract\/lang\/spa\.traineddata\.gz/);
+  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v197/);
+  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v197/);
+  assert.match(sw, /const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4\.10\.0'/);
+  assert.match(sw, /\.\/vendor\/opencv\/4\.10\.0\/opencv\.js/);
+  assert.match(sw, /await cacheOcrRuntime\(\)/);
+});
+
+test('el trabajador de imagen espera OpenCV sin bloquearse por su objeto thenable', () => {
+  assert.match(ticketImageWorker, /resolve\(\{ cv: cvModule \}\)/);
+  assert.match(ticketImageWorker, /const \{ cv \} = await loadOpenCv\(\)/);
+  assert.doesNotMatch(ticketImageWorker, /resolve\(cvModule\)/);
 });
 
 test('los mapas vistos se guardan en cache dinamica para uso offline', () => {
@@ -59,7 +71,7 @@ test('una versión nueva provoca una sola recarga después de activar su service
   assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?await registration\.update\(\)/);
   assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
   assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
-  assert.match(sw, /const APP_VERSION = '700v196'/);
+  assert.match(sw, /const APP_VERSION = '700v197'/);
   assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
   assert.doesNotMatch(html, /window\.location\.reload\(\)/);
 });

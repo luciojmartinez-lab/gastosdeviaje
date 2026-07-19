@@ -1,6 +1,7 @@
 let workerPromise = null;
 let progressListener = () => {};
 const OCR_PSM_AUTO = '3';
+const OCR_PSM_SINGLE_BLOCK = '6';
 const OCR_PSM_SINGLE_LINE = '7';
 const OCR_PSM_SPARSE_TEXT = '11';
 
@@ -8,6 +9,8 @@ const cleanLine = value => String(value || '')
   .replace(/[|]/g, 'I')
   .replace(/\s+/g, ' ')
   .trim();
+
+const DOCUMENT_PREPROCESSOR_VERSION = '700v197';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -168,12 +171,17 @@ export function extractTicketTotal(text) {
     const labelOnly = /^(?:total(?:\s+(?:importe|a\s+pagar|compra|operacion|ticket))?|importe(?:\s+(?:total|cobrado))?|a\s+pagar|pendiente\s+de\s+cobro|cobro\s+pendiente)(?:\s+(?:eur|euro|euros))?$/.test(
       normalized.replace(/[-_=.:]/g, ' ').replace(/\s+/g, ' ').trim()
     );
-    if (labelScore > 0 && labelOnly && !amounts.length && index + 1 < lines.length) {
-      const followingAmounts = amountsInLine(lines[index + 1]);
-      const followingNormalized = normalizeTicketConcepts(lines[index + 1]);
-      if (followingAmounts.length === 1 && !/subtotal|base\s+imponible|\biva\b|cambio|entregado/.test(followingNormalized)) {
-        candidates.push({ value: followingAmounts.at(-1), score: labelScore - 8 });
-      }
+    const separatedLabel = hasBestLabel || labelOnly || hasPaymentDueLabel;
+    if (labelScore > 0 && separatedLabel && !amounts.length) {
+      [-1, 1].forEach(offset => {
+        const nearbyIndex = index + offset;
+        if (nearbyIndex < 0 || nearbyIndex >= lines.length) return;
+        const nearbyAmounts = amountsInLine(lines[nearbyIndex]);
+        const nearbyNormalized = normalizeTicketConcepts(lines[nearbyIndex]);
+        if (nearbyAmounts.length === 1 && !/subtotal|base\s+imponible|\biva\b|cambio|entregado|descuento|propina/.test(nearbyNormalized)) {
+          candidates.push({ value: nearbyAmounts[0], score: labelScore - (offset < 0 ? 6 : 8) });
+        }
+      });
     }
   });
   return candidates.filter(item => item.value > 0).sort((a, b) => b.score - a.score)[0]?.value ?? null;
@@ -185,12 +193,20 @@ const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|rua|rúa|
 const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet)$/i;
 const PAYMENT_TERMINAL_LINE = /^(?:venta\b|compra\b|visa\b|mastercard\b|contactless\b|aut(?:orizacion)?[:.\s]|op(?:eracion)?[:.\s]|tran(?:saccion)?[:.\s]|terminal[:.\s]|app\s+(?:bbva|santander|caixabank|sabadell))/i;
 
+function cleanMerchantCandidate(value) {
+  return cleanLine(value)
+    .replace(/^(?:[I1lf]\s+)(?=\p{Lu}{5,}(?:\s|$))/u, '')
+    .replace(/\s+[I1lf]$/, '')
+    .replace(/^[^\p{L}\d]+|[^\p{L}\d.)]+$/gu, '')
+    .trim();
+}
+
 export function extractTicketMerchant(text) {
   const lines = ticketLines(text).slice(0, 24);
   const documentType = detectTicketDocumentType(text);
   const explicit = lines.map((line, index) => {
     const match = line.match(/^\s*(?:comercio|establecimiento|merchant|nombre\s+comercio)\s*[:.-]\s*(.+)$/i);
-    return match ? { value: cleanLine(match[1]), score: 100 - index } : null;
+    return match ? { value: cleanMerchantCandidate(match[1]), score: 100 - index } : null;
   }).filter(item => item && /[a-záéíóúüñ]{3}/i.test(item.value) && !/^\d+$/.test(item.value));
   if (explicit.length) return explicit.sort((a, b) => b.score - a.score)[0].value;
   const bankHeaderIndex = lines.findIndex(line => BANK_BRAND_LINE.test(line));
@@ -221,10 +237,22 @@ export function extractTicketMerchant(text) {
       && !BANK_BRAND_LINE.test(line) && !PAYMENT_TERMINAL_LINE.test(line)) {
       score += 28 - (index - bankHeaderIndex) * 2;
     }
-    return { value: line.replace(/^[^\p{L}\d]+|[^\p{L}\d.)]+$/gu, ''), score };
+    return { value: cleanMerchantCandidate(line), score };
   }).filter(item => item.value);
   const best = candidates.sort((a, b) => b.score - a.score)[0];
   return best?.score > 0 ? best.value : '';
+}
+
+export function isPlausibleTicketMerchant(value) {
+  const line = cleanLine(value);
+  const normalized = normalizeTicketText(line);
+  const letters = normalized.match(/[a-z]/g) || [];
+  const compact = normalized.replace(/[^a-z0-9]/g, '');
+  if (letters.length < 5 || compact.length < 5 || line.length > 60) return false;
+  if (MERCHANT_EXCLUSIONS.test(line) || MERCHANT_METADATA_WORDS.test(normalized)) return false;
+  if (ADDRESS_WORDS.test(line) || BANK_BRAND_LINE.test(line) || PAYMENT_TERMINAL_LINE.test(line)) return false;
+  if (/\b\d{1,2}[:./-]\d{1,2}\b|^\d+$/.test(normalized)) return false;
+  return letters.length / Math.max(1, line.replace(/\s/g, '').length) >= 0.58;
 }
 
 export function extractTicketFields(text) {
@@ -291,6 +319,75 @@ async function imageFromBlob(blob) {
 async function dataUrlToBlob(dataUrl) {
   const response = await fetch(dataUrl);
   return response.blob();
+}
+
+function canvasFromGrayscale(values, width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  const pixels = context.createImageData(width, height);
+  for (let sourceIndex = 0, targetIndex = 0; sourceIndex < values.length; sourceIndex += 1, targetIndex += 4) {
+    const value = values[sourceIndex];
+    pixels.data[targetIndex] = value;
+    pixels.data[targetIndex + 1] = value;
+    pixels.data[targetIndex + 2] = value;
+    pixels.data[targetIndex + 3] = 255;
+  }
+  context.putImageData(pixels, 0, 0);
+  return canvas;
+}
+
+function prepareImageWithDocumentScanner(image, sourceWidth, sourceHeight, onProgress) {
+  if (typeof Worker !== 'function') return Promise.reject(new Error('El navegador no admite el preprocesado documental.'));
+  onProgress({ status: 'Detectando y enderezando el ticket', progress: 0.03 });
+  const maximumPixels = 6_000_000;
+  const scale = Math.min(
+    1,
+    3000 / Math.max(sourceWidth, sourceHeight, 1),
+    Math.sqrt(maximumPixels / Math.max(1, sourceWidth * sourceHeight))
+  );
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(image, 0, 0, width, height);
+  const pixels = context.getImageData(0, 0, width, height);
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL(`./ticket-image-worker.js?v=${DOCUMENT_PREPROCESSOR_VERSION}`, import.meta.url));
+    const timeout = setTimeout(() => {
+      worker.terminate();
+      reject(new Error('El preprocesado del ticket ha tardado demasiado.'));
+    }, 60000);
+    const finish = callback => value => {
+      clearTimeout(timeout);
+      worker.terminate();
+      callback(value);
+    };
+    worker.addEventListener('error', finish(event => reject(event.error || new Error(event.message || 'No se pudo preparar el ticket.'))), { once: true });
+    worker.addEventListener('message', event => {
+      const result = event.data || {};
+      if (result.type === 'progress') {
+        onProgress({ status: result.status || 'Preparando el ticket', progress: 0.05 });
+        return;
+      }
+      clearTimeout(timeout);
+      worker.terminate();
+      if (result.error) {
+        reject(new Error(result.error));
+        return;
+      }
+      onProgress({ status: result.documentDetected ? 'Ticket enderezado' : 'Mejorando la imagen', progress: 0.07 });
+      resolve({
+        primary: canvasFromGrayscale(new Uint8ClampedArray(result.enhancedBuffer), result.width, result.height),
+        binary: canvasFromGrayscale(new Uint8ClampedArray(result.binaryBuffer), result.width, result.height),
+        documentDetected: Boolean(result.documentDetected)
+      });
+    });
+    worker.postMessage({ width, height, buffer: pixels.data.buffer }, [pixels.data.buffer]);
+  });
 }
 
 export function findReceiptBounds(data, width, height) {
@@ -458,11 +555,7 @@ function cropCanvasBounds(source, bounds, binary = false) {
   return canvas;
 }
 
-async function prepareImage(source) {
-  const blob = typeof source === 'string' ? await dataUrlToBlob(source) : source;
-  const image = await imageFromBlob(blob);
-  const sourceWidth = image.width || image.naturalWidth;
-  const sourceHeight = image.height || image.naturalHeight;
+function prepareImageFallback(image, sourceWidth, sourceHeight) {
   const analysisScale = Math.min(1, 480 / Math.max(sourceWidth, 1));
   const analysis = document.createElement('canvas');
   analysis.width = Math.max(1, Math.round(sourceWidth * analysisScale));
@@ -503,7 +596,6 @@ async function prepareImage(source) {
     canvas.width,
     canvas.height
   );
-  if (image.close) image.close();
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
   for (let index = 0; index < pixels.data.length; index += 4) {
     const grey = pixels.data[index] * 0.299 + pixels.data[index + 1] * 0.587 + pixels.data[index + 2] * 0.114;
@@ -513,7 +605,25 @@ async function prepareImage(source) {
     pixels.data[index + 2] = contrasted;
   }
   context.putImageData(pixels, 0, 0);
-  return canvas;
+  return { primary: canvas, binary: null, documentDetected: Boolean(detectedBounds) };
+}
+
+async function prepareImage(source, onProgress) {
+  const blob = typeof source === 'string' ? await dataUrlToBlob(source) : source;
+  const image = await imageFromBlob(blob);
+  const sourceWidth = image.width || image.naturalWidth;
+  const sourceHeight = image.height || image.naturalHeight;
+  try {
+    try {
+      return await prepareImageWithDocumentScanner(image, sourceWidth, sourceHeight, onProgress);
+    } catch (error) {
+      console.warn('No se pudo usar el preprocesado documental; se aplica el modo compatible.', error);
+      onProgress({ status: 'Aplicando mejora compatible', progress: 0.06 });
+      return prepareImageFallback(image, sourceWidth, sourceHeight);
+    }
+  } finally {
+    if (image.close) image.close();
+  }
 }
 
 async function preparePdf(source, onProgress) {
@@ -531,7 +641,7 @@ async function preparePdf(source, onProgress) {
   canvas.height = Math.ceil(viewport.height);
   await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
   await pdf.destroy();
-  return canvas;
+  return { primary: canvas, binary: null, documentDetected: true };
 }
 
 async function getWorker(onProgress) {
@@ -565,22 +675,49 @@ export async function recognizeTicket(source, options = {}) {
   const type = String(options.type || source.type || '').toLowerCase();
   const name = String(options.name || source.name || '').toLowerCase();
   const isPdf = type.includes('pdf') || name.endsWith('.pdf');
-  const prepared = isPdf ? await preparePdf(source, onProgress) : await prepareImage(source);
+  const preparedResult = isPdf ? await preparePdf(source, onProgress) : await prepareImage(source, onProgress);
+  const prepared = preparedResult.primary;
   onProgress({ status: 'Preparando el lector local', progress: 0.08 });
   const worker = await getWorker(onProgress);
-  const result = await worker.recognize(prepared, { rotateAuto: true });
+  const recognitionPsm = preparedResult.binary && preparedResult.documentDetected
+    ? OCR_PSM_SINGLE_BLOCK
+    : OCR_PSM_AUTO;
+  if (recognitionPsm !== OCR_PSM_AUTO) {
+    await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
+  }
+  try {
+  const result = await worker.recognize(prepared, { rotateAuto: recognitionPsm === OCR_PSM_AUTO });
   const primaryText = result?.data?.text || '';
   let text = primaryText;
   let fields = extractTicketFields(primaryText);
+  if (fields.merchant && !isPlausibleTicketMerchant(fields.merchant)) fields.merchant = '';
   let additionalPasses = 0;
   let titleMerchant = '';
+  if (preparedResult.binary && (preparedResult.documentDetected || !fields.total || !fields.merchant || !fields.date)) {
+    onProgress({ status: 'Revisando la imagen con contraste adaptativo', progress: 0.78 });
+    const binaryResult = await worker.recognize(preparedResult.binary, { rotateAuto: false });
+    const binaryText = binaryResult?.data?.text || '';
+    const binaryFields = extractTicketFields(binaryText);
+    if (binaryFields.merchant && !isPlausibleTicketMerchant(binaryFields.merchant)) binaryFields.merchant = '';
+    text = [primaryText, binaryText].filter(Boolean).join('\n');
+    fields = {
+      documentType: detectTicketDocumentType(text),
+      date: fields.date || binaryFields.date || '',
+      time: fields.time || binaryFields.time || '',
+      merchant: preparedResult.documentDetected
+        ? binaryFields.merchant || fields.merchant || ''
+        : fields.merchant || binaryFields.merchant || '',
+      total: fields.total ?? binaryFields.total ?? null
+    };
+    additionalPasses += 1;
+  }
   const preparedContext = prepared.getContext('2d', { willReadFrequently: true });
   const titleBounds = findFirstTextBand(
     preparedContext.getImageData(0, 0, prepared.width, prepared.height).data,
     prepared.width,
     prepared.height
   );
-  if (titleBounds) {
+  if (!fields.merchant && titleBounds) {
     await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SINGLE_LINE });
     try {
       onProgress({ status: 'Leyendo el título', progress: 0.82 });
@@ -588,14 +725,14 @@ export async function recognizeTicket(source, options = {}) {
       const titleText = titleResult?.data?.text || '';
       const titleConfidence = Number(titleResult?.data?.confidence || 0);
       const titleCandidate = extractTicketMerchant(titleText);
-      if (titleCandidate && titleConfidence >= 50) {
+      if (isPlausibleTicketMerchant(titleCandidate) && titleConfidence >= 60) {
         titleMerchant = titleCandidate;
         fields.merchant = titleMerchant;
       }
       text = [titleText, primaryText].filter(Boolean).join('\n');
       additionalPasses += 1;
     } finally {
-      await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_AUTO });
+      await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
     }
   }
   if (!fields.total || !fields.merchant || !fields.date) {
@@ -617,15 +754,17 @@ export async function recognizeTicket(source, options = {}) {
       }
       text = [primaryText, headerText, footerText].filter(Boolean).join('\n');
       const mergedFields = extractTicketFields(text);
+      const mergedMerchant = [fields.merchant, headerFields.merchant, mergedFields.merchant]
+        .find(isPlausibleTicketMerchant) || titleMerchant || '';
       fields = {
         documentType: mergedFields.documentType,
         date: headerFields.date || fields.date || mergedFields.date || footerFields.date || '',
         time: headerFields.time || fields.time || mergedFields.time || footerFields.time || '',
-        merchant: titleMerchant || fields.merchant || headerFields.merchant || mergedFields.merchant || '',
+        merchant: mergedMerchant,
         total: fields.total ?? footerFields.total ?? mergedFields.total ?? null
       };
     } finally {
-      await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_AUTO });
+      await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
     }
   }
   return {
@@ -633,6 +772,16 @@ export async function recognizeTicket(source, options = {}) {
     confidence: Number(result?.data?.confidence) || 0,
     fields,
     additionalPasses,
-    pdfFirstPageOnly: isPdf
+    pdfFirstPageOnly: isPdf,
+    documentDetected: preparedResult.documentDetected
   };
+  } finally {
+    if (recognitionPsm !== OCR_PSM_AUTO) {
+      try {
+        await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_AUTO });
+      } catch (_) {
+        // El siguiente uso vuelve a preparar el lector; este restablecimiento es preventivo.
+      }
+    }
+  }
 }

@@ -11,8 +11,10 @@ import {
   extractTicketTotal,
   findFirstTextBand,
   findReceiptBounds,
+  isPlausibleTicketMerchant,
   parseTicketAmount
 } from '../ticket-ocr.js';
+import { orderReceiptCorners } from '../ticket-image-processing.js';
 
 const shopReceipt = `BEKER-CAFE
 FACTURA SIMPLIFICADA
@@ -77,6 +79,7 @@ test('elige Total o Importe y no confunde IVA ni base imponible', () => {
   assert.equal(extractTicketTotal('UNID DESCRIPCION PRECIO IMPORTE\n1,000 CANA CLARA 2,80 2,80'), null);
   assert.equal(extractTicketTotal('IMPORTE\n2,80 2,80'), null);
   assert.equal(extractTicketTotal('PENDIENTE DE COBRO 8,30'), 8.3);
+  assert.equal(extractTicketTotal('een 8,30\nTOTAL IMPORTE E'), 8.3);
 });
 
 test('mantiene el comercio del encabezado y descarta líneas de productos', () => {
@@ -91,6 +94,10 @@ RUA DA CRUZ 18 B
 TEL 982253055
 NIF-33307299X
 FRA SIMP COMPROBANTE`), 'MILLENTUM');
+  assert.equal(extractTicketMerchant('f MILLENIUM I\nMARTA RODRIGUEZ\nNIF-33307299X'), 'MILLENIUM');
+  assert.equal(isPlausibleTicketMerchant('Ad O'), false);
+  assert.equal(isPlausibleTicketMerchant('mE. Hora'), false);
+  assert.equal(isPlausibleTicketMerchant('MILLENIUM'), true);
 });
 
 test('corrige una o dos letras usando comercios guardados anteriormente', () => {
@@ -147,14 +154,30 @@ test('aísla la primera línea de texto para leer el comercio', () => {
   assert.ok(bounds.x <= 30 && bounds.x + bounds.width >= 70);
 });
 
+test('ordena las esquinas del papel antes de corregir la perspectiva', () => {
+  assert.deepEqual(orderReceiptCorners([
+    { x: 92, y: 12 },
+    { x: 8, y: 88 },
+    { x: 10, y: 10 },
+    { x: 90, y: 90 }
+  ]), [
+    { x: 10, y: 10 },
+    { x: 92, y: 12 },
+    { x: 90, y: 90 },
+    { x: 8, y: 88 }
+  ]);
+});
+
 test('activa lecturas de rescate separadas para cabecera y total', () => {
   const ocr = readFileSync(new URL('../ticket-ocr.js', import.meta.url), 'utf8');
   assert.match(ocr, /Revisando la cabecera/);
   assert.match(ocr, /Revisando el total/);
   assert.match(ocr, /Leyendo el título/);
+  assert.match(ocr, /OCR_PSM_SINGLE_BLOCK/);
   assert.match(ocr, /OCR_PSM_SINGLE_LINE/);
-  assert.match(ocr, /titleConfidence >= 50/);
-  assert.match(ocr, /merchant: titleMerchant \|\| fields\.merchant \|\| headerFields\.merchant/);
+  assert.match(ocr, /titleConfidence >= 60/);
+  assert.match(ocr, /preparedResult\.documentDetected \|\| !fields\.total/);
+  assert.match(ocr, /binaryFields\.merchant \|\| fields\.merchant/);
   assert.match(ocr, /cropCanvas\(prepared, 0, 0\.56\)/);
   assert.match(ocr, /cropCanvas\(prepared, 0\.43, 1\)/);
 });
@@ -207,14 +230,14 @@ test('los comercios de comida tienen prioridad y solo usan una subcategoría con
 test('la ayuda explica la lectura diferenciada y conservadora', () => {
   const help = readFileSync(new URL('../ayuda.html', import.meta.url), 'utf8');
   assert.match(help, /Distingue un ticket comercial de una copia o justificante de pago con tarjeta/);
-  assert.match(help, /no considera «Importe» cuando es el encabezado de una tabla de productos/);
+  assert.match(help, /No considera «Importe» cuando es el encabezado de una tabla de productos/);
   assert.match(help, /Pendiente de cobro/);
-  assert.match(help, /Detecta el papel dentro de la fotografía, recorta el fondo/);
-  assert.match(help, /primera banda real de texto/);
-  assert.match(help, /modo de una sola línea/);
-  assert.match(help, /Solo acepta esa lectura aislada cuando alcanza una confianza suficiente/);
+  assert.match(help, /detecta las cuatro esquinas del papel/);
+  assert.match(help, /corrige la perspectiva y compensa sombras/);
+  assert.match(help, /dos lecturas complementarias/);
+  assert.match(help, /contraste adaptativo/);
+  assert.match(help, /línea inmediatamente anterior o posterior/);
   assert.match(help, /etiquetas como Fecha u Hora/);
-  assert.match(help, /estructura habitual anterior a TEL\/NIF/);
   assert.match(help, /establecimiento ya corregido en gastos anteriores/);
   assert.match(help, /utiliza el año de ese viaje/);
   assert.match(help, /conserva el importe del formulario sin sustituirlo/);
