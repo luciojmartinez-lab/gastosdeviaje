@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [app, styles, help, sw, sharePdf] = await Promise.all([
+const [app, styles, help, sw, sharePdf, html] = await Promise.all([
   readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
   readFile(new URL('../styles.css', import.meta.url), 'utf8'),
   readFile(new URL('../ayuda.html', import.meta.url), 'utf8'),
   readFile(new URL('../sw.js', import.meta.url), 'utf8'),
-  readFile(new URL('../share-pdf.js', import.meta.url), 'utf8')
+  readFile(new URL('../share-pdf.js', import.meta.url), 'utf8'),
+  readFile(new URL('../index.html', import.meta.url), 'utf8')
 ]);
 
 test('Viajes muestra sus acciones en un desplegable', () => {
@@ -31,6 +32,19 @@ test('las entradas del Blog se comparten como un PDF real', () => {
   assert.match(app, /<option value="share">Compartir como PDF<\/option>/);
   assert.match(app, /handleBlogAction\(blogActionId, action\)/);
   assert.match(help, /PDF real[\s\S]*?páginas A4[\s\S]*?<code>about:blank<\/code>/);
+});
+
+test('la vista completa del Blog explica Android y comparte el HTML real', () => {
+  assert.match(html, /id="blog-pdf-guide-dialog"/);
+  assert.match(html, /botón redondo con el icono PDF/);
+  assert.match(html, /id="blog-pdf-guide-continue"/);
+  assert.match(app, /function openBlogPdfGuide\(\)/);
+  assert.match(app, /id="blog-preview-share">Compartir HTML/);
+  assert.match(app, /await navigator\.share\(\{files:\[file\]\}\)/);
+  assert.match(app, /return '<!doctype html>\\\\n' \+ clone\.outerHTML/);
+  assert.match(app, /\$\('#btn-blog-pdf'\)\.onclick = openBlogPdfGuide/);
+  assert.match(help, /seleccionar solamente la opción superior no crea aún el archivo/);
+  assert.match(help, /Compartir HTML[\s\S]*?menú de Chrome[\s\S]*?<code>about:blank<\/code>/);
 });
 
 test('los trayectos son líneas rectas discontinuas sin modos de transporte', () => {

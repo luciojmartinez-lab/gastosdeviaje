@@ -14,7 +14,7 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
 
   assert.match(html, /Fecha de creación:<\/strong> 17 de julio de 2026/);
   assert.match(html, /Última actualización:<\/strong> 19 de julio de 2026/);
-  assert.match(html, /Versión documentada:<\/strong> 700v188/);
+  assert.match(html, /Versión documentada:<\/strong> 700v189/);
   assert.match(html, /id="objetivo"/);
   assert.match(html, /1\. Objetivo y filosofía de la aplicación/);
   assert.match(html, /id="flujo"/);
@@ -40,8 +40,8 @@ test('todos los modales tienen ayuda contextual con un destino documentado', asy
   const targets = new Map([...helpMap.matchAll(/'([^']+-dialog)': '([^']+)'/g)].map(match => [match[1], match[2]]));
   const helpIds = new Set([...help.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
 
-  assert.equal(allDialogIds.length, 17);
-  assert.equal(dialogIds.length, 15);
+  assert.equal(allDialogIds.length, 18);
+  assert.equal(dialogIds.length, 16);
   assert.equal(targets.size, dialogIds.length);
   for (const dialogId of dialogIds) {
     assert.ok(targets.has(dialogId), `Falta ayuda contextual para ${dialogId}`);

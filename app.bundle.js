@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v188';
+const APP_VERSION = '700v189';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -38,6 +38,7 @@ const DIALOG_HELP_TARGETS = {
   'blog-entry-dialog': 'blog-formulario',
   'expense-blog-replace-dialog': 'gasto-a-blog',
   'shared-images-dialog': 'compartir',
+  'blog-pdf-guide-dialog': 'blog-pdf',
   'wordpress-export-dialog': 'wordpress-exportar',
   'print-dialog': 'informe-pdf',
   'backup-dialog': 'backup',
@@ -1813,7 +1814,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v188');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v189');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1845,7 +1846,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v188');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v189');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2288,7 +2289,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v188');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v189');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -8741,7 +8742,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v188');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v189');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -10324,6 +10325,29 @@ function exportBlogToWordPress() {
   closeWordPressExportDialog();
 }
 
+function openBlogPdfGuide() {
+  const trip = selectedBlogTrip();
+  if (!trip) {
+    alert('Selecciona exactamente un viaje para guardar su blog en PDF.');
+    return;
+  }
+  const dialog = $('#blog-pdf-guide-dialog');
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeBlogPdfGuide() {
+  const dialog = $('#blog-pdf-guide-dialog');
+  if (!dialog) return;
+  if (dialog.open && dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+}
+
+function continueBlogPdf() {
+  closeBlogPdfGuide();
+  setTimeout(printBlog, 0);
+}
+
 function printBlog() {
   const trip = selectedBlogTrip();
   if (!trip) {
@@ -10341,6 +10365,7 @@ function printBlog() {
     return;
   }
   const body = blogPrintBodyHtml(trip, entries, { overviewEntries: allEntries });
+  const htmlFileName = `blog-${slugFilePart(trip.nombre)}-${currentLocalDate()}.html`;
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blog · ${escapeHtml(trip.nombre)}</title><style>
     @page { size: A4; margin: 12mm; }
     * { box-sizing: border-box; }
@@ -10380,8 +10405,46 @@ function printBlog() {
     .blog-print-featured { margin: 0 0 8mm; text-align: center; }
     .blog-print-featured .blog-print-image { width: 100%; max-width: 100%; }
     .blog-print-featured figcaption { margin-top: 2mm; color: #64748b; font-size: 11px; }
+    .blog-preview-toolbar { position: sticky; z-index: 10; top: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -8mm -8mm 8mm; padding: 10px; border-bottom: 1px solid #cbd5e1; background: #ffffffee; box-shadow: 0 4px 14px #0f172a1f; }
+    .blog-preview-toolbar button { min-height: 42px; padding: 8px 12px; border: 1px solid #b9c8da; border-radius: 6px; color: #173d63; background: #eef5ff; font: inherit; font-weight: 650; }
+    .blog-preview-toolbar button.primary { border-color: #0876c9; color: #fff; background: #0876c9; }
+    .blog-preview-status { flex: 1 1 100%; margin: 0; color: #475569; font-size: 12px; }
     @media screen { body { max-width: 210mm; margin: 0 auto; padding: 12mm; } }
-  </style></head><body>${body}<script>
+    @media print { .blog-preview-toolbar { display: none; } }
+  </style></head><body><nav class="blog-preview-toolbar" aria-label="Acciones de la vista del Blog">
+    <button type="button" class="primary" id="blog-preview-share">Compartir HTML</button>
+    <button type="button" id="blog-preview-download">Descargar HTML</button>
+    <button type="button" id="blog-preview-print">Imprimir / PDF</button>
+    <button type="button" id="blog-preview-close">Cerrar</button>
+    <p class="blog-preview-status" id="blog-preview-status">Usa estos botones; el menú de Chrome compartiría solamente about:blank.</p>
+  </nav>${body}<script>
+    var htmlFileName = ${JSON.stringify(htmlFileName)};
+    function htmlFileContent(){
+      var clone = document.documentElement.cloneNode(true);
+      var toolbar = clone.querySelector('.blog-preview-toolbar');
+      if(toolbar) toolbar.remove();
+      Array.from(clone.querySelectorAll('script')).forEach(function(script){script.remove();});
+      return '<!doctype html>\\n' + clone.outerHTML;
+    }
+    function createHtmlFile(){return new File([htmlFileContent()],htmlFileName,{type:'text/html'});}
+    function downloadHtmlFile(file){
+      var url=URL.createObjectURL(file);
+      var link=document.createElement('a');
+      link.href=url;link.download=file.name;document.body.appendChild(link);link.click();link.remove();
+      setTimeout(function(){URL.revokeObjectURL(url);},1000);
+    }
+    async function shareHtmlFile(){
+      var file=createHtmlFile();
+      if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
+        try{await navigator.share({files:[file]});return;}catch(error){if(error && error.name==='AbortError')return;}
+      }
+      downloadHtmlFile(file);
+      document.getElementById('blog-preview-status').textContent='El HTML se ha descargado. Compártelo desde la carpeta Descargas.';
+    }
+    document.getElementById('blog-preview-share').onclick=shareHtmlFile;
+    document.getElementById('blog-preview-download').onclick=function(){downloadHtmlFile(createHtmlFile());document.getElementById('blog-preview-status').textContent='HTML descargado.';};
+    document.getElementById('blog-preview-print').onclick=function(){window.print();};
+    document.getElementById('blog-preview-close').onclick=function(){window.close();};
     Promise.all(Array.from(document.images).map(function(img){return img.complete ? Promise.resolve() : new Promise(function(resolve){img.onload=resolve;img.onerror=resolve;});})).then(function(){setTimeout(function(){window.print();},150);});
   </script></body></html>`;
   const win = window.open('', '_blank');
@@ -11727,9 +11790,12 @@ function bindEvents() {
   $('#btn-last-expense').onclick = () => scrollToLastExpense();
   $('#btn-blog-add').onclick = () => openBlogEntryDialog();
   $('#btn-blog-last').onclick = scrollToLastBlogEntry;
-  $('#btn-blog-pdf').onclick = printBlog;
+  $('#btn-blog-pdf').onclick = openBlogPdfGuide;
   $('#btn-blog-add-bottom').onclick = () => openBlogEntryDialog();
-  $('#btn-blog-pdf-bottom').onclick = printBlog;
+  $('#btn-blog-pdf-bottom').onclick = openBlogPdfGuide;
+  $('#blog-pdf-guide-close').onclick = closeBlogPdfGuide;
+  $('#blog-pdf-guide-cancel').onclick = closeBlogPdfGuide;
+  $('#blog-pdf-guide-continue').onclick = continueBlogPdf;
   $('#btn-blog-wordpress').onclick = openWordPressExportDialog;
   $('#shared-images-close').onclick = closeSharedImagesDialog;
   $('#shared-images-cancel').onclick = closeSharedImagesDialog;

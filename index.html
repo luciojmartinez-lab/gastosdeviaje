@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v188">
+  <link rel="manifest" href="manifest.webmanifest?v=700v189">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v188">
+  <link rel="stylesheet" href="styles.css?v=700v189">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v188 · 19/07/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v189 · 19/07/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v188</div>
+  <div class="app-version">700v189</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -125,7 +125,7 @@
         <div class="section-actions">
           <button class="btn" id="btn-blog-add" type="button">Añadir entrada</button>
           <button class="btn ghost" id="btn-blog-last" type="button">Última entrada</button>
-          <button class="btn ghost" id="btn-blog-pdf" type="button">Ver en PDF</button>
+          <button class="btn ghost" id="btn-blog-pdf" type="button">Vista / PDF</button>
           <button class="btn ghost" id="btn-blog-wordpress" type="button">WordPress</button>
         </div>
       </div>
@@ -152,7 +152,7 @@
       </div>
       <div class="actions blog-bottom-actions">
         <button class="btn" id="btn-blog-add-bottom" type="button">Añadir entrada</button>
-        <button class="btn ghost" id="btn-blog-pdf-bottom" type="button">Ver en PDF</button>
+        <button class="btn ghost" id="btn-blog-pdf-bottom" type="button">Vista / PDF</button>
       </div>
     </div>
   </section>
@@ -794,6 +794,25 @@
   </form>
 </dialog>
 
+<dialog id="blog-pdf-guide-dialog" class="modal blog-pdf-guide-modal">
+  <form method="dialog">
+    <div class="modal-head">
+      <h2>Vista HTML y PDF del Blog</h2>
+      <button type="button" class="ghost icon-btn" id="blog-pdf-guide-close" aria-label="Cerrar">x</button>
+    </div>
+    <ol class="blog-pdf-guide-steps">
+      <li>En la pantalla de Android, deja seleccionada la opción <strong>Guardar como PDF</strong>.</li>
+      <li>Pulsa el <strong>botón redondo con el icono PDF</strong> situado a la derecha. Elegir la opción superior no guarda todavía el archivo.</li>
+      <li>Selecciona la carpeta, escribe el nombre si quieres cambiarlo y pulsa <strong>Guardar</strong>.</li>
+    </ol>
+    <p class="small blog-pdf-guide-note">Al cerrar el cuadro de impresión permanecerá la vista HTML. Para enviarla, pulsa <strong>Compartir HTML</strong> dentro de esa página; no uses Compartir del menú de Chrome, porque Chrome solo conoce su dirección temporal <code>about:blank</code>.</p>
+    <div class="actions">
+      <button type="button" class="btn" id="blog-pdf-guide-continue">Abrir vista y PDF</button>
+      <button type="button" class="ghost" id="blog-pdf-guide-cancel">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="wordpress-export-dialog" class="modal wordpress-export-modal">
   <form method="dialog">
     <div class="modal-head">
@@ -942,11 +961,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v188"></script>
-<script src="app.bundle.js?v=700v188"></script>
+<script src="map-model.js?v=700v189"></script>
+<script src="app.bundle.js?v=700v189"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v188';
+    const pageVersion = '700v189';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -998,7 +1017,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v188', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v189', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

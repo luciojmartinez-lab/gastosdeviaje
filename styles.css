@@ -1403,6 +1403,29 @@ input[type="checkbox"] {
   width: min(420px, calc(100vw - 40px));
 }
 
+.blog-pdf-guide-modal {
+  width: min(560px, calc(100vw - 24px));
+}
+
+.blog-pdf-guide-steps {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+  padding-left: 28px;
+  line-height: 1.45;
+}
+
+.blog-pdf-guide-steps li::marker {
+  color: #0876c9;
+  font-weight: 700;
+}
+
+.blog-pdf-guide-note {
+  padding: 12px;
+  border-left: 4px solid #d97706;
+  background: #fff7ed;
+}
+
 .sync-modal {
   width: min(760px, calc(100vw - 32px));
 }
