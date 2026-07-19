@@ -8,6 +8,7 @@ import {
   extractTicketMerchant,
   extractTicketTime,
   extractTicketTotal,
+  findFirstTextBand,
   findReceiptBounds,
   parseTicketAmount
 } from '../ticket-ocr.js';
@@ -104,10 +105,35 @@ test('detecta el papel del ticket para recortarlo antes del OCR', () => {
   assert.equal(findReceiptBounds(pixels, width, height), null);
 });
 
+test('aísla la primera línea de texto para leer el comercio', () => {
+  const width = 100;
+  const height = 100;
+  const pixels = new Uint8ClampedArray(width * height * 4);
+  pixels.fill(255);
+  const drawBand = (fromY, toY, fromX, toX) => {
+    for (let y = fromY; y <= toY; y += 1) {
+      for (let x = fromX; x <= toX; x += 1) {
+        const offset = (y * width + x) * 4;
+        pixels[offset] = 25;
+        pixels[offset + 1] = 25;
+        pixels[offset + 2] = 25;
+      }
+    }
+  };
+  drawBand(20, 25, 30, 70);
+  drawBand(40, 46, 15, 85);
+  const bounds = findFirstTextBand(pixels, width, height);
+  assert.ok(bounds);
+  assert.ok(bounds.y <= 20 && bounds.y + bounds.height < 40);
+  assert.ok(bounds.x <= 30 && bounds.x + bounds.width >= 70);
+});
+
 test('activa lecturas de rescate separadas para cabecera y total', () => {
   const ocr = readFileSync(new URL('../ticket-ocr.js', import.meta.url), 'utf8');
   assert.match(ocr, /Revisando la cabecera/);
   assert.match(ocr, /Revisando el total/);
+  assert.match(ocr, /Leyendo el título/);
+  assert.match(ocr, /OCR_PSM_SINGLE_LINE/);
   assert.match(ocr, /cropCanvas\(prepared, 0, 0\.56\)/);
   assert.match(ocr, /cropCanvas\(prepared, 0\.43, 1\)/);
 });
@@ -142,12 +168,31 @@ test('al editar un gasto el OCR conserva los datos existentes y su clasificació
   assert.match(app, /fecha \(año ajustado al viaje\)/);
 });
 
+test('los comercios de comida tienen prioridad y solo usan una subcategoría configurada', () => {
+  const app = readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
+  const foodRule = app.indexOf('const foodBusinessRules = [');
+  const learnedRule = app.indexOf('const learned = learnedTicketCategory(merchant);', foodRule);
+
+  assert.ok(foodRule >= 0);
+  assert.ok(learnedRule > foodRule, 'La regla de comida debe preceder a la clasificación aprendida');
+  assert.match(app, /'restaurante', 'taperia', 'meson', 'pizzeria'/);
+  assert.match(app, /'cafeteria', 'cafe'/);
+  assert.match(app, /'panaderia'/);
+  assert.match(app, /findCategoryByNames\(\['Comida'\]\)/);
+  assert.match(app, /findCategoryByNames\(foodRule\.subcategories, category\.id\)/);
+  assert.match(app, /subcategory: subcategory \|\| null/);
+});
+
 test('la ayuda explica la lectura diferenciada y conservadora', () => {
   const help = readFileSync(new URL('../ayuda.html', import.meta.url), 'utf8');
   assert.match(help, /Distingue un ticket comercial de una copia o justificante de pago con tarjeta/);
   assert.match(help, /no considera «Importe» cuando es el encabezado de una tabla de productos/);
   assert.match(help, /Pendiente de cobro/);
   assert.match(help, /Detecta el papel dentro de la fotografía, recorta el fondo/);
+  assert.match(help, /primera banda real de texto/);
+  assert.match(help, /modo de una sola línea/);
   assert.match(help, /utiliza el año de ese viaje/);
   assert.match(help, /conserva el importe del formulario sin sustituirlo/);
+  assert.match(help, /propone <strong>Comida<\/strong>/);
+  assert.match(help, /si no existe, la deja vacía/);
 });

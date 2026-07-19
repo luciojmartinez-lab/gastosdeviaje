@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v194';
+const APP_VERSION = '700v195';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -1814,7 +1814,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v194');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v195');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1846,7 +1846,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v194');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v195');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2139,12 +2139,30 @@ function learnedTicketCategory(merchant) {
 }
 
 function suggestTicketCategory(text, merchant) {
+  const merchantKey = normalizeTicketMerchantKey(merchant);
+  const paddedMerchant = ` ${merchantKey} `;
+  const foodBusinessRules = [
+    { words: ['mercadona', 'carrefour', 'alcampo', 'lidl', 'aldi', 'supermercado', 'hipermercado', 'alimentacion', 'ultramarinos'], subcategories: ['Supermercado', 'Super'] },
+    { words: ['heladeria', 'helados'], subcategories: ['Heladeria'] },
+    { words: ['panaderia'], subcategories: ['Panaderia'] },
+    { words: ['pasteleria', 'confiteria'], subcategories: ['Pasteleria'] },
+    { words: ['cafeteria', 'cafe'], subcategories: ['Cafeteria'] },
+    { words: ['restaurante', 'taperia', 'meson', 'pizzeria'], subcategories: ['Restaurante'] },
+    { words: ['bar', 'taberna', 'cerveceria'], subcategories: ['Bar'] }
+  ];
+  const foodRule = foodBusinessRules.find(rule => rule.words.some(word => paddedMerchant.includes(` ${word} `)));
+  if (foodRule) {
+    const category = findCategoryByNames(['Comida']);
+    if (category) {
+      const subcategory = findCategoryByNames(foodRule.subcategories, category.id);
+      return { category, subcategory: subcategory || null, learned: false };
+    }
+  }
+
   const learned = learnedTicketCategory(merchant);
   if (learned) return learned;
   const haystack = normalizedTicketSearch(`${merchant || ''}\n${text || ''}`);
   const rules = [
-    { words: ['mercadona', 'carrefour', 'alcampo', 'lidl', 'aldi', 'supermercado', 'hipermercado', 'alimentacion'], categories: ['Comida', 'Alimentación'], subcategories: ['Supermercado', 'Super'] },
-    { words: ['restaurante', 'cafeteria', 'cafe ', 'bar ', 'heladeria', 'helados', 'tapas', 'menu', 'hamburgues', 'pizzeria', 'comida'], categories: ['Comida', 'Alimentación'], subcategories: ['Heladería', 'Cafetería', 'Bar', 'Restaurante'] },
     { words: ['renfe', 'iryo', 'ouigo', 'ferrocarril', 'tren'], categories: ['Transporte'], subcategories: ['Tren'] },
     { words: ['taxi', 'uber', 'cabify'], categories: ['Transporte'], subcategories: ['Taxi'] },
     { words: ['metro', 'autobus', 'bus ', 'transporte urbano'], categories: ['Transporte'], subcategories: ['Metro', 'Autobús', 'Bus'] },
@@ -2334,7 +2352,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v194');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v195');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -8776,7 +8794,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v194');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v195');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }

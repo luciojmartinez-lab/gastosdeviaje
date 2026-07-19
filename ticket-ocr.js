@@ -1,6 +1,7 @@
 let workerPromise = null;
 let progressListener = () => {};
 const OCR_PSM_AUTO = '3';
+const OCR_PSM_SINGLE_LINE = '7';
 const OCR_PSM_SPARSE_TEXT = '11';
 
 const cleanLine = value => String(value || '')
@@ -322,6 +323,61 @@ export function findReceiptBounds(data, width, height) {
   };
 }
 
+export function findFirstTextBand(data, width, height) {
+  if (!data || width < 8 || height < 8 || data.length < width * height * 4) return null;
+  const scan = (startRatio, endRatio) => {
+    const startY = Math.max(0, Math.floor(height * startRatio));
+    const endY = Math.min(height, Math.ceil(height * endRatio));
+    const minimumDarkPixels = Math.max(5, Math.round(width * 0.012));
+    const minimumBandHeight = Math.max(3, Math.round(height * 0.003));
+    const allowedGap = Math.max(2, Math.round(height * 0.0015));
+    let bandStart = -1;
+    let lastActive = -1;
+    const finishBand = () => {
+      if (bandStart < 0 || lastActive - bandStart + 1 < minimumBandHeight) return null;
+      let minX = width;
+      let maxX = -1;
+      for (let y = bandStart; y <= lastActive; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const offset = (y * width + x) * 4;
+          if (data[offset] < 150) {
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
+          }
+        }
+      }
+      if (maxX < minX || maxX - minX + 1 < width * 0.08) return null;
+      const padX = Math.max(4, Math.round(width * 0.035));
+      const padY = Math.max(3, Math.round((lastActive - bandStart + 1) * 0.18));
+      const x = Math.max(0, minX - padX);
+      const y = Math.max(0, bandStart - padY);
+      return {
+        x,
+        y,
+        width: Math.min(width, maxX + padX + 1) - x,
+        height: Math.min(height, lastActive + padY + 1) - y
+      };
+    };
+    for (let y = startY; y < endY; y += 1) {
+      let darkPixels = 0;
+      for (let x = 0; x < width; x += 1) {
+        if (data[(y * width + x) * 4] < 150) darkPixels += 1;
+      }
+      if (darkPixels >= minimumDarkPixels) {
+        if (bandStart < 0) bandStart = y;
+        lastActive = y;
+      } else if (bandStart >= 0 && y - lastActive > allowedGap) {
+        const band = finishBand();
+        if (band) return band;
+        bandStart = -1;
+        lastActive = -1;
+      }
+    }
+    return finishBand();
+  };
+  return scan(0.08, 0.48) || scan(0.02, 0.48);
+}
+
 function cropCanvas(source, startRatio, endRatio) {
   const startY = Math.max(0, Math.floor(source.height * startRatio));
   const endY = Math.min(source.height, Math.ceil(source.height * endRatio));
@@ -329,6 +385,35 @@ function cropCanvas(source, startRatio, endRatio) {
   canvas.width = source.width;
   canvas.height = Math.max(1, endY - startY);
   canvas.getContext('2d').drawImage(source, 0, startY, source.width, canvas.height, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function cropCanvasBounds(source, bounds, binary = false) {
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bounds.width));
+  canvas.height = Math.max(1, Math.round(bounds.height));
+  const context = canvas.getContext('2d', { willReadFrequently: binary });
+  context.drawImage(
+    source,
+    bounds.x,
+    bounds.y,
+    bounds.width,
+    bounds.height,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+  if (binary) {
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    for (let index = 0; index < pixels.data.length; index += 4) {
+      const value = pixels.data[index] < 185 ? 0 : 255;
+      pixels.data[index] = value;
+      pixels.data[index + 1] = value;
+      pixels.data[index + 2] = value;
+    }
+    context.putImageData(pixels, 0, 0);
+  }
   return canvas;
 }
 
@@ -447,6 +532,26 @@ export async function recognizeTicket(source, options = {}) {
   let text = primaryText;
   let fields = extractTicketFields(primaryText);
   let additionalPasses = 0;
+  const preparedContext = prepared.getContext('2d', { willReadFrequently: true });
+  const titleBounds = findFirstTextBand(
+    preparedContext.getImageData(0, 0, prepared.width, prepared.height).data,
+    prepared.width,
+    prepared.height
+  );
+  if (titleBounds) {
+    await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SINGLE_LINE });
+    try {
+      onProgress({ status: 'Leyendo el título', progress: 0.82 });
+      const titleResult = await worker.recognize(cropCanvasBounds(prepared, titleBounds, true));
+      const titleText = titleResult?.data?.text || '';
+      const titleMerchant = extractTicketMerchant(titleText);
+      if (titleMerchant) fields.merchant = titleMerchant;
+      text = [titleText, primaryText].filter(Boolean).join('\n');
+      additionalPasses += 1;
+    } finally {
+      await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_AUTO });
+    }
+  }
   if (!fields.total || !fields.merchant || !fields.date) {
     await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SPARSE_TEXT });
     try {
