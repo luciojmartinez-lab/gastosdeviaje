@@ -6,6 +6,7 @@ import {
   detectTicketDocumentType,
   extractTicketDate,
   extractTicketFields,
+  extractTicketFoodEvidence,
   extractTicketMerchant,
   extractTicketTime,
   extractTicketTotal,
@@ -80,6 +81,30 @@ test('elige Total o Importe y no confunde IVA ni base imponible', () => {
   assert.equal(extractTicketTotal('IMPORTE\n2,80 2,80'), null);
   assert.equal(extractTicketTotal('PENDIENTE DE COBRO 8,30'), 8.3);
   assert.equal(extractTicketTotal('een 8,30\nTOTAL IMPORTE E'), 8.3);
+});
+
+test('deduce comida por los conceptos y restaurante por cantidad o total', () => {
+  assert.deepEqual(extractTicketFoodEvidence(milleniumReceiptOcr, 8.3), {
+    isFood: true,
+    conceptCount: 2,
+    restaurantLikely: false,
+    subcategories: [],
+    terms: ['cana', 'patatas', 'alioli']
+  });
+  assert.equal(extractTicketFoodEvidence(`${milleniumReceiptOcr}\n1,000 CROQUETAS 6,00 6,00`, 14.3).restaurantLikely, true);
+  assert.equal(extractTicketFoodEvidence('1,000 PATATAS 16,50 16,50\nTOTAL 16,50', 16.5).restaurantLikely, true);
+  assert.equal(extractTicketFoodEvidence('1,000 PATATAS 5,50 5,50\nSIVA 7,55 10,00 0,75', 5.5).conceptCount, 1);
+  assert.deepEqual(extractTicketFoodEvidence('BILLETE DE TREN\nTOTAL 45,00', 45), {
+    isFood: false,
+    conceptCount: 0,
+    restaurantLikely: false,
+    subcategories: [],
+    terms: []
+  });
+  assert.deepEqual(extractTicketFoodEvidence('CAFETERIA MILLENIUM\nTOTAL 4,50', 4.5).subcategories, ['Cafeteria']);
+  assert.deepEqual(extractTicketFoodEvidence('PANADERIA CENTRAL\nTOTAL 3,20', 3.2).subcategories, ['Panaderia']);
+  assert.deepEqual(extractTicketFoodEvidence('BAR ORENSE\nTOTAL 6,00', 6).subcategories, ['Bar']);
+  assert.deepEqual(extractTicketFoodEvidence('TAPERIA CATEDRAL\nTOTAL 12,00', 12).subcategories, ['Restaurante']);
 });
 
 test('mantiene el comercio del encabezado y descarta líneas de productos', () => {
@@ -205,8 +230,8 @@ test('la interfaz avisa cuando no encuentra un total inequívoco', () => {
 test('al editar un gasto el OCR conserva los datos existentes y su clasificación', () => {
   const app = readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
   assert.match(app, /prefix === 'edit-gasto' && current/);
-  assert.match(app, /suggestTicketCategory\('', fields\.merchant\)/);
-  assert.doesNotMatch(app, /suggestTicketCategory\(result\.text, fields\.merchant\)/);
+  assert.match(app, /result\.classificationText \|\| result\.text \|\| ''/);
+  assert.match(app, /result\.foodEvidence/);
   assert.match(app, /Se conservaron sin cambios/);
   assert.match(app, /ticketDateAlignedToTrip/);
   assert.match(app, /fecha \(año ajustado al viaje\)/);
@@ -225,6 +250,10 @@ test('los comercios de comida tienen prioridad y solo usan una subcategoría con
   assert.match(app, /findCategoryByNames\(\['Comida'\]\)/);
   assert.match(app, /findCategoryByNames\(foodRule\.subcategories, category\.id\)/);
   assert.match(app, /subcategory: subcategory \|\| null/);
+  assert.match(app, /foodEvidence\?\.isFood/);
+  assert.match(app, /foodEvidence\.restaurantLikely/);
+  assert.match(app, /Array\.isArray\(foodEvidence\.subcategories\)/);
+  assert.match(app, /foodEvidence\.restaurantLikely \? \['Restaurante'\] : \[\]/);
 });
 
 test('la ayuda explica la lectura diferenciada y conservadora', () => {
@@ -242,5 +271,9 @@ test('la ayuda explica la lectura diferenciada y conservadora', () => {
   assert.match(help, /utiliza el año de ese viaje/);
   assert.match(help, /conserva el importe del formulario sin sustituirlo/);
   assert.match(help, /propone <strong>Comida<\/strong>/);
+  assert.match(help, /patatas, caña, café, cerveza, menú o platos/);
+  assert.match(help, /tres o más conceptos/);
+  assert.match(help, /supera 15 €/);
+  assert.match(help, /todo el texto útil palabras de negocio como cafetería, panadería, bar, restaurante, tapería/);
   assert.match(help, /si no existe, la deja vacía/);
 });

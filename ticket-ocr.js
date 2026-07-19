@@ -10,7 +10,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v197';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v198';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -130,6 +130,64 @@ function amountsInLine(line) {
   const numericText = String(line || '').replace(/(?<=\d)[oO](?=\d|\b)/g, '0');
   const matches = numericText.match(/(?:\d{1,3}(?:[.\s]\d{3})+|\d+)(?:[,.]\d{1,2})/g) || [];
   return matches.map(parseTicketAmount).filter(value => Number.isFinite(value));
+}
+
+const FOOD_CONCEPT_WORDS = new Set([
+  'agua', 'alioli', 'arroz', 'bocadillo', 'bolleria', 'cafe', 'cana', 'carne', 'cerveza',
+  'croqueta', 'croquetas', 'desayuno', 'ensalada', 'hamburguesa', 'helado', 'menu', 'pan',
+  'pasta', 'pastel', 'patata', 'patatas', 'pescado', 'pizza', 'pollo', 'postre', 'racion',
+  'refresco', 'sandwich', 'tapa', 'tapas', 'tarta', 'tostada', 'tortilla', 'vino'
+]);
+const FOOD_BUSINESS_WORDS = [
+  { words: ['supermercado', 'hipermercado'], subcategories: ['Supermercado', 'Super'] },
+  { words: ['heladeria'], subcategories: ['Heladeria'] },
+  { words: ['panaderia'], subcategories: ['Panaderia'] },
+  { words: ['pasteleria', 'confiteria'], subcategories: ['Pasteleria'] },
+  { words: ['cafeteria'], subcategories: ['Cafeteria'] },
+  { words: ['restaurante', 'taperia', 'meson', 'pizzeria'], subcategories: ['Restaurante'] },
+  { words: ['bar', 'taberna', 'cerveceria'], subcategories: ['Bar'] }
+];
+const NON_CONCEPT_LINE = /\b(total|subtotal|importe|base|iva|fecha|hora|nif|cif|telefono|empleado|mesa|comensales|precio|unidad|unid|descripcion|pendiente|cobro|efectivo|cambio|tarjeta|gracias)\b/;
+
+function normalizedConceptTokens(line) {
+  return normalizeTicketText(line).match(/[a-z]{2,}/g) || [];
+}
+
+export function extractTicketFoodEvidence(text, total = null) {
+  const lines = ticketLines(text);
+  const allTokens = new Set(normalizedConceptTokens(text));
+  const businessRule = FOOD_BUSINESS_WORDS.find(rule => rule.words.some(word => allTokens.has(word)));
+  const foodTerms = new Set();
+  const pricedConcepts = new Set();
+  const foodConcepts = new Set();
+  lines.forEach(line => {
+    const normalized = normalizeTicketText(line);
+    const tokens = normalizedConceptTokens(line);
+    const lineFoodTerms = tokens.filter(token => FOOD_CONCEPT_WORDS.has(token));
+    lineFoodTerms.forEach(token => foodTerms.add(token));
+    if (NON_CONCEPT_LINE.test(normalized)) return;
+    const conceptKey = tokens.join(' ');
+    if (!conceptKey) return;
+    const amountCount = amountsInLine(line).length;
+    const quantityPrefix = /^[^\p{L}\d]{0,8}(?:\d{1,3}[,.]\d{3}|\d{1,3}\s*x)\s+\p{L}/iu.test(line);
+    const productLike = lineFoodTerms.length > 0 || quantityPrefix || (amountCount >= 2 && tokens.length >= 2);
+    if (amountCount && productLike) pricedConcepts.add(conceptKey);
+    if (lineFoodTerms.length) foodConcepts.add(conceptKey);
+  });
+  const conceptCount = Math.max(pricedConcepts.size, foodConcepts.size);
+  const parsedTotal = Number(total);
+  const isFood = foodTerms.size > 0 || Boolean(businessRule);
+  return {
+    isFood,
+    conceptCount,
+    restaurantLikely: isFood && (
+      businessRule?.subcategories[0] === 'Restaurante'
+      || conceptCount >= 3
+      || (Number.isFinite(parsedTotal) && parsedTotal > 15)
+    ),
+    subcategories: businessRule?.subcategories || [],
+    terms: [...foodTerms]
+  };
 }
 
 const CARD_PAYMENT_SIGNALS = /\b(copia\s+(?:cliente|comercio)|justificante|autorizacion|terminal|operacion|transaccion|contactless|tpv|datafono|visa|mastercard|redsys|servired|getnet|global\s+payments)\b/g;
@@ -689,6 +747,7 @@ export async function recognizeTicket(source, options = {}) {
   const result = await worker.recognize(prepared, { rotateAuto: recognitionPsm === OCR_PSM_AUTO });
   const primaryText = result?.data?.text || '';
   let text = primaryText;
+  let classificationText = primaryText;
   let fields = extractTicketFields(primaryText);
   if (fields.merchant && !isPlausibleTicketMerchant(fields.merchant)) fields.merchant = '';
   let additionalPasses = 0;
@@ -700,6 +759,7 @@ export async function recognizeTicket(source, options = {}) {
     const binaryFields = extractTicketFields(binaryText);
     if (binaryFields.merchant && !isPlausibleTicketMerchant(binaryFields.merchant)) binaryFields.merchant = '';
     text = [primaryText, binaryText].filter(Boolean).join('\n');
+    if (binaryText.trim()) classificationText = binaryText;
     fields = {
       documentType: detectTicketDocumentType(text),
       date: fields.date || binaryFields.date || '',
@@ -769,8 +829,10 @@ export async function recognizeTicket(source, options = {}) {
   }
   return {
     text,
+    classificationText,
     confidence: Number(result?.data?.confidence) || 0,
     fields,
+    foodEvidence: extractTicketFoodEvidence(classificationText, fields.total),
     additionalPasses,
     pdfFirstPageOnly: isPdf,
     documentDetected: preparedResult.documentDetected

@@ -13,8 +13,8 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
   const html = await readFile(helpPath, 'utf8');
 
   assert.match(html, /Fecha de creación:<\/strong> 17 de julio de 2026/);
-  assert.match(html, /Última actualización:<\/strong> 19 de julio de 2026/);
-  assert.match(html, /Versión documentada:<\/strong> 700v197/);
+  assert.match(html, /Última actualización:<\/strong> 20 de julio de 2026/);
+  assert.match(html, /Versión documentada:<\/strong> 700v198/);
   assert.match(html, /id="objetivo"/);
   assert.match(html, /1\. Objetivo y filosofía de la aplicación/);
   assert.match(html, /id="flujo"/);

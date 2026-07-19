@@ -21,7 +21,7 @@ test('el arranque conserva el entorno, coloca el credito bajo el tren y dura cua
   ]);
   assert.match(html, /rel="preload"[\s\S]*?bitacora-splash-mobile\.png/);
   assert.match(html, /app-loading-train-group[\s\S]*?app-loading-train[\s\S]*?app-loading-credit/);
-  assert.match(html, /Preparando el viaje\.\.\.[\s\S]*?<strong>Versión 700v197 · 19\/07\/2026<\/strong>/);
+  assert.match(html, /Preparando el viaje\.\.\.[\s\S]*?<strong>Versión 700v198 · 20\/07\/2026<\/strong>/);
   assert.match(styles, /\.app-loading-release strong \{[\s\S]*?font-weight: 800/);
   assert.match(styles, /\.app-loading-release \{[\s\S]*?top: calc\(76svh \+ 48px\)/);
   assert.match(app, /const APP_LOADING_MIN_MS = 4000/);
