@@ -98,7 +98,15 @@ test('devuelve juntos el tipo, comercio, fecha, hora y total', () => {
 test('la interfaz avisa cuando no encuentra un total inequívoco', () => {
   const app = readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
   assert.match(app, /Justificante de tarjeta detectado/);
-  assert.match(app, /no se encontró una línea clara con Total, Importe o A pagar/);
+  assert.match(app, /se mantiene el importe que ya figuraba/);
+});
+
+test('al editar un gasto el OCR conserva los datos existentes y su clasificación', () => {
+  const app = readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
+  assert.match(app, /prefix === 'edit-gasto' && current/);
+  assert.match(app, /suggestTicketCategory\('', fields\.merchant\)/);
+  assert.doesNotMatch(app, /suggestTicketCategory\(result\.text, fields\.merchant\)/);
+  assert.match(app, /Se conservaron sin cambios/);
 });
 
 test('la ayuda explica la lectura diferenciada y conservadora', () => {

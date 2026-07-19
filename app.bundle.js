@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v192';
+const APP_VERSION = '700v193';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -1814,7 +1814,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v192');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v193');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1846,7 +1846,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v192');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v193');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2211,36 +2211,59 @@ function ticketOcrProgressLabel(message) {
 
 function applyTicketOcrFields(prefix, result) {
   const fields = result.fields || {};
-  if (fields.date) $(`#${prefix}-fecha`).value = fields.date;
-  if (fields.time) $(`#${prefix}-hora`).value = fields.time;
-  if (Number.isFinite(fields.total) && fields.total > 0) $(`#${prefix}-importe`).value = fields.total.toFixed(2);
-  if (fields.merchant) $(`#${prefix}-desc`).value = fields.merchant;
-  const suggestion = suggestTicketCategory(result.text, fields.merchant);
+  const detected = [];
+  const applied = [];
+  const preserved = [];
+  const applyValue = (field, value, label) => {
+    if (value === '' || value === null || value === undefined) return false;
+    detected.push(label);
+    const control = $(`#${prefix}-${field}`);
+    if (!control) return false;
+    const current = String(control.value || '').trim();
+    if (prefix === 'edit-gasto' && current) {
+      if (current !== String(value).trim()) preserved.push(label);
+      return false;
+    }
+    control.value = value;
+    applied.push(label);
+    return true;
+  };
+  applyValue('fecha', fields.date || '', 'fecha');
+  applyValue('hora', fields.time || '', 'hora');
+  applyValue('importe', Number.isFinite(fields.total) && fields.total > 0 ? fields.total.toFixed(2) : '', 'total');
+  const merchantApplied = applyValue('desc', fields.merchant || '', 'establecimiento');
+  const suggestion = suggestTicketCategory('', fields.merchant);
   if (suggestion?.category) {
-    $(`#${prefix}-cat`).value = String(suggestion.category.id);
-    rememberLastValidExpenseCategory(prefix);
-    if (prefix === 'g') renderSubcategories();
-    else renderEditSubcategories();
-    if (suggestion.subcategory) $(`#${prefix}-subcat`).value = String(suggestion.subcategory.id);
+    detected.push(`categoría${suggestion.learned ? ' aprendida' : ''}`);
+    const categoryControl = $(`#${prefix}-cat`);
+    const subcategoryControl = $(`#${prefix}-subcat`);
+    if (categoryControl?.value) {
+      const categoryDiffers = Number(categoryControl.value) !== Number(suggestion.category.id);
+      const subcategoryDiffers = suggestion.subcategory
+        && Number(subcategoryControl?.value) !== Number(suggestion.subcategory.id);
+      if (categoryDiffers || subcategoryDiffers) preserved.push('categoría y subcategoría');
+    } else if (categoryControl) {
+      categoryControl.value = String(suggestion.category.id);
+      rememberLastValidExpenseCategory(prefix);
+      if (prefix === 'g') renderSubcategories();
+      else renderEditSubcategories();
+      if (suggestion.subcategory && subcategoryControl) subcategoryControl.value = String(suggestion.subcategory.id);
+      applied.push(`categoría${suggestion.learned ? ' aprendida' : ''}`);
+    }
   }
   pendingTicketOcr[prefix] = {
-    merchant: fields.merchant || '',
+    merchant: merchantApplied ? fields.merchant || '' : '',
     text: result.text || '',
     categoryEdited: false
   };
-  const found = [
-    fields.date ? 'fecha' : '',
-    fields.time ? 'hora' : '',
-    fields.merchant ? 'establecimiento' : '',
-    Number.isFinite(fields.total) && fields.total > 0 ? 'total' : '',
-    suggestion?.category ? `categoría${suggestion.learned ? ' aprendida' : ''}` : ''
-  ].filter(Boolean);
-  if (!found.length) throw new Error('No se han podido reconocer datos claros en este ticket. Puedes introducirlos manualmente.');
+  if (!detected.length) throw new Error('No se han podido reconocer datos claros en este ticket. Puedes introducirlos manualmente.');
   const documentLabel = fields.documentType === 'card_payment' ? 'Justificante de tarjeta detectado.' : 'Ticket de comercio detectado.';
   const missingAmount = Number.isFinite(fields.total) && fields.total > 0
     ? ''
-    : ' El importe no se ha cambiado porque no se encontró una línea clara con Total, Importe o A pagar.';
-  return `${documentLabel} Propuesta aplicada: ${found.join(', ')}. Revisa y modifica cualquier campo; no se guardará hasta que pulses ${prefix === 'edit-gasto' ? 'Guardar cambios' : 'Añadir'}.${missingAmount}${result.pdfFirstPageOnly ? ' En PDF se ha leído la primera página.' : ''}`;
+    : ' No se encontró un total claro con Total, Importe, A pagar o Pendiente de cobro; se mantiene el importe que ya figuraba.';
+  const appliedMessage = applied.length ? ` Campos completados: ${[...new Set(applied)].join(', ')}.` : '';
+  const preservedMessage = preserved.length ? ` Se conservaron sin cambios: ${[...new Set(preserved)].join(', ')}.` : '';
+  return `${documentLabel} Datos reconocidos: ${[...new Set(detected)].join(', ')}.${appliedMessage}${preservedMessage} Revisa los datos; no se guardarán hasta que pulses ${prefix === 'edit-gasto' ? 'Guardar cambios' : 'Añadir'}.${missingAmount}${result.pdfFirstPageOnly ? ' En PDF se ha leído la primera página.' : ''}`;
 }
 
 function markTicketCategoryEdited(prefix) {
@@ -2293,24 +2316,13 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v192');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v193');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
       name: source.name,
       onProgress: message => setTicketOcrStatus(prefix, ticketOcrProgressLabel(message))
     });
-    if (prefix === 'edit-gasto') {
-      const fields = result.fields || {};
-      const changesExisting = (fields.date && fields.date !== $('#edit-gasto-fecha').value)
-        || (fields.time && fields.time !== $('#edit-gasto-hora').value)
-        || (fields.merchant && fields.merchant !== $('#edit-gasto-desc').value)
-        || (Number.isFinite(fields.total) && Math.abs(fields.total - numberValue($('#edit-gasto-importe').value)) > 0.001);
-      if (changesExisting && !window.confirm('Se copiarán al formulario los datos detectados como una propuesta. Podrás revisarlos y cambiarlos antes de guardar; todavía no se modificará el gasto. ¿Mostrar la propuesta?')) {
-        setTicketOcrStatus(prefix, 'Lectura terminada sin modificar el gasto.');
-        return;
-      }
-    }
     setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result));
     if (prefix === 'g') scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   } catch (error) {
@@ -8746,7 +8758,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v192');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v193');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
