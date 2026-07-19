@@ -180,7 +180,8 @@ export function extractTicketTotal(text) {
 }
 
 const MERCHANT_EXCLUSIONS = /^(ticket|factura|simplificada|copia|cliente|fecha|hora|mesa|caja|cajero|nif|cif|n\.i\.f|tel|telefono|www\.|https?|gracias|iva|total|subtotal|importe|direccion|domicilio|articulo|descripcion|unidades|venta|compra|operacion|transaccion|autorizacion|terminal|contactless|aprobada|aceptada)/i;
-const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|cp\s*\d|codigo postal|tlf|telefono|madrid|barcelona)\b/i;
+const MERCHANT_METADATA_WORDS = /\b(fecha|hora|date|time|mesa|comensales|caja|cajero|nif|cif|telefono|ticket|factura|total|subtotal|importe|iva|descripcion|unidades|precio)\b/i;
+const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|rua|rúa|cp\s*\d|codigo postal|tlf|telefono|madrid|barcelona)\b/i;
 const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet)$/i;
 const PAYMENT_TERMINAL_LINE = /^(?:venta\b|compra\b|visa\b|mastercard\b|contactless\b|aut(?:orizacion)?[:.\s]|op(?:eracion)?[:.\s]|tran(?:saccion)?[:.\s]|terminal[:.\s]|app\s+(?:bbva|santander|caixabank|sabadell))/i;
 
@@ -196,14 +197,20 @@ export function extractTicketMerchant(text) {
   const receiptBodyIndex = documentType === 'receipt'
     ? lines.findIndex(line => /\b(?:unid(?:ad)?|cant(?:idad)?|descripcion|articulo)\b.*\b(?:precio|importe)\b/i.test(normalizeTicketText(line)))
     : -1;
+  const fiscalDetailsIndex = lines.findIndex(line => /^\s*(?:n\.?i\.?f\.?|c\.?i\.?f\.?)\b/i.test(line));
   const candidates = lines.map((line, index) => {
     const letters = line.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g) || [];
     const uppercase = line.match(/[A-ZÁÉÍÓÚÜÑ]/g) || [];
     let score = Math.max(0, 10 - index * 0.6);
     if (letters.length < 3 || line.length > 70 || MERCHANT_EXCLUSIONS.test(line)) score -= 30;
+    if (MERCHANT_METADATA_WORDS.test(normalizeTicketText(line))) score -= 60;
     if (BANK_BRAND_LINE.test(line)) score -= 60;
     if (PAYMENT_TERMINAL_LINE.test(line)) score -= 35;
     if (/\b\d{5}\b|@|\.com\b|\b(es|com|net)\b$/i.test(line) || ADDRESS_WORDS.test(line)) score -= 12;
+    if (fiscalDetailsIndex >= 0 && index < fiscalDetailsIndex) {
+      const distance = fiscalDetailsIndex - index;
+      if (distance >= 2 && distance <= 4) score += 18 + distance * 4;
+    }
     if (/\b(sa|s\.a\.|sl|s\.l\.|s\.l\.u\.|sociedad|restaurante|hotel|bar|cafeteria|supermercado)\b/i.test(line)) score += 7;
     if (letters.length && uppercase.length / letters.length > 0.65) score += 5;
     if (/\d{2}[\/.-]\d{2}/.test(line) || /\d{1,2}:\d{2}/.test(line)) score -= 15;
@@ -228,6 +235,40 @@ export function extractTicketFields(text) {
     merchant: extractTicketMerchant(text),
     total: extractTicketTotal(text)
   };
+}
+
+function ticketTextDistance(left, right) {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex];
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      current[rightIndex] = Math.min(
+        current[rightIndex - 1] + 1,
+        previous[rightIndex] + 1,
+        previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1)
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+  return previous[right.length];
+}
+
+export function correctTicketMerchantFromKnown(merchant, descriptions = []) {
+  const source = cleanLine(merchant);
+  const sourceKey = normalizeTicketText(source).replace(/[^a-z0-9]/g, '');
+  if (sourceKey.length < 5) return source;
+  const candidates = descriptions.map(value => cleanLine(String(value || '').split(/\r?\n|[.;,]|\s+-\s+/)[0]))
+    .filter(value => value.length >= 5 && value.length <= 50 && value.split(/\s+/).length <= 5)
+    .map(value => ({
+      value,
+      key: normalizeTicketText(value).replace(/[^a-z0-9]/g, '')
+    }))
+    .filter(item => item.key.slice(0, 4) === sourceKey.slice(0, 4) && Math.abs(item.key.length - sourceKey.length) <= 2)
+    .map(item => ({ ...item, distance: ticketTextDistance(sourceKey, item.key) }))
+    .sort((left, right) => left.distance - right.distance || Math.abs(left.key.length - sourceKey.length) - Math.abs(right.key.length - sourceKey.length));
+  const best = candidates[0];
+  const maximumDistance = sourceKey.length >= 8 ? 2 : 1;
+  return best && best.distance > 0 && best.distance <= maximumDistance ? best.value : source;
 }
 
 async function imageFromBlob(blob) {
@@ -532,6 +573,7 @@ export async function recognizeTicket(source, options = {}) {
   let text = primaryText;
   let fields = extractTicketFields(primaryText);
   let additionalPasses = 0;
+  let titleMerchant = '';
   const preparedContext = prepared.getContext('2d', { willReadFrequently: true });
   const titleBounds = findFirstTextBand(
     preparedContext.getImageData(0, 0, prepared.width, prepared.height).data,
@@ -544,8 +586,12 @@ export async function recognizeTicket(source, options = {}) {
       onProgress({ status: 'Leyendo el título', progress: 0.82 });
       const titleResult = await worker.recognize(cropCanvasBounds(prepared, titleBounds, true));
       const titleText = titleResult?.data?.text || '';
-      const titleMerchant = extractTicketMerchant(titleText);
-      if (titleMerchant) fields.merchant = titleMerchant;
+      const titleConfidence = Number(titleResult?.data?.confidence || 0);
+      const titleCandidate = extractTicketMerchant(titleText);
+      if (titleCandidate && titleConfidence >= 50) {
+        titleMerchant = titleCandidate;
+        fields.merchant = titleMerchant;
+      }
       text = [titleText, primaryText].filter(Boolean).join('\n');
       additionalPasses += 1;
     } finally {
@@ -575,7 +621,7 @@ export async function recognizeTicket(source, options = {}) {
         documentType: mergedFields.documentType,
         date: headerFields.date || fields.date || mergedFields.date || footerFields.date || '',
         time: headerFields.time || fields.time || mergedFields.time || footerFields.time || '',
-        merchant: headerFields.merchant || fields.merchant || mergedFields.merchant || '',
+        merchant: titleMerchant || fields.merchant || headerFields.merchant || mergedFields.merchant || '',
         total: fields.total ?? footerFields.total ?? mergedFields.total ?? null
       };
     } finally {

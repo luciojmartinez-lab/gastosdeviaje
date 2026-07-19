@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  correctTicketMerchantFromKnown,
   detectTicketDocumentType,
   extractTicketDate,
   extractTicketFields,
@@ -81,6 +82,24 @@ test('elige Total o Importe y no confunde IVA ni base imponible', () => {
 test('mantiene el comercio del encabezado y descarta líneas de productos', () => {
   assert.equal(extractTicketMerchant(milleniumReceiptOcr), 'MILLENIUM');
   assert.equal(extractTicketMerchant('FACTURA SIMPLIFICADA\nFECHA 18/07/2026\nUNID DESCRIPCION PRECIO IMPORTE\nCANA CLARA 2,80'), '');
+  assert.equal(extractTicketMerchant('mE. Hora'), '');
+  assert.equal(extractTicketMerchant(`NA
+ILEETRITCIIIY
+MILLENTUM
+MARTA RODRIGUEZ GAVIEIRO
+RUA DA CRUZ 18 B
+TEL 982253055
+NIF-33307299X
+FRA SIMP COMPROBANTE`), 'MILLENTUM');
+});
+
+test('corrige una o dos letras usando comercios guardados anteriormente', () => {
+  assert.equal(
+    correctTicketMerchantFromKnown('MILLENTUM', ['Millenium. Patatas con alioli', 'BEKER-CAFE']),
+    'Millenium'
+  );
+  assert.equal(correctTicketMerchantFromKnown('MILLENTUM', ['Restaurante Central']), 'MILLENTUM');
+  assert.equal(correctTicketMerchantFromKnown('BAR', ['Bar Central']), 'BAR');
 });
 
 test('detecta el papel del ticket para recortarlo antes del OCR', () => {
@@ -134,6 +153,8 @@ test('activa lecturas de rescate separadas para cabecera y total', () => {
   assert.match(ocr, /Revisando el total/);
   assert.match(ocr, /Leyendo el título/);
   assert.match(ocr, /OCR_PSM_SINGLE_LINE/);
+  assert.match(ocr, /titleConfidence >= 50/);
+  assert.match(ocr, /merchant: titleMerchant \|\| fields\.merchant \|\| headerFields\.merchant/);
   assert.match(ocr, /cropCanvas\(prepared, 0, 0\.56\)/);
   assert.match(ocr, /cropCanvas\(prepared, 0\.43, 1\)/);
 });
@@ -191,6 +212,10 @@ test('la ayuda explica la lectura diferenciada y conservadora', () => {
   assert.match(help, /Detecta el papel dentro de la fotografía, recorta el fondo/);
   assert.match(help, /primera banda real de texto/);
   assert.match(help, /modo de una sola línea/);
+  assert.match(help, /Solo acepta esa lectura aislada cuando alcanza una confianza suficiente/);
+  assert.match(help, /etiquetas como Fecha u Hora/);
+  assert.match(help, /estructura habitual anterior a TEL\/NIF/);
+  assert.match(help, /establecimiento ya corregido en gastos anteriores/);
   assert.match(help, /utiliza el año de ese viaje/);
   assert.match(help, /conserva el importe del formulario sin sustituirlo/);
   assert.match(help, /propone <strong>Comida<\/strong>/);
