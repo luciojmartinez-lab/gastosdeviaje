@@ -1,5 +1,7 @@
 let workerPromise = null;
 let progressListener = () => {};
+const OCR_PSM_AUTO = '3';
+const OCR_PSM_SPARSE_TEXT = '11';
 
 const cleanLine = value => String(value || '')
   .replace(/[|]/g, 'I')
@@ -249,22 +251,132 @@ async function dataUrlToBlob(dataUrl) {
   return response.blob();
 }
 
+export function findReceiptBounds(data, width, height) {
+  if (!data || width < 8 || height < 8 || data.length < width * height * 4) return null;
+  const total = width * height;
+  const paper = new Uint8Array(total);
+  for (let index = 0; index < total; index += 1) {
+    const offset = index * 4;
+    const red = data[offset];
+    const green = data[offset + 1];
+    const blue = data[offset + 2];
+    const brightness = red * 0.299 + green * 0.587 + blue * 0.114;
+    const saturation = Math.max(red, green, blue) - Math.min(red, green, blue);
+    if (brightness >= 175 && saturation <= 48) paper[index] = 1;
+  }
+  const visited = new Uint8Array(total);
+  const stack = new Int32Array(total);
+  let best = null;
+  for (let start = 0; start < total; start += 1) {
+    if (!paper[start] || visited[start]) continue;
+    let stackLength = 1;
+    stack[0] = start;
+    visited[start] = 1;
+    let count = 0;
+    let minX = width;
+    let minY = height;
+    let maxX = 0;
+    let maxY = 0;
+    while (stackLength) {
+      const current = stack[--stackLength];
+      const x = current % width;
+      const y = Math.floor(current / width);
+      count += 1;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+      if (x > 0 && paper[current - 1] && !visited[current - 1]) {
+        visited[current - 1] = 1;
+        stack[stackLength++] = current - 1;
+      }
+      if (x + 1 < width && paper[current + 1] && !visited[current + 1]) {
+        visited[current + 1] = 1;
+        stack[stackLength++] = current + 1;
+      }
+      if (y > 0 && paper[current - width] && !visited[current - width]) {
+        visited[current - width] = 1;
+        stack[stackLength++] = current - width;
+      }
+      if (y + 1 < height && paper[current + width] && !visited[current + width]) {
+        visited[current + width] = 1;
+        stack[stackLength++] = current + width;
+      }
+    }
+    if (!best || count > best.count) best = { count, minX, minY, maxX, maxY };
+  }
+  if (!best || best.count < total * 0.08) return null;
+  const boxWidth = best.maxX - best.minX + 1;
+  const boxHeight = best.maxY - best.minY + 1;
+  if (boxWidth < width * 0.3 || boxHeight < height * 0.35) return null;
+  if (boxWidth > width * 0.97 && boxHeight > height * 0.97) return null;
+  const padX = Math.round(width * 0.018);
+  const padY = Math.round(height * 0.018);
+  const x = Math.max(0, best.minX - padX);
+  const y = Math.max(0, best.minY - padY);
+  return {
+    x,
+    y,
+    width: Math.min(width, best.maxX + padX + 1) - x,
+    height: Math.min(height, best.maxY + padY + 1) - y
+  };
+}
+
+function cropCanvas(source, startRatio, endRatio) {
+  const startY = Math.max(0, Math.floor(source.height * startRatio));
+  const endY = Math.min(source.height, Math.ceil(source.height * endRatio));
+  const canvas = document.createElement('canvas');
+  canvas.width = source.width;
+  canvas.height = Math.max(1, endY - startY);
+  canvas.getContext('2d').drawImage(source, 0, startY, source.width, canvas.height, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
 async function prepareImage(source) {
   const blob = typeof source === 'string' ? await dataUrlToBlob(source) : source;
   const image = await imageFromBlob(blob);
   const sourceWidth = image.width || image.naturalWidth;
   const sourceHeight = image.height || image.naturalHeight;
+  const analysisScale = Math.min(1, 480 / Math.max(sourceWidth, 1));
+  const analysis = document.createElement('canvas');
+  analysis.width = Math.max(1, Math.round(sourceWidth * analysisScale));
+  analysis.height = Math.max(1, Math.round(sourceHeight * analysisScale));
+  const analysisContext = analysis.getContext('2d', { willReadFrequently: true });
+  analysisContext.drawImage(image, 0, 0, analysis.width, analysis.height);
+  const detectedBounds = findReceiptBounds(
+    analysisContext.getImageData(0, 0, analysis.width, analysis.height).data,
+    analysis.width,
+    analysis.height
+  );
+  const sourceBounds = detectedBounds
+    ? {
+        x: detectedBounds.x / analysis.width * sourceWidth,
+        y: detectedBounds.y / analysis.height * sourceHeight,
+        width: detectedBounds.width / analysis.width * sourceWidth,
+        height: detectedBounds.height / analysis.height * sourceHeight
+      }
+    : { x: 0, y: 0, width: sourceWidth, height: sourceHeight };
   const maxWidth = 2000;
   const preferredWidth = 1600;
   const scale = Math.min(
-    maxWidth / Math.max(sourceWidth, 1),
-    Math.max(1, preferredWidth / Math.max(sourceWidth, 1))
+    maxWidth / Math.max(sourceBounds.width, 1),
+    Math.max(1, preferredWidth / Math.max(sourceBounds.width, 1))
   );
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-  canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+  canvas.width = Math.max(1, Math.round(sourceBounds.width * scale));
+  canvas.height = Math.max(1, Math.round(sourceBounds.height * scale));
   const context = canvas.getContext('2d', { willReadFrequently: true });
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.drawImage(
+    image,
+    sourceBounds.x,
+    sourceBounds.y,
+    sourceBounds.width,
+    sourceBounds.height,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
   if (image.close) image.close();
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
   for (let index = 0; index < pixels.data.length; index += 4) {
@@ -309,7 +421,7 @@ async function getWorker(onProgress) {
         logger: message => progressListener(message)
       });
       await worker.setParameters({
-        tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+        tessedit_pageseg_mode: OCR_PSM_AUTO,
         preserve_interword_spaces: '1'
       });
       return worker;
@@ -331,11 +443,45 @@ export async function recognizeTicket(source, options = {}) {
   onProgress({ status: 'Preparando el lector local', progress: 0.08 });
   const worker = await getWorker(onProgress);
   const result = await worker.recognize(prepared, { rotateAuto: true });
-  const text = result?.data?.text || '';
+  const primaryText = result?.data?.text || '';
+  let text = primaryText;
+  let fields = extractTicketFields(primaryText);
+  let additionalPasses = 0;
+  if (!fields.total || !fields.merchant || !fields.date) {
+    await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SPARSE_TEXT });
+    try {
+      onProgress({ status: 'Revisando la cabecera', progress: 0.86 });
+      const headerResult = await worker.recognize(cropCanvas(prepared, 0, 0.56));
+      const headerText = headerResult?.data?.text || '';
+      const headerFields = extractTicketFields(headerText);
+      additionalPasses += 1;
+      let footerText = '';
+      let footerFields = {};
+      if (!fields.total) {
+        onProgress({ status: 'Revisando el total', progress: 0.93 });
+        const footerResult = await worker.recognize(cropCanvas(prepared, 0.43, 1));
+        footerText = footerResult?.data?.text || '';
+        footerFields = extractTicketFields(footerText);
+        additionalPasses += 1;
+      }
+      text = [primaryText, headerText, footerText].filter(Boolean).join('\n');
+      const mergedFields = extractTicketFields(text);
+      fields = {
+        documentType: mergedFields.documentType,
+        date: headerFields.date || fields.date || mergedFields.date || footerFields.date || '',
+        time: headerFields.time || fields.time || mergedFields.time || footerFields.time || '',
+        merchant: headerFields.merchant || fields.merchant || mergedFields.merchant || '',
+        total: fields.total ?? footerFields.total ?? mergedFields.total ?? null
+      };
+    } finally {
+      await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_AUTO });
+    }
+  }
   return {
     text,
     confidence: Number(result?.data?.confidence) || 0,
-    fields: extractTicketFields(text),
+    fields,
+    additionalPasses,
     pdfFirstPageOnly: isPdf
   };
 }

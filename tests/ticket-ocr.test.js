@@ -8,6 +8,7 @@ import {
   extractTicketMerchant,
   extractTicketTime,
   extractTicketTotal,
+  findReceiptBounds,
   parseTicketAmount
 } from '../ticket-ocr.js';
 
@@ -81,6 +82,36 @@ test('mantiene el comercio del encabezado y descarta líneas de productos', () =
   assert.equal(extractTicketMerchant('FACTURA SIMPLIFICADA\nFECHA 18/07/2026\nUNID DESCRIPCION PRECIO IMPORTE\nCANA CLARA 2,80'), '');
 });
 
+test('detecta el papel del ticket para recortarlo antes del OCR', () => {
+  const width = 40;
+  const height = 30;
+  const pixels = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const offset = (y * width + x) * 4;
+      const value = x >= 8 && x <= 31 && y >= 2 && y <= 27 ? 240 : 90;
+      pixels[offset] = value;
+      pixels[offset + 1] = value;
+      pixels[offset + 2] = value;
+      pixels[offset + 3] = 255;
+    }
+  }
+  const bounds = findReceiptBounds(pixels, width, height);
+  assert.ok(bounds);
+  assert.ok(bounds.x <= 8 && bounds.y <= 2);
+  assert.ok(bounds.width >= 24 && bounds.height >= 26);
+  pixels.fill(245);
+  assert.equal(findReceiptBounds(pixels, width, height), null);
+});
+
+test('activa lecturas de rescate separadas para cabecera y total', () => {
+  const ocr = readFileSync(new URL('../ticket-ocr.js', import.meta.url), 'utf8');
+  assert.match(ocr, /Revisando la cabecera/);
+  assert.match(ocr, /Revisando el total/);
+  assert.match(ocr, /cropCanvas\(prepared, 0, 0\.56\)/);
+  assert.match(ocr, /cropCanvas\(prepared, 0\.43, 1\)/);
+});
+
 test('tolera una O leída dentro de un importe', () => {
   assert.equal(parseTicketAmount('12,1O EUR'), 12.1);
 });
@@ -107,6 +138,8 @@ test('al editar un gasto el OCR conserva los datos existentes y su clasificació
   assert.match(app, /suggestTicketCategory\('', fields\.merchant\)/);
   assert.doesNotMatch(app, /suggestTicketCategory\(result\.text, fields\.merchant\)/);
   assert.match(app, /Se conservaron sin cambios/);
+  assert.match(app, /ticketDateAlignedToTrip/);
+  assert.match(app, /fecha \(año ajustado al viaje\)/);
 });
 
 test('la ayuda explica la lectura diferenciada y conservadora', () => {
@@ -114,5 +147,7 @@ test('la ayuda explica la lectura diferenciada y conservadora', () => {
   assert.match(help, /Distingue un ticket comercial de una copia o justificante de pago con tarjeta/);
   assert.match(help, /no considera «Importe» cuando es el encabezado de una tabla de productos/);
   assert.match(help, /Pendiente de cobro/);
+  assert.match(help, /Detecta el papel dentro de la fotografía, recorta el fondo/);
+  assert.match(help, /utiliza el año de ese viaje/);
   assert.match(help, /conserva el importe del formulario sin sustituirlo/);
 });

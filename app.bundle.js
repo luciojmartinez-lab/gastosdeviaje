@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v193';
+const APP_VERSION = '700v194';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -1814,7 +1814,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v193');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v194');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1846,7 +1846,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v193');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v194');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2209,6 +2209,23 @@ function ticketOcrProgressLabel(message) {
     : `${label}…`;
 }
 
+function ticketDateAlignedToTrip(prefix, value) {
+  const date = String(value || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { value: date, corrected: false };
+  const tripId = Number($(`#${prefix}-viaje`)?.value);
+  const trip = state.viajes.find(item => Number(item.id) === tripId);
+  if (!trip || tripDateWithinRange(date, trip)) return { value: date, corrected: false };
+  const startYear = String(trip.fechaInicio || '').slice(0, 4);
+  const endYear = String(trip.fechaFin || trip.fechaInicio || '').slice(0, 4);
+  if (!/^\d{4}$/.test(startYear) || startYear !== endYear || date.slice(0, 4) === startYear) {
+    return { value: date, corrected: false };
+  }
+  const corrected = `${startYear}${date.slice(4)}`;
+  return tripDateWithinRange(corrected, trip)
+    ? { value: corrected, corrected: true }
+    : { value: date, corrected: false };
+}
+
 function applyTicketOcrFields(prefix, result) {
   const fields = result.fields || {};
   const detected = [];
@@ -2228,7 +2245,8 @@ function applyTicketOcrFields(prefix, result) {
     applied.push(label);
     return true;
   };
-  applyValue('fecha', fields.date || '', 'fecha');
+  const alignedDate = ticketDateAlignedToTrip(prefix, fields.date);
+  applyValue('fecha', alignedDate.value, alignedDate.corrected ? 'fecha (año ajustado al viaje)' : 'fecha');
   applyValue('hora', fields.time || '', 'hora');
   applyValue('importe', Number.isFinite(fields.total) && fields.total > 0 ? fields.total.toFixed(2) : '', 'total');
   const merchantApplied = applyValue('desc', fields.merchant || '', 'establecimiento');
@@ -2316,7 +2334,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v193');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v194');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -8758,7 +8776,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v193');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v194');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
