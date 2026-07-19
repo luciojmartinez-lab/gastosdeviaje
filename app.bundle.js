@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v185';
+const APP_VERSION = '700v186';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -408,7 +408,7 @@ function openContextHelp(target, trigger) {
 
 function installDialogHelpLinks() {
   $$('dialog.modal').forEach(dialog => {
-    if (dialog.id === 'context-help-dialog') return;
+    if (dialog.id === 'context-help-dialog' || dialog.dataset.contextHelp === 'false') return;
     const target = DIALOG_HELP_TARGETS[dialog.id] || 'referencia';
     const button = document.createElement('button');
     button.type = 'button';
@@ -1812,7 +1812,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v185');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v186');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1844,7 +1844,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v185');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v186');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2287,7 +2287,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v185');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v186');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -10848,26 +10848,56 @@ async function copySyncKey() {
   setSyncMessage('Clave copiada. Guárdala para usarla en otro dispositivo.');
 }
 
+function setCloudDownloadProgress(active) {
+  const dialog = $('#sync-cloud-progress-dialog');
+  if (!dialog) return;
+  if (active) {
+    dialog.setAttribute('aria-busy', 'true');
+    if (!dialog.open) {
+      if (dialog.showModal) {
+        try {
+          dialog.showModal();
+        } catch {
+          dialog.setAttribute('open', 'open');
+        }
+      } else {
+        dialog.setAttribute('open', 'open');
+      }
+    }
+    return;
+  }
+  dialog.removeAttribute('aria-busy');
+  if (dialog.open) {
+    if (dialog.close) dialog.close();
+    else dialog.removeAttribute('open');
+  }
+}
+
 async function performCloudDownload() {
-  setSyncMessage('Preparando la sincronización...');
-  const remote = await fetchCloudSnapshot();
-  if (!remote || !remote.data) throw new Error('No hay datos disponibles en la nube');
-  await createSyncBackup('before-sync');
-  const hydratedData = await hydrateCloudBackupData(remote.data);
-  await withDataTrackingPaused(() => importAll(hydratedData));
-  setLocalDataUpdatedAt(remote.updatedAt || remote.savedAt || new Date().toISOString());
-  await loadAll();
-  await createSyncBackup('after-sync');
-  await refreshLocalBackupHistory();
-  const verified = await fetchCloudMetadata();
-  const metadata = verified || {
-    savedAt: remote.savedAt,
-    updatedAt: remote.updatedAt,
-    filename: remote.filename,
-    appVersion: remote.appVersion
-  };
-  recordSuccessfulSync('download', metadata, ensureLocalDataUpdatedAt());
-  renderSyncComparison(metadata);
+  try {
+    setCloudDownloadProgress(true);
+    setSyncMessage('Preparando la sincronización...');
+    const remote = await fetchCloudSnapshot();
+    if (!remote || !remote.data) throw new Error('No hay datos disponibles en la nube');
+    await createSyncBackup('before-sync');
+    const hydratedData = await hydrateCloudBackupData(remote.data);
+    await withDataTrackingPaused(() => importAll(hydratedData));
+    setLocalDataUpdatedAt(remote.updatedAt || remote.savedAt || new Date().toISOString());
+    await loadAll();
+    await createSyncBackup('after-sync');
+    await refreshLocalBackupHistory();
+    const verified = await fetchCloudMetadata();
+    const metadata = verified || {
+      savedAt: remote.savedAt,
+      updatedAt: remote.updatedAt,
+      filename: remote.filename,
+      appVersion: remote.appVersion
+    };
+    recordSuccessfulSync('download', metadata, ensureLocalDataUpdatedAt());
+    renderSyncComparison(metadata);
+  } finally {
+    setCloudDownloadProgress(false);
+  }
   showBackupResult('Sincronización realizada', 'Los datos se actualizaron desde la nube. Se crearon una copia local anterior y otra posterior terminada en -2.');
 }
 
@@ -12723,6 +12753,7 @@ function bindEvents() {
   $('#btn-sync-home').onclick = () => openSyncDialog();
   $('#btn-sync-config').onclick = () => openSyncDialog();
   $('#sync-close').onclick = closeSyncDialog;
+  $('#sync-cloud-progress-dialog').oncancel = event => event.preventDefault();
   $('#sync-refresh').onclick = refreshSyncComparison;
   $('#sync-key-save').onclick = async () => {
     try {

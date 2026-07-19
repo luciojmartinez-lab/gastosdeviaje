@@ -21,6 +21,17 @@ test('la sincronizacion guarda una marca local de ultima sync confirmada', () =>
   assert.match(help, /recuerda la .ltima sincronizaci.n confirmada/);
 });
 
+test('la descarga desde la nube muestra un modal de progreso hasta finalizar', () => {
+  assert.match(html, /id="sync-cloud-progress-dialog"/);
+  assert.match(html, /Sincronizando desde la nube/);
+  assert.match(html, /No cierres la aplicación/);
+  assert.match(app, /function setCloudDownloadProgress\(active\)/);
+  assert.match(app, /async function performCloudDownload\(\) \{\s*try \{\s*setCloudDownloadProgress\(true\);/);
+  assert.match(app, /\} finally \{\s*setCloudDownloadProgress\(false\);\s*\}/);
+  assert.match(app, /sync-cloud-progress-dialog'\)\.oncancel = event => event\.preventDefault\(\)/);
+  assert.match(help, /modal destacado <em>Sincronizando desde la nube<\/em>/);
+});
+
 test('el dialogo detecta conflicto cuando cambiaron local y nube', () => {
   assert.match(app, /function syncComparisonAnalysis\(metadata/);
   assert.match(app, /localChangedSinceSync/);

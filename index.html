@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v185">
+  <link rel="manifest" href="manifest.webmanifest?v=700v186">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v185">
+  <link rel="stylesheet" href="styles.css?v=700v186">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v185 · 19/07/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v186 · 19/07/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v185</div>
+  <div class="app-version">700v186</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -913,6 +913,14 @@
   </form>
 </dialog>
 
+<dialog id="sync-cloud-progress-dialog" class="modal sync-progress-modal" data-context-help="false" aria-labelledby="sync-cloud-progress-title" aria-describedby="sync-cloud-progress-detail">
+  <div class="sync-progress-panel" role="status" aria-live="assertive">
+    <span class="backup-upload-spinner sync-progress-spinner" aria-hidden="true"></span>
+    <strong id="sync-cloud-progress-title">Sincronizando desde la nube</strong>
+    <p id="sync-cloud-progress-detail">Descargando y actualizando los datos de este dispositivo. No cierres la aplicación.</p>
+  </div>
+</dialog>
+
 <dialog id="backup-result-dialog" class="modal result-modal">
   <form method="dialog">
     <div class="backup-result">
@@ -934,11 +942,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v185"></script>
-<script src="app.bundle.js?v=700v185"></script>
+<script src="map-model.js?v=700v186"></script>
+<script src="app.bundle.js?v=700v186"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v185';
+    const pageVersion = '700v186';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -990,7 +998,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v185', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v186', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

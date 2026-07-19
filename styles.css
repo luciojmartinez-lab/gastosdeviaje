@@ -1407,6 +1407,46 @@ input[type="checkbox"] {
   width: min(760px, calc(100vw - 32px));
 }
 
+.sync-progress-modal {
+  width: min(430px, calc(100vw - 32px));
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.sync-progress-modal::backdrop {
+  background: #172033b8;
+}
+
+.sync-progress-panel {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 30px 24px;
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  background: #fff;
+  color: #173d63;
+  text-align: center;
+  box-shadow: 0 18px 48px #0f172a4d;
+}
+
+.sync-progress-panel strong {
+  font-size: 22px;
+}
+
+.sync-progress-panel p {
+  margin: 0;
+  color: #475569;
+}
+
+.sync-progress-spinner {
+  width: 44px;
+  height: 44px;
+  border-width: 5px;
+}
+
 .trip-documents-modal {
   width: min(720px, calc(100vw - 24px));
   max-height: calc(100dvh - 24px);

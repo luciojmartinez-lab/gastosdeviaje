@@ -14,7 +14,7 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
 
   assert.match(html, /Fecha de creación:<\/strong> 17 de julio de 2026/);
   assert.match(html, /Última actualización:<\/strong> 19 de julio de 2026/);
-  assert.match(html, /Versión documentada:<\/strong> 700v185/);
+  assert.match(html, /Versión documentada:<\/strong> 700v186/);
   assert.match(html, /id="objetivo"/);
   assert.match(html, /1\. Objetivo y filosofía de la aplicación/);
   assert.match(html, /id="flujo"/);
@@ -33,14 +33,14 @@ test('todos los modales tienen ayuda contextual con un destino documentado', asy
     readFile(path.join(root, 'styles.css'), 'utf8')
   ]);
   const allDialogIds = [...index.matchAll(/<dialog\s+id="([^"]+)"\s+class="[^"]*\bmodal\b/g)].map(match => match[1]);
-  const dialogIds = allDialogIds.filter(id => id !== 'context-help-dialog');
+  const dialogIds = allDialogIds.filter(id => !['context-help-dialog', 'sync-cloud-progress-dialog'].includes(id));
   const mapStart = app.indexOf('const DIALOG_HELP_TARGETS = {');
   const mapEnd = app.indexOf('\n};', mapStart);
   const helpMap = app.slice(mapStart, mapEnd);
   const targets = new Map([...helpMap.matchAll(/'([^']+-dialog)': '([^']+)'/g)].map(match => [match[1], match[2]]));
   const helpIds = new Set([...help.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
 
-  assert.equal(allDialogIds.length, 16);
+  assert.equal(allDialogIds.length, 17);
   assert.equal(dialogIds.length, 15);
   assert.equal(targets.size, dialogIds.length);
   for (const dialogId of dialogIds) {
@@ -48,6 +48,7 @@ test('todos los modales tienen ayuda contextual con un destino documentado', asy
     assert.ok(helpIds.has(targets.get(dialogId)), `Falta el destino #${targets.get(dialogId)} de ${dialogId}`);
   }
   assert.match(index, /id="context-help-dialog"[\s\S]*?id="context-help-close"[\s\S]*?id="context-help-frame"/);
+  assert.match(index, /id="sync-cloud-progress-dialog"[^>]*data-context-help="false"/);
   assert.match(app, /function installDialogHelpLinks\(\)[\s\S]*?button\.textContent = 'i'/);
   assert.match(app, /button\.onclick = \(\) => openContextHelp\(button\.dataset\.helpTarget, button\)/);
   assert.match(app, /frame\.src = `ayuda\.html\?embedded=1&target=/);
