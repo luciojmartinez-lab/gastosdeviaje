@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v200';
+const APP_VERSION = '700v201';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -86,6 +86,7 @@ let tripVectorPhotoMarkers = [];
 let tripVectorMapFailed = false;
 let openBlogDays = new Set();
 let openBlogDaysScope = '';
+let pendingBlogPdfDay = '';
 let openExpenseGroups = new Set();
 let openExpenseGroupsScope = '';
 let backupCloudUploadInProgress = false;
@@ -1716,9 +1717,9 @@ function formatSignedNumber(value, suffix = '') {
   return `${amount > 0 ? '+' : '−'}${Math.abs(amount).toLocaleString('es-ES', { maximumFractionDigits: 1 })}${suffix}`;
 }
 
-function comparisonAmountCell(value, tripTotal) {
+function comparisonAmountCell(value, tripTotal, days) {
   const share = tripTotal ? value * 100 / tripTotal : 0;
-  return `<strong>${fmtCurrency(value, 'EUR')}</strong><span>${share.toFixed(1)}% del viaje</span>`;
+  return `<strong>${fmtCurrency(value, 'EUR')}</strong><span class="comparison-share">${share.toFixed(1)}% del viaje</span><span class="comparison-mobile-daily">${comparisonDailyCell(value, days)}</span>`;
 }
 
 function comparisonDailyCell(value, days) {
@@ -1755,10 +1756,16 @@ function renderTripComparison() {
   const mainLabel = comparisonTripOptionLabel(main.trip);
   const otherLabel = comparisonTripOptionLabel(other.trip);
   ['#comparison-main-heading', '#comparison-category-main-heading'].forEach(selector => {
-    if ($(selector)) $(selector).textContent = mainLabel;
+    if ($(selector)) {
+      $(selector).textContent = mainLabel;
+      $(selector).dataset.mobileLabel = 'Principal';
+    }
   });
   ['#comparison-other-heading', '#comparison-category-other-heading'].forEach(selector => {
-    if ($(selector)) $(selector).textContent = otherLabel;
+    if ($(selector)) {
+      $(selector).textContent = otherLabel;
+      $(selector).dataset.mobileLabel = 'Comparado';
+    }
   });
   const totalDifference = main.total - other.total;
   const daysDifference = main.days - other.days;
@@ -1813,7 +1820,7 @@ function renderTripComparison() {
       ? `<button type="button" class="comparison-category-toggle" data-comparison-category="${escapeHtml(category.key)}" aria-expanded="${isOpen}"><span aria-hidden="true">${isOpen ? '−' : '+'}</span>${escapeHtml(category.label)}</button>`
       : escapeHtml(category.label);
     const difference = category.mainTotal - category.otherTotal;
-    categoryRows.push(`<tr class="comparison-category-row"><th scope="row">${categoryLabel}</th><td>${comparisonAmountCell(category.mainTotal, main.total)}</td><td>${comparisonAmountCell(category.otherTotal, other.total)}</td><td class="${comparisonDeltaClass(difference)}">${formatSignedCurrency(difference)}</td><td>${comparisonDailyCell(category.mainTotal, main.days)}</td><td>${comparisonDailyCell(category.otherTotal, other.days)}</td></tr>`);
+    categoryRows.push(`<tr class="comparison-category-row"><th scope="row">${categoryLabel}</th><td>${comparisonAmountCell(category.mainTotal, main.total, main.days)}</td><td>${comparisonAmountCell(category.otherTotal, other.total, other.days)}</td><td class="${comparisonDeltaClass(difference)}">${formatSignedCurrency(difference)}</td><td>${comparisonDailyCell(category.mainTotal, main.days)}</td><td>${comparisonDailyCell(category.otherTotal, other.days)}</td></tr>`);
     [...subcategoryKeys].map(key => {
       const mainSubcategory = category.mainSubcategories.get(key);
       const otherSubcategory = category.otherSubcategories.get(key);
@@ -1825,7 +1832,7 @@ function renderTripComparison() {
       };
     }).sort((a, b) => Math.max(Math.abs(b.mainTotal), Math.abs(b.otherTotal)) - Math.max(Math.abs(a.mainTotal), Math.abs(a.otherTotal)) || collator.compare(a.label, b.label)).forEach(subcategory => {
       const subDifference = subcategory.mainTotal - subcategory.otherTotal;
-      categoryRows.push(`<tr class="comparison-subcategory-row"${isOpen ? '' : ' hidden'}><th scope="row">${escapeHtml(subcategory.label)}</th><td>${comparisonAmountCell(subcategory.mainTotal, main.total)}</td><td>${comparisonAmountCell(subcategory.otherTotal, other.total)}</td><td class="${comparisonDeltaClass(subDifference)}">${formatSignedCurrency(subDifference)}</td><td>${comparisonDailyCell(subcategory.mainTotal, main.days)}</td><td>${comparisonDailyCell(subcategory.otherTotal, other.days)}</td></tr>`);
+      categoryRows.push(`<tr class="comparison-subcategory-row"${isOpen ? '' : ' hidden'}><th scope="row">${escapeHtml(subcategory.label)}</th><td>${comparisonAmountCell(subcategory.mainTotal, main.total, main.days)}</td><td>${comparisonAmountCell(subcategory.otherTotal, other.total, other.days)}</td><td class="${comparisonDeltaClass(subDifference)}">${formatSignedCurrency(subDifference)}</td><td>${comparisonDailyCell(subcategory.mainTotal, main.days)}</td><td>${comparisonDailyCell(subcategory.otherTotal, other.days)}</td></tr>`);
     });
   });
   const totalDifferenceForRow = main.total - other.total;
@@ -2116,7 +2123,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v200');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v201');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2148,7 +2155,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v200');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v201');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2672,7 +2679,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v200');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v201');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -7383,6 +7390,9 @@ async function copyDailyMapToBlog() {
     await addBlogEntry(snapshot);
   }
   await loadAll();
+  tripMapState.day = day;
+  tripMapState.cityId = 0;
+  renderTripMap();
   if ($('#trip-map-info')) {
     $('#trip-map-info').textContent = `${existing ? 'Mapa actualizado' : 'Mapa copiado'} en el Blog al principio del ${blogDayDateLabel(day)}.`;
   }
@@ -8726,7 +8736,7 @@ function syncBlogAvailability() {
   if ($('#btn-blog-add')) $('#btn-blog-add').disabled = !trip;
   if ($('#btn-blog-add-bottom')) $('#btn-blog-add-bottom').disabled = !trip;
   if ($('#btn-blog-pdf')) $('#btn-blog-pdf').disabled = !trip;
-  if ($('#btn-blog-pdf-bottom')) $('#btn-blog-pdf-bottom').disabled = !trip;
+  if ($('#btn-blog-day-pdf-bottom')) $('#btn-blog-day-pdf-bottom').disabled = !trip;
   if ($('#btn-blog-wordpress')) $('#btn-blog-wordpress').disabled = !trip;
 }
 
@@ -8882,6 +8892,36 @@ function syncOpenBlogDays(trip, entries) {
   }
   const filteredDate = $('#blog-filter-date') ? $('#blog-filter-date').value : '';
   if (filteredDate) openBlogDays.add(filteredDate);
+}
+
+function currentOpenBlogDay(entries) {
+  const availableDates = new Set((entries || []).map(entry => entry.fecha || '').filter(Boolean));
+  const filteredDate = $('#blog-filter-date') ? $('#blog-filter-date').value : '';
+  if (filteredDate && availableDates.has(filteredDate)) return filteredDate;
+  const openDates = [...openBlogDays].filter(date => availableDates.has(date));
+  return openDates.length ? openDates[openDates.length - 1] : '';
+}
+
+function syncBlogDayPdfButton(trip, entries) {
+  const button = $('#btn-blog-day-pdf-bottom');
+  if (!button) return;
+  const day = trip ? currentOpenBlogDay(entries) : '';
+  button.disabled = !trip || !day;
+  button.dataset.blogPdfDay = day;
+  button.title = day
+    ? `Crear el PDF completo del ${blogDayDateLabel(day)}`
+    : 'Despliega un día del Blog para crear su PDF';
+}
+
+function openCurrentBlogDayPdfGuide() {
+  const trip = selectedBlogTrip();
+  const entries = trip ? filteredBlogEntries(blogEntriesForTrip(trip.id)) : [];
+  const day = currentOpenBlogDay(entries);
+  if (!day) {
+    alert('Despliega un día del Blog para crear su PDF.');
+    return;
+  }
+  openBlogPdfGuide(day);
 }
 
 function blogEntryShareText(entry) {
@@ -9123,7 +9163,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v200');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v201');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -9215,6 +9255,7 @@ function renderBlog() {
   if ($('#blog-title')) $('#blog-title').textContent = trip ? `Blog · ${trip.nombre}` : 'Blog';
   if (!trip) {
     syncBlogFilterOptions(null, []);
+    syncBlogDayPdfButton(null, []);
     if ($('#blog-status')) $('#blog-status').textContent = 'Selecciona exactamente un viaje para consultar su blog.';
     tbody.innerHTML = '<tr><td colspan="8" class="blog-empty">El Blog solo está disponible con un único viaje seleccionado.</td></tr>';
     return;
@@ -9223,6 +9264,7 @@ function renderBlog() {
   syncBlogFilterOptions(trip, entries);
   syncOpenBlogDays(trip, entries);
   const filteredEntries = filteredBlogEntries(entries);
+  syncBlogDayPdfButton(trip, filteredEntries);
   if ($('#btn-blog-last')) $('#btn-blog-last').disabled = !filteredEntries.length;
   if ($('#blog-status')) {
     $('#blog-status').textContent = filteredEntries.length === entries.length
@@ -10951,11 +10993,22 @@ function exportBlogToWordPress() {
   closeWordPressExportDialog();
 }
 
-function openBlogPdfGuide() {
+function openBlogPdfGuide(day = '') {
   const trip = selectedBlogTrip();
   if (!trip) {
     alert('Selecciona exactamente un viaje para guardar su blog en PDF.');
     return;
+  }
+  pendingBlogPdfDay = /^\d{4}-\d{2}-\d{2}$/.test(String(day || '')) ? String(day) : '';
+  if ($('#blog-pdf-guide-title')) {
+    $('#blog-pdf-guide-title').textContent = pendingBlogPdfDay
+      ? `PDF del ${blogDayDateLabel(pendingBlogPdfDay)}`
+      : 'Vista HTML y PDF del Blog';
+  }
+  if ($('#blog-pdf-guide-scope')) {
+    $('#blog-pdf-guide-scope').textContent = pendingBlogPdfDay
+      ? 'Se incluirán únicamente las entradas de este día, sin la portada general ni otros días.'
+      : 'Se incluirán las entradas que coinciden con los filtros actuales del Blog.';
   }
   const dialog = $('#blog-pdf-guide-dialog');
   if (dialog.showModal) dialog.showModal();
@@ -10963,6 +11016,7 @@ function openBlogPdfGuide() {
 }
 
 function closeBlogPdfGuide() {
+  pendingBlogPdfDay = '';
   const dialog = $('#blog-pdf-guide-dialog');
   if (!dialog) return;
   if (dialog.open && dialog.close) dialog.close();
@@ -10970,11 +11024,12 @@ function closeBlogPdfGuide() {
 }
 
 function continueBlogPdf() {
+  const day = pendingBlogPdfDay;
   closeBlogPdfGuide();
-  setTimeout(printBlog, 0);
+  setTimeout(() => printBlog({ day }), 0);
 }
 
-function printBlog() {
+function printBlog(options = {}) {
   const trip = selectedBlogTrip();
   if (!trip) {
     alert('Selecciona exactamente un viaje para ver su blog.');
@@ -10985,14 +11040,18 @@ function printBlog() {
     alert('Este viaje todavía no tiene entradas en el blog.');
     return;
   }
-  const entries = filteredBlogEntries(allEntries);
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(options.day || '')) ? String(options.day) : '';
+  const entries = day
+    ? allEntries.filter(entry => entry.fecha === day && !isTripOverviewBlogEntry(entry, trip))
+    : filteredBlogEntries(allEntries);
   if (!entries.length) {
     alert('No hay entradas del Blog que coincidan con los filtros seleccionados.');
     return;
   }
-  const body = blogPrintBodyHtml(trip, entries, { overviewEntries: allEntries });
-  const htmlFileName = `blog-${slugFilePart(trip.nombre)}-${currentLocalDate()}.html`;
-  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Blog · ${escapeHtml(trip.nombre)}</title><style>
+  const body = blogPrintBodyHtml(trip, entries, { overviewEntries: day ? [] : allEntries });
+  const htmlFileName = `blog-${slugFilePart(trip.nombre)}-${day || currentLocalDate()}.html`;
+  const documentTitle = day ? `Blog · ${trip.nombre} · ${blogDayDateLabel(day)}` : `Blog · ${trip.nombre}`;
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(documentTitle)}</title><style>
     @page { size: A4; margin: 12mm; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color: #1f2937; }
@@ -12421,9 +12480,9 @@ function bindEvents() {
   $('#btn-last-expense').onclick = () => scrollToLastExpense();
   $('#btn-blog-add').onclick = () => openBlogEntryDialog();
   $('#btn-blog-last').onclick = scrollToLastBlogEntry;
-  $('#btn-blog-pdf').onclick = openBlogPdfGuide;
+  $('#btn-blog-pdf').onclick = () => openBlogPdfGuide();
   $('#btn-blog-add-bottom').onclick = () => openBlogEntryDialog();
-  $('#btn-blog-pdf-bottom').onclick = openBlogPdfGuide;
+  $('#btn-blog-day-pdf-bottom').onclick = openCurrentBlogDayPdfGuide;
   $('#blog-pdf-guide-close').onclick = closeBlogPdfGuide;
   $('#blog-pdf-guide-cancel').onclick = closeBlogPdfGuide;
   $('#blog-pdf-guide-continue').onclick = continueBlogPdf;

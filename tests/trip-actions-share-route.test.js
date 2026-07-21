@@ -38,11 +38,11 @@ test('la vista completa del Blog explica Android y comparte el HTML real', () =>
   assert.match(html, /id="blog-pdf-guide-dialog"/);
   assert.match(html, /botón redondo con el icono PDF/);
   assert.match(html, /id="blog-pdf-guide-continue"/);
-  assert.match(app, /function openBlogPdfGuide\(\)/);
+  assert.match(app, /function openBlogPdfGuide\(day = ''\)/);
   assert.match(app, /id="blog-preview-share">Compartir HTML/);
   assert.match(app, /await navigator\.share\(\{files:\[file\]\}\)/);
   assert.match(app, /return '<!doctype html>\\\\n' \+ clone\.outerHTML/);
-  assert.match(app, /\$\('#btn-blog-pdf'\)\.onclick = openBlogPdfGuide/);
+  assert.match(app, /\$\('#btn-blog-pdf'\)\.onclick = \(\) => openBlogPdfGuide\(\)/);
   assert.match(help, /seleccionar solamente la opción superior no crea aún el archivo/);
   assert.match(help, /Compartir HTML[\s\S]*?menú de Chrome[\s\S]*?<code>about:blank<\/code>/);
 });

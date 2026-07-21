@@ -53,3 +53,12 @@ test('las categorías despliegan subcategorías sin perder la comparación diari
   assert.match(styles, /\.comparison-subcategory-row > th/);
   assert.match(styles, /\.comparison-category-toggle/);
 });
+
+test('la comparacion movil cabe en el ancho y agrupa porcentaje y media diaria', () => {
+  assert.match(app, /class="comparison-mobile-daily"/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-comparacion-general,[\s\S]*?#tabla-comparacion-categorias \{[\s\S]*?min-width: 0/);
+  assert.match(styles, /#tabla-comparacion-categorias th:nth-child\(n\+5\),[\s\S]*?display: none/);
+  assert.match(styles, /\.comparison-mobile-daily \{[\s\S]*?display: block !important/);
+  assert.match(styles, /#view-resumen \.summary-menu > h2 \{[\s\S]*?display: none/);
+  assert.match(help, /En m[\s\S]*?el porcentaje y la media diaria aparecen debajo del importe/);
+});

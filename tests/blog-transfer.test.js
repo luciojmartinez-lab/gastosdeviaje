@@ -226,15 +226,34 @@ test('el PDF del Blog usa 80 por ciento para imágenes normales y aprovecha el e
 
 test('el PDF del Blog respeta los filtros activos de día, país y ciudad', () => {
   assert.match(app, /function filteredBlogEntries\(entries\)[\s\S]*?entry\.fecha === date[\s\S]*?entry\.paisId\) === countryId[\s\S]*?entry\.ciudadId\) === cityId/);
-  const printStart = app.indexOf('function printBlog()');
+  const printStart = app.indexOf('function printBlog(options = {})');
   const printEnd = app.indexOf('\nasync function seedIfEmpty()', printStart);
   const printBlogSource = app.slice(printStart, printEnd);
   assert.match(printBlogSource, /const allEntries = blogEntriesForTrip\(trip\.id\)/);
-  assert.match(printBlogSource, /const entries = filteredBlogEntries\(allEntries\)/);
+  assert.match(printBlogSource, /const entries = day[\s\S]*?allEntries\.filter\(entry => entry\.fecha === day[\s\S]*?: filteredBlogEntries\(allEntries\)/);
   assert.match(printBlogSource, /No hay entradas del Blog que coincidan con los filtros seleccionados/);
-  assert.match(printBlogSource, /blogPrintBodyHtml\(trip, entries, \{ overviewEntries: allEntries \}\)/);
+  assert.match(printBlogSource, /blogPrintBodyHtml\(trip, entries, \{ overviewEntries: day \? \[\] : allEntries \}\)/);
   assert.match(app, /const overviewEntries = Array\.isArray\(options\.overviewEntries\) \? options\.overviewEntries : entries/);
   assert.match(app, /preparations\.length \? blogPrintPreparationsHtml\(preparations\) : ''/);
+});
+
+test('el boton inferior crea el PDF solamente del dia desplegado', () => {
+  assert.match(html, /id="btn-blog-day-pdf-bottom"[^>]*>PDF del d/);
+  assert.match(app, /function currentOpenBlogDay\(entries\)/);
+  assert.match(app, /const openDates = \[\.\.\.openBlogDays\]/);
+  assert.match(app, /return openDates\.length \? openDates\[openDates\.length - 1\] : ''/);
+  assert.match(app, /function openCurrentBlogDayPdfGuide\(\)[\s\S]*?openBlogPdfGuide\(day\)/);
+  assert.match(app, /allEntries\.filter\(entry => entry\.fecha === day && !isTripOverviewBlogEntry\(entry, trip\)\)/);
+  assert.match(app, /overviewEntries: day \? \[\] : allEntries/);
+  assert.match(help, /PDF del d[\s\S]*?d[\s\S]*?que est[\s\S]*?desplegado[\s\S]*?no a[\s\S]*?la portada general ni otros d/);
+});
+
+test('copiar el mapa diario al Blog conserva el dia seleccionado', () => {
+  const copyStart = app.indexOf('async function copyDailyMapToBlog()');
+  const copyEnd = app.indexOf('\nfunction copyCurrentMapToBlog()', copyStart);
+  const copySource = app.slice(copyStart, copyEnd);
+  assert.match(copySource, /await loadAll\(\);[\s\S]*?tripMapState\.day = day;[\s\S]*?tripMapState\.cityId = 0;[\s\S]*?renderTripMap\(\);/);
+  assert.match(help, /mantiene ese d[\s\S]*?seleccionado/);
 });
 
 test('el Blog permite identificar y filtrar entradas En tránsito', () => {
