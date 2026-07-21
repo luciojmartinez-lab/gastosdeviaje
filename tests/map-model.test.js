@@ -54,6 +54,8 @@ test('las ciudades repetidas conservan todos sus números de ruta', () => {
   assert.equal(byName.Barcelona, '1-8');
   assert.equal(byName.Varsovia, '2-7');
   assert.equal(byName.Torun, '3');
+  assert.deepEqual(model.markerGroups.find(group => group.labelLines[0] === 'Barcelona').labelLines, ['Barcelona']);
+  assert.deepEqual(model.markerGroups.find(group => group.labelLines[0] === 'Barcelona').detailDates, ['2026-03-25', '2026-04-08']);
   assert.deepEqual(model.routeStops.map(stop => stop.number), [1, 2, 3, 7, 8]);
 });
 

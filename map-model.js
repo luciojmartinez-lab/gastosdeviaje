@@ -116,7 +116,8 @@
         primary,
         routeEntries,
         numberText: routeEntries.map(entry => entry.number).join('-'),
-        labelLines: [getName(primary), ...dates]
+        labelLines: [getName(primary)],
+        detailDates: dates
       };
     });
     return { stops: normalized, routeStops, markerGroups };

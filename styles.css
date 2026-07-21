@@ -2668,7 +2668,8 @@ body.map-fullscreen-open {
   pointer-events: none !important;
 }
 
-.trip-vector-marker.has-photo {
+.trip-vector-marker.has-photo,
+.trip-vector-marker.has-details {
   cursor: pointer;
   pointer-events: auto !important;
 }
@@ -2748,6 +2749,16 @@ body.map-fullscreen-open {
 .trip-vector-marker.point .trip-vector-marker-dot,
 .trip-vector-marker.daily .trip-vector-marker-dot {
   background: #7c3aed;
+}
+
+.trip-vector-marker.transport .trip-vector-marker-dot {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 1px 2px #0008);
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+  font-size: 18px;
+  font-weight: 400;
 }
 
 .trip-vector-marker-label {
@@ -2997,6 +3008,16 @@ body.map-fullscreen-open {
   pointer-events: all;
 }
 
+.map-marker .map-marker-transport-symbol {
+  fill: #111827;
+  stroke: none;
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 1px 2px #0008);
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+  text-anchor: middle;
+}
+
 .map-destination-number circle {
   fill: #be123c;
   stroke: #fff;
@@ -3123,6 +3144,13 @@ body.map-fullscreen-open {
   margin-top: 4px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.map-marker-popup-detail {
+  display: grid;
+  gap: 4px;
+  color: #475569;
+  font-size: 13px;
 }
 
 .map-marker text {

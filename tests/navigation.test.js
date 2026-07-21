@@ -63,11 +63,25 @@ test('el mapa diario separa los puntos y los números de destino', () => {
   assert.match(styles, /\.map-destination-number\s*\{[\s\S]*?pointer-events: none;/);
   assert.match(styles, /\.map-destination-number circle\s*\{[\s\S]*?fill: #be123c;/);
   assert.match(app, /destinationMarkers\.forEach[\s\S]*?context\.fillStyle = '#be123c'/);
-  assert.match(styles, /\.trip-vector-marker\.has-photo\s*\{[\s\S]*?pointer-events: auto !important;/);
+  assert.match(styles, /\.trip-vector-marker\.has-photo,[\s\S]*?\.trip-vector-marker\.has-details\s*\{[\s\S]*?pointer-events: auto !important;/);
   assert.match(styles, /\.trip-vector-marker\.daily \.trip-vector-marker-dot\s*\{[\s\S]*?background: #7c3aed;/);
   assert.match(styles, /\.trip-vector-photo-marker\s*\{[\s\S]*?background: #0f766e;/);
   assert.match(app, /function dailyMapLabelLines\(record\)\s*\{[\s\S]*?return \[dailyMapCityName\(record\)\]/);
   assert.doesNotMatch(app, /La hora aparece junto a cada punto/);
   assert.match(styles, /\.map-photo-popup\.tail-bottom::after/);
   assert.match(styles, /\.map-photo-popup\.tail-top::after/);
+});
+
+test('el mapa oculta fechas y usa iconos minimos para tren y coche', () => {
+  assert.match(app, /function tripMapArrivalLabelLines\(item\)[\s\S]*?return \[name\];/);
+  assert.match(app, /function tripMapTransportMarker\(record\)/);
+  assert.match(app, /return \{ type: 'train', icon: '🚆', label: 'Tren' \}/);
+  assert.match(app, /return \{ type: 'car', icon: '🚗', label: 'Coche' \}/);
+  assert.match(app, /const visibleLabelLines = transportMarker \? \[\] : labelLines\.slice\(0, 1\)/);
+  assert.match(app, /const visibleMarkerLabelLines = transportMarker \? \[\] : markerLabelLines\.slice\(0, 1\)/);
+  assert.match(app, /function openTripMapMarkerPopup\(detail, anchorElement = null\)/);
+  assert.match(app, /data-map-marker-detail/);
+  assert.match(styles, /\.trip-vector-marker\.transport \.trip-vector-marker-dot \{[\s\S]*?background: transparent/);
+  assert.match(styles, /\.map-marker \.map-marker-transport-symbol/);
+  assert.match(styles, /\.trip-vector-marker\.has-details[\s\S]*?pointer-events: auto !important/);
 });

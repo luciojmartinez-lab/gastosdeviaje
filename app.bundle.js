@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v201';
+const APP_VERSION = '700v202';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -80,6 +80,7 @@ let pendingSharedImagesPayload = null;
 let sharedImagePreviewUrls = [];
 let activeContextHelpTrigger = null;
 const tripMapPhotoLookup = new Map();
+const tripMapMarkerDetailLookup = new Map();
 let tripVectorMap = null;
 let tripVectorMarkers = [];
 let tripVectorPhotoMarkers = [];
@@ -2123,7 +2124,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v201');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v202');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2155,7 +2156,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v201');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v202');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2679,7 +2680,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v201');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v202');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6822,6 +6823,15 @@ function openTripMapPhotoPopup(encodedKeys, anchorElement = null) {
   positionTripMapPhotoPopup(popup, anchorElement);
 }
 
+function openTripMapMarkerPopup(detail, anchorElement = null) {
+  const popup = $('#trip-map-photo-popup');
+  if (!popup || !detail) return;
+  const meta = [detail.place, ...(detail.dateLines || [])].filter(Boolean);
+  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${escapeHtml(detail.title || 'Punto')}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-marker-popup-detail">${meta.length ? meta.map(line => `<span>${escapeHtml(line)}</span>`).join('') : '<span>Sin fecha indicada</span>'}</div>`;
+  popup.hidden = false;
+  positionTripMapPhotoPopup(popup, anchorElement);
+}
+
 function openTripMapPhoto(key) {
   const record = tripMapPhotoLookup.get(String(key || ''));
   if (!record || !record.image || !record.image.data) throw new Error('No se encuentra la foto');
@@ -6885,9 +6895,40 @@ function dailyMapLabelLines(record) {
 
 function tripMapArrivalLabelLines(item) {
   const name = item && item.ciudad && item.ciudad.nombre ? item.ciudad.nombre : 'Punto';
-  return item && item.firstDate
-    ? [name, summaryDocumentDate(item.firstDate, true)]
-    : [name];
+  return [name];
+}
+
+function tripMapTransportMarker(record) {
+  const source = record && (record.dailyRecord || record.pointEntry || record.entry || record);
+  const text = String(source && (source.descripcion || source.desc) || record && record.ciudad && record.ciudad.nombre || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es-ES');
+  if (/(^|\W)(tren|trenes|ferrocarril)(\W|$)/.test(text)) return { type: 'train', icon: '🚆', label: 'Tren' };
+  if (/(^|\W)(coche|coches|automovil|automoviles|auto)(\W|$)/.test(text)) return { type: 'car', icon: '🚗', label: 'Coche' };
+  return null;
+}
+
+function tripMapMarkerDetail(items = [], dailyRecord = null) {
+  const itemList = items.length ? items : [];
+  const first = itemList[0] || {};
+  const source = dailyRecord || first.dailyRecord || first.pointEntry || first.entry || first;
+  const title = String(source && (source.descripcion || source.desc) || first.ciudad && first.ciudad.nombre || 'Punto').trim() || 'Punto';
+  const place = dailyRecord
+    ? dailyMapCityName(dailyRecord)
+    : String(first.ciudad && first.ciudad.nombre || '').trim();
+  const dateLines = [...new Set((dailyRecord ? [{ dailyRecord }] : itemList).map(item => {
+    const record = item.dailyRecord || item.pointEntry || item.entry || item;
+    const date = record && (record.fecha || record.firstDate) || item.firstDate || '';
+    if (!date) return '';
+    const time = record && record.hora || '';
+    return `${summaryDocumentDate(date, true)}${time ? ` · ${time}` : ''}`;
+  }).filter(Boolean))];
+  return {
+    title,
+    place: place && place !== title ? place : '',
+    dateLines
+  };
 }
 
 async function loadMapTileForCanvas(descriptor) {
@@ -7072,7 +7113,7 @@ async function createDailyMapBlogImage(records, day) {
     context.stroke();
   }
 
-  exactPoints.forEach(record => {
+  exactPoints.filter(record => !tripMapTransportMarker(record)).forEach(record => {
     const point = mapWorldPoint(record.latitude, record.longitude, zoom);
     const x = point.x - layer.startX;
     const y = headerHeight + point.y - layer.startY;
@@ -7117,21 +7158,27 @@ async function createDailyMapBlogImage(records, day) {
 
   markerModels.forEach((markerModel, index) => {
     const { record, labelLines } = markerModel;
+    const transportMarker = record.kind === 'point' ? tripMapTransportMarker(record) : null;
     const point = mapWorldPoint(record.latitude, record.longitude, zoom);
     const x = point.x - layer.startX;
     const y = headerHeight + point.y - layer.startY;
-    context.fillStyle = '#7c3aed';
-    context.beginPath();
-    context.arc(x, y, 10, 0, Math.PI * 2);
-    context.fill();
-    context.lineWidth = 3;
-    context.strokeStyle = '#ffffff';
-    context.stroke();
-    context.fillStyle = '#ffffff';
-    context.font = '800 10px system-ui, sans-serif';
     context.textAlign = 'center';
-    context.fillText(markerModel.numberText, x, y + 3.5);
-    if (labelLines.length) {
+    if (transportMarker) {
+      context.font = '18px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+      context.fillText(transportMarker.icon, x, y + 6);
+    } else {
+      context.fillStyle = '#7c3aed';
+      context.beginPath();
+      context.arc(x, y, 10, 0, Math.PI * 2);
+      context.fill();
+      context.lineWidth = 3;
+      context.strokeStyle = '#ffffff';
+      context.stroke();
+      context.fillStyle = '#ffffff';
+      context.font = '800 10px system-ui, sans-serif';
+      context.fillText(markerModel.numberText, x, y + 3.5);
+    }
+    if (labelLines.length && !transportMarker) {
       context.font = '900 16px system-ui, sans-serif';
       const textWidth = Math.max(...labelLines.map(label => context.measureText(label).width));
       const labelOnLeft = x + textWidth + 28 > width;
@@ -7464,15 +7511,18 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
   const groupedRouteItems = routeGroup.length ? routeGroup.map(entry => entry.item) : [];
   const routePoint = groupedRouteItems.length > 0 || !item.configuredOnly;
   const pointMarker = Boolean(item.blogPoint);
-  element.className = `trip-vector-marker${item.configuredOnly ? ' configured' : ''}${pointMarker ? ' point' : ''}${dailyRecord ? ' daily' : ''}${routeGroup.length > 1 ? ' repeated' : ''}`;
+  const transportMarker = pointMarker ? tripMapTransportMarker(dailyRecord || item) : null;
+  element.className = `trip-vector-marker${item.configuredOnly ? ' configured' : ''}${pointMarker ? ' point' : ''}${dailyRecord ? ' daily' : ''}${routeGroup.length > 1 ? ' repeated' : ''}${transportMarker ? ` transport ${transportMarker.type}` : ''}`;
   const dot = document.createElement('span');
   dot.className = 'trip-vector-marker-dot';
   const routeNumberText = presentation && presentation.numberText
     ? presentation.numberText
     : (routeGroup.length ? routeGroup.map(entry => entry.index + 1).join('-') : String(index + 1));
-  dot.textContent = dailyRecord
-    ? (dailyRecord.kind === 'point' ? '•' : '+')
-    : (routePoint ? routeNumberText : (pointMarker ? '•' : '+'));
+  dot.textContent = transportMarker
+    ? transportMarker.icon
+    : dailyRecord
+      ? (dailyRecord.kind === 'point' ? '•' : '+')
+      : (routePoint ? routeNumberText : (pointMarker ? '•' : '+'));
   const label = document.createElement('span');
   label.className = 'trip-vector-marker-label';
   const labelLines = presentation && presentation.labelLines
@@ -7482,12 +7532,13 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
       : groupedRouteItems.length
         ? tripMapArrivalLabelLines(item)
         : tripMapArrivalLabelLines(item));
-  label.textContent = labelLines.join('\n');
+  const visibleLabelLines = transportMarker ? [] : labelLines.slice(0, 1);
+  label.textContent = visibleLabelLines.join('\n');
   element.append(dot);
-  if (labelLines.length) element.append(label);
-  element.title = dailyRecord
-    ? `${dailyRecord.descripcion || 'Punto'} · ${dailyMapDateTimeLabel(dailyRecord)}`
-    : labelLines.join(' · ');
+  if (visibleLabelLines.length) element.append(label);
+  const detailItems = dailyRecord ? [item] : (groupedRouteItems.length ? groupedRouteItems : [item]);
+  const markerDetail = tripMapMarkerDetail(detailItems, dailyRecord);
+  element.title = `${markerDetail.title} · pulsa para ver la fecha`;
   const accommodationPhoto = dailyRecord && dailyRecord.accommodationPhotoRecord;
   if (accommodationPhoto) {
     const encodedKeys = encodeURIComponent(accommodationPhoto.key);
@@ -7500,6 +7551,20 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
       event.preventDefault();
       event.stopPropagation();
       openTripMapPhotoPopup(encodedKeys, element);
+    };
+    element.addEventListener('click', open);
+    element.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') open(event);
+    });
+  } else {
+    element.classList.add('has-details');
+    element.setAttribute('role', 'button');
+    element.setAttribute('tabindex', '0');
+    element.setAttribute('aria-label', `${transportMarker ? `${transportMarker.label}: ` : ''}${markerDetail.title}. Ver fecha`);
+    const open = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openTripMapMarkerPopup(markerDetail, element);
     };
     element.addEventListener('click', open);
     element.addEventListener('keydown', event => {
@@ -7861,7 +7926,8 @@ function renderTripMap() {
   const routePoints = dailyMode
     ? dailyRoute.map(record => project({ ciudad: { lat: record.latitude, lng: record.longitude } })).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
     : routeItems.map(item => item.point).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const markers = pointGroups.map(({ items: group, presentation }) => {
+  tripMapMarkerDetailLookup.clear();
+  const markers = pointGroups.map(({ items: group, presentation }, markerIndex) => {
     const item = group[0];
     const p = item.point;
     const labelX = p.x + 12 > width - 120 ? p.x - 12 : p.x + 12;
@@ -7871,6 +7937,9 @@ function renderTripMap() {
     const dailyRecord = dailyMode ? item.dailyRecord : null;
     const dailyPhoto = Boolean(dailyRecord && dailyRecord.kind === 'photo');
     const accommodationPhoto = dailyRecord && dailyRecord.accommodationPhotoRecord;
+    const transportMarker = dailyRecord && dailyRecord.kind === 'point'
+      ? tripMapTransportMarker(dailyRecord)
+      : (pointStops.length ? tripMapTransportMarker(pointStops[0]) : null);
     const markerText = dailyRecord
       ? (dailyRecord.kind === 'point' ? '•' : '+')
       : routeStops.length
@@ -7880,25 +7949,27 @@ function renderTripMap() {
     const markerLabelLines = presentation && presentation.labelLines
       ? presentation.labelLines
       : [cityNames.join(' / ')];
-    const markerLabelText = markerLabelLines.map((line, lineIndex) => `<tspan x="${labelX.toFixed(1)}" dy="${lineIndex ? 13 : 0}">${escapeHtml(line)}</tspan>`).join('');
-    const markerLabel = markerLabelLines.length
-      ? `<text x="${labelX.toFixed(1)}" y="${(p.y - 12 - (markerLabelLines.length - 1) * 6.5).toFixed(1)}" text-anchor="${anchor}">${markerLabelText}</text>`
+    const visibleMarkerLabelLines = transportMarker ? [] : markerLabelLines.slice(0, 1);
+    const markerLabelText = visibleMarkerLabelLines.map((line, lineIndex) => `<tspan x="${labelX.toFixed(1)}" dy="${lineIndex ? 13 : 0}">${escapeHtml(line)}</tspan>`).join('');
+    const markerLabel = visibleMarkerLabelLines.length
+      ? `<text x="${labelX.toFixed(1)}" y="${(p.y - 12 - (visibleMarkerLabelLines.length - 1) * 6.5).toFixed(1)}" text-anchor="${anchor}">${markerLabelText}</text>`
       : '';
-    const title = dailyRecord
-      ? `${dailyRecord.descripcion || 'Punto'} · ${dailyMapDateTimeLabel(dailyRecord)}`
-      : routeStops.length
-      ? routeStops.map(stop => stop.plannedOnly
-        ? `${stop.index + 1}. ${stop.ciudad.nombre} · parada planificada sin gastos`
-        : `${stop.index + 1}. ${stop.ciudad.nombre} · ${stop.count} gastos · ${fmtCurrency(stop.totalEur, 'EUR')}`).join('\n')
-      : (pointStops.length
-        ? pointStops.map(stop => `${stop.ciudad.nombre} · ${summaryDocumentDate(stop.pointEntry.fecha, true)} ${stop.pointEntry.hora || ''}`.trim()).join('\n')
-        : `${cityNames.join(' / ')} · sin gastos en este viaje`);
+    const markerDetail = tripMapMarkerDetail(group, dailyRecord);
+    const title = `${markerDetail.title} · pulsa para ver la fecha`;
     const markerPhotoRecord = dailyPhoto ? dailyRecord : accommodationPhoto;
     const photoKeys = markerPhotoRecord ? encodeURIComponent(markerPhotoRecord.key) : '';
     const photoAction = markerPhotoRecord
       ? ` role="button" tabindex="0" data-map-photo-keys="${photoKeys}" aria-label="Abrir ${escapeHtml(markerPhotoRecord.descripcion || 'foto')}"`
       : '';
-    return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${markerPhotoRecord ? ' map-marker-clickable' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction}><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dailyPhoto ? 10 : 8}"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text>${markerLabel}<title>${escapeHtml(title)}</title></g>`;
+    const detailKey = markerPhotoRecord ? '' : `marker-${markerIndex}`;
+    if (detailKey) tripMapMarkerDetailLookup.set(detailKey, markerDetail);
+    const detailAction = detailKey
+      ? ` role="button" tabindex="0" data-map-marker-detail="${detailKey}" aria-label="${escapeHtml(`${transportMarker ? `${transportMarker.label}: ` : ''}${markerDetail.title}. Ver fecha`)}"`
+      : '';
+    const markerVisual = transportMarker
+      ? `<text x="${p.x.toFixed(1)}" y="${(p.y + 6).toFixed(1)}" class="map-marker-transport-symbol">${transportMarker.icon}</text>`
+      : `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dailyPhoto ? 10 : 8}"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text>`;
+    return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${transportMarker ? ` map-marker-transport ${transportMarker.type}` : ''}${markerPhotoRecord || detailKey ? ' map-marker-clickable' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction || detailAction}>${markerVisual}${markerLabel}<title>${escapeHtml(title)}</title></g>`;
   }).join('');
   tripMapPhotoLookup.clear();
   const interactivePhotoItems = dailyMode ? projectedItems.filter(item => item.photoPoint) : photoItems;
@@ -7987,6 +8058,17 @@ function renderTripMap() {
       event.preventDefault();
       event.stopPropagation();
       openTripMapPhotoPopup(marker.getAttribute('data-map-photo-keys'), marker);
+    };
+    marker.addEventListener('click', open);
+    marker.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') open(event);
+    });
+  });
+  container.querySelectorAll('[data-map-marker-detail]').forEach(marker => {
+    const open = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openTripMapMarkerPopup(tripMapMarkerDetailLookup.get(marker.getAttribute('data-map-marker-detail')), marker);
     };
     marker.addEventListener('click', open);
     marker.addEventListener('keydown', event => {
@@ -9163,7 +9245,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v201');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v202');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
