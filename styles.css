@@ -2776,6 +2776,19 @@ body.map-fullscreen-open {
   font-weight: 400;
 }
 
+.trip-vector-marker.transport.train,
+.trip-vector-marker.transport.train .trip-vector-marker-dot {
+  width: 30px;
+}
+
+.trip-vector-marker.transport .trip-vector-marker-dot img {
+  display: block;
+  width: 30px;
+  height: 20px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
 .trip-vector-marker-label {
   position: absolute;
   left: 24px;
@@ -3031,6 +3044,11 @@ body.map-fullscreen-open {
   font-size: 18px;
   font-weight: 400;
   text-anchor: middle;
+}
+
+.map-marker .map-marker-transport-image {
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 1px 2px #0008);
+  pointer-events: none;
 }
 
 .map-destination-number circle {

@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v203';
+const APP_VERSION = '700v204';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2134,7 +2134,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v203');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v204');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2166,7 +2166,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v203');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v204');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2690,7 +2690,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v203');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v204');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6909,13 +6909,17 @@ function tripMapArrivalLabelLines(item) {
   return [name];
 }
 
+const TRIP_MAP_TRAIN_ICON = './assets/map-train-side.webp';
+
 function tripMapTransportMarker(record) {
   const source = record && (record.dailyRecord || record.pointEntry || record.entry || record);
   const text = String(source && (source.descripcion || source.desc) || record && record.ciudad && record.ciudad.nombre || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLocaleLowerCase('es-ES');
-  if (/(^|\W)(tren|trenes|ferrocarril)(\W|$)/.test(text)) return { type: 'train', icon: '🚆', label: 'Tren' };
+  if (/(^|\W)(tren|trenes|ferrocarril)(\W|$)/.test(text)) {
+    return { type: 'train', icon: '🚂', image: TRIP_MAP_TRAIN_ICON, label: 'Tren' };
+  }
   if (/(^|\W)(coche|coches|automovil|automoviles|auto)(\W|$)/.test(text)) return { type: 'car', icon: '🚗', label: 'Coche' };
   if (/(^|\W)(bus|buses|autobus|autobuses|autocar|autocares)(\W|$)/.test(text)) return { type: 'bus', icon: '🚌', label: 'Bus' };
   if (/(^|\W)(avion|aviones|vuelo|vuelos)(\W|$)/.test(text)) return { type: 'plane', icon: '✈️', label: 'Avión' };
@@ -6961,6 +6965,17 @@ async function loadMapTileForCanvas(descriptor) {
     }
   }
   return null;
+}
+
+async function loadMapMarkerImageForCanvas(url) {
+  try {
+    const response = await fetch(url, { cache: 'force-cache' });
+    if (!response.ok) return null;
+    return await loadImageFile(await response.blob());
+  } catch (error) {
+    console.warn('No se pudo incorporar el icono de transporte al mapa del Blog', error);
+    return null;
+  }
 }
 
 function dailyMapPresentation(records = []) {
@@ -7115,6 +7130,12 @@ async function createDailyMapBlogImage(records, day) {
   });
 
   const { dailyRoute, markerModels, destinationMarkers, exactPoints, photoGroups, hasRoute: dailyHasRoute } = dailyMapBlogLayers(records);
+  const trainMarkerImage = markerModels.some(({ record }) => {
+    const marker = record.kind === 'point' ? tripMapTransportMarker(record) : null;
+    return Boolean(marker && marker.image);
+  })
+    ? await loadMapMarkerImageForCanvas(TRIP_MAP_TRAIN_ICON)
+    : null;
   if (dailyRoute.length > 1) {
     context.beginPath();
     dailyRoute.forEach((record, index) => {
@@ -7182,8 +7203,12 @@ async function createDailyMapBlogImage(records, day) {
     const y = headerHeight + point.y - layer.startY;
     context.textAlign = 'center';
     if (transportMarker) {
-      context.font = '18px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
-      context.fillText(transportMarker.icon, x, y + 6);
+      if (transportMarker.image && trainMarkerImage) {
+        context.drawImage(trainMarkerImage, x - 15, y - 10, 30, 20);
+      } else {
+        context.font = '18px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+        context.fillText(transportMarker.icon, x, y + 6);
+      }
     } else {
       context.fillStyle = '#7c3aed';
       context.beginPath();
@@ -7536,11 +7561,18 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
   const routeNumberText = presentation && presentation.numberText
     ? presentation.numberText
     : (routeGroup.length ? routeGroup.map(entry => entry.index + 1).join('-') : String(index + 1));
-  dot.textContent = transportMarker
-    ? transportMarker.icon
-    : dailyRecord
-      ? (dailyRecord.kind === 'point' ? '•' : '+')
-      : (routePoint ? routeNumberText : (pointMarker ? '•' : '+'));
+  if (transportMarker && transportMarker.image) {
+    const image = document.createElement('img');
+    image.src = transportMarker.image;
+    image.alt = '';
+    dot.append(image);
+  } else {
+    dot.textContent = transportMarker
+      ? transportMarker.icon
+      : dailyRecord
+        ? (dailyRecord.kind === 'point' ? '•' : '+')
+        : (routePoint ? routeNumberText : (pointMarker ? '•' : '+'));
+  }
   const label = document.createElement('span');
   label.className = 'trip-vector-marker-label';
   const labelLines = presentation && presentation.labelLines
@@ -7985,7 +8017,9 @@ function renderTripMap() {
       ? ` role="button" tabindex="0" data-map-marker-detail="${detailKey}" aria-label="${escapeHtml(`${transportMarker ? `${transportMarker.label}: ` : ''}${markerDetail.title}. Ver detalles`)}"`
       : '';
     const markerVisual = transportMarker
-      ? `<text x="${p.x.toFixed(1)}" y="${(p.y + 6).toFixed(1)}" class="map-marker-transport-symbol">${transportMarker.icon}</text>`
+      ? (transportMarker.image
+        ? `<image href="${escapeHtml(transportMarker.image)}" x="${(p.x - 15).toFixed(1)}" y="${(p.y - 10).toFixed(1)}" width="30" height="20" class="map-marker-transport-image" preserveAspectRatio="xMidYMid meet"></image>`
+        : `<text x="${p.x.toFixed(1)}" y="${(p.y + 6).toFixed(1)}" class="map-marker-transport-symbol">${transportMarker.icon}</text>`)
       : `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dailyPhoto ? 10 : 8}"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text>`;
     return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${transportMarker ? ` map-marker-transport ${transportMarker.type}` : ''}${markerPhotoRecord || detailKey ? ' map-marker-clickable' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction || detailAction}>${markerVisual}${markerLabel}<title>${escapeHtml(title)}</title></g>`;
   }).join('');
@@ -9263,7 +9297,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v203');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v204');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }

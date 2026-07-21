@@ -75,7 +75,11 @@ test('el mapa diario separa los puntos y los números de destino', () => {
 test('el mapa oculta fechas y usa iconos minimos de transporte con notas', () => {
   assert.match(app, /function tripMapArrivalLabelLines\(item\)[\s\S]*?return \[name\];/);
   assert.match(app, /function tripMapTransportMarker\(record\)/);
-  assert.match(app, /return \{ type: 'train', icon: '🚆', label: 'Tren' \}/);
+  assert.match(app, /TRIP_MAP_TRAIN_ICON = '\.\/assets\/map-train-side\.webp'/);
+  assert.match(app, /return \{ type: 'train',[\s\S]*?image: TRIP_MAP_TRAIN_ICON, label: 'Tren' \}/);
+  assert.match(app, /image\.src = transportMarker\.image/);
+  assert.match(app, /class="map-marker-transport-image"/);
+  assert.match(app, /context\.drawImage\(trainMarkerImage, x - 15, y - 10, 30, 20\)/);
   assert.match(app, /return \{ type: 'car', icon: '🚗', label: 'Coche' \}/);
   assert.match(app, /return \{ type: 'bus', icon: '🚌', label: 'Bus' \}/);
   assert.match(app, /return \{ type: 'plane', icon: '✈️', label: 'Avión' \}/);
@@ -87,5 +91,7 @@ test('el mapa oculta fechas y usa iconos minimos de transporte con notas', () =>
   assert.match(app, /data-map-marker-detail/);
   assert.match(styles, /\.trip-vector-marker\.transport \.trip-vector-marker-dot \{[\s\S]*?background: transparent/);
   assert.match(styles, /\.map-marker \.map-marker-transport-symbol/);
+  assert.match(styles, /\.trip-vector-marker\.transport \.trip-vector-marker-dot img/);
+  assert.match(styles, /\.map-marker \.map-marker-transport-image/);
   assert.match(styles, /\.trip-vector-marker\.has-details[\s\S]*?pointer-events: auto !important/);
 });
