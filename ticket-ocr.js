@@ -10,7 +10,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v204';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v205';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -24,19 +24,20 @@ const normalizeTicketConcepts = value => normalizeTicketText(value)
 const ticketLines = text => String(text || '').split(/\r?\n/).map(cleanLine).filter(Boolean);
 
 const TICKET_MONTHS = {
-  ene: 1, enero: 1,
-  feb: 2, febrero: 2,
-  mar: 3, marzo: 3,
-  abr: 4, abril: 4,
-  may: 5, mayo: 5,
-  jun: 6, junio: 6,
-  jul: 7, julio: 7,
-  ago: 8, agosto: 8,
-  sep: 9, sept: 9, septiembre: 9, set: 9, setiembre: 9,
-  oct: 10, octubre: 10,
-  nov: 11, noviembre: 11,
-  dic: 12, diciembre: 12
+  ene: 1, enero: 1, gen: 1, gener: 1, jan: 1, january: 1, tammi: 1, tammikuu: 1,
+  feb: 2, febrero: 2, febrer: 2, february: 2, helmi: 2, helmikuu: 2,
+  mar: 3, marzo: 3, marc: 3, march: 3, maalis: 3, maaliskuu: 3,
+  abr: 4, abril: 4, apr: 4, april: 4, huhti: 4, huhtikuu: 4,
+  may: 5, mayo: 5, maig: 5, touko: 5, toukokuu: 5,
+  jun: 6, junio: 6, juny: 6, june: 6, kesa: 6, kesakuu: 6,
+  jul: 7, julio: 7, juliol: 7, july: 7, heina: 7, heinakuu: 7,
+  ago: 8, agosto: 8, agost: 8, aug: 8, august: 8, elo: 8, elokuu: 8,
+  sep: 9, sept: 9, septiembre: 9, set: 9, setiembre: 9, setembre: 9, september: 9, syys: 9, syyskuu: 9,
+  oct: 10, octubre: 10, october: 10, loka: 10, lokakuu: 10,
+  nov: 11, noviembre: 11, november: 11, marras: 11, marraskuu: 11,
+  dic: 12, diciembre: 12, des: 12, desembre: 12, dec: 12, december: 12, joulu: 12, joulukuu: 12
 };
+const TICKET_MONTH_PATTERN = Object.keys(TICKET_MONTHS).sort((a, b) => b.length - a.length).join('|');
 
 function validDateParts(day, month, year) {
   const fullYear = year < 100 ? 2000 + year : year;
@@ -50,7 +51,7 @@ export function extractTicketDate(text) {
   const candidates = [];
   lines.forEach((line, index) => {
     const normalized = normalizeTicketConcepts(line);
-    const labeled = /\b(fecha|date|fec)\b/.test(normalized);
+    const labeled = /\b(fecha|date|fec|data|paivamaara|datum)\b/.test(normalized);
     const regex = /\b(0?[1-9]|[12]\d|3[01])[\/.-](0?[1-9]|1[0-2])[\/.-](\d{2}|\d{4})\b/g;
     let match;
     while ((match = regex.exec(line))) {
@@ -62,7 +63,7 @@ export function extractTicketDate(text) {
       const value = validDateParts(Number(match[3]), Number(match[2]), Number(match[1]));
       if (value) candidates.push({ value, score: (labeled ? 35 : 14) - index * 0.05 });
     }
-    const monthRegex = /\b(0?[1-9]|[12]\d|3[01])[\s/.-]+(ene(?:ro)?|feb(?:rero)?|mar(?:zo)?|abr(?:il)?|may(?:o)?|jun(?:io)?|jul(?:io)?|ago(?:sto)?|sep(?:t(?:iembre)?)?|set(?:iembre)?|oct(?:ubre)?|nov(?:iembre)?|dic(?:iembre)?)[\s/.-]+(\d{2}|\d{4})\b/g;
+    const monthRegex = new RegExp(`\\b(0?[1-9]|[12]\\d|3[01])[\\s/.-]+(${TICKET_MONTH_PATTERN})[\\s/.-]+(\\d{2}|\\d{4})\\b`, 'g');
     while ((match = monthRegex.exec(normalized))) {
       const month = TICKET_MONTHS[match[2]];
       const value = month ? validDateParts(Number(match[1]), month, Number(match[3])) : '';
@@ -84,7 +85,7 @@ export function extractTicketTime(text) {
   const candidates = [];
   lines.forEach((line, index) => {
     const normalized = normalizeTicketText(line);
-    const labeled = /\b(hora|time)\b/.test(normalized);
+    const labeled = /\b(hora|time|aika|heure|ora|zeit)\b/.test(normalized);
     const sharesLineWithDate = /\b(?:0?[1-9]|[12]\d|3[01])[\/.-](?:0?[1-9]|1[0-2])[\/.-](?:\d{2}|\d{4})\b|\b\d{4}[\/.-](?:0?[1-9]|1[0-2])[\/.-](?:0?[1-9]|[12]\d|3[01])\b/.test(normalized);
     const regex = /\b([01]?\d|2[0-3])\s*([:.h])\s*([0-5]\d)(?::[0-5]\d)?\b/gi;
     let match;
@@ -190,8 +191,23 @@ export function extractTicketFoodEvidence(text, total = null) {
   };
 }
 
-const CARD_PAYMENT_SIGNALS = /\b(copia\s+(?:cliente|comercio)|justificante|autorizacion|terminal|operacion|transaccion|contactless|tpv|datafono|visa|mastercard|redsys|servired|getnet|global\s+payments)\b/g;
-const RECEIPT_SIGNALS = /\b(ticket|factura\s+simplificada|base\s+imponible|subtotal|articulo|unidades|cambio|mesa|iva)\b/g;
+const CARD_PAYMENT_SIGNALS = /\b(copia\s+(?:cliente|comercio)|justificante|customer\s+copy|cardholder\s+copy|autorizacion|authorization|terminal|operacion|transaction|transaccion|contactless|tpv|datafono|visa|mastercard|redsys|servired|getnet|global\s+payments)\b/g;
+const RECEIPT_SIGNALS = /\b(ticket|receipt|kuitti|factura(?:\s+simplificada)?|invoice|lasku|base\s+(?:imponible|imposable)|subtotal|article|articulo|item|tuote|unidades|cambio|change|mesa|iva|vat|alv)\b/g;
+
+const BEST_TOTAL_LABEL = /\b(?:grand\s+total|total\s+(?:importe?|amount|summa|a\s+)?(?:pagar|abonar|due|payable)?|(?:importe?|amount|balance)\s+(?:total|due|payable)|importe?\s+(?:a|per|poder)\s+(?:pagar|abonar)|(?:a|per)\s+(?:pagar|abonar)|pendent\s+de\s+cobrament|montant\s+(?:total|a\s+payer)|betrag\s+(?:gesamt|zu\s+zahlen)|zu\s+zahlen|importo\s+(?:totale|da\s+pagare)|da\s+pagare|valor\s+a\s+pagar|loppusumma|kokonaissumma|maksettav(?:a|aa))\b/;
+const GENERIC_TOTAL_LABEL = /\b(?:total|yhteensa|loppusumma|kokonaissumma|gesamtbetrag)\b/;
+const AMOUNT_TOTAL_LABEL = /\b(?:importe?|amount|summa|betrag|montant|importo|valor)\b|\b(?:a|per)\s+(?:pagar|abonar)\b/;
+const PAYMENT_DUE_LABEL = /\b(?:pendiente\s+de\s+cobro|cobro\s+pendiente|pendent\s+de\s+cobrament|amount\s+due|balance\s+due|total\s+due|maksettav(?:a|aa)|zu\s+zahlen|a\s+payer|da\s+pagare)\b/;
+const TOTAL_TABLE_HEADER = /\b(?:unid(?:ad|ades)?|cant(?:idad)?|descripcion|descripcio|articulo|article|item|unit|units|qty|quantity|price|preu|quantitat|kuvaus|tuote|maara|kpl|hinta)\b/;
+const TOTAL_TAX_LABEL = /\b(?:iva|vat|alv|tax|vero|tva|mwst)\b/;
+const TOTAL_TAX_INCLUDED = /\b(?:iva|vat|alv|tax|vero|tva|mwst)\s+(?:incl|included|sis|compris)/;
+const TOTAL_EXCLUDED_LABEL = /\b(?:subtotal|sub\s+total|valisumma|base\s+(?:imponible|imposable|iva)|taxable\s+amount|net\s+amount|netto|cuota\s+iva|cambio|change|vaihtoraha|entregado|efectivo|cash|kateinen|descuento|discount|alennus|propina|tip|juomaraha)\b/;
+const TOTAL_LABEL_ONLY = /^(?:(?:grand\s+)?total|importe?|amount|summa|betrag|montant|importo|valor|yhteensa|loppusumma|kokonaissumma|gesamtbetrag|maksettav(?:a|aa)|zu\s+zahlen|a\s+payer|da\s+pagare|(?:importe?\s+)?(?:a|per|poder)\s+(?:pagar|abonar)|pendiente\s+de\s+cobro|cobro\s+pendiente|pendent\s+de\s+cobrament)(?:\s+(?:eur|euro|euros|gbp|pounds?|sek|nok|dkk))?$/;
+
+function ticketTotalLineExcluded(normalized) {
+  const taxBreakdown = TOTAL_TAX_LABEL.test(normalized) && !TOTAL_TAX_INCLUDED.test(normalized);
+  return TOTAL_EXCLUDED_LABEL.test(normalized) || taxBreakdown;
+}
 
 export function detectTicketDocumentType(text) {
   const normalized = normalizeTicketText(text);
@@ -211,24 +227,20 @@ export function extractTicketTotal(text) {
   lines.forEach((line, index) => {
     const normalized = normalizeTicketConcepts(line);
     const amounts = amountsInLine(line);
-    const hasBestLabel = /\btotal\s+(?:a\s+)?pagar\b|\b(?:importe\s+total|total\s+importe)\b|\btotal\s+(?:compra|operacion|ticket)\b/.test(normalized);
-    const hasTotalLabel = /\btotal\b/.test(normalized) && !/\bsubtotal\b/.test(normalized);
-    const hasAmountLabel = /\bimporte\b|\ba\s+pagar\b|\bimporte\s+cobrado\b/.test(normalized);
-    const hasPaymentDueLabel = /\bpendiente\s+de\s+cobro\b|\bcobro\s+pendiente\b/.test(normalized);
-    const tableHeader = /\b(?:unid(?:ad)?|cant(?:idad)?|descripcion|articulo|precio)\b/.test(normalized);
-    const taxBreakdown = /\biva\b|i\.v\.a/.test(normalized) && !/iva\s+incl|impuestos\s+incl/.test(normalized);
-    const excluded = /\bsubtotal\b|base\s+imponible|base\s+iva|cuota\s+iva|cambio|entregado|efectivo|descuento|propina/.test(normalized)
-      || taxBreakdown;
+    const hasBestLabel = BEST_TOTAL_LABEL.test(normalized) || /\btotal\s+(?:compra|operacion|ticket)\b/.test(normalized);
+    const hasTotalLabel = GENERIC_TOTAL_LABEL.test(normalized) && !/\b(?:subtotal|sub\s+total|valisumma)\b/.test(normalized);
+    const hasAmountLabel = AMOUNT_TOTAL_LABEL.test(normalized);
+    const hasPaymentDueLabel = PAYMENT_DUE_LABEL.test(normalized);
+    const tableHeader = TOTAL_TABLE_HEADER.test(normalized);
+    const excluded = ticketTotalLineExcluded(normalized);
     let labelScore = hasBestLabel ? 130 : hasTotalLabel ? 115 : hasPaymentDueLabel ? 105 : hasAmountLabel ? 95 : 0;
     if (tableHeader && !hasTotalLabel) labelScore = 0;
     if (hasAmountLabel && !hasTotalLabel && !hasPaymentDueLabel && amounts.length > 1) labelScore = 0;
     if (excluded) labelScore -= 120;
     if (labelScore > 0 && amounts.length) {
-      candidates.push({ value: amounts.at(-1), score: labelScore + (/\beur\b|€/i.test(line) ? 10 : 0) + index / Math.max(lines.length, 1) });
+      candidates.push({ value: amounts.at(-1), score: labelScore + (/\b(?:eur|euro|euros|gbp|pounds?|sek|nok|dkk)\b|[€£]/i.test(line) ? 10 : 0) + index / Math.max(lines.length, 1) });
     }
-    const labelOnly = /^(?:total(?:\s+(?:importe|a\s+pagar|compra|operacion|ticket))?|importe(?:\s+(?:total|cobrado))?|a\s+pagar|pendiente\s+de\s+cobro|cobro\s+pendiente)(?:\s+(?:eur|euro|euros))?$/.test(
-      normalized.replace(/[-_=.:]/g, ' ').replace(/\s+/g, ' ').trim()
-    );
+    const labelOnly = TOTAL_LABEL_ONLY.test(normalized.replace(/[-_=.:]/g, ' ').replace(/\s+/g, ' ').trim());
     const separatedLabel = hasBestLabel || labelOnly || hasPaymentDueLabel;
     if (labelScore > 0 && separatedLabel && !amounts.length) {
       [-1, 1].forEach(offset => {
@@ -236,7 +248,7 @@ export function extractTicketTotal(text) {
         if (nearbyIndex < 0 || nearbyIndex >= lines.length) return;
         const nearbyAmounts = amountsInLine(lines[nearbyIndex]);
         const nearbyNormalized = normalizeTicketConcepts(lines[nearbyIndex]);
-        if (nearbyAmounts.length === 1 && !/subtotal|base\s+imponible|\biva\b|cambio|entregado|descuento|propina/.test(nearbyNormalized)) {
+        if (nearbyAmounts.length === 1 && !ticketTotalLineExcluded(nearbyNormalized)) {
           candidates.push({ value: nearbyAmounts[0], score: labelScore - (offset < 0 ? 6 : 8) });
         }
       });
@@ -245,8 +257,8 @@ export function extractTicketTotal(text) {
   return candidates.filter(item => item.value > 0).sort((a, b) => b.score - a.score)[0]?.value ?? null;
 }
 
-const MERCHANT_EXCLUSIONS = /^(ticket|factura|simplificada|copia|cliente|fecha|hora|mesa|caja|cajero|nif|cif|n\.i\.f|tel|telefono|www\.|https?|gracias|iva|total|subtotal|importe|direccion|domicilio|articulo|descripcion|unidades|venta|compra|operacion|transaccion|autorizacion|terminal|contactless|aprobada|aceptada)/i;
-const MERCHANT_METADATA_WORDS = /\b(fecha|hora|date|time|mesa|comensales|caja|cajero|nif|cif|telefono|ticket|factura|total|subtotal|importe|iva|descripcion|unidades|precio)\b/i;
+const MERCHANT_EXCLUSIONS = /^(ticket|receipt|kuitti|factura|invoice|lasku|simplificada|copia|cliente|customer|fecha|date|hora|time|mesa|caja|cajero|nif|cif|n\.i\.f|tel|telefono|www\.|https?|gracias|iva|vat|alv|total|subtotal|importe|import|amount|summa|yhteensa|direccion|domicilio|articulo|item|descripcion|description|unidades|venta|compra|operacion|transaction|transaccion|autorizacion|authorization|terminal|contactless|aprobada|aceptada)/i;
+const MERCHANT_METADATA_WORDS = /\b(fecha|hora|date|time|data|paivamaara|aika|mesa|comensales|caja|cajero|nif|cif|telefono|ticket|receipt|kuitti|factura|invoice|lasku|total|subtotal|importe|import|amount|summa|yhteensa|iva|vat|alv|descripcion|description|kuvaus|unidades|units|maara|precio|price|hinta)\b/i;
 const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|rua|rúa|cp\s*\d|codigo postal|tlf|telefono|madrid|barcelona)\b/i;
 const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet)$/i;
 const PAYMENT_TERMINAL_LINE = /^(?:venta\b|compra\b|visa\b|mastercard\b|contactless\b|aut(?:orizacion)?[:.\s]|op(?:eracion)?[:.\s]|tran(?:saccion)?[:.\s]|terminal[:.\s]|app\s+(?:bbva|santander|caixabank|sabadell))/i;
@@ -265,16 +277,19 @@ export function extractTicketMerchant(text) {
   const explicit = lines.map((line, index) => {
     const match = line.match(/^\s*(?:comercio|establecimiento|merchant|nombre\s+comercio)\s*[:.-]\s*(.+)$/i);
     return match ? { value: cleanMerchantCandidate(match[1]), score: 100 - index } : null;
-  }).filter(item => item && /[a-záéíóúüñ]{3}/i.test(item.value) && !/^\d+$/.test(item.value));
+  }).filter(item => item && /\p{L}{3}/iu.test(item.value) && !/^\d+$/.test(item.value));
   if (explicit.length) return explicit.sort((a, b) => b.score - a.score)[0].value;
   const bankHeaderIndex = lines.findIndex(line => BANK_BRAND_LINE.test(line));
   const receiptBodyIndex = documentType === 'receipt'
-    ? lines.findIndex(line => /\b(?:unid(?:ad)?|cant(?:idad)?|descripcion|articulo)\b.*\b(?:precio|importe)\b/i.test(normalizeTicketText(line)))
+    ? lines.findIndex(line => {
+      const normalized = normalizeTicketText(line);
+      return TOTAL_TABLE_HEADER.test(normalized) && AMOUNT_TOTAL_LABEL.test(normalized);
+    })
     : -1;
   const fiscalDetailsIndex = lines.findIndex(line => /^\s*(?:n\.?i\.?f\.?|c\.?i\.?f\.?)\b/i.test(line));
   const candidates = lines.map((line, index) => {
-    const letters = line.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g) || [];
-    const uppercase = line.match(/[A-ZÁÉÍÓÚÜÑ]/g) || [];
+    const letters = line.match(/\p{L}/gu) || [];
+    const uppercase = line.match(/\p{Lu}/gu) || [];
     let score = Math.max(0, 10 - index * 0.6);
     if (letters.length < 3 || line.length > 70 || MERCHANT_EXCLUSIONS.test(line)) score -= 30;
     if (MERCHANT_METADATA_WORDS.test(normalizeTicketText(line))) score -= 60;

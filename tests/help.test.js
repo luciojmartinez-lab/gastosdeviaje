@@ -14,7 +14,7 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
 
   assert.match(html, /Fecha de creación:<\/strong> 17 de julio de 2026/);
   assert.match(html, /Última actualización:<\/strong> 21 de julio de 2026/);
-  assert.match(html, /Versión documentada:<\/strong> 700v204/);
+  assert.match(html, /Versión documentada:<\/strong> 700v205/);
   assert.match(html, /id="objetivo"/);
   assert.match(html, /1\. Objetivo y filosofía de la aplicación/);
   assert.match(html, /id="flujo"/);
@@ -51,8 +51,15 @@ test('todos los modales tienen ayuda contextual con un destino documentado', asy
   assert.match(index, /id="sync-cloud-progress-dialog"[^>]*data-context-help="false"/);
   assert.match(app, /function installDialogHelpLinks\(\)[\s\S]*?button\.textContent = 'i'/);
   assert.match(app, /button\.onclick = \(\) => openContextHelp\(button\.dataset\.helpTarget, button\)/);
-  assert.match(app, /frame\.src = `ayuda\.html\?embedded=1&target=/);
+  assert.match(app, /`ayuda\.html\?embedded=1&target=/);
+  assert.match(app, /function openAppHelp\(trigger\)[\s\S]*?ayuda\.html\?embedded=app/);
+  const helpInstaller = app.slice(
+    app.indexOf('function installDialogHelpLinks()'),
+    app.indexOf('const ADD_EXPENSE_DRAFT_FIELDS')
+  );
+  assert.match(helpInstaller, /\$\$\('a\.help-link'\)[\s\S]*?event\.preventDefault\(\)[\s\S]*?openAppHelp\(link\)/);
   assert.match(help, /document\.documentElement\.classList\.add\('embedded-help'\)/);
+  assert.match(help, /document\.documentElement\.classList\.add\('embedded-app-help'\)/);
   assert.match(help, /const renderTarget = targetId =>/);
   assert.match(help, /manual\.replaceChildren\(context\)/);
   assert.match(app, /installDialogHelpLinks\(\);[\s\S]*?bindEvents\(\)/);

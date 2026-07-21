@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v204';
+const APP_VERSION = '700v205';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -419,15 +419,30 @@ function restoreContextHelpFocus() {
   }
 }
 
-function openContextHelp(target, trigger) {
+function openHelpDialog(src, title, trigger) {
   const dialog = $('#context-help-dialog');
   const frame = $('#context-help-frame');
   if (!dialog || !frame) return;
   activeContextHelpTrigger = trigger || document.activeElement;
-  frame.src = `ayuda.html?embedded=1&target=${encodeURIComponent(target || 'referencia')}`;
+  const heading = $('#context-help-title');
+  if (heading) heading.textContent = title;
+  frame.title = title;
+  frame.src = src;
   if (dialog.open) return;
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute('open', 'open');
+}
+
+function openContextHelp(target, trigger) {
+  openHelpDialog(
+    `ayuda.html?embedded=1&target=${encodeURIComponent(target || 'referencia')}`,
+    'Ayuda de esta pantalla',
+    trigger
+  );
+}
+
+function openAppHelp(trigger) {
+  openHelpDialog('ayuda.html?embedded=app', 'Ayuda', trigger);
 }
 
 function installDialogHelpLinks() {
@@ -451,6 +466,12 @@ function installDialogHelpLinks() {
       const form = dialog.querySelector('form');
       if (form) form.prepend(button);
     }
+  });
+  $$('a.help-link').forEach(link => {
+    link.addEventListener('click', event => {
+      event.preventDefault();
+      openAppHelp(link);
+    });
   });
 }
 
@@ -2134,7 +2155,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v204');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v205');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2166,7 +2187,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v204');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v205');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2634,7 +2655,7 @@ function applyTicketOcrFields(prefix, result) {
   const documentLabel = fields.documentType === 'card_payment' ? 'Justificante de tarjeta detectado.' : 'Ticket de comercio detectado.';
   const missingAmount = Number.isFinite(fields.total) && fields.total > 0
     ? ''
-    : ' No se encontró un total claro con Total, Importe, A pagar o Pendiente de cobro; se mantiene el importe que ya figuraba.';
+    : ' No se encontró un total claro en el justificante; se mantiene el importe que ya figuraba.';
   const appliedMessage = applied.length ? ` Campos completados: ${[...new Set(applied)].join(', ')}.` : '';
   const preservedMessage = preserved.length ? ` Se conservaron sin cambios: ${[...new Set(preserved)].join(', ')}.` : '';
   return `${documentLabel} Datos reconocidos: ${[...new Set(detected)].join(', ')}.${appliedMessage}${preservedMessage} Revisa los datos; no se guardarán hasta que pulses ${prefix === 'edit-gasto' ? 'Guardar cambios' : 'Añadir'}.${missingAmount}${result.pdfFirstPageOnly ? ' En PDF se ha leído la primera página.' : ''}`;
@@ -2690,7 +2711,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v204');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v205');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -9297,7 +9318,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v204');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v205');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }

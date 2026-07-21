@@ -4,10 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v204</title>
+  <title>Manual de Cuaderno de Bitácora - 700v205</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
-    if (helpParams.get('embedded') === '1') {
+    const embeddedHelpMode = helpParams.get('embedded');
+    if (embeddedHelpMode === 'app') {
+      document.documentElement.classList.add('embedded-app-help');
+    }
+    if (embeddedHelpMode === '1') {
       document.documentElement.classList.add('embedded-help');
       window.addEventListener('DOMContentLoaded', () => {
         const manual = document.querySelector('.manual');
@@ -134,6 +138,10 @@
     html.embedded-help .manual{width:100%}
     html.embedded-help .section{margin:0;padding:18px;border:0;border-radius:0}
     html.embedded-help .subsection,html.embedded-help h4,html.embedded-help td[id]{scroll-margin-top:12px}
+    html.embedded-app-help{scroll-padding-top:12px}
+    html.embedded-app-help body{background:#fff}
+    html.embedded-app-help .topbar,html.embedded-app-help .print-footer{display:none!important}
+    html.embedded-app-help .layout{max-width:1180px;padding-top:16px}
     @page{size:A4;margin:14mm 13mm 16mm}
     @media print{
       body{background:#fff;color:#1f2d3a;font-size:10.5pt;line-height:1.42}
@@ -185,7 +193,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 21 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v204</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 21 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v205</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -260,7 +268,7 @@
           <h3>3.1 Cabecera y navegación general</h3>
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Control</th><th>Uso</th></tr></thead><tbody>
             <tr><td>Nombre y versión</td><td>Identifican la aplicación instalada. La portada de carga muestra además la fecha de esa versión y adapta por separado el tamaño y la posición del título, el tren y el progreso para móvil y ordenador.</td></tr>
-            <tr><td>Ayuda</td><td>Abre este manual. La ayuda puede volver a la aplicación, descargarse como PDF o imprimirse.</td></tr>
+            <tr><td>Ayuda</td><td>Abre el manual completo dentro de la aplicación. Al cerrarlo vuelves a la misma pantalla, con los filtros y datos que estuvieran abiertos, sin recargar la aplicación.</td></tr>
             <tr><td>Botón i en ventanas</td><td>Cada ventana modal abre dentro de la aplicación una ayuda superpuesta situada directamente en la explicación correspondiente. Cerrar la ayuda devuelve al mismo formulario, con sus datos intactos.</td></tr>
             <tr><td>Viajes</td><td>Selecciona el contexto de trabajo y ofrece accesos a revisión, documentos, copias y sincronización.</td></tr>
             <tr><td>Gastos</td><td>Alta, consulta, filtrado, edición y paso de movimientos al Blog.</td></tr>
@@ -396,7 +404,7 @@
             <tr><td>Tipo</td><td><em>Gasto</em> descuenta; <em>Ingreso / devolución</em> se guarda como importe negativo y reduce el total gastado.</td></tr>
             <tr><td>Descripción</td><td>Cuadro amplio de varias líneas para identificar el movimiento y revisar el texto completo mientras se escribe. Después permite localizarlo mediante los filtros.</td></tr>
             <tr><td>Elegir archivo / Cámara</td><td>Añade un ticket como imagen o PDF.</td></tr>
-            <tr><td id="ocr">Leer ticket</td><td>Reconoce el justificante íntegramente en el dispositivo, sin enviarlo a la nube. Primero detecta las cuatro esquinas del papel, elimina la mayor parte del fondo, corrige la perspectiva y compensa sombras, iluminación desigual y pliegues. El procesamiento se realiza en una tarea temporal que se cierra al terminar para liberar memoria. Después hace dos lecturas complementarias del documento ya enderezado: una versión normalizada conserva mejor fecha e importes y otra versión de contraste adaptativo refuerza el título y el texto térmico. Combina únicamente los campos claros de ambas. Si todavía falta algún dato, realiza lecturas separadas de la primera línea, la cabecera y la zona de importes. Para el comercio rechaza fragmentos cortos, etiquetas como Fecha u Hora, direcciones, bancos y sistemas de pago; también elimina caracteres sueltos creados por los bordes del papel. Si el nombre difiere solo una o dos letras de un establecimiento ya corregido en gastos anteriores, recupera la grafía conocida. Distingue un ticket comercial de una copia o justificante de pago con tarjeta. En un pago con tarjeta descarta la cabecera del banco o sistema y busca el comercio indicado después. Admite fechas numéricas, ISO o con el mes escrito, y horas junto a la fecha o etiquetadas como Hora. Si el OCR confunde el año pero el día y el mes encajan en las fechas del viaje seleccionado, utiliza el año de ese viaje y lo indica en el resultado. Para proponer el importe exige una línea asociada a <strong>Total</strong>, <strong>Importe</strong>, <strong>A pagar</strong> o <strong>Pendiente de cobro</strong>. También admite que, al interpretar columnas o pliegues, la cifra quede desplazada a la línea inmediatamente anterior o posterior a esa etiqueta. No considera «Importe» cuando es el encabezado de una tabla de productos y descarta subtotal, base imponible, IVA, efectivo entregado, cambio, descuento y propina. Si no encuentra un total claro, conserva el importe del formulario sin sustituirlo. Al leer desde <strong>Editar gasto</strong>, completa solo los campos vacíos: nunca sustituye una fecha, hora, importe, descripción, categoría o subcategoría que ya figure en el gasto. Las sugerencias utilizan primero el nombre del comercio y también los conceptos legibles del ticket. Si aparecen alimentos o consumiciones como patatas, caña, café, cerveza, menú o platos habituales, propone <strong>Comida</strong>. Cuando esta inferencia procede de los conceptos y detecta tres o más conceptos de consumo, o el total supera 15 €, propone además <strong>Restaurante</strong> si esa subcategoría está configurada. También busca en todo el texto útil palabras de negocio como cafetería, panadería, bar, restaurante, tapería, mesón, pizzería, pastelería, heladería, taberna, cervecería o supermercado; en ese caso propone <strong>Comida</strong> y la subcategoría específica aunque el total sea mayor. Solo propone una subcategoría cuando existe entre las configuradas de Comida; si no existe, la deja vacía. Estas reglas explícitas tienen prioridad sobre clasificaciones aprendidas anteriormente. El mensaje final diferencia los datos reconocidos, los completados y los conservados. Toda propuesta debe revisarse antes de guardar.</td></tr>
+            <tr><td id="ocr">Leer ticket</td><td>Lee el justificante y propone comercio, fecha, hora, importe, categoría y subcategoría cuando los reconoce con claridad. Admite tickets comerciales y justificantes de tarjeta, y entiende etiquetas habituales en español, catalán, inglés, finés y otros idiomas europeos. Al editar un gasto completa solo los campos vacíos; no sustituye datos existentes ni rellena un importe dudoso. Revisa siempre el resultado antes de guardar.</td></tr>
             <tr><td>Clasificación del ticket</td><td>Tipo visual independiente de la categoría económica.</td></tr>
             <tr><td>Imágenes adicionales</td><td>Admite varias fotografías. Cada una puede conservar GPS, recibir clasificación y añadirse al mapa.</td></tr>
             <tr><td>Añadir y salir</td><td>Guarda y cierra.</td></tr>
@@ -647,10 +655,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 21 de julio de 2026 para Cuaderno de Bitácora 700v204.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 21 de julio de 2026 para Cuaderno de Bitácora 700v205.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v204 · 21 de julio de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v205 · 21 de julio de 2026</div>
 </body>
 </html>

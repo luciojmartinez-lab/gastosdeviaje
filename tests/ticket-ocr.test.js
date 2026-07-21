@@ -68,6 +68,10 @@ test('reconoce más formatos de fecha y hora', () => {
   assert.equal(extractTicketTime('19/07/2026 10:19'), '10:19');
   assert.equal(extractTicketTime('HORA: 1020'), '10:20');
   assert.equal(extractTicketTime('2026-07-19 18h26'), '18:26');
+  assert.equal(extractTicketDate('Data 19 juliol 2026'), '2026-07-19');
+  assert.equal(extractTicketDate('Päivämäärä 19 heinäkuu 2026'), '2026-07-19');
+  assert.equal(extractTicketDate('Date 19 July 2026'), '2026-07-19');
+  assert.equal(extractTicketTime('Aika 18.26'), '18:26');
 });
 
 test('elige Total o Importe y no confunde IVA ni base imponible', () => {
@@ -81,6 +85,13 @@ test('elige Total o Importe y no confunde IVA ni base imponible', () => {
   assert.equal(extractTicketTotal('IMPORTE\n2,80 2,80'), null);
   assert.equal(extractTicketTotal('PENDIENTE DE COBRO 8,30'), 8.3);
   assert.equal(extractTicketTotal('een 8,30\nTOTAL IMPORTE E'), 8.3);
+  assert.equal(extractTicketTotal('IMPORT PODER ABONAR 18,40 EUR'), 18.4);
+  assert.equal(extractTicketTotal('IMPORT PER ABONAR\n18,40 EUR'), 18.4);
+  assert.equal(extractTicketTotal('AMOUNT DUE £12.50'), 12.5);
+  assert.equal(extractTicketTotal('GRAND TOTAL\n£12.50'), 12.5);
+  assert.equal(extractTicketTotal('YHTEENSÄ 24,90 EUR'), 24.9);
+  assert.equal(extractTicketTotal('MAKSETTAVAA\n24,90 EUR'), 24.9);
+  assert.equal(extractTicketTotal('VÄLISUMMA 20,00\nALV 4,90'), null);
 });
 
 test('deduce comida por los conceptos y restaurante por cantidad o total', () => {
@@ -256,24 +267,13 @@ test('los comercios de comida tienen prioridad y solo usan una subcategoría con
   assert.match(app, /foodEvidence\.restaurantLikely \? \['Restaurante'\] : \[\]/);
 });
 
-test('la ayuda explica la lectura diferenciada y conservadora', () => {
+test('la ayuda explica solo el resultado de Leer ticket y su alcance multilingüe', () => {
   const help = readFileSync(new URL('../ayuda.html', import.meta.url), 'utf8');
-  assert.match(help, /Distingue un ticket comercial de una copia o justificante de pago con tarjeta/);
-  assert.match(help, /No considera «Importe» cuando es el encabezado de una tabla de productos/);
-  assert.match(help, /Pendiente de cobro/);
-  assert.match(help, /detecta las cuatro esquinas del papel/);
-  assert.match(help, /corrige la perspectiva y compensa sombras/);
-  assert.match(help, /dos lecturas complementarias/);
-  assert.match(help, /contraste adaptativo/);
-  assert.match(help, /línea inmediatamente anterior o posterior/);
-  assert.match(help, /etiquetas como Fecha u Hora/);
-  assert.match(help, /establecimiento ya corregido en gastos anteriores/);
-  assert.match(help, /utiliza el año de ese viaje/);
-  assert.match(help, /conserva el importe del formulario sin sustituirlo/);
-  assert.match(help, /propone <strong>Comida<\/strong>/);
-  assert.match(help, /patatas, caña, café, cerveza, menú o platos/);
-  assert.match(help, /tres o más conceptos/);
-  assert.match(help, /supera 15 €/);
-  assert.match(help, /todo el texto útil palabras de negocio como cafetería, panadería, bar, restaurante, tapería/);
-  assert.match(help, /si no existe, la deja vacía/);
+  const section = help.match(/<td id="ocr">Leer ticket<\/td><td>([\s\S]*?)<\/td>/)?.[1] || '';
+  assert.match(section, /propone comercio, fecha, hora, importe, categoría y subcategoría/);
+  assert.match(section, /español, catalán, inglés, finés y otros idiomas europeos/);
+  assert.match(section, /completa solo los campos vacíos/);
+  assert.match(section, /no sustituye datos existentes ni rellena un importe dudoso/);
+  assert.ok(section.length < 600, `La explicación de Leer ticket vuelve a ser demasiado larga (${section.length})`);
+  assert.doesNotMatch(section, /perspectiva|contraste adaptativo|esquinas|procesamiento|lecturas complementarias/);
 });
