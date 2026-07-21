@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v198';
+const APP_VERSION = '700v199';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -8,6 +8,7 @@ const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
 const DATA_UPDATED_KEY = 'gastos_viaje_data_updated_at';
 const FORM_DRAFTS_KEY = 'gastos_viaje_form_drafts_v1';
 const FORM_DRAFT_MAX_AGE_DAYS = 30;
+const OFFLINE_ENTRY_NOTICE_KEY = 'gastos_viaje_offline_notice_shown';
 const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
 const SYNC_STATE_STORAGE = 'gastos_viaje_sync_state_v1';
 const BACKUP_DIRECTORY_SETTING_KEY = 'backupDirectory';
@@ -28,6 +29,7 @@ const DEFAULT_PHOTO_TYPES = [
   { id: 'selfie', nombre: 'Selfie', useAsDestination: false }
 ];
 const DIALOG_HELP_TARGETS = {
+  'offline-entry-dialog': 'offline',
   'add-gasto-dialog': 'gasto-formulario',
   'edit-gasto-dialog': 'gasto-formulario',
   'expense-files-dialog': 'gasto-archivos',
@@ -36,6 +38,7 @@ const DIALOG_HELP_TARGETS = {
   'trip-documents-dialog': 'documentos-viaje',
   'trip-review-dialog': 'revisar-viaje',
   'blog-entry-dialog': 'blog-formulario',
+  'blog-location-dialog': 'blog-formulario-punto',
   'expense-blog-replace-dialog': 'gasto-a-blog',
   'shared-images-dialog': 'compartir',
   'blog-pdf-guide-dialog': 'blog-pdf',
@@ -51,6 +54,7 @@ const TRIP_MAP_HEIGHT = 460;
 const TRIP_MAP_MIN_ZOOM = 2;
 const TRIP_MAP_MAX_ZOOM = 20;
 let dbPromise = null;
+let appNetworkUnavailable = false;
 let activeFormDialogSubmit = null;
 let hasAppliedDefaultTripSelection = false;
 let dataTrackingPaused = 0;
@@ -71,6 +75,7 @@ const imageGpsCache = new WeakMap();
 const imageDateTimeCache = new WeakMap();
 let currentImageLocationPromise = null;
 let lastCurrentImageLocation = null;
+let blogPointLocationRequestToken = 0;
 let pendingSharedImagesPayload = null;
 let sharedImagePreviewUrls = [];
 let activeContextHelpTrigger = null;
@@ -89,6 +94,21 @@ const blogPointPickerState = {
   centerLat: 40.4168,
   centerLng: -3.7038,
   zoom: 15
+};
+const blogPointMapGesture = {
+  pointers: new Map(),
+  frame: null,
+  dragging: false,
+  pinching: false,
+  startX: 0,
+  startY: 0,
+  lastDx: 0,
+  lastDy: 0,
+  startDistance: 0,
+  scale: 1,
+  centerX: 0,
+  centerY: 0,
+  ignoreClickUntil: 0
 };
 const routeEditorState = {
   tripId: null,
@@ -1775,36 +1795,95 @@ function selectedFileInput(fileSelector, cameraSelector) {
   return $(fileSelector);
 }
 
+function deviceLocationFromPosition(position) {
+  const latitude = storedImageCoordinate(position && position.coords && position.coords.latitude, -90, 90);
+  const longitude = storedImageCoordinate(position && position.coords && position.coords.longitude, -180, 180);
+  if (latitude == null || longitude == null) return null;
+  return {
+    latitude,
+    longitude,
+    accuracy: Math.max(0, Number(position.coords.accuracy) || 0),
+    source: 'device',
+    capturedAt: Number(position.timestamp) || Date.now()
+  };
+}
+
+function requestCurrentDeviceLocation({ timeoutMs = 30_000, targetAccuracy = 80, onProgress = null } = {}) {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    return Promise.reject(new Error('Este dispositivo no permite obtener la ubicación.'));
+  }
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+    let best = null;
+    let freshBest = null;
+    let watchId = null;
+    let settled = false;
+    let timer = null;
+    const clear = () => {
+      if (timer) window.clearTimeout(timer);
+      if (watchId != null && navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(watchId);
+    };
+    const finish = (value, error = null) => {
+      if (settled) return;
+      settled = true;
+      clear();
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const accept = position => {
+      if (settled) return;
+      const location = deviceLocationFromPosition(position);
+      if (!location) return;
+      const accuracy = Number(location.accuracy) || Number.POSITIVE_INFINITY;
+      const fresh = location.capturedAt >= startedAt - 15_000;
+      const currentBest = fresh ? freshBest : best;
+      const bestAccuracy = currentBest ? Number(currentBest.accuracy) || Number.POSITIVE_INFINITY : Number.POSITIVE_INFINITY;
+      if (!currentBest || accuracy < bestAccuracy) {
+        if (fresh) freshBest = location;
+        else best = location;
+      }
+      const preferred = freshBest || best;
+      if (typeof onProgress === 'function') onProgress(preferred);
+      if (freshBest && (Number(freshBest.accuracy) || Number.POSITIVE_INFINITY) <= targetAccuracy) finish(freshBest);
+    };
+    const fail = error => {
+      if (settled) return;
+      if (error && error.code === 1) {
+        finish(null, new Error('No se concedió permiso para usar la ubicación.'));
+      }
+    };
+    const highAccuracyOptions = { enableHighAccuracy: true, timeout: 12_000, maximumAge: 120_000 };
+    if (navigator.geolocation.watchPosition) {
+      watchId = navigator.geolocation.watchPosition(accept, fail, highAccuracyOptions);
+    } else {
+      navigator.geolocation.getCurrentPosition(accept, fail, highAccuracyOptions);
+    }
+    navigator.geolocation.getCurrentPosition(accept, fail, {
+      enableHighAccuracy: false,
+      timeout: 4_000,
+      maximumAge: 300_000
+    });
+    timer = window.setTimeout(() => {
+      if (freshBest || best) finish(freshBest || best);
+      else finish(null, new Error('No se pudo obtener la ubicación actual.'));
+    }, timeoutMs);
+  });
+}
+
 async function currentDeviceImageLocation() {
   if (lastCurrentImageLocation && Date.now() - lastCurrentImageLocation.capturedAt < 60_000) {
     return lastCurrentImageLocation;
   }
   if (currentImageLocationPromise) return currentImageLocationPromise;
-  if (typeof navigator === 'undefined' || !navigator.geolocation) return null;
-  currentImageLocationPromise = new Promise(resolve => {
-    navigator.geolocation.getCurrentPosition(position => {
-      const latitude = storedImageCoordinate(position && position.coords && position.coords.latitude, -90, 90);
-      const longitude = storedImageCoordinate(position && position.coords && position.coords.longitude, -180, 180);
-      if (latitude == null || longitude == null) {
-        resolve(null);
-        return;
-      }
-      lastCurrentImageLocation = {
-        latitude,
-        longitude,
-        accuracy: Math.max(0, Number(position.coords.accuracy) || 0),
-        source: 'device',
-        capturedAt: Date.now()
-      };
-      resolve(lastCurrentImageLocation);
-    }, () => resolve(null), {
-      enableHighAccuracy: true,
-      timeout: 12_000,
-      maximumAge: 30_000
+  currentImageLocationPromise = requestCurrentDeviceLocation({ timeoutMs: 30_000, targetAccuracy: 100 })
+    .then(location => {
+      lastCurrentImageLocation = location;
+      return location;
+    })
+    .catch(() => null)
+    .finally(() => {
+      currentImageLocationPromise = null;
     });
-  }).finally(() => {
-    currentImageLocationPromise = null;
-  });
   return currentImageLocationPromise;
 }
 
@@ -1814,7 +1893,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v198');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v199');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1846,7 +1925,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v198');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v199');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2370,7 +2449,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v198');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v199');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -8818,7 +8897,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v198');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v199');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -9041,6 +9120,188 @@ function renderBlogPointPicker() {
   container.innerHTML = `<div class="blog-point-map-frame" data-blog-point-map="1" data-map-start-x="${layer.startX}" data-map-start-y="${layer.startY}" data-map-zoom="${zoom}" data-map-width="${width}" data-map-height="${height}"><div class="map-tiles" aria-hidden="true">${layer.html}</div>${marker}<div class="map-attribution">© OpenStreetMap · © CARTO</div></div>`;
 }
 
+function scrollBlogPointMapIntoView() {
+  window.requestAnimationFrame(() => {
+    const map = $('#blog-point-map');
+    if (map && map.scrollIntoView) map.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+
+function blogPointGesturePoints() {
+  return [...blogPointMapGesture.pointers.values()];
+}
+
+function clearBlogPointMapTransform(frame) {
+  if (!frame) return;
+  frame.classList.remove('dragging');
+  frame.querySelectorAll('.map-tiles, .blog-point-picker-marker').forEach(element => {
+    element.style.transform = '';
+    element.style.transformOrigin = '';
+    element.style.translate = '';
+    element.style.scale = '';
+  });
+}
+
+function setBlogPointMapTransform(frame, transform, origin = '') {
+  if (!frame) return;
+  frame.querySelectorAll('.map-tiles, .blog-point-picker-marker').forEach(element => {
+    if (element.classList.contains('blog-point-picker-marker')) {
+      if (transform.startsWith('translate(')) {
+        element.style.translate = `${blogPointMapGesture.lastDx}px ${blogPointMapGesture.lastDy}px`;
+      } else if (transform.startsWith('scale(')) {
+        element.style.scale = String(blogPointMapGesture.scale);
+      }
+      return;
+    }
+    element.style.transformOrigin = origin;
+    element.style.transform = transform;
+  });
+}
+
+function zoomBlogPointMapAtClient(frame, clientX, clientY, delta = 1) {
+  if (!frame || !delta) return false;
+  const oldZoom = Math.max(3, Math.min(19, Number(blogPointPickerState.zoom) || 15));
+  const zoomSteps = Math.max(-3, Math.min(3, Math.round(delta)));
+  if (!zoomSteps) return false;
+  const newZoom = Math.max(3, Math.min(19, oldZoom + zoomSteps));
+  if (newZoom === oldZoom) return false;
+  const rect = frame.getBoundingClientRect();
+  const width = Number(frame.dataset.mapWidth || 640);
+  const height = Number(frame.dataset.mapHeight || 360);
+  const x = Math.max(0, Math.min(width, ((clientX - rect.left) / rect.width) * width));
+  const y = Math.max(0, Math.min(height, ((clientY - rect.top) / rect.height) * height));
+  const oldCenter = mapWorldPoint(blogPointPickerState.centerLat, blogPointPickerState.centerLng, oldZoom);
+  const factor = 2 ** (newZoom - oldZoom);
+  const anchoredX = (oldCenter.x - width / 2 + x) * factor;
+  const anchoredY = (oldCenter.y - height / 2 + y) * factor;
+  const center = mapLatLngFromWorldPoint(anchoredX - x + width / 2, anchoredY - y + height / 2, newZoom);
+  blogPointPickerState.centerLat = Math.max(-85.05112878, Math.min(85.05112878, center.latitude));
+  blogPointPickerState.centerLng = Math.max(-180, Math.min(180, center.longitude));
+  blogPointPickerState.zoom = newZoom;
+  renderBlogPointPicker();
+  return true;
+}
+
+function startBlogPointMapGesture(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const frame = target.closest('[data-blog-point-map]');
+  if (!frame) return;
+  try {
+    frame.setPointerCapture(event.pointerId);
+  } catch {
+    // Algunos navegadores móviles no permiten capturar todos los gestos.
+  }
+  blogPointMapGesture.frame = frame;
+  blogPointMapGesture.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  const points = blogPointGesturePoints();
+  if (points.length >= 2) {
+    blogPointMapGesture.dragging = false;
+    blogPointMapGesture.pinching = true;
+    blogPointMapGesture.startDistance = mapGestureDistance(points);
+    blogPointMapGesture.scale = 1;
+    const center = mapGestureCenter(points);
+    blogPointMapGesture.centerX = center.x;
+    blogPointMapGesture.centerY = center.y;
+  } else {
+    blogPointMapGesture.dragging = true;
+    blogPointMapGesture.pinching = false;
+    blogPointMapGesture.startX = event.clientX;
+    blogPointMapGesture.startY = event.clientY;
+    blogPointMapGesture.lastDx = 0;
+    blogPointMapGesture.lastDy = 0;
+  }
+  frame.classList.add('dragging');
+}
+
+function moveBlogPointMapGesture(event) {
+  if (!blogPointMapGesture.pointers.has(event.pointerId)) return;
+  blogPointMapGesture.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (blogPointMapGesture.pinching && blogPointMapGesture.pointers.size >= 2) {
+    const points = blogPointGesturePoints();
+    const distance = mapGestureDistance(points);
+    const center = mapGestureCenter(points);
+    if (distance && blogPointMapGesture.startDistance) {
+      blogPointMapGesture.scale = Math.max(0.45, Math.min(3.5, distance / blogPointMapGesture.startDistance));
+      blogPointMapGesture.centerX = center.x;
+      blogPointMapGesture.centerY = center.y;
+      const frame = blogPointMapGesture.frame;
+      const rect = frame.getBoundingClientRect();
+      setBlogPointMapTransform(
+        frame,
+        `scale(${blogPointMapGesture.scale})`,
+        `${center.x - rect.left}px ${center.y - rect.top}px`
+      );
+    }
+    event.preventDefault();
+    return;
+  }
+  if (!blogPointMapGesture.dragging) return;
+  blogPointMapGesture.lastDx = event.clientX - blogPointMapGesture.startX;
+  blogPointMapGesture.lastDy = event.clientY - blogPointMapGesture.startY;
+  setBlogPointMapTransform(
+    blogPointMapGesture.frame,
+    `translate(${blogPointMapGesture.lastDx}px, ${blogPointMapGesture.lastDy}px)`
+  );
+  event.preventDefault();
+}
+
+function endBlogPointMapGesture(event) {
+  if (!blogPointMapGesture.pointers.has(event.pointerId)) return;
+  blogPointMapGesture.pointers.delete(event.pointerId);
+  const frame = blogPointMapGesture.frame;
+  if (blogPointMapGesture.pinching) {
+    if (blogPointMapGesture.pointers.size < 2) {
+      const scale = blogPointMapGesture.scale;
+      const centerX = blogPointMapGesture.centerX;
+      const centerY = blogPointMapGesture.centerY;
+      clearBlogPointMapTransform(frame);
+      blogPointMapGesture.pointers.clear();
+      blogPointMapGesture.pinching = false;
+      blogPointMapGesture.dragging = false;
+      blogPointMapGesture.frame = null;
+      blogPointMapGesture.ignoreClickUntil = Date.now() + 400;
+      const delta = Math.abs(scale - 1) > 0.12 ? Math.log2(scale) : 0;
+      if (delta) zoomBlogPointMapAtClient(frame, centerX, centerY, delta);
+    }
+    return;
+  }
+  if (!blogPointMapGesture.dragging) return;
+  const dx = blogPointMapGesture.lastDx;
+  const dy = blogPointMapGesture.lastDy;
+  const moved = Math.abs(dx) > 4 || Math.abs(dy) > 4;
+  clearBlogPointMapTransform(frame);
+  if (moved && frame) {
+    const rect = frame.getBoundingClientRect();
+    const width = Number(frame.dataset.mapWidth || 640);
+    const height = Number(frame.dataset.mapHeight || 360);
+    const center = mapWorldPoint(blogPointPickerState.centerLat, blogPointPickerState.centerLng, blogPointPickerState.zoom);
+    const next = mapLatLngFromWorldPoint(
+      center.x - dx * (width / rect.width),
+      center.y - dy * (height / rect.height),
+      blogPointPickerState.zoom
+    );
+    blogPointPickerState.centerLat = Math.max(-85.05112878, Math.min(85.05112878, next.latitude));
+    blogPointPickerState.centerLng = Math.max(-180, Math.min(180, next.longitude));
+    blogPointMapGesture.ignoreClickUntil = Date.now() + 400;
+    renderBlogPointPicker();
+  }
+  blogPointMapGesture.pointers.clear();
+  blogPointMapGesture.dragging = false;
+  blogPointMapGesture.frame = null;
+  blogPointMapGesture.lastDx = 0;
+  blogPointMapGesture.lastDy = 0;
+}
+
+function zoomBlogPointMapWithWheel(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const frame = target.closest('[data-blog-point-map]');
+  if (!frame) return;
+  event.preventDefault();
+  zoomBlogPointMapAtClient(frame, event.clientX, event.clientY, event.deltaY < 0 ? 1 : -1);
+}
+
 function setBlogPointCoordinates(latitude, longitude, message = '') {
   const point = blogPointCoordinates({ latitude, longitude });
   if (!point) throw new Error('Las coordenadas no son válidas');
@@ -9068,6 +9329,7 @@ function resetBlogPointPicker(entry = null) {
 }
 
 function selectBlogPointFromMap(event, frame) {
+  if (Date.now() < blogPointMapGesture.ignoreClickUntil) return;
   const rect = frame.getBoundingClientRect();
   const width = Number(frame.dataset.mapWidth || 640);
   const height = Number(frame.dataset.mapHeight || 280);
@@ -9077,23 +9339,78 @@ function selectBlogPointFromMap(event, frame) {
   setBlogPointCoordinates(point.latitude, point.longitude, 'Punto marcado en el mapa.');
 }
 
-function useCurrentBlogPointLocation() {
-  if (!navigator.geolocation) {
-    setMessage('#blog-point-status', 'Este dispositivo no permite obtener la ubicación.', true);
-    return;
+function showBlogLocationState(title, message, { searching = false, isError = false } = {}) {
+  const dialog = $('#blog-location-dialog');
+  if (!dialog) return;
+  $('#blog-location-title').textContent = title;
+  $('#blog-location-message').textContent = message;
+  $('#blog-location-message').classList.toggle('error', isError);
+  $('#blog-location-spinner').hidden = !searching;
+  $('#blog-location-close').hidden = searching;
+  dialog.dataset.searching = searching ? '1' : '0';
+  if (!dialog.open) {
+    if (dialog.showModal) dialog.showModal();
+    else dialog.setAttribute('open', 'open');
   }
-  setMessage('#blog-point-status', 'Obteniendo ubicación actual...');
-  navigator.geolocation.getCurrentPosition(position => {
-    try {
-      blogPointPickerState.zoom = 17;
-      setBlogPointCoordinates(position.coords.latitude, position.coords.longitude, `Ubicación obtenida con una precisión aproximada de ${Math.round(position.coords.accuracy || 0)} m.`);
-    } catch (error) {
-      setMessage('#blog-point-status', error.message || String(error), true);
-    }
-  }, error => {
-    const message = error.code === 1 ? 'No se concedió permiso para usar la ubicación.' : 'No se pudo obtener la ubicación actual.';
-    setMessage('#blog-point-status', message, true);
-  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+}
+
+function closeBlogLocationDialog() {
+  const dialog = $('#blog-location-dialog');
+  if (!dialog || dialog.dataset.searching === '1') return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
+  scrollBlogPointMapIntoView();
+}
+
+async function useCurrentBlogPointLocation({ automatic = false } = {}) {
+  const token = ++blogPointLocationRequestToken;
+  const button = $('#blog-point-current');
+  if (button) button.disabled = true;
+  scrollBlogPointMapIntoView();
+  showBlogLocationState(
+    'Buscando localización',
+    'Buscando una posición GPS fiable. Puede tardar algo más si estás en movimiento; no necesita datos móviles.',
+    { searching: true }
+  );
+  try {
+    const location = await requestCurrentDeviceLocation({
+      timeoutMs: 35_000,
+      targetAccuracy: 80,
+      onProgress: current => {
+        if (token !== blogPointLocationRequestToken) return;
+        const accuracy = Math.round(Number(current.accuracy) || 0);
+        showBlogLocationState(
+          'Buscando localización',
+          accuracy ? `Posición recibida con ${accuracy} m de precisión. Intentando mejorarla…` : 'Posición recibida. Intentando mejorar su precisión…',
+          { searching: true }
+        );
+      }
+    });
+    if (token !== blogPointLocationRequestToken) return;
+    blogPointPickerState.zoom = 17;
+    setBlogPointCoordinates(
+      location.latitude,
+      location.longitude,
+      `Ubicación actual seleccionada · precisión aproximada ${Math.round(location.accuracy || 0)} m.`
+    );
+    showBlogLocationState(
+      'Punto localizado',
+      `Se ha marcado la ubicación actual con una precisión aproximada de ${Math.round(location.accuracy || 0)} m. Puedes mover el mapa o corregir el punto.`,
+      { searching: false }
+    );
+  } catch (error) {
+    if (token !== blogPointLocationRequestToken) return;
+    const detail = error && error.message ? error.message : 'No se pudo obtener la ubicación actual.';
+    setMessage('#blog-point-status', 'Punto no encontrado. Puedes marcarlo manualmente en el mapa.', true);
+    showBlogLocationState(
+      'Punto no encontrado',
+      `${detail} Comprueba que la ubicación del teléfono esté activada o marca el punto manualmente.`,
+      { searching: false, isError: true }
+    );
+  } finally {
+    if (token === blogPointLocationRequestToken && button) button.disabled = false;
+    if (automatic) scheduleActiveBlogEntryDraftSave();
+  }
 }
 
 async function searchBlogPointLocation() {
@@ -9389,7 +9706,14 @@ function setBlogEntryType(type) {
   if ($('#blog-text-fields')) $('#blog-text-fields').hidden = type !== 'texto';
   syncBlogPointFieldsVisibility();
   if ($('#blog-featured-option')) $('#blog-featured-option').hidden = type !== 'imagen';
-  if (type === 'punto') resetBlogPointPicker(blogPointFieldCoordinates());
+  if (type === 'punto') {
+    const existingPoint = blogPointFieldCoordinates();
+    resetBlogPointPicker(existingPoint);
+    scrollBlogPointMapIntoView();
+    if (!activeBlogEntryId && !restoringFormDraft && !existingPoint) {
+      window.setTimeout(() => useCurrentBlogPointLocation({ automatic: true }), 0);
+    }
+  }
   syncBlogEnRouteOption();
   if (!restoringFormDraft) scheduleActiveBlogEntryDraftSave();
 }
@@ -11326,12 +11650,17 @@ async function performCloudUpload() {
 }
 
 async function checkCloudOnEntry() {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   try {
     const metadata = await fetchCloudMetadata();
     if (!metadata) return;
     const analysis = syncComparisonAnalysis(metadata, ensureLocalDataUpdatedAt());
     if (analysis.conflict || analysis.cloudIsPreferred) await openSyncDialog(metadata);
   } catch (error) {
+    if (error instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(error && error.message || '')) {
+      appNetworkUnavailable = true;
+      updateOfflineStatus();
+    }
     console.warn('No se pudo comprobar la sincronización al entrar', error);
   }
 }
@@ -12038,6 +12367,11 @@ function bindEvents() {
     blogPointPickerState.zoom = Math.max(3, blogPointPickerState.zoom - 1);
     renderBlogPointPicker();
   };
+  $('#blog-location-close').onclick = closeBlogLocationDialog;
+  $('#blog-location-dialog').oncancel = event => {
+    if ($('#blog-location-dialog').dataset.searching === '1') event.preventDefault();
+  };
+  $('#offline-entry-continue').onclick = closeOfflineEntryNotice;
   $('#btn-open-filters').onclick = openFiltersPanel;
   $('#filters-close').onclick = closeFiltersPanel;
   $('#add-gasto-close').onclick = closeAddGasto;
@@ -12825,6 +13159,11 @@ function bindEvents() {
   document.addEventListener('pointermove', moveTripMapDrag);
   document.addEventListener('pointerup', endTripMapDrag);
   document.addEventListener('pointercancel', endTripMapDrag);
+  document.addEventListener('pointerdown', startBlogPointMapGesture);
+  document.addEventListener('pointermove', moveBlogPointMapGesture);
+  document.addEventListener('pointerup', endBlogPointMapGesture);
+  document.addEventListener('pointercancel', endBlogPointMapGesture);
+  document.addEventListener('wheel', zoomBlogPointMapWithWheel, { passive: false });
   document.addEventListener('dblclick', zoomTripMapAt);
   document.addEventListener('fullscreenchange', () => {
     const container = $('#trip-map');
@@ -13238,8 +13577,28 @@ function finishAppLoading() {
   window.setTimeout(() => {
     if (!loading || loading.classList.contains('is-ready')) return;
     loading.classList.add('is-ready');
-    window.setTimeout(() => loading.remove(), 460);
+    window.setTimeout(() => {
+      loading.remove();
+      showOfflineEntryNotice();
+    }, 460);
   }, delay);
+}
+
+function showOfflineEntryNotice() {
+  if (typeof navigator === 'undefined' || (navigator.onLine !== false && !appNetworkUnavailable)) return;
+  if (sessionStorage.getItem(OFFLINE_ENTRY_NOTICE_KEY) === '1') return;
+  sessionStorage.setItem(OFFLINE_ENTRY_NOTICE_KEY, '1');
+  const dialog = $('#offline-entry-dialog');
+  if (!dialog || dialog.open) return;
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute('open', 'open');
+}
+
+function closeOfflineEntryNotice() {
+  const dialog = $('#offline-entry-dialog');
+  if (!dialog) return;
+  if (dialog.close) dialog.close();
+  else dialog.removeAttribute('open');
 }
 
 async function saveBlogCameraOriginal() {
@@ -13283,12 +13642,22 @@ window.setTimeout(finishAppLoading, APP_HAS_SHARED_LAUNCH ? 15000 : APP_LOADING_
 
 function updateOfflineStatus() {
   const status = $('#offline-status');
-  if (!status) return;
-  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
-  status.hidden = !offline;
+  const offline = typeof navigator !== 'undefined' && (navigator.onLine === false || appNetworkUnavailable);
+  if (status) status.hidden = !offline;
+  const loadingMessage = $('#app-loading p');
+  if (loadingMessage && !APP_HAS_SHARED_LAUNCH) {
+    if (offline) loadingMessage.textContent = 'Sin conexión · entrando con datos locales...';
+    else if (loadingMessage.textContent.startsWith('Sin conexión')) loadingMessage.textContent = 'Preparando el viaje...';
+  }
+  if (offline && !$('#app-loading')) showOfflineEntryNotice();
+  if (!offline) closeOfflineEntryNotice();
 }
 
-window.addEventListener('online', updateOfflineStatus);
+updateOfflineStatus();
+window.addEventListener('online', () => {
+  appNetworkUnavailable = false;
+  updateOfflineStatus();
+});
 window.addEventListener('offline', updateOfflineStatus);
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -13313,10 +13682,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       } catch (error) {
         alert(error.message || String(error));
       }
-    } else {
-      await checkCloudOnEntry();
     }
     finishAppLoading();
+    if (!APP_HAS_SHARED_LAUNCH) window.setTimeout(() => checkCloudOnEntry(), 0);
   } finally {
     finishAppLoading();
   }

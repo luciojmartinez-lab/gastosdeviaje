@@ -35,7 +35,7 @@ self.addEventListener('message', async event => {
     self.postMessage({ type: 'progress', status: 'Preparando el analizador del ticket' });
     const { cv } = await loadOpenCv();
     self.postMessage({ type: 'progress', status: 'Analizador preparado' });
-    processingModulePromise ||= import('./ticket-image-processing.js?v=700v198');
+    processingModulePromise ||= import('./ticket-image-processing.js?v=700v199');
     const processing = await processingModulePromise;
     self.postMessage({ type: 'progress', status: 'Enderezando y mejorando el ticket' });
     const result = processing.processReceiptPixels(cv, {

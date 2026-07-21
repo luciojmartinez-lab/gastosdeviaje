@@ -178,8 +178,34 @@ test('el selector de punto es legible y conserva En ruta al editar en movil', ()
   assert.match(styles, /\.blog-point-map-frame \{[\s\S]*aspect-ratio: 16 \/ 9/);
   assert.match(app, /const width = 640;\s+const height = 360;/);
   assert.match(app, /function resetBlogPointPicker\(entry = null\)[\s\S]*renderBlogPointPicker\(\);\s+syncBlogEnRouteOption\(\);/);
-  assert.match(app, /if \(type === 'punto'\) resetBlogPointPicker\(blogPointFieldCoordinates\(\)\)/);
+  assert.match(app, /if \(type === 'punto'\) \{[\s\S]*?resetBlogPointPicker\(existingPoint\)/);
   assert.match(help, /las coordenadas guardadas se restauran en el mapa y mantienen disponible la opción/);
+});
+
+test('el punto busca GPS al entrar mediante un modal y baja hasta el mapa', () => {
+  assert.match(html, /id="blog-location-dialog"/);
+  assert.match(html, /id="blog-location-title">Buscando localización/);
+  assert.match(app, /function requestCurrentDeviceLocation\(/);
+  assert.match(app, /navigator\.geolocation\.watchPosition\(accept, fail, highAccuracyOptions\)/);
+  assert.match(app, /location\.capturedAt >= startedAt - 15_000/);
+  assert.match(app, /timeoutMs: 35_000/);
+  assert.match(app, /Punto localizado/);
+  assert.match(app, /Punto no encontrado/);
+  assert.match(app, /scrollIntoView\(\{ behavior: 'smooth', block: 'center' \}\)/);
+  assert.match(app, /window\.setTimeout\(\(\) => useCurrentBlogPointLocation\(\{ automatic: true \}\), 0\)/);
+  assert.match(help, /la búsqueda GPS comienza automáticamente/);
+});
+
+test('el mapa del punto admite arrastre zoom de rueda y gesto de dos dedos', () => {
+  assert.match(styles, /\.blog-point-map-frame \{[\s\S]*?touch-action: none/);
+  assert.match(styles, /\.blog-point-map-frame\.dragging/);
+  assert.match(app, /function startBlogPointMapGesture\(event\)/);
+  assert.match(app, /function moveBlogPointMapGesture\(event\)/);
+  assert.match(app, /function endBlogPointMapGesture\(event\)/);
+  assert.match(app, /function zoomBlogPointMapWithWheel\(event\)/);
+  assert.match(app, /document\.addEventListener\('wheel', zoomBlogPointMapWithWheel, \{ passive: false \}\)/);
+  assert.match(app, /blogPointMapGesture\.pinching/);
+  assert.match(help, /arrastrar el mapa[\s\S]*?ampliar y reducir con dos dedos/);
 });
 
 test('el Blog y su PDF no añaden un mapa automático de puntos al final', () => {

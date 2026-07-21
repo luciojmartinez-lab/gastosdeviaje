@@ -1790,7 +1790,13 @@ input[type="checkbox"] {
   border-radius: 8px;
   overflow: hidden;
   background: #cfe8f3;
-  cursor: crosshair;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.blog-point-map-frame.dragging {
+  cursor: grabbing;
 }
 
 .blog-point-map-frame .map-tiles {
@@ -1821,6 +1827,40 @@ input[type="checkbox"] {
 
 .blog-point-map-frame .map-attribution {
   z-index: 4;
+  pointer-events: none;
+}
+
+.blog-location-modal {
+  width: min(420px, calc(100vw - 28px));
+  text-align: center;
+}
+
+.blog-location-modal form {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.blog-location-modal h2,
+.blog-location-modal p {
+  margin: 0;
+}
+
+.location-search-spinner {
+  width: 42px;
+  height: 42px;
+  border: 4px solid #dbeafe;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: location-search-spin 0.9s linear infinite;
+}
+
+.location-search-spinner[hidden] {
+  display: none;
+}
+
+@keyframes location-search-spin {
+  to { transform: rotate(360deg); }
 }
 
 .blog-wordpress-options {

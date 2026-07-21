@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v198">
+  <link rel="manifest" href="manifest.webmanifest?v=700v199">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v198">
+  <link rel="stylesheet" href="styles.css?v=700v199">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v198 · 20/07/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v199 · 21/07/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,12 +39,22 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v198</div>
+  <div class="app-version">700v199</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
   Sin conexión · trabajando con datos locales. Mapas no vistos, cambio de moneda y sincronización pueden no actualizarse.
 </div>
+
+<dialog id="offline-entry-dialog" class="modal result-modal" aria-labelledby="offline-entry-title">
+  <form method="dialog">
+    <h2 id="offline-entry-title">Sin conexión</h2>
+    <p>No hay conexión online. Internet solo es necesario para cargar mapas nuevos, buscar lugares, actualizar cambios de moneda y sincronizar con la nube. Continuaremos trabajando en local con los datos guardados en este dispositivo hasta que vuelva la conexión.</p>
+    <div class="actions">
+      <button type="button" class="btn" id="offline-entry-continue">Continuar sin conexión</button>
+    </div>
+  </form>
+</dialog>
 
 <main>
   <section id="view-viajes">
@@ -746,6 +756,17 @@
   </form>
 </dialog>
 
+<dialog id="blog-location-dialog" class="modal result-modal blog-location-modal" aria-labelledby="blog-location-title">
+  <form method="dialog">
+    <div id="blog-location-spinner" class="location-search-spinner" aria-hidden="true"></div>
+    <h2 id="blog-location-title">Buscando localización</h2>
+    <p id="blog-location-message" aria-live="polite">Buscando una posición GPS fiable…</p>
+    <div class="actions">
+      <button type="button" class="btn" id="blog-location-close" hidden>Aceptar</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="expense-blog-replace-dialog" class="modal result-modal">
   <form method="dialog">
     <div class="modal-head">
@@ -961,11 +982,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v198"></script>
-<script src="app.bundle.js?v=700v198"></script>
+<script src="map-model.js?v=700v199"></script>
+<script src="app.bundle.js?v=700v199"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v198';
+    const pageVersion = '700v199';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1017,7 +1038,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v198', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v199', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

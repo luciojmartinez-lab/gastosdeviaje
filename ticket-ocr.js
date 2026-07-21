@@ -10,7 +10,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v198';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v199';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')

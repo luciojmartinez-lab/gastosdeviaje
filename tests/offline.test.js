@@ -17,8 +17,16 @@ test('la app muestra estado claro cuando trabaja sin conexion', () => {
   assert.match(styles, /\.offline-status/);
   assert.match(styles, /\.offline-status\[hidden\]/);
   assert.match(app, /function updateOfflineStatus\(\)/);
-  assert.match(app, /window\.addEventListener\('online', updateOfflineStatus\)/);
+  assert.match(app, /window\.addEventListener\('online', \(\) => \{[\s\S]*?appNetworkUnavailable = false;[\s\S]*?updateOfflineStatus\(\)/);
   assert.match(app, /window\.addEventListener\('offline', updateOfflineStatus\)/);
+  assert.match(html, /id="offline-entry-dialog"/);
+  assert.match(html, /Continuar sin conexi.n/);
+  assert.match(html, /mapas nuevos[\s\S]*?buscar lugares[\s\S]*?cambios de moneda[\s\S]*?sincronizar con la nube/);
+  assert.match(app, /Sin conexi.n · entrando con datos locales/);
+  assert.match(app, /function showOfflineEntryNotice\(\)/);
+  assert.match(app, /failed to fetch\|networkerror\|load failed/);
+  assert.match(app, /if \(typeof navigator !== 'undefined' && navigator\.onLine === false\) return;/);
+  assert.match(app, /finishAppLoading\(\);\s+if \(!APP_HAS_SHARED_LAUNCH\) window\.setTimeout\(\(\) => checkCloudOnEntry\(\), 0\)/);
   assert.match(app, /No hay conexi.n para consultar el cambio/);
 });
 
@@ -31,8 +39,8 @@ test('el service worker separa cache critica y opcional para no romper la instal
   assert.match(sw, /\.\/vendor\/pdfjs\/pdf\.min\.mjs/);
   assert.match(sw, /\.\/vendor\/tesseract\/tesseract\.esm\.min\.js/);
   assert.match(sw, /\.\/vendor\/tesseract\/lang\/spa\.traineddata\.gz/);
-  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v198/);
-  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v198/);
+  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v199/);
+  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v199/);
   assert.match(sw, /const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4\.10\.0'/);
   assert.match(sw, /\.\/vendor\/opencv\/4\.10\.0\/opencv\.js/);
   assert.match(sw, /await cacheOcrRuntime\(\)/);
@@ -59,8 +67,8 @@ test('la pantalla inicial se sirve desde cache aunque no haya red disponible', (
   const start = sw.indexOf('async function cachedNavigationResponse');
   const end = sw.indexOf("self.addEventListener('install'", start);
   const navigation = sw.slice(start, end);
-  assert.ok(navigation.indexOf('await updateNavigationCache(request)') < navigation.indexOf('caches.match(request, { ignoreSearch: true })'));
-  assert.match(navigation, /if \(current && current\.ok\) return current/);
+  assert.ok(navigation.indexOf('caches.match(request, { ignoreSearch: true })') < navigation.indexOf('await updateNavigationCache(request)'));
+  assert.match(navigation, /if \(cached\) \{[\s\S]*?updateNavigationCache\(request\)\.catch\(\(\) => \{\}\);[\s\S]*?return cached/);
   assert.match(navigation, /caches\.match\('\.\/index\.html'\)/);
   assert.match(sw, /event\.respondWith\(cachedNavigationResponse\(event\.request\)\)/);
 });
@@ -71,7 +79,7 @@ test('una versión nueva provoca una sola recarga después de activar su service
   assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?await registration\.update\(\)/);
   assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
   assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
-  assert.match(sw, /const APP_VERSION = '700v198'/);
+  assert.match(sw, /const APP_VERSION = '700v199'/);
   assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
   assert.doesNotMatch(html, /window\.location\.reload\(\)/);
 });
