@@ -39,8 +39,8 @@ test('el service worker separa cache critica y opcional para no romper la instal
   assert.match(sw, /\.\/vendor\/pdfjs\/pdf\.min\.mjs/);
   assert.match(sw, /\.\/vendor\/tesseract\/tesseract\.esm\.min\.js/);
   assert.match(sw, /\.\/vendor\/tesseract\/lang\/spa\.traineddata\.gz/);
-  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v199/);
-  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v199/);
+  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v200/);
+  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v200/);
   assert.match(sw, /const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4\.10\.0'/);
   assert.match(sw, /\.\/vendor\/opencv\/4\.10\.0\/opencv\.js/);
   assert.match(sw, /await cacheOcrRuntime\(\)/);
@@ -79,7 +79,7 @@ test('una versión nueva provoca una sola recarga después de activar su service
   assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?await registration\.update\(\)/);
   assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
   assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
-  assert.match(sw, /const APP_VERSION = '700v199'/);
+  assert.match(sw, /const APP_VERSION = '700v200'/);
   assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
   assert.doesNotMatch(html, /window\.location\.reload\(\)/);
 });

@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v199';
+const APP_VERSION = '700v200';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -815,6 +815,7 @@ const state = {
   monedas: [],
   transferencias: []
 };
+const openComparisonCategories = new Set();
 
 let latestCurrencyQuote = null;
 const TICKET_OCR_LEARNING_KEY = 'cuaderno_bitacora_ticket_categories_v1';
@@ -1610,6 +1611,228 @@ function tripDailyExpenseAverage(totalEur, days) {
   return (Number(totalEur) || 0) / dayCount;
 }
 
+function comparisonTripDate(trip) {
+  return (trip && (trip.fechaFin || trip.fechaInicio)) || '';
+}
+
+function sortedTripsForComparison() {
+  return state.viajes.slice().sort((a, b) =>
+    comparisonTripDate(b).localeCompare(comparisonTripDate(a))
+    || (b.fechaInicio || '').localeCompare(a.fechaInicio || '')
+    || Number(b.id || 0) - Number(a.id || 0));
+}
+
+function comparisonTripOptionLabel(trip) {
+  const year = getTripYear(trip);
+  return `${trip.nombre} · ${year}`;
+}
+
+function renderTripComparisonSelectors() {
+  const mainSelect = $('#compare-main-trip');
+  const otherSelect = $('#compare-other-trip');
+  if (!mainSelect || !otherSelect) return;
+  const trips = sortedTripsForComparison();
+  const currentMainId = Number(mainSelect.value);
+  const currentOtherId = Number(otherSelect.value);
+  const validMainId = trips.some(trip => Number(trip.id) === currentMainId)
+    ? currentMainId
+    : Number(trips[0] && trips[0].id);
+  const tripOptions = trips.map(trip => ({
+    value: String(trip.id),
+    label: comparisonTripOptionLabel(trip)
+  }));
+  fillSelect('#compare-main-trip', tripOptions, trips.length ? null : '(sin viajes)');
+  mainSelect.value = validMainId ? String(validMainId) : '';
+  fillSelect('#compare-other-trip', tripOptions.filter(option => Number(option.value) !== validMainId), '(elige otro viaje)');
+  otherSelect.value = currentOtherId && currentOtherId !== validMainId
+    && trips.some(trip => Number(trip.id) === currentOtherId)
+    ? String(currentOtherId)
+    : '';
+  mainSelect.disabled = trips.length === 0;
+  otherSelect.disabled = trips.length < 2;
+  const swap = $('#compare-swap');
+  if (swap) swap.disabled = !validMainId || !Number(otherSelect.value);
+}
+
+function buildTripComparisonData(tripId) {
+  const trip = state.viajes.find(item => Number(item.id) === Number(tripId));
+  if (!trip) return null;
+  const expenses = state.gastos.filter(expense => Number(expense.viajeId) === Number(trip.id));
+  const total = expenses.reduce((sum, expense) => sum + toEur(expense.importe, expense.moneda), 0);
+  const days = inclusiveDateDays(trip.fechaInicio, trip.fechaFin);
+  const dailyAverage = tripDailyExpenseAverage(total, days);
+  const budget = effectiveTripBudget(trip);
+  const breakdown = new Map();
+  expenses.forEach(expense => {
+    const category = state.categorias.find(item => Number(item.id) === Number(expense.catId));
+    const subcategory = state.categorias.find(item => Number(item.id) === Number(expense.subcatId));
+    const categoryKey = category ? `category-${category.id}` : 'category-none';
+    const categoryItem = breakdown.get(categoryKey) || {
+      key: categoryKey,
+      label: category ? category.nombre : '(sin categoría)',
+      total: 0,
+      subcategories: new Map()
+    };
+    const amount = toEur(expense.importe, expense.moneda);
+    categoryItem.total += amount;
+    const subcategoryKey = subcategory ? `subcategory-${subcategory.id}` : 'subcategory-none';
+    const subcategoryItem = categoryItem.subcategories.get(subcategoryKey) || {
+      key: subcategoryKey,
+      label: subcategory ? subcategory.nombre : '(sin subcategoría)',
+      total: 0
+    };
+    subcategoryItem.total += amount;
+    categoryItem.subcategories.set(subcategoryKey, subcategoryItem);
+    breakdown.set(categoryKey, categoryItem);
+  });
+  return {
+    trip,
+    expenses,
+    total,
+    days,
+    dailyAverage,
+    budget,
+    remaining: budget > 0 ? budget - total : null,
+    budgetPct: budget > 0 ? total * 100 / budget : null,
+    breakdown
+  };
+}
+
+function comparisonDeltaClass(value) {
+  const amount = numberValue(value);
+  if (Math.abs(amount) < 0.005) return 'comparison-delta-neutral';
+  return amount > 0 ? 'comparison-delta-positive' : 'comparison-delta-negative';
+}
+
+function formatSignedCurrency(value) {
+  const amount = numberValue(value);
+  if (Math.abs(amount) < 0.005) return fmtCurrency(0, 'EUR');
+  return `${amount > 0 ? '+' : '−'}${fmtCurrency(Math.abs(amount), 'EUR')}`;
+}
+
+function formatSignedNumber(value, suffix = '') {
+  const amount = numberValue(value);
+  if (Math.abs(amount) < 0.005) return `0${suffix}`;
+  return `${amount > 0 ? '+' : '−'}${Math.abs(amount).toLocaleString('es-ES', { maximumFractionDigits: 1 })}${suffix}`;
+}
+
+function comparisonAmountCell(value, tripTotal) {
+  const share = tripTotal ? value * 100 / tripTotal : 0;
+  return `<strong>${fmtCurrency(value, 'EUR')}</strong><span>${share.toFixed(1)}% del viaje</span>`;
+}
+
+function comparisonDailyCell(value, days) {
+  const daily = tripDailyExpenseAverage(value, days);
+  return daily === null ? '-' : `${fmtCurrency(daily, 'EUR')}/día`;
+}
+
+function comparisonMetricRow(label, mainValue, otherValue, difference, differenceClass = '') {
+  return `<tr><th scope="row">${escapeHtml(label)}</th><td>${mainValue}</td><td>${otherValue}</td><td${differenceClass ? ` class="${differenceClass}"` : ''}>${difference}</td></tr>`;
+}
+
+function renderTripComparison() {
+  const results = $('#comparison-results');
+  const message = $('#comparison-message');
+  const mainSelect = $('#compare-main-trip');
+  const otherSelect = $('#compare-other-trip');
+  const generalBody = $('#tabla-comparacion-general tbody');
+  const categoryBody = $('#tabla-comparacion-categorias tbody');
+  if (!results || !message || !mainSelect || !otherSelect || !generalBody || !categoryBody) return;
+  const main = buildTripComparisonData(Number(mainSelect.value));
+  const other = buildTripComparisonData(Number(otherSelect.value));
+  const swap = $('#compare-swap');
+  if (swap) swap.disabled = !main || !other;
+  if (!main || !other) {
+    results.hidden = true;
+    message.hidden = false;
+    message.textContent = state.viajes.length < 2
+      ? 'Hace falta tener al menos dos viajes para compararlos.'
+      : 'Elige un segundo viaje para compararlo con el principal.';
+    return;
+  }
+  message.hidden = true;
+  results.hidden = false;
+  const mainLabel = comparisonTripOptionLabel(main.trip);
+  const otherLabel = comparisonTripOptionLabel(other.trip);
+  ['#comparison-main-heading', '#comparison-category-main-heading'].forEach(selector => {
+    if ($(selector)) $(selector).textContent = mainLabel;
+  });
+  ['#comparison-other-heading', '#comparison-category-other-heading'].forEach(selector => {
+    if ($(selector)) $(selector).textContent = otherLabel;
+  });
+  const totalDifference = main.total - other.total;
+  const daysDifference = main.days - other.days;
+  const mainDaily = main.dailyAverage === null ? 0 : main.dailyAverage;
+  const otherDaily = other.dailyAverage === null ? 0 : other.dailyAverage;
+  const dailyDifference = mainDaily - otherDaily;
+  const rows = [
+    comparisonMetricRow('Gasto total', fmtCurrency(main.total, 'EUR'), fmtCurrency(other.total, 'EUR'), formatSignedCurrency(totalDifference), comparisonDeltaClass(totalDifference)),
+    comparisonMetricRow('Duración', `${main.days} ${main.days === 1 ? 'día' : 'días'}`, `${other.days} ${other.days === 1 ? 'día' : 'días'}`, formatSignedNumber(daysDifference, daysDifference === 1 || daysDifference === -1 ? ' día' : ' días'), comparisonDeltaClass(daysDifference)),
+    comparisonMetricRow('Media diaria', main.dailyAverage === null ? '-' : `${fmtCurrency(main.dailyAverage, 'EUR')}/día`, other.dailyAverage === null ? '-' : `${fmtCurrency(other.dailyAverage, 'EUR')}/día`, formatSignedCurrency(dailyDifference), comparisonDeltaClass(dailyDifference))
+  ];
+  if (main.budgetPct !== null || other.budgetPct !== null) {
+    const budgetDifference = numberValue(main.budgetPct) - numberValue(other.budgetPct);
+    rows.push(comparisonMetricRow(
+      'Presupuesto usado',
+      main.budgetPct === null ? '-' : `${main.budgetPct.toFixed(1)}%`,
+      other.budgetPct === null ? '-' : `${other.budgetPct.toFixed(1)}%`,
+      main.budgetPct === null || other.budgetPct === null ? '-' : formatSignedNumber(budgetDifference, ' puntos'),
+      main.budgetPct === null || other.budgetPct === null ? '' : comparisonDeltaClass(budgetDifference)
+    ));
+  }
+  if (main.remaining !== null || other.remaining !== null) {
+    const remainingDifference = numberValue(main.remaining) - numberValue(other.remaining);
+    rows.push(comparisonMetricRow(
+      'Presupuesto restante',
+      main.remaining === null ? '-' : fmtCurrency(main.remaining, 'EUR'),
+      other.remaining === null ? '-' : fmtCurrency(other.remaining, 'EUR'),
+      main.remaining === null || other.remaining === null ? '-' : formatSignedCurrency(remainingDifference),
+      main.remaining === null || other.remaining === null ? '' : comparisonDeltaClass(remainingDifference)
+    ));
+  }
+  generalBody.innerHTML = rows.join('');
+
+  const categoryKeys = new Set([...main.breakdown.keys(), ...other.breakdown.keys()]);
+  const categories = [...categoryKeys].map(key => {
+    const mainCategory = main.breakdown.get(key);
+    const otherCategory = other.breakdown.get(key);
+    return {
+      key,
+      label: (mainCategory || otherCategory).label,
+      mainTotal: mainCategory ? mainCategory.total : 0,
+      otherTotal: otherCategory ? otherCategory.total : 0,
+      mainSubcategories: mainCategory ? mainCategory.subcategories : new Map(),
+      otherSubcategories: otherCategory ? otherCategory.subcategories : new Map()
+    };
+  }).sort((a, b) => Math.max(Math.abs(b.mainTotal), Math.abs(b.otherTotal)) - Math.max(Math.abs(a.mainTotal), Math.abs(a.otherTotal)) || collator.compare(a.label, b.label));
+  const categoryRows = [];
+  categories.forEach(category => {
+    const subcategoryKeys = new Set([...category.mainSubcategories.keys(), ...category.otherSubcategories.keys()]);
+    const isOpen = openComparisonCategories.has(category.key);
+    const categoryLabel = subcategoryKeys.size
+      ? `<button type="button" class="comparison-category-toggle" data-comparison-category="${escapeHtml(category.key)}" aria-expanded="${isOpen}"><span aria-hidden="true">${isOpen ? '−' : '+'}</span>${escapeHtml(category.label)}</button>`
+      : escapeHtml(category.label);
+    const difference = category.mainTotal - category.otherTotal;
+    categoryRows.push(`<tr class="comparison-category-row"><th scope="row">${categoryLabel}</th><td>${comparisonAmountCell(category.mainTotal, main.total)}</td><td>${comparisonAmountCell(category.otherTotal, other.total)}</td><td class="${comparisonDeltaClass(difference)}">${formatSignedCurrency(difference)}</td><td>${comparisonDailyCell(category.mainTotal, main.days)}</td><td>${comparisonDailyCell(category.otherTotal, other.days)}</td></tr>`);
+    [...subcategoryKeys].map(key => {
+      const mainSubcategory = category.mainSubcategories.get(key);
+      const otherSubcategory = category.otherSubcategories.get(key);
+      return {
+        key,
+        label: (mainSubcategory || otherSubcategory).label,
+        mainTotal: mainSubcategory ? mainSubcategory.total : 0,
+        otherTotal: otherSubcategory ? otherSubcategory.total : 0
+      };
+    }).sort((a, b) => Math.max(Math.abs(b.mainTotal), Math.abs(b.otherTotal)) - Math.max(Math.abs(a.mainTotal), Math.abs(a.otherTotal)) || collator.compare(a.label, b.label)).forEach(subcategory => {
+      const subDifference = subcategory.mainTotal - subcategory.otherTotal;
+      categoryRows.push(`<tr class="comparison-subcategory-row"${isOpen ? '' : ' hidden'}><th scope="row">${escapeHtml(subcategory.label)}</th><td>${comparisonAmountCell(subcategory.mainTotal, main.total)}</td><td>${comparisonAmountCell(subcategory.otherTotal, other.total)}</td><td class="${comparisonDeltaClass(subDifference)}">${formatSignedCurrency(subDifference)}</td><td>${comparisonDailyCell(subcategory.mainTotal, main.days)}</td><td>${comparisonDailyCell(subcategory.otherTotal, other.days)}</td></tr>`);
+    });
+  });
+  const totalDifferenceForRow = main.total - other.total;
+  categoryRows.push(`<tr class="subtotal-row comparison-total-row"><th scope="row">Total</th><td>${fmtCurrency(main.total, 'EUR')}</td><td>${fmtCurrency(other.total, 'EUR')}</td><td class="${comparisonDeltaClass(totalDifferenceForRow)}">${formatSignedCurrency(totalDifferenceForRow)}</td><td>${comparisonDailyCell(main.total, main.days)}</td><td>${comparisonDailyCell(other.total, other.days)}</td></tr>`);
+  categoryBody.innerHTML = categoryRows.join('');
+}
+
 function summaryDays(gastos) {
   const selected = selectedTrips();
   const trips = selected.length ? selected : state.viajes;
@@ -1893,7 +2116,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v199');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v200');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -1925,7 +2148,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v199');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v200');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2449,7 +2672,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v199');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v200');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4817,6 +5040,8 @@ function renderTripSelectors() {
   renderEditGastoAccountSelector();
   renderTransferAccountSelectors();
   renderAccountTemplateSelector();
+  renderTripComparisonSelectors();
+  renderTripComparison();
 }
 
 function renderCategorySelectors() {
@@ -8191,6 +8416,7 @@ function renderResumen() {
   }
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
   if (state.activeTab === 'mapa' || tripMapState.printMode) renderTripMap();
+  renderTripComparison();
   renderSummaryDocuments();
 }
 
@@ -8897,7 +9123,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v199');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v200');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -12641,6 +12867,35 @@ function bindEvents() {
     renderTransferAccountSelectors();
     renderBackupStatus();
     renderResumen();
+  };
+  if ($('#compare-main-trip')) $('#compare-main-trip').onchange = () => {
+    openComparisonCategories.clear();
+    renderTripComparisonSelectors();
+    renderTripComparison();
+  };
+  if ($('#compare-other-trip')) $('#compare-other-trip').onchange = () => {
+    openComparisonCategories.clear();
+    renderTripComparison();
+  };
+  if ($('#compare-swap')) $('#compare-swap').onclick = () => {
+    const mainSelect = $('#compare-main-trip');
+    const otherSelect = $('#compare-other-trip');
+    const mainId = Number(mainSelect && mainSelect.value);
+    const otherId = Number(otherSelect && otherSelect.value);
+    if (!mainId || !otherId) return;
+    mainSelect.value = String(otherId);
+    renderTripComparisonSelectors();
+    otherSelect.value = String(mainId);
+    openComparisonCategories.clear();
+    renderTripComparison();
+  };
+  if ($('#tabla-comparacion-categorias tbody')) $('#tabla-comparacion-categorias tbody').onclick = event => {
+    const toggle = event.target.closest('[data-comparison-category]');
+    if (!toggle) return;
+    const key = toggle.dataset.comparisonCategory;
+    if (openComparisonCategories.has(key)) openComparisonCategories.delete(key);
+    else openComparisonCategories.add(key);
+    renderTripComparison();
   };
   $('#c-viaje').onchange = () => {
     if ($('#c-template')) $('#c-template').value = '';

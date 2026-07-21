@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v199</title>
+  <title>Manual de Cuaderno de Bitácora - 700v200</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     if (helpParams.get('embedded') === '1') {
@@ -185,7 +185,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 21 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v199</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 21 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v200</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -266,7 +266,7 @@
             <tr><td>Gastos</td><td>Alta, consulta, filtrado, edición y paso de movimientos al Blog.</td></tr>
             <tr><td>Blog</td><td>Relato cronológico. Solo está activo con exactamente un viaje seleccionado.</td></tr>
             <tr><td>Mapa</td><td>Ruta planificada y realizada, ciudades, destinos, fotos y puntos geolocalizados.</td></tr>
-            <tr><td>Resumen</td><td>Totales, presupuestos, desgloses, cuentas y documentos.</td></tr>
+            <tr><td>Resumen</td><td>Totales, comparación entre dos viajes, presupuestos, desgloses, cuentas y documentos.</td></tr>
             <tr><td>Configuración / Config.</td><td>Datos maestros: destinos, viajes, monedas, cuentas, transferencias, categorías, clasificaciones y mantenimiento.</td></tr>
           </tbody></table></div>
           <p>En móvil los nombres y botones se compactan, pero conservan el mismo significado. La selección del viaje se mantiene al cambiar de pestaña.</p>
@@ -543,17 +543,21 @@
 
         <div class="subsection screen-start" id="resumen">
           <h3>3.7 Resumen</h3>
-          <p>Convierte importes, compara presupuesto y gasto, desglosa resultados y reúne los documentos del viaje.</p>
+          <p>Convierte importes, compara presupuesto y gasto, permite contrastar dos viajes, desglosa resultados y reúne los documentos del viaje.</p>
           <figure><img src="assets/help/08-resumen.png" alt="Resumen con indicadores, filtros, desglose y documentos"><figcaption>Resumen económico y documental con datos de ejemplo.</figcaption></figure>
           <ol class="legend"><li><b>1</b>Acceso a Imprimir PDF.</li><li><b>2</b>Gasto, presupuesto y restante.</li><li><b>3</b>Filtros y tipo de desglose.</li><li><b>4</b>Tablas por categoría o cuenta.</li><li><b>5</b>Documentos del viaje y archivos de gastos.</li></ol>
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Área</th><th>Contenido</th></tr></thead><tbody>
             <tr><td>Indicadores</td><td>Total EUR, total en divisas cuando existe, media diaria, presupuesto, restante y porcentaje consumido.</td></tr>
+            <tr><td>Comparar dos viajes</td><td>Contrasta dos viajes completos mediante totales, duración, media diaria, presupuesto, categorías y subcategorías.</td></tr>
             <tr><td>Filtros</td><td>Moneda original, cuenta, viaje, país y ciudad.</td></tr>
             <tr><td>Desglose</td><td>Categorías, subcategorías o ciudades.</td></tr>
             <tr><td>Tabla por categoría</td><td>Categoría, subcategoría, total EUR y porcentaje del gasto.</td></tr>
             <tr><td>Tabla por cuenta</td><td>Cuenta, moneda, gastado, equivalencia EUR, presupuesto, restante y porcentaje.</td></tr>
             <tr><td>Imprimir PDF</td><td>Abre las opciones Resumen, Gastos o Todo.</td></tr>
           </tbody></table></div>
+          <h4 id="resumen-comparacion">Comparar dos viajes</h4>
+          <p>El viaje principal se propone inicialmente tomando el viaje con la fecha final más reciente, pero puede cambiarse libremente. <em>Comparar con</em> permite elegir un único segundo viaje; nunca se agregan tres o más viajes en esta vista. Ambos selectores son independientes de las casillas marcadas en Viajes y abarcan todo el historial, por lo que se puede comparar un destino con otra visita realizada en un año distinto. El nombre de cada opción incluye su año para distinguir viajes repetidos.</p>
+          <p>La tabla general muestra gasto total, duración, media diaria y, cuando existe, uso y restante del presupuesto. La diferencia se calcula como <strong>viaje principal menos viaje comparado</strong>. La tabla económica contrasta cada categoría en total, porcentaje del viaje y gasto por día. Pulsar el signo + de una categoría despliega sus subcategorías. El botón ⇄ intercambia cuál de los dos viajes actúa como principal.</p>
           <h4 id="resumen-documentos">Documentos</h4>
           <p>Al final aparecen dos tablas: <em>Documentos del viaje</em> y <em>Archivos de gastos</em>. Se ordenan de más antiguos a más recientes y cada fila muestra fecha, descripción y enlace para abrir el archivo.</p>
           <a class="back" href="#indice">Volver al índice</a>
@@ -641,10 +645,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 21 de julio de 2026 para Cuaderno de Bitácora 700v199.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 21 de julio de 2026 para Cuaderno de Bitácora 700v200.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v199 · 21 de julio de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v200 · 21 de julio de 2026</div>
 </body>
 </html>

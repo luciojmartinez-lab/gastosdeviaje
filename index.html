@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v199">
+  <link rel="manifest" href="manifest.webmanifest?v=700v200">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v199">
+  <link rel="stylesheet" href="styles.css?v=700v200">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v199 · 21/07/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v200 · 21/07/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v199</div>
+  <div class="app-version">700v200</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -172,6 +172,7 @@
       <h2>Resumen</h2>
       <div class="summary-links">
         <a class="btn ghost" href="#resumen-totales">Totales</a>
+        <a class="btn ghost" href="#resumen-comparacion">Comparar</a>
         <a class="btn ghost" href="#resumen-desglose">Desglose</a>
         <a class="btn ghost" href="#resumen-cuentas">Cuentas</a>
         <a class="btn ghost" href="#resumen-documentos">Documentos</a>
@@ -182,6 +183,40 @@
       <div class="box"><div class="small">Días de viaje</div><div id="kpi-total" class="big">-</div></div>
       <div class="box"><div class="small">Media diaria</div><div id="kpi-media" class="big">-</div></div>
       <div class="box"><div class="small">Presupuestos usados</div><div id="kpi-presu" class="big">-</div></div>
+    </div>
+    <div class="card trip-comparison" id="resumen-comparacion">
+      <div class="section-head comparison-heading">
+        <div>
+          <h2>Comparar dos viajes</h2>
+          <p class="small">La comparación es independiente de los viajes marcados y puede hacerse entre años diferentes.</p>
+        </div>
+      </div>
+      <div class="comparison-selectors">
+        <div><label>Viaje principal</label><select id="compare-main-trip"></select></div>
+        <button type="button" class="btn ghost comparison-swap" id="compare-swap" title="Intercambiar viajes" aria-label="Intercambiar viaje principal y viaje comparado">⇄</button>
+        <div><label>Comparar con</label><select id="compare-other-trip"></select></div>
+      </div>
+      <p id="comparison-message" class="small">Elige un segundo viaje para compararlo con el principal.</p>
+      <div id="comparison-results" hidden>
+        <div class="table-wrap comparison-overview-wrap">
+          <table id="tabla-comparacion-general" class="comparison-table">
+            <thead><tr><th>Indicador</th><th id="comparison-main-heading">Principal</th><th id="comparison-other-heading">Comparado</th><th>Diferencia</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="comparison-breakdown-head">
+          <div>
+            <h3>Categorías y subcategorías</h3>
+            <p class="small">Pulsa una categoría para desplegar sus subcategorías.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="tabla-comparacion-categorias" class="comparison-table comparison-category-table">
+            <thead><tr><th>Concepto</th><th id="comparison-category-main-heading">Principal</th><th id="comparison-category-other-heading">Comparado</th><th>Diferencia</th><th>Principal/día</th><th>Comparado/día</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
     </div>
     <div class="card" id="resumen-desglose">
       <div class="row4 summary-filters">
@@ -982,11 +1017,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v199"></script>
-<script src="app.bundle.js?v=700v199"></script>
+<script src="map-model.js?v=700v200"></script>
+<script src="app.bundle.js?v=700v200"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v199';
+    const pageVersion = '700v200';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1038,7 +1073,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v199', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v200', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
