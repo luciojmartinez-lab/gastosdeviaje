@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v202';
+const APP_VERSION = '700v203';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -1723,6 +1723,16 @@ function comparisonAmountCell(value, tripTotal, days) {
   return `<strong>${fmtCurrency(value, 'EUR')}</strong><span class="comparison-share">${share.toFixed(1)}% del viaje</span><span class="comparison-mobile-daily">${comparisonDailyCell(value, days)}</span>`;
 }
 
+function comparisonDifferenceCell(mainValue, otherValue, mainTripTotal, otherTripTotal, mainDays, otherDays) {
+  const difference = mainValue - otherValue;
+  const mainShare = mainTripTotal ? mainValue * 100 / mainTripTotal : 0;
+  const otherShare = otherTripTotal ? otherValue * 100 / otherTripTotal : 0;
+  const mainDaily = tripDailyExpenseAverage(mainValue, mainDays);
+  const otherDaily = tripDailyExpenseAverage(otherValue, otherDays);
+  const dailyDifference = mainDaily === null || otherDaily === null ? null : mainDaily - otherDaily;
+  return `<strong>${formatSignedCurrency(difference)}</strong><span class="comparison-share-difference">${formatSignedNumber(mainShare - otherShare, ' puntos del viaje')}</span><span class="comparison-daily-difference">${dailyDifference === null ? '-' : `${formatSignedCurrency(dailyDifference)}/día`}</span>`;
+}
+
 function comparisonDailyCell(value, days) {
   const daily = tripDailyExpenseAverage(value, days);
   return daily === null ? '-' : `${fmtCurrency(daily, 'EUR')}/día`;
@@ -1821,7 +1831,7 @@ function renderTripComparison() {
       ? `<button type="button" class="comparison-category-toggle" data-comparison-category="${escapeHtml(category.key)}" aria-expanded="${isOpen}"><span aria-hidden="true">${isOpen ? '−' : '+'}</span>${escapeHtml(category.label)}</button>`
       : escapeHtml(category.label);
     const difference = category.mainTotal - category.otherTotal;
-    categoryRows.push(`<tr class="comparison-category-row"><th scope="row">${categoryLabel}</th><td>${comparisonAmountCell(category.mainTotal, main.total, main.days)}</td><td>${comparisonAmountCell(category.otherTotal, other.total, other.days)}</td><td class="${comparisonDeltaClass(difference)}">${formatSignedCurrency(difference)}</td><td>${comparisonDailyCell(category.mainTotal, main.days)}</td><td>${comparisonDailyCell(category.otherTotal, other.days)}</td></tr>`);
+    categoryRows.push(`<tr class="comparison-category-row"><th scope="row">${categoryLabel}</th><td>${comparisonAmountCell(category.mainTotal, main.total, main.days)}</td><td>${comparisonAmountCell(category.otherTotal, other.total, other.days)}</td><td class="${comparisonDeltaClass(difference)}">${comparisonDifferenceCell(category.mainTotal, category.otherTotal, main.total, other.total, main.days, other.days)}</td><td>${comparisonDailyCell(category.mainTotal, main.days)}</td><td>${comparisonDailyCell(category.otherTotal, other.days)}</td></tr>`);
     [...subcategoryKeys].map(key => {
       const mainSubcategory = category.mainSubcategories.get(key);
       const otherSubcategory = category.otherSubcategories.get(key);
@@ -1833,7 +1843,7 @@ function renderTripComparison() {
       };
     }).sort((a, b) => Math.max(Math.abs(b.mainTotal), Math.abs(b.otherTotal)) - Math.max(Math.abs(a.mainTotal), Math.abs(a.otherTotal)) || collator.compare(a.label, b.label)).forEach(subcategory => {
       const subDifference = subcategory.mainTotal - subcategory.otherTotal;
-      categoryRows.push(`<tr class="comparison-subcategory-row"${isOpen ? '' : ' hidden'}><th scope="row">${escapeHtml(subcategory.label)}</th><td>${comparisonAmountCell(subcategory.mainTotal, main.total, main.days)}</td><td>${comparisonAmountCell(subcategory.otherTotal, other.total, other.days)}</td><td class="${comparisonDeltaClass(subDifference)}">${formatSignedCurrency(subDifference)}</td><td>${comparisonDailyCell(subcategory.mainTotal, main.days)}</td><td>${comparisonDailyCell(subcategory.otherTotal, other.days)}</td></tr>`);
+      categoryRows.push(`<tr class="comparison-subcategory-row"${isOpen ? '' : ' hidden'}><th scope="row">${escapeHtml(subcategory.label)}</th><td>${comparisonAmountCell(subcategory.mainTotal, main.total, main.days)}</td><td>${comparisonAmountCell(subcategory.otherTotal, other.total, other.days)}</td><td class="${comparisonDeltaClass(subDifference)}">${comparisonDifferenceCell(subcategory.mainTotal, subcategory.otherTotal, main.total, other.total, main.days, other.days)}</td><td>${comparisonDailyCell(subcategory.mainTotal, main.days)}</td><td>${comparisonDailyCell(subcategory.otherTotal, other.days)}</td></tr>`);
     });
   });
   const totalDifferenceForRow = main.total - other.total;
@@ -2124,7 +2134,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v202');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v203');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2156,7 +2166,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v202');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v203');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2680,7 +2690,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v202');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v203');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6827,7 +6837,8 @@ function openTripMapMarkerPopup(detail, anchorElement = null) {
   const popup = $('#trip-map-photo-popup');
   if (!popup || !detail) return;
   const meta = [detail.place, ...(detail.dateLines || [])].filter(Boolean);
-  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${escapeHtml(detail.title || 'Punto')}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-marker-popup-detail">${meta.length ? meta.map(line => `<span>${escapeHtml(line)}</span>`).join('') : '<span>Sin fecha indicada</span>'}</div>`;
+  const notes = (detail.noteLines || []).filter(Boolean);
+  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${escapeHtml(detail.title || 'Punto')}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-marker-popup-detail">${meta.length ? meta.map(line => `<span>${escapeHtml(line)}</span>`).join('') : '<span>Sin fecha indicada</span>'}${notes.map(note => `<p class="map-marker-popup-notes"><strong>Notas:</strong> ${escapeHtml(note)}</p>`).join('')}</div>`;
   popup.hidden = false;
   positionTripMapPhotoPopup(popup, anchorElement);
 }
@@ -6906,6 +6917,8 @@ function tripMapTransportMarker(record) {
     .toLocaleLowerCase('es-ES');
   if (/(^|\W)(tren|trenes|ferrocarril)(\W|$)/.test(text)) return { type: 'train', icon: '🚆', label: 'Tren' };
   if (/(^|\W)(coche|coches|automovil|automoviles|auto)(\W|$)/.test(text)) return { type: 'car', icon: '🚗', label: 'Coche' };
+  if (/(^|\W)(bus|buses|autobus|autobuses|autocar|autocares)(\W|$)/.test(text)) return { type: 'bus', icon: '🚌', label: 'Bus' };
+  if (/(^|\W)(avion|aviones|vuelo|vuelos)(\W|$)/.test(text)) return { type: 'plane', icon: '✈️', label: 'Avión' };
   return null;
 }
 
@@ -6924,10 +6937,15 @@ function tripMapMarkerDetail(items = [], dailyRecord = null) {
     const time = record && record.hora || '';
     return `${summaryDocumentDate(date, true)}${time ? ` · ${time}` : ''}`;
   }).filter(Boolean))];
+  const noteLines = [...new Set((dailyRecord ? [{ dailyRecord }] : itemList).map(item => {
+    const record = item.dailyRecord || item.pointEntry || item.entry || item;
+    return String(record && (record.notas || record.notes) || '').trim();
+  }).filter(Boolean))];
   return {
     title,
     place: place && place !== title ? place : '',
-    dateLines
+    dateLines,
+    noteLines
   };
 }
 
@@ -7538,7 +7556,7 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
   if (visibleLabelLines.length) element.append(label);
   const detailItems = dailyRecord ? [item] : (groupedRouteItems.length ? groupedRouteItems : [item]);
   const markerDetail = tripMapMarkerDetail(detailItems, dailyRecord);
-  element.title = `${markerDetail.title} · pulsa para ver la fecha`;
+  element.title = `${markerDetail.title} · pulsa para ver los detalles`;
   const accommodationPhoto = dailyRecord && dailyRecord.accommodationPhotoRecord;
   if (accommodationPhoto) {
     const encodedKeys = encodeURIComponent(accommodationPhoto.key);
@@ -7560,7 +7578,7 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
     element.classList.add('has-details');
     element.setAttribute('role', 'button');
     element.setAttribute('tabindex', '0');
-    element.setAttribute('aria-label', `${transportMarker ? `${transportMarker.label}: ` : ''}${markerDetail.title}. Ver fecha`);
+    element.setAttribute('aria-label', `${transportMarker ? `${transportMarker.label}: ` : ''}${markerDetail.title}. Ver detalles`);
     const open = event => {
       event.preventDefault();
       event.stopPropagation();
@@ -7955,7 +7973,7 @@ function renderTripMap() {
       ? `<text x="${labelX.toFixed(1)}" y="${(p.y - 12 - (visibleMarkerLabelLines.length - 1) * 6.5).toFixed(1)}" text-anchor="${anchor}">${markerLabelText}</text>`
       : '';
     const markerDetail = tripMapMarkerDetail(group, dailyRecord);
-    const title = `${markerDetail.title} · pulsa para ver la fecha`;
+    const title = `${markerDetail.title} · pulsa para ver los detalles`;
     const markerPhotoRecord = dailyPhoto ? dailyRecord : accommodationPhoto;
     const photoKeys = markerPhotoRecord ? encodeURIComponent(markerPhotoRecord.key) : '';
     const photoAction = markerPhotoRecord
@@ -7964,7 +7982,7 @@ function renderTripMap() {
     const detailKey = markerPhotoRecord ? '' : `marker-${markerIndex}`;
     if (detailKey) tripMapMarkerDetailLookup.set(detailKey, markerDetail);
     const detailAction = detailKey
-      ? ` role="button" tabindex="0" data-map-marker-detail="${detailKey}" aria-label="${escapeHtml(`${transportMarker ? `${transportMarker.label}: ` : ''}${markerDetail.title}. Ver fecha`)}"`
+      ? ` role="button" tabindex="0" data-map-marker-detail="${detailKey}" aria-label="${escapeHtml(`${transportMarker ? `${transportMarker.label}: ` : ''}${markerDetail.title}. Ver detalles`)}"`
       : '';
     const markerVisual = transportMarker
       ? `<text x="${p.x.toFixed(1)}" y="${(p.y + 6).toFixed(1)}" class="map-marker-transport-symbol">${transportMarker.icon}</text>`
@@ -9245,7 +9263,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v202');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v203');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -13009,6 +13027,31 @@ function bindEvents() {
     renderBackupStatus();
     renderResumen();
   };
+  if ($('#btn-toggle-comparison')) $('#btn-toggle-comparison').onclick = () => {
+    const comparison = $('#resumen-comparacion');
+    const button = $('#btn-toggle-comparison');
+    if (!comparison || !button) return;
+    const shouldOpen = comparison.hidden;
+    comparison.hidden = !shouldOpen;
+    button.setAttribute('aria-expanded', String(shouldOpen));
+    button.classList.toggle('active', shouldOpen);
+    if (shouldOpen) {
+      renderTripComparisonSelectors();
+      renderTripComparison();
+      requestAnimationFrame(() => comparison.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
+  };
+  document.querySelectorAll('#view-resumen .summary-links a').forEach(link => {
+    link.addEventListener('click', () => {
+      const comparison = $('#resumen-comparacion');
+      const button = $('#btn-toggle-comparison');
+      if (comparison) comparison.hidden = true;
+      if (button) {
+        button.setAttribute('aria-expanded', 'false');
+        button.classList.remove('active');
+      }
+    });
+  });
   if ($('#compare-main-trip')) $('#compare-main-trip').onchange = () => {
     openComparisonCategories.clear();
     renderTripComparisonSelectors();

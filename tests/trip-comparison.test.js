@@ -21,6 +21,16 @@ test('la comparación usa exactamente dos selectores simples e independientes', 
   assert.doesNotMatch(selectorSource, /selectedTripIds|selectedTripSet|getTripYear\(.*===/);
 });
 
+test('la comparación se puede abrir y volver a ocultar', () => {
+  assert.match(html, /id="btn-toggle-comparison"[\s\S]*?aria-expanded="false"/);
+  assert.match(html, /id="resumen-comparacion" hidden/);
+  assert.match(app, /const shouldOpen = comparison\.hidden/);
+  assert.match(app, /comparison\.hidden = !shouldOpen/);
+  assert.match(app, /button\.setAttribute\('aria-expanded', String\(shouldOpen\)\)/);
+  assert.match(styles, /\.trip-comparison\[hidden\] \{[\s\S]*?display: none/);
+  assert.match(help, /al pulsarlo de nuevo o elegir otra zona del Resumen, la oculta/);
+});
+
 test('el viaje principal por defecto es el terminado más recientemente y puede cambiarse', () => {
   const sortStart = app.indexOf('function sortedTripsForComparison');
   const sortEnd = app.indexOf('function comparisonTripOptionLabel', sortStart);
@@ -42,7 +52,12 @@ test('la diferencia se calcula como principal menos comparado y ajusta por días
   assert.match(app, /const dailyDifference = mainDaily - otherDaily/);
   assert.match(app, /const difference = category\.mainTotal - category\.otherTotal/);
   assert.match(app, /tripDailyExpenseAverage\(value, days\)/);
+  assert.match(app, /function comparisonDifferenceCell/);
+  assert.match(app, /comparison-share-difference/);
+  assert.match(app, /comparison-daily-difference/);
+  assert.match(app, /puntos del viaje/);
   assert.match(help, /viaje principal menos viaje comparado/);
+  assert.match(help, /puntos porcentuales del viaje y los euros por día/);
 });
 
 test('las categorías despliegan subcategorías sin perder la comparación diaria', () => {

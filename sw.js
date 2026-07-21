@@ -1,5 +1,5 @@
-const APP_VERSION = '700v202';
-const CACHE_NAME = 'gastosdeviaje-700v202-offline-start';
+const APP_VERSION = '700v203';
+const CACHE_NAME = 'gastosdeviaje-700v203-offline-start';
 const MAP_RUNTIME_CACHE = 'cuaderno-bitacora-map-runtime-v1';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4.10.0';
@@ -8,12 +8,12 @@ const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname
 const APP_SHELL_REQUIRED = [
   './',
   './index.html',
-  './styles.css?v=700v202',
-  './map-model.js?v=700v202',
-  './app.bundle.js?v=700v202',
+  './styles.css?v=700v203',
+  './map-model.js?v=700v203',
+  './app.bundle.js?v=700v203',
   './vendor/maplibre/maplibre-gl.css?v=5.24.0',
   './vendor/maplibre/maplibre-gl.js?v=5.24.0',
-  './manifest.webmanifest?v=700v202',
+  './manifest.webmanifest?v=700v203',
   './version.txt',
   './assets/bitacora-splash.png',
   './assets/bitacora-splash-mobile.png',
@@ -22,11 +22,11 @@ const APP_SHELL_REQUIRED = [
 const APP_SHELL_OPTIONAL = [
   './assets/app-icon-192.png',
   './assets/app-icon-512.png',
-  './ticket-ocr.js?v=700v202',
-  './ticket-image-worker.js?v=700v202',
-  './ticket-image-processing.js?v=700v202',
-  './image-location.js?v=700v202',
-  './share-pdf.js?v=700v202',
+  './ticket-ocr.js?v=700v203',
+  './ticket-image-worker.js?v=700v203',
+  './ticket-image-processing.js?v=700v203',
+  './image-location.js?v=700v203',
+  './share-pdf.js?v=700v203',
   './ayuda.html',
   './assets/help/01-viajes.png',
   './assets/help/02-configuracion.png',

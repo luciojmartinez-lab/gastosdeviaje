@@ -72,11 +72,15 @@ test('el mapa diario separa los puntos y los números de destino', () => {
   assert.match(styles, /\.map-photo-popup\.tail-top::after/);
 });
 
-test('el mapa oculta fechas y usa iconos minimos para tren y coche', () => {
+test('el mapa oculta fechas y usa iconos minimos de transporte con notas', () => {
   assert.match(app, /function tripMapArrivalLabelLines\(item\)[\s\S]*?return \[name\];/);
   assert.match(app, /function tripMapTransportMarker\(record\)/);
   assert.match(app, /return \{ type: 'train', icon: '🚆', label: 'Tren' \}/);
   assert.match(app, /return \{ type: 'car', icon: '🚗', label: 'Coche' \}/);
+  assert.match(app, /return \{ type: 'bus', icon: '🚌', label: 'Bus' \}/);
+  assert.match(app, /return \{ type: 'plane', icon: '✈️', label: 'Avión' \}/);
+  assert.match(app, /const noteLines = \[\.\.\.new Set/);
+  assert.match(app, /map-marker-popup-notes/);
   assert.match(app, /const visibleLabelLines = transportMarker \? \[\] : labelLines\.slice\(0, 1\)/);
   assert.match(app, /const visibleMarkerLabelLines = transportMarker \? \[\] : markerLabelLines\.slice\(0, 1\)/);
   assert.match(app, /function openTripMapMarkerPopup\(detail, anchorElement = null\)/);

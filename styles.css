@@ -469,16 +469,7 @@ h2 {
 }
 
 .app-loading-cover {
-  position: relative;
-  width: min(188px, 42vw);
-  aspect-ratio: 1 / 1.28;
-  overflow: hidden;
-  border: 1px solid rgba(37, 52, 71, 0.15);
-  border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(248, 242, 232, 0.82)),
-    url("assets/bitacora-splash.png") center / cover no-repeat;
-  box-shadow: 0 22px 44px rgba(56, 49, 39, 0.18);
+  display: none;
 }
 
 .app-loading-cover::before,
@@ -507,6 +498,10 @@ h2 {
 }
 
 .app-loading-title {
+  position: absolute;
+  top: 17svh;
+  right: 28px;
+  left: 28px;
   display: grid;
   gap: 8px;
   text-align: center;
@@ -515,7 +510,7 @@ h2 {
 
 .app-loading-train-group {
   position: absolute;
-  top: calc(50% - 155px);
+  top: 36svh;
   left: 50%;
   z-index: 3;
   display: grid;
@@ -526,7 +521,7 @@ h2 {
 
 .app-loading-train {
   position: relative;
-  width: min(260px, 42vw);
+  width: min(225px, 22vw);
   aspect-ratio: 285 / 300;
   opacity: 0.9;
   background: url("assets/loading-train.png") center / contain no-repeat;
@@ -552,7 +547,7 @@ h2 {
 
 .app-loading-title strong {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(2.25rem, 8vw, 5rem);
+  font-size: clamp(2.25rem, 5vw, 4.25rem);
   font-weight: 700;
   line-height: 0.95;
 }
@@ -566,6 +561,8 @@ h2 {
 }
 
 .app-loading-progress {
+  position: absolute;
+  top: 80svh;
   width: min(280px, 64vw);
   height: 4px;
   overflow: hidden;
@@ -583,6 +580,8 @@ h2 {
 }
 
 .app-loading p {
+  position: absolute;
+  top: calc(80svh + 20px);
   margin: 0;
   color: #5f6b7a;
   font-size: 0.95rem;
@@ -590,6 +589,8 @@ h2 {
 }
 
 .app-loading-release {
+  position: absolute;
+  top: calc(80svh + 46px);
   color: #6b7280;
   font-size: 0.78rem;
   font-weight: 600;
@@ -2370,6 +2371,15 @@ tfoot td { font-weight: 700; }
   scroll-margin-top: 178px;
 }
 
+.trip-comparison[hidden] {
+  display: none;
+}
+
+#btn-toggle-comparison[aria-expanded="true"] {
+  background: var(--primary);
+  color: #fff;
+}
+
 .comparison-heading h2,
 .comparison-breakdown-head h3 {
   margin-bottom: 4px;
@@ -2427,6 +2437,11 @@ tfoot td { font-weight: 700; }
   color: var(--muted);
   font-size: 11px;
   font-weight: 500;
+}
+
+.comparison-daily-difference,
+.comparison-share-difference {
+  font-weight: 500 !important;
 }
 
 .comparison-mobile-daily {
@@ -3153,6 +3168,14 @@ body.map-fullscreen-open {
   font-size: 13px;
 }
 
+.map-marker-popup-notes {
+  margin: 4px 0 0;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+  color: #334155;
+  line-height: 1.35;
+}
+
 .map-marker text {
   fill: #111827;
   font-size: 15px;
@@ -3619,19 +3642,19 @@ footer {
 
   #tabla-comparacion-categorias th:nth-child(1),
   #tabla-comparacion-categorias td:nth-child(1) {
-    width: 29%;
+    width: 28%;
   }
 
   #tabla-comparacion-categorias th:nth-child(2),
   #tabla-comparacion-categorias td:nth-child(2),
   #tabla-comparacion-categorias th:nth-child(3),
   #tabla-comparacion-categorias td:nth-child(3) {
-    width: 27%;
+    width: 24%;
   }
 
   #tabla-comparacion-categorias th:nth-child(4),
   #tabla-comparacion-categorias td:nth-child(4) {
-    width: 17%;
+    width: 24%;
   }
 
   #tabla-comparacion-categorias th:nth-child(n+5),

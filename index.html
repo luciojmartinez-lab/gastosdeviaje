@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v202">
+  <link rel="manifest" href="manifest.webmanifest?v=700v203">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v202">
+  <link rel="stylesheet" href="styles.css?v=700v203">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v202 · 21/07/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v203 · 21/07/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v202</div>
+  <div class="app-version">700v203</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -172,7 +172,7 @@
       <h2>Resumen</h2>
       <div class="summary-links">
         <a class="btn ghost" href="#resumen-totales">Totales</a>
-        <a class="btn ghost" href="#resumen-comparacion">Comparar</a>
+        <button class="btn ghost" id="btn-toggle-comparison" type="button" aria-expanded="false" aria-controls="resumen-comparacion">Comparar</button>
         <a class="btn ghost" href="#resumen-desglose">Desglose</a>
         <a class="btn ghost" href="#resumen-cuentas">Cuentas</a>
         <a class="btn ghost" href="#resumen-documentos">Documentos</a>
@@ -184,7 +184,7 @@
       <div class="box"><div class="small">Media diaria</div><div id="kpi-media" class="big">-</div></div>
       <div class="box"><div class="small">Presupuestos usados</div><div id="kpi-presu" class="big">-</div></div>
     </div>
-    <div class="card trip-comparison" id="resumen-comparacion">
+    <div class="card trip-comparison" id="resumen-comparacion" hidden>
       <div class="section-head comparison-heading">
         <div>
           <h2>Comparar dos viajes</h2>
@@ -1018,11 +1018,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v202"></script>
-<script src="app.bundle.js?v=700v202"></script>
+<script src="map-model.js?v=700v203"></script>
+<script src="app.bundle.js?v=700v203"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v202';
+    const pageVersion = '700v203';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1074,7 +1074,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v202', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v203', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()
