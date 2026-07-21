@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v205">
+  <link rel="manifest" href="manifest.webmanifest?v=700v206">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v205">
+  <link rel="stylesheet" href="styles.css?v=700v206">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v205 · 21/07/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v206 · 21/07/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v205</div>
+  <div class="app-version">700v206</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -762,6 +762,17 @@
         <textarea id="blog-texto" placeholder="Escribe el comentario del viaje..."></textarea>
       </div>
       <div id="blog-point-fields" class="blog-point-fields" hidden>
+        <fieldset class="blog-point-transport-fieldset">
+          <legend>Medio de transporte (opcional)</legend>
+          <div class="blog-point-transport-options" role="group" aria-label="Medio de transporte del punto">
+            <label class="check-option"><input type="checkbox" id="blog-point-transport-walk" data-point-transport="walk"> Caminar</label>
+            <label class="check-option"><input type="checkbox" id="blog-point-transport-car" data-point-transport="car"> Coche</label>
+            <label class="check-option"><input type="checkbox" id="blog-point-transport-train" data-point-transport="train"> Tren</label>
+            <label class="check-option"><input type="checkbox" id="blog-point-transport-bus" data-point-transport="bus"> Bus</label>
+            <label class="check-option"><input type="checkbox" id="blog-point-transport-plane" data-point-transport="plane"> Avión</label>
+          </div>
+          <p class="small">Marca una opción para cambiar el icono. Si dejas vacía la descripción, se usará el nombre del medio elegido.</p>
+        </fieldset>
         <div id="blog-point-notes-option">
           <label for="blog-point-notes">Notas del punto</label>
           <textarea id="blog-point-notes" rows="4" placeholder="Añade información sobre este lugar..."></textarea>
@@ -1018,11 +1029,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v205"></script>
-<script src="app.bundle.js?v=700v205"></script>
+<script src="map-model.js?v=700v206"></script>
+<script src="app.bundle.js?v=700v206"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v205';
+    const pageVersion = '700v206';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1074,7 +1085,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v205', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v206', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

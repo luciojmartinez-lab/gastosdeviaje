@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v205';
+const APP_VERSION = '700v206';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -483,7 +483,9 @@ const ADD_EXPENSE_DRAFT_FIELDS = [
 const BLOG_ENTRY_DRAFT_FIELDS = [
   '#blog-fecha', '#blog-hora', '#blog-tipo', '#blog-pais', '#blog-ciudad',
   '#blog-descripcion', '#blog-wordpress', '#blog-featured', '#blog-en-route', '#blog-texto',
-  '#blog-point-notes', '#blog-point-lat', '#blog-point-lng', '#blog-images-map'
+  '#blog-point-notes', '#blog-point-transport-walk', '#blog-point-transport-car',
+  '#blog-point-transport-train', '#blog-point-transport-bus', '#blog-point-transport-plane',
+  '#blog-point-lat', '#blog-point-lng', '#blog-images-map'
 ];
 const INLINE_FORM_DRAFTS = [
   {
@@ -2155,7 +2157,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v205');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v206');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2187,7 +2189,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v205');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v206');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2711,7 +2713,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v205');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v206');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4314,7 +4316,8 @@ async function addBlogEntry(data) {
   if (!state.viajes.some(v => Number(v.id) === tripId)) throw new Error('El viaje no existe');
   const type = String(data.tipo || '').toLowerCase();
   if (!['gasto', 'imagen', 'texto', 'punto'].includes(type)) throw new Error('Tipo de entrada no válido');
-  const description = String(data.descripcion || '').trim();
+  const transport = type === 'punto' ? normalizeBlogPointTransport(data.transporte || data.transport) : '';
+  const description = String(data.descripcion || '').trim() || blogPointTransportLabel(transport);
   if (!description) throw new Error('Escribe una descripción');
   if (type === 'texto' && !String(data.texto || '').trim()) throw new Error('Escribe el texto de la entrada');
   const galleryImages = Array.isArray(data.galleryImages) ? data.galleryImages.map(normalizeBlogImageRecord).filter(image => image.data) : [];
@@ -4335,6 +4338,7 @@ async function addBlogEntry(data) {
     enTransito: data.enTransito === true,
     texto: type === 'texto' ? String(data.texto || '') : '',
     notas: type === 'punto' ? String(data.notas || '') : '',
+    transporte: type === 'punto' ? transport : '',
     imageName: type === 'imagen' ? String(data.imageName || 'imagen.jpg') : '',
     imageType: type === 'imagen' ? String(data.imageType || 'image/jpeg') : '',
     imageSize: type === 'imagen' ? Math.max(0, Number(data.imageSize) || 0) : 0,
@@ -4383,6 +4387,13 @@ function normalizeImportedBlogEntry(entry = {}) {
   const type = ['gasto', 'imagen', 'texto', 'punto'].includes(String(entry.tipo || '').toLowerCase())
     ? String(entry.tipo).toLowerCase()
     : 'texto';
+  const hasStoredTransport = Object.prototype.hasOwnProperty.call(entry, 'transporte')
+    || Object.prototype.hasOwnProperty.call(entry, 'transport');
+  const transport = type === 'punto'
+    ? (hasStoredTransport
+      ? normalizeBlogPointTransport(entry.transporte || entry.transport)
+      : inferBlogPointTransport(entry.descripcion))
+    : '';
   const now = new Date().toISOString();
   const obj = {
     ...entry,
@@ -4390,12 +4401,13 @@ function normalizeImportedBlogEntry(entry = {}) {
     fecha: entry.fecha || currentLocalDate(),
     hora: entry.hora || '00:00',
     tipo: type,
-    descripcion: String(entry.descripcion || '').trim() || (type === 'gasto' ? 'Gasto' : 'Entrada del blog'),
+    descripcion: String(entry.descripcion || '').trim() || blogPointTransportLabel(transport) || (type === 'gasto' ? 'Gasto' : 'Entrada del blog'),
     paisId: entry.paisId ? Number(entry.paisId) : null,
     ciudadId: entry.ciudadId ? Number(entry.ciudadId) : null,
     enTransito: entry.enTransito === true,
     texto: String(entry.texto || ''),
     notas: type === 'punto' ? String(entry.notas || '') : '',
+    transporte: transport,
     imageName: String(entry.imageName || ''),
     imageType: String(entry.imageType || ''),
     imageSize: Math.max(0, Number(entry.imageSize) || 0),
@@ -6932,19 +6944,63 @@ function tripMapArrivalLabelLines(item) {
 
 const TRIP_MAP_TRAIN_ICON = './assets/map-train-side.webp';
 
-function tripMapTransportMarker(record) {
-  const source = record && (record.dailyRecord || record.pointEntry || record.entry || record);
-  const text = String(source && (source.descripcion || source.desc) || record && record.ciudad && record.ciudad.nombre || '')
+const BLOG_POINT_TRANSPORT_OPTIONS = {
+  walk: { type: 'walk', icon: '🚶', label: 'Caminar' },
+  car: { type: 'car', icon: '🚗', label: 'Coche' },
+  train: { type: 'train', icon: '🚂', image: TRIP_MAP_TRAIN_ICON, label: 'Tren' },
+  bus: { type: 'bus', icon: '🚌', label: 'Bus' },
+  plane: { type: 'plane', icon: '✈️', label: 'Avión' }
+};
+
+function inferBlogPointTransport(value) {
+  const text = String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLocaleLowerCase('es-ES');
-  if (/(^|\W)(tren|trenes|ferrocarril)(\W|$)/.test(text)) {
-    return { type: 'train', icon: '🚂', image: TRIP_MAP_TRAIN_ICON, label: 'Tren' };
-  }
-  if (/(^|\W)(coche|coches|automovil|automoviles|auto)(\W|$)/.test(text)) return { type: 'car', icon: '🚗', label: 'Coche' };
-  if (/(^|\W)(bus|buses|autobus|autobuses|autocar|autocares)(\W|$)/.test(text)) return { type: 'bus', icon: '🚌', label: 'Bus' };
-  if (/(^|\W)(avion|aviones|vuelo|vuelos)(\W|$)/.test(text)) return { type: 'plane', icon: '✈️', label: 'Avión' };
-  return null;
+  if (/(^|\W)(caminar|caminando|andando|a\s+pie|walk|walking)(\W|$)/.test(text)) return 'walk';
+  if (/(^|\W)(tren|trenes|ferrocarril)(\W|$)/.test(text)) return 'train';
+  if (/(^|\W)(coche|coches|automovil|automoviles|auto)(\W|$)/.test(text)) return 'car';
+  if (/(^|\W)(bus|buses|autobus|autobuses|autocar|autocares)(\W|$)/.test(text)) return 'bus';
+  if (/(^|\W)(avion|aviones|vuelo|vuelos)(\W|$)/.test(text)) return 'plane';
+  return '';
+}
+
+function normalizeBlogPointTransport(value) {
+  const normalized = String(value || '').trim().toLocaleLowerCase('es-ES');
+  return BLOG_POINT_TRANSPORT_OPTIONS[normalized] ? normalized : inferBlogPointTransport(normalized);
+}
+
+function blogPointTransportLabel(value) {
+  return BLOG_POINT_TRANSPORT_OPTIONS[normalizeBlogPointTransport(value)]?.label || '';
+}
+
+function selectedBlogPointTransport() {
+  const selected = $$('[data-point-transport]').find(input => input.checked);
+  return normalizeBlogPointTransport(selected && selected.dataset.pointTransport);
+}
+
+function setBlogPointTransportSelection(value = '') {
+  const selected = normalizeBlogPointTransport(value);
+  $$('[data-point-transport]').forEach(input => {
+    input.checked = input.dataset.pointTransport === selected;
+  });
+}
+
+function tripMapTransportMarker(record) {
+  const wrappedSource = record && (record.dailyRecord || record.pointEntry || record.entry || record);
+  const source = wrappedSource && (wrappedSource.entry || wrappedSource.pointEntry || wrappedSource);
+  const hasExplicitTransport = Boolean(source) && (
+    Object.prototype.hasOwnProperty.call(source, 'transporte')
+    || Object.prototype.hasOwnProperty.call(source, 'transport')
+  );
+  const explicit = hasExplicitTransport
+    ? normalizeBlogPointTransport(source.transporte || source.transport)
+    : '';
+  const legacy = hasExplicitTransport
+    ? ''
+    : inferBlogPointTransport(source && (source.descripcion || source.desc) || record && record.ciudad && record.ciudad.nombre || '');
+  const option = BLOG_POINT_TRANSPORT_OPTIONS[explicit || legacy];
+  return option ? { ...option } : null;
 }
 
 function tripMapMarkerDetail(items = [], dailyRecord = null) {
@@ -9318,7 +9374,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v205');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v206');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -10177,7 +10233,13 @@ function restoreBlogEntryDraft(trip) {
   restoringFormDraft = true;
   try {
     if (type) setBlogEntryType(type);
-    applyFormDraftValues(['#blog-fecha', '#blog-hora', '#blog-descripcion', '#blog-wordpress', '#blog-featured', '#blog-en-route', '#blog-texto', '#blog-point-notes'], values);
+    applyFormDraftValues([
+      '#blog-fecha', '#blog-hora', '#blog-descripcion', '#blog-wordpress', '#blog-featured',
+      '#blog-en-route', '#blog-texto', '#blog-point-notes', '#blog-point-transport-walk',
+      '#blog-point-transport-car', '#blog-point-transport-train', '#blog-point-transport-bus',
+      '#blog-point-transport-plane'
+    ], values);
+    setBlogPointTransportSelection(selectedBlogPointTransport());
     applyFormDraftValues(['#blog-pais'], values);
     renderBlogCities(values['blog-ciudad'] || '');
     applyFormDraftValues(['#blog-ciudad', '#blog-point-lat', '#blog-point-lng', '#blog-images-map'], values);
@@ -10231,6 +10293,12 @@ function openBlogEntryDialog(entry = null) {
   if ($('#blog-descripcion')) $('#blog-descripcion').value = entry ? entry.descripcion || '' : '';
   if ($('#blog-texto')) $('#blog-texto').value = entry ? entry.texto || '' : '';
   if ($('#blog-point-notes')) $('#blog-point-notes').value = entry && entry.tipo === 'punto' ? entry.notas || '' : '';
+  const entryTransport = entry && entry.tipo === 'punto'
+    ? (Object.prototype.hasOwnProperty.call(entry, 'transporte')
+      ? entry.transporte
+      : inferBlogPointTransport(entry.descripcion))
+    : '';
+  setBlogPointTransportSelection(entryTransport);
   if ($('#blog-en-route')) $('#blog-en-route').checked = Boolean(entry && entry.enRuta);
   if ($('#blog-point-lat')) $('#blog-point-lat').value = entry && entry.latitude != null ? formatCoordinate(entry.latitude) : '';
   if ($('#blog-point-lng')) $('#blog-point-lng').value = entry && entry.longitude != null ? formatCoordinate(entry.longitude) : '';
@@ -10688,8 +10756,11 @@ async function saveBlogEntryForm() {
   const trip = selectedBlogTrip();
   if (!trip) throw new Error('El viaje seleccionado ha cambiado');
   const type = activeBlogEntryType;
-  const description = String($('#blog-descripcion').value || '').trim();
-  if (!description) throw new Error('Escribe una descripción');
+  const transport = type === 'punto' ? selectedBlogPointTransport() : '';
+  const description = String($('#blog-descripcion').value || '').trim() || blogPointTransportLabel(transport);
+  if (!description) throw new Error(type === 'punto'
+    ? 'Escribe una descripción o marca un medio de transporte'
+    : 'Escribe una descripción');
   const current = activeBlogEntryId ? state.blogEntries.find(entry => Number(entry.id) === activeBlogEntryId) : null;
   const blogEntryAnchor = current
     ? (activeBlogEntryAnchor || captureBlogEntryAnchor(current.id))
@@ -10706,6 +10777,7 @@ async function saveBlogEntryForm() {
     ciudadId: cityValue && cityValue !== BLOG_TRANSIT_CITY_VALUE ? cityValue : null,
     enTransito: cityValue === BLOG_TRANSIT_CITY_VALUE,
     enRuta,
+    transporte: type === 'punto' ? transport : '',
     latitude: null,
     longitude: null,
     wordpressIncluded: Boolean($('#blog-wordpress') && $('#blog-wordpress').checked),
@@ -12698,6 +12770,16 @@ function bindEvents() {
   bindBlogEntryDraftFields();
   $$('[data-blog-type]').forEach(button => {
     button.onclick = () => setBlogEntryType(button.dataset.blogType);
+  });
+  $$('[data-point-transport]').forEach(input => {
+    input.onchange = () => {
+      if (input.checked) {
+        $$('[data-point-transport]').forEach(other => {
+          if (other !== input) other.checked = false;
+        });
+      }
+      scheduleActiveBlogEntryDraftSave();
+    };
   });
   $('#blog-pais').onchange = () => {
     renderBlogCities();

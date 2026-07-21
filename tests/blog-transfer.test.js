@@ -182,6 +182,20 @@ test('el selector de punto es legible y conserva En ruta al editar en movil', ()
   assert.match(help, /las coordenadas guardadas se restauran en el mapa y mantienen disponible la opción/);
 });
 
+test('los puntos permiten elegir un único transporte y caminar sustituye la descripción vacía', () => {
+  assert.match(html, /data-point-transport="walk"[^>]*> Caminar/);
+  assert.match(html, /data-point-transport="car"[^>]*> Coche/);
+  assert.match(html, /data-point-transport="train"[^>]*> Tren/);
+  assert.match(html, /data-point-transport="bus"[^>]*> Bus/);
+  assert.match(html, /data-point-transport="plane"[^>]*> Avión/);
+  assert.match(app, /function selectedBlogPointTransport\(\)/);
+  assert.match(app, /if \(other !== input\) other\.checked = false/);
+  assert.match(app, /const description = String\(\$\('#blog-descripcion'\)\.value \|\| ''\)\.trim\(\) \|\| blogPointTransportLabel\(transport\)/);
+  assert.match(app, /transporte: type === 'punto' \? transport : ''/);
+  assert.match(app, /Escribe una descripción o marca un medio de transporte/);
+  assert.match(help, /Caminar, Coche, Tren, Bus y Avión/);
+});
+
 test('el punto busca GPS al entrar mediante un modal y baja hasta el mapa', () => {
   assert.match(html, /id="blog-location-dialog"/);
   assert.match(html, /id="blog-location-title">Buscando localización/);
