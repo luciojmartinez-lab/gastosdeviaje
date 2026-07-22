@@ -40,8 +40,28 @@ test('al volver a Gastos recupera cerrado el desplegable usado en su posición a
   assert.match(app, /addExpenseToBlog\(gasto, \{ expenseActionAnchor \}\)/);
   assert.match(app, /if \(options\.expenseActionAnchor\) restoreExpenseActionAnchor\(options\.expenseActionAnchor\)/);
   assert.match(styles, /\.expense-action-select\.expense-action-return/);
+  assert.match(app, /row\?\.classList\.add\('expense-entry-return'\)/);
+  assert.match(styles, /\.expense-row\.expense-entry-return > td/);
   assert.match(app, /function scrollToExpense\(expenseId, behavior = 'auto'\)/);
   assert.match(app, /else scrollToLastExpense\('auto'\)/);
+});
+
+test('al editar un gasto vuelve a su desplegable y lo resalta temporalmente', () => {
+  const start = app.indexOf("$('#edit-gasto-form').onsubmit");
+  const end = app.indexOf("$('#g-cuenta').onchange", start);
+  const source = app.slice(start, end);
+  assert.match(source, /const expenseActionAnchor = captureExpenseActionAnchor\(id\)/);
+  assert.match(source, /setTab\('gastos', \{ expenseActionAnchor \}\)/);
+  assert.match(app, /row\?\.classList\.remove\('expense-entry-return'\)/);
+});
+
+test('el conflicto de fecha y hora de una foto ofrece Mantener o Reemplazar', () => {
+  assert.match(html, /id="image-datetime-dialog"/);
+  assert.match(html, /id="image-datetime-keep">Mantener<\/button>/);
+  assert.match(html, /id="image-datetime-replace">Reemplazar<\/button>/);
+  assert.match(app, /function chooseImageDateTimeReplacement\(message\)/);
+  assert.match(app, /await chooseImageDateTimeReplacement/);
+  assert.match(help, /<em>Mantener<\/em> conserva las del gasto y <em>Reemplazar<\/em> aplica las de la foto/);
 });
 
 test('al editar una entrada del Blog vuelve a su desplegable y conserva la posición', () => {

@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v206';
+const APP_VERSION = '700v207';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -32,6 +32,7 @@ const DIALOG_HELP_TARGETS = {
   'offline-entry-dialog': 'offline',
   'add-gasto-dialog': 'gasto-formulario',
   'edit-gasto-dialog': 'gasto-formulario',
+  'image-datetime-dialog': 'gasto-formulario',
   'expense-files-dialog': 'gasto-archivos',
   'form-dialog': 'referencia',
   'route-dialog': 'ruta-paradas',
@@ -2157,7 +2158,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v206');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v207');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2189,7 +2190,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v206');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v207');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2200,7 +2201,37 @@ async function imageDateTimeForFile(file) {
   return captured;
 }
 
-function applyImageDateTimeToFields(image, dateSelector, timeSelector, ownerLabel) {
+function chooseImageDateTimeReplacement(message) {
+  const dialog = $('#image-datetime-dialog');
+  if (!dialog) return Promise.resolve(window.confirm(message));
+  return new Promise(resolve => {
+    const messageElement = $('#image-datetime-message');
+    const keepButton = $('#image-datetime-keep');
+    const replaceButton = $('#image-datetime-replace');
+    let resolved = false;
+    const finish = replace => {
+      if (resolved) return;
+      resolved = true;
+      if (keepButton) keepButton.onclick = null;
+      if (replaceButton) replaceButton.onclick = null;
+      dialog.oncancel = null;
+      if (dialog.close) dialog.close();
+      else dialog.removeAttribute('open');
+      resolve(replace);
+    };
+    if (messageElement) messageElement.textContent = message;
+    if (keepButton) keepButton.onclick = () => finish(false);
+    if (replaceButton) replaceButton.onclick = () => finish(true);
+    dialog.oncancel = event => {
+      event.preventDefault();
+      finish(false);
+    };
+    if (dialog.showModal) dialog.showModal();
+    else dialog.setAttribute('open', 'open');
+  });
+}
+
+async function applyImageDateTimeToFields(image, dateSelector, timeSelector, ownerLabel) {
   if (!image) return false;
   const dateField = $(dateSelector);
   const timeField = $(timeSelector);
@@ -2216,7 +2247,7 @@ function applyImageDateTimeToFields(image, dateSelector, timeSelector, ownerLabe
   if (hasConflict) {
     const photoValue = `${capturedDate ? summaryDocumentDate(capturedDate, true) : 'sin fecha'}${capturedTime ? ` a las ${capturedTime}` : ''}`;
     const currentValue = `${currentDate ? summaryDocumentDate(currentDate, true) : 'sin fecha'}${currentTime ? ` a las ${currentTime}` : ''}`;
-    const replace = window.confirm(`La foto de referencia es del ${photoValue}, pero ${ownerLabel} tiene ${currentValue}. ¿Quieres reemplazar su fecha y hora por las de la foto?`);
+    const replace = await chooseImageDateTimeReplacement(`La foto de referencia es del ${photoValue}, pero ${ownerLabel} tiene ${currentValue}. ¿Quieres reemplazar su fecha y hora por las de la foto?`);
     if (!replace) return false;
   }
   if (capturedDate && dateField) dateField.value = capturedDate;
@@ -2224,7 +2255,7 @@ function applyImageDateTimeToFields(image, dateSelector, timeSelector, ownerLabe
   return true;
 }
 
-function applyExpenseImageDateTime(prefix, captured) {
+async function applyExpenseImageDateTime(prefix, captured) {
   return applyImageDateTimeToFields(
     captured,
     `#${prefix}-fecha`,
@@ -2334,7 +2365,7 @@ async function syncExpenseExtraImageSelection(prefix, options = {}) {
   const pointsPromise = Promise.all(records.map(record => imageGpsForFile(record.file, { useCurrentLocation: record.useCurrentLocation })));
   const captured = options.applyDateTime ? await imageDateTimeForFile(files[0]) : null;
   if (captured && selectedExpenseExtraImageFiles(prefix)[0] === files[0]) {
-    applyExpenseImageDateTime(prefix, captured);
+    await applyExpenseImageDateTime(prefix, captured);
     if (prefix === 'g') scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   }
   const points = await pointsPromise;
@@ -2713,7 +2744,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v206');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v207');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -9374,7 +9405,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v206');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v207');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -10438,8 +10469,8 @@ function updateBlogOriginalActions(message = '', isError = false) {
   setMessage('#blog-original-status', message, isError);
 }
 
-function applyBlogImageDateTime(image) {
-  const result = applyImageDateTimeToFields(image, '#blog-fecha', '#blog-hora', activeBlogEntryId ? 'la entrada guardada del Blog' : 'la entrada del Blog');
+async function applyBlogImageDateTime(image) {
+  const result = await applyImageDateTimeToFields(image, '#blog-fecha', '#blog-hora', activeBlogEntryId ? 'la entrada guardada del Blog' : 'la entrada del Blog');
   scheduleActiveBlogEntryDraftSave();
   return result;
 }
@@ -10455,7 +10486,7 @@ async function selectBlogImage(input, otherInput, options = {}) {
   try {
     const image = await compressBlogImage(file, options);
     showBlogImage(image);
-    applyBlogImageDateTime(image);
+    await applyBlogImageDateTime(image);
   } catch (error) {
     input.value = '';
     if (options.fromCamera) activeBlogCameraOriginalFile = null;
@@ -11435,12 +11466,16 @@ function restoreExpenseActionAnchor(anchor) {
   }
   select.value = '';
   select.classList.add('expense-action-return');
+  row?.classList.add('expense-entry-return');
   try {
     select.focus({ preventScroll: true });
   } catch (_) {
     select.focus();
   }
-  window.setTimeout(() => select.classList.remove('expense-action-return'), 4000);
+  window.setTimeout(() => {
+    select.classList.remove('expense-action-return');
+    row?.classList.remove('expense-entry-return');
+  }, 4000);
 }
 
 function captureBlogEntryAnchor(entryId) {
@@ -13077,8 +13112,10 @@ function bindEvents() {
         ...ticketPatch
       });
       rememberTicketCategory('edit-gasto');
+      const expenseActionAnchor = captureExpenseActionAnchor(id);
       closeEditGasto();
       await loadAll();
+      setTab('gastos', { expenseActionAnchor });
     } catch (err) {
       setMessage('#msg-edit-gasto', err.message || String(err), true);
     }

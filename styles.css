@@ -794,6 +794,20 @@ h2 {
   box-shadow: 0 0 0 5px #ccfbf1;
 }
 
+.expense-row.expense-entry-return > td {
+  background: #ecfdf5;
+  border-top-color: #10b981;
+  border-bottom-color: #10b981;
+}
+
+.expense-row.expense-entry-return > td:first-child {
+  box-shadow: inset 3px 0 #10b981;
+}
+
+.expense-row.expense-entry-return > td:last-child {
+  box-shadow: inset -3px 0 #10b981;
+}
+
 .blog-action-select.blog-action-return {
   outline: 3px solid #0f766e;
   outline-offset: 2px;
