@@ -13,12 +13,17 @@ test('al reemplazar un gasto existente en el blog permite conservar o reemplazar
   assert.match(html, /id="expense-blog-replace-dialog"/);
   assert.match(html, /id="expense-blog-replace-keep"/);
   assert.match(html, /id="expense-blog-replace-all"/);
-  assert.match(html, /No aceptar/);
+  assert.match(html, /id="expense-blog-replace-cancel">Mantener<\/button>/);
+  assert.match(html, /id="expense-blog-replace-all">Reemplazar todo<\/button>/);
+  assert.match(html, /id="expense-blog-replace-keep">Reemplazar datos<\/button>/);
+  assert.doesNotMatch(html, /No aceptar/);
   assert.match(app, /function chooseExpenseBlogReplacement\(\)/);
   assert.match(app, /finish\('keep-date'\)/);
   assert.match(app, /finish\('replace-all'\)/);
   assert.match(app, /replacementMode === 'keep-date' \? existing\.fecha : gasto\.fecha \|\| currentLocalDate\(\)/);
   assert.match(app, /replacementMode === 'keep-date' \? existing\.hora : expenseBlogTime\(gasto\)/);
+  assert.match(styles, /\.expense-blog-replace-actions[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(help, /<em>Mantener<\/em> no cambia la entrada; <em>Reemplazar datos<\/em>/);
 });
 
 test('al anadir un gasto al blog permanece en Gastos', () => {
