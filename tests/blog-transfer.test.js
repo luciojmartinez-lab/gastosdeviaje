@@ -287,12 +287,24 @@ test('el Blog y su PDF no añaden un mapa automático de puntos al final', () =>
   assert.doesNotMatch(app, /blogPrintPointMapHtml\(timeline\)/);
 });
 
-test('el PDF del Blog usa 80 por ciento para imágenes normales y aprovecha el espacio inferior', () => {
-  assert.match(app, /\.blog-print-image\.landscape \{ width: 80%; \}/);
-  assert.match(app, /\.blog-print-gallery \{ display: grid; width: 80%;/);
+test('el PDF del Blog compacta páginas, iguala galerías y neutraliza tickets', () => {
+  assert.match(app, /function blogPrintImageClasses\(image\)/);
+  assert.match(app, /startsWith\('expense-ticket-'\)/);
+  assert.match(app, /ticket-document/);
+  assert.match(app, /\.blog-print-image\.landscape \{ width: 62%; \}/);
+  assert.match(app, /\.blog-print-image\.portrait \{ width: 28%; min-width: 42mm; \}/);
+  assert.match(app, /\.blog-print-image\.ticket-document \{ filter: grayscale\(1\) contrast\(1\.06\) brightness\(1\.06\)/);
+  assert.match(app, /\.blog-print-gallery \{ display: grid; width: 84%;/);
+  assert.match(app, /\.blog-print-gallery figure \{ display: flex; aspect-ratio: 4 \/ 3;/);
+  assert.match(app, /\.blog-print-gallery \.blog-print-image \{ width: 100%; min-width: 0; height: 100%; max-height: none;/);
   assert.match(app, /\.blog-print-featured \.blog-print-image \{ width: 100%; max-width: 100%; \}/);
+  assert.match(app, /\.blog-print-featured \.blog-print-image\.portrait \{ width: 80%; max-width: 80%; \}/);
+  assert.match(app, /\.blog-print-day \{ break-before: auto; page-break-before: auto; \}/);
+  assert.doesNotMatch(app, /\.blog-print-day \{ break-before: page; page-break-before: always; \}/);
   assert.match(app, /\.blog-print-entry \{ break-inside: auto; page-break-inside: auto;/);
   assert.match(app, /class="blog-print-entry-heading"/);
+  assert.match(help, /galerías usan celdas de igual altura/);
+  assert.match(help, /tickets se imprimen con un tono neutro/);
 });
 
 test('el PDF del Blog respeta los filtros activos de día, país y ciudad', () => {

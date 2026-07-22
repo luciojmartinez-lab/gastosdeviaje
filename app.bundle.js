@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v212';
+const APP_VERSION = '700v213';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2192,7 +2192,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v212');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v213');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2224,7 +2224,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v212');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v213');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2824,7 +2824,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v212');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v213');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -9607,7 +9607,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v212');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v213');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11213,16 +11213,29 @@ async function addExpenseToBlog(gasto, options = {}) {
   return true;
 }
 
+function blogPrintImageClasses(image) {
+  const orientation = Number(image.width) > Number(image.height) ? 'landscape' : 'portrait';
+  const identity = normalizePlaceName([
+    image.id,
+    image.name,
+    image.photoTypeName,
+    photoTypeLabel(image)
+  ].filter(Boolean).join(' '));
+  const ticketDocument = String(image.id || '').startsWith('expense-ticket-')
+    || /\b(ticket|factura|recibo|justificante)\b/.test(identity);
+  return `${orientation}${ticketDocument ? ' ticket-document' : ''}`;
+}
+
 function blogPrintImagesHtml(images, description) {
   const normalized = (images || []).map(normalizeBlogImageRecord).filter(image => image.data);
   if (!normalized.length) return '';
   if (normalized.length === 1) {
     const image = normalized[0];
-    const imageClass = Number(image.width) > Number(image.height) ? 'landscape' : 'portrait';
+    const imageClass = blogPrintImageClasses(image);
     return `<img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(description || 'Imagen')}">`;
   }
   return `<div class="blog-print-gallery">${normalized.map(image => {
-    const imageClass = Number(image.width) > Number(image.height) ? 'landscape' : 'portrait';
+    const imageClass = blogPrintImageClasses(image);
     return `<figure><img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(description || 'Imagen')}"></figure>`;
   }).join('')}</div>`;
 }
@@ -11252,7 +11265,7 @@ function blogPrintEntryHtml(entry, options = {}) {
 function blogPrintFeaturedHtml(entry) {
   const image = entry ? blogEntryImages(entry)[0] : null;
   if (!image || !image.data) return '';
-  const imageClass = Number(image.width) > Number(image.height) ? 'landscape' : 'portrait';
+  const imageClass = blogPrintImageClasses(image);
   return `<figure class="blog-print-featured">
     <img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(entry.descripcion || 'Imagen destacada')}">
     <figcaption>${escapeHtml(entry.descripcion || '')}</figcaption>
@@ -11528,27 +11541,31 @@ function printBlog(options = {}) {
     .blog-print-overview-list ol { margin: 0; padding: 0; list-style: none; }
     .blog-print-overview-list li { display: flex; justify-content: space-between; gap: 8mm; padding: 0.8mm 1mm; font-size: 11px; line-height: 1.25; }
     .blog-print-overview-list time { flex: 0 0 auto; color: #475569; }
-    .blog-print-preparations { break-after: page; page-break-after: always; }
+    .blog-print-preparations { margin-bottom: 8mm; }
     .blog-print-preparation-day { padding-top: 1mm; }
     .blog-print-preparation-day.separated { margin-top: 5mm; padding-top: 6mm; border-top: 1px solid #94a3b8; }
     .blog-print-preparations .blog-print-entry { padding-bottom: 4mm; margin-bottom: 4mm; border-bottom: 0; }
     .blog-print-empty { color: #64748b; font-style: italic; }
-    .blog-print-day { break-before: page; page-break-before: always; }
-    .blog-print-entry { break-inside: auto; page-break-inside: auto; padding: 0 0 7mm; margin: 0 0 7mm; border-bottom: 1px solid #dbe3ef; }
-    .blog-print-entry-heading { break-inside: avoid; page-break-inside: avoid; }
+    .blog-print-day { break-before: auto; page-break-before: auto; }
+    .blog-print-day + .blog-print-day { margin-top: 7mm; padding-top: 6mm; border-top: 2px solid #94a3b8; }
+    .blog-print-day > h1 { break-after: avoid-page; page-break-after: avoid; }
+    .blog-print-entry { break-inside: auto; page-break-inside: auto; padding: 0 0 4mm; margin: 0 0 4mm; border-bottom: 1px solid #dbe3ef; }
+    .blog-print-entry-heading { break-inside: avoid; page-break-inside: avoid; break-after: avoid-page; page-break-after: avoid; }
     .blog-print-meta { display: flex; flex-wrap: wrap; gap: 3mm 7mm; color: #64748b; font-size: 11px; }
     .blog-print-text { margin-top: 3mm; font-size: 12px; line-height: 1.5; white-space: normal; }
-    .blog-print-image { display: block; height: auto; max-height: 245mm; margin: 4mm auto 0; object-fit: contain; break-inside: avoid; page-break-inside: avoid; }
-    .blog-print-image.landscape { width: 80%; }
-    .blog-print-image.portrait { width: 35%; min-width: 50mm; }
-    .blog-print-gallery { display: grid; width: 80%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; margin: 4mm auto 0; }
-    .blog-print-gallery figure { break-inside: avoid; page-break-inside: avoid; margin: 0; }
-    .blog-print-gallery .blog-print-image { width: 100%; min-width: 0; max-height: 78mm; margin: 0; }
+    .blog-print-image { display: block; height: auto; max-height: 205mm; margin: 3mm auto 0; object-fit: contain; break-inside: avoid; page-break-inside: avoid; background: #fff; }
+    .blog-print-image.landscape { width: 62%; }
+    .blog-print-image.portrait { width: 28%; min-width: 42mm; }
+    .blog-print-image.ticket-document { filter: grayscale(1) contrast(1.06) brightness(1.06); background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .blog-print-gallery { display: grid; width: 84%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; align-items: stretch; margin: 3mm auto 0; }
+    .blog-print-gallery figure { display: flex; aspect-ratio: 4 / 3; align-items: center; justify-content: center; break-inside: avoid; page-break-inside: avoid; margin: 0; overflow: hidden; background: #fff; }
+    .blog-print-gallery .blog-print-image { width: 100%; min-width: 0; height: 100%; max-height: none; margin: 0; object-fit: contain; }
     .blog-print-point { display: flex; flex-wrap: wrap; gap: 3mm 7mm; align-items: center; margin-top: 4mm; padding: 4mm; border: 1px solid #c4b5fd; border-radius: 3mm; background: #f5f3ff; font-size: 11px; }
     .blog-print-point p { flex-basis: 100%; margin: 0; white-space: pre-line; }
     .blog-print-point a { color: #5b21b6; }
     .blog-print-featured { margin: 0 0 8mm; text-align: center; }
     .blog-print-featured .blog-print-image { width: 100%; max-width: 100%; }
+    .blog-print-featured .blog-print-image.portrait { width: 80%; max-width: 80%; }
     .blog-print-featured figcaption { margin-top: 2mm; color: #64748b; font-size: 11px; }
     .blog-preview-toolbar { position: sticky; z-index: 10; top: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -8mm -8mm 8mm; padding: 10px; border-bottom: 1px solid #cbd5e1; background: #ffffffee; box-shadow: 0 4px 14px #0f172a1f; }
     .blog-preview-toolbar button { min-height: 42px; padding: 8px 12px; border: 1px solid #b9c8da; border-radius: 6px; color: #173d63; background: #eef5ff; font: inherit; font-weight: 650; }
