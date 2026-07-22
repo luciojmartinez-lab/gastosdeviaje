@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v209';
+const APP_VERSION = '700v210';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -64,6 +64,7 @@ let currentCloudMetadata = null;
 let backupDirectorySettingCache;
 let activeTripDocumentsId = null;
 let activeEditExpenseActionAnchor = null;
+let activeEditTicketRecord = null;
 let activeBlogEntryId = null;
 let activeBlogEntryAnchor = null;
 let activeBlogEntryType = '';
@@ -2159,7 +2160,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v209');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v210');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2191,7 +2192,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v209');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v210');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2581,6 +2582,7 @@ function setTicketOcrStatus(prefix, text, isError = false) {
 
 function currentEditTicket() {
   const id = Number($('#edit-gasto-id')?.value);
+  if (activeEditTicketRecord && Number(activeEditTicketRecord.id) === id) return activeEditTicketRecord;
   return state.gastos.find(item => Number(item.id) === id) || null;
 }
 
@@ -2745,7 +2747,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v209');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v210');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -2772,7 +2774,8 @@ async function readExpenseTicket(prefix) {
 
 function ticketLink(gasto) {
   if (!gasto.ticketData) return '-';
-  return `<button class="ghost" data-open-ticket="${gasto.id}" type="button">${escapeHtml(gasto.ticketName || 'Ver ticket')}</button>`;
+  const name = String(gasto.ticketName || 'Ticket');
+  return `<button class="ghost current-ticket-link" data-open-ticket="${gasto.id}" type="button" title="${escapeHtml(name)}">Abrir ticket</button>`;
 }
 
 function normalizeTicketDataValue(value) {
@@ -3136,6 +3139,40 @@ function syncEditExpenseTicketRotation(gasto = currentEditTicket()) {
   const controls = $('#edit-gasto-ticket-rotate');
   if (!controls) return;
   controls.hidden = Boolean($('#edit-gasto-ticket-remove')?.checked) || !expenseTicketIsRasterImage(gasto);
+}
+
+function renderEditExpenseTicket(gasto = currentEditTicket()) {
+  const current = $('#edit-gasto-ticket-current');
+  const preview = $('#edit-gasto-ticket-preview');
+  if (!current || !preview) return;
+  preview.replaceChildren();
+  if (!gasto?.ticketData) {
+    current.textContent = 'Sin ticket asociado.';
+    preview.hidden = true;
+    syncEditExpenseTicketRotation(gasto);
+    return;
+  }
+  const name = String(gasto.ticketName || 'Ticket');
+  current.innerHTML = `<strong>Ticket actual</strong> · ${ticketLink(gasto)}<span class="current-ticket-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>`;
+  const openButton = document.createElement('button');
+  openButton.type = 'button';
+  openButton.className = 'expense-ticket-preview-open';
+  openButton.dataset.openTicket = String(gasto.id);
+  openButton.title = `Abrir ${name}`;
+  if (expenseTicketIsRasterImage(gasto)) {
+    const image = document.createElement('img');
+    image.src = normalizeTicketDataValue(gasto.ticketData);
+    image.alt = `Vista previa de ${name}`;
+    openButton.append(image);
+  } else {
+    const fileLabel = document.createElement('span');
+    fileLabel.className = 'expense-ticket-preview-file';
+    fileLabel.textContent = /pdf/i.test(String(gasto.ticketType || '')) ? 'PDF · Abrir ticket' : 'Abrir ticket';
+    openButton.append(fileLabel);
+  }
+  preview.append(openButton);
+  preview.hidden = Boolean($('#edit-gasto-ticket-remove')?.checked);
+  syncEditExpenseTicketRotation(gasto);
 }
 
 function openExpenseImage(gastoId, imageIndex) {
@@ -4695,10 +4732,11 @@ async function saveOpenExpenseTicketClassification() {
   const current = state.gastos.find(gasto => Number(gasto.id) === id);
   if (!id || !current?.ticketData || $('#edit-gasto-ticket-remove')?.checked) return;
   const selected = photoTypeById($('#edit-gasto-ticket-type')?.value);
-  await queueExpenseClassificationSave(id, {
+  const saved = await queueExpenseClassificationSave(id, {
     ticketPhotoTypeId: selected ? selected.id : '',
     ticketPhotoTypeName: selected ? selected.nombre : ''
   });
+  activeEditTicketRecord = saved;
   setMessage('#msg-edit-gasto', 'Clasificación del ticket guardada');
 }
 
@@ -4744,7 +4782,7 @@ async function rotateOpenExpenseImage(imageIndex, direction) {
 
 async function rotateOpenExpenseTicket(direction) {
   const id = Number($('#edit-gasto-id')?.value);
-  const current = state.gastos.find(gasto => Number(gasto.id) === id);
+  const current = currentEditTicket();
   if (!id || !expenseTicketIsRasterImage(current)) throw new Error('El ticket actual no es una imagen que se pueda girar.');
   const ticket = ticketDataInfo(current.ticketData, current.ticketType || 'image/jpeg');
   const rotated = await rotateRasterImageRecord({
@@ -4758,20 +4796,23 @@ async function rotateOpenExpenseTicket(direction) {
     ticketType: rotated.type,
     ticketData: rotated.data
   });
-  $('#edit-gasto-ticket-current').innerHTML = `Ticket actual: ${ticketLink(saved)}`;
-  syncEditExpenseTicketRotation(saved);
+  activeEditTicketRecord = saved;
+  renderEditExpenseTicket(saved);
   setMessage('#msg-edit-gasto', 'Ticket girado y guardado');
 }
 
 async function handleOpenExpenseTicketRotation(direction) {
   const buttons = $$('#edit-gasto-ticket-rotate button');
+  const saveButton = $('#edit-gasto-form button[type="submit"]');
   buttons.forEach(button => { button.disabled = true; });
+  if (saveButton) saveButton.dataset.waitingForTicketRotation = '1';
   try {
     await queueExpenseMediaSave(() => rotateOpenExpenseTicket(direction));
   } catch (err) {
     setMessage('#msg-edit-gasto', err.message || String(err), true);
   } finally {
     buttons.forEach(button => { button.disabled = false; });
+    if (saveButton) delete saveButton.dataset.waitingForTicketRotation;
   }
 }
 
@@ -9406,7 +9447,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v209');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v210');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11621,6 +11662,7 @@ function openEditGasto(gasto) {
   const dialog = $('#edit-gasto-dialog');
   if (!dialog || !gasto) return;
   activeEditExpenseActionAnchor = captureExpenseActionAnchor(gasto.id);
+  activeEditTicketRecord = gasto.ticketData ? { ...gasto } : null;
   $('#edit-gasto-id').value = gasto.id;
   $('#edit-gasto-fecha').value = gasto.fecha || todayIso();
   $('#edit-gasto-hora').value = expenseTimeValue(gasto) || currentLocalTime();
@@ -11643,10 +11685,9 @@ function openEditGasto(gasto) {
   clearExpenseTicketSelection('edit-gasto');
   clearExpenseExtraImageSelection('edit-gasto');
   $('#edit-gasto-ticket-remove').checked = false;
-  $('#edit-gasto-ticket-current').innerHTML = gasto.ticketData ? `Ticket actual: ${ticketLink(gasto)}` : 'Sin ticket asociado.';
   $('#edit-gasto-ticket-type').value = gasto.ticketData ? String(gasto.ticketPhotoTypeId || '') : '';
   syncExpenseTicketTypeAvailability('edit-gasto');
-  syncEditExpenseTicketRotation(gasto);
+  renderEditExpenseTicket(gasto);
   syncTicketOcrAvailability('edit-gasto');
   renderEditExpenseImages(gasto);
   setMessage('#msg-edit-gasto', '');
@@ -11659,6 +11700,7 @@ function closeEditGasto({ restoreAnchor = true } = {}) {
   if (!dialog) return;
   const expenseActionAnchor = activeEditExpenseActionAnchor;
   activeEditExpenseActionAnchor = null;
+  activeEditTicketRecord = null;
   pendingTicketOcr['edit-gasto'] = null;
   setTicketOcrStatus('edit-gasto', '');
   if (dialog.close) dialog.close();
@@ -13015,7 +13057,7 @@ function bindEvents() {
       syncExpenseTicketTypeAvailability('edit-gasto');
     }
     syncTicketOcrAvailability('edit-gasto');
-    syncEditExpenseTicketRotation();
+    renderEditExpenseTicket();
   };
   $('#g-pais').onchange = () => {
     renderCiudades();
@@ -13083,6 +13125,10 @@ function bindEvents() {
   $('#edit-gasto-form').onsubmit = async event => {
     event.preventDefault();
     try {
+      const saveButton = $('#edit-gasto-form button[type="submit"]');
+      if (saveButton?.dataset.waitingForTicketRotation) {
+        setMessage('#msg-edit-gasto', 'Terminando de girar el ticket antes de guardar…');
+      }
       await pendingExpenseMediaSave;
       await pendingExpenseClassificationSave;
       const id = Number($('#edit-gasto-id').value);
@@ -13092,6 +13138,9 @@ function bindEvents() {
       const importe = $('#edit-gasto-tipo')?.value === 'ingreso' ? -Math.abs(rawImporte) : Math.abs(rawImporte);
       if (!cuentaId || !catId || importe === 0) throw new Error('Completa cuenta, categoría e importe');
       const current = state.gastos.find(g => g.id === id);
+      const currentTicket = activeEditTicketRecord && Number(activeEditTicketRecord.id) === id
+        ? activeEditTicketRecord
+        : current;
       const ticket = await readFileData(selectedFileInput('#edit-gasto-ticket', '#edit-gasto-ticket-camera'));
       const newExtraImages = await readSelectedExpenseExtraImages('edit-gasto');
       const removedExtraImageIndexes = new Set($$('[data-remove-expense-image]:checked').map(input => Number(input.dataset.removeExpenseImage)));
@@ -13102,7 +13151,7 @@ function bindEvents() {
         ? { ticketName: '', ticketType: '', ticketData: '', ticketPhotoTypeId: '', ticketPhotoTypeName: '' }
         : ticket
           ? { ticketName: ticket.name, ticketType: ticket.type, ticketData: ticket.data }
-          : { ticketName: current ? current.ticketName : '', ticketType: current ? current.ticketType : '', ticketData: current ? current.ticketData : '' };
+          : { ticketName: currentTicket ? currentTicket.ticketName : '', ticketType: currentTicket ? currentTicket.ticketType : '', ticketData: currentTicket ? currentTicket.ticketData : '' };
       const selectedTicketType = photoTypeById($('#edit-gasto-ticket-type').value);
       if (ticketPatch.ticketData) {
         ticketPatch.ticketPhotoTypeId = selectedTicketType ? selectedTicketType.id : '';

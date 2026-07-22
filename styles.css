@@ -2209,6 +2209,86 @@ input[type="checkbox"] {
   color: #b91c1c;
 }
 
+#edit-gasto-ticket-current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.current-ticket-link {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+}
+
+.current-ticket-name {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.expense-ticket-preview {
+  margin: 7px 0;
+}
+
+.expense-ticket-preview[hidden] {
+  display: none;
+}
+
+.expense-ticket-preview-open {
+  display: block;
+  width: 100%;
+  min-height: 88px;
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid #bfdbfe;
+  border-radius: 9px;
+  background: #f8fbff;
+  cursor: pointer;
+}
+
+.expense-ticket-preview-open img {
+  display: block;
+  width: 100%;
+  height: 180px;
+  object-fit: contain;
+  border-radius: 5px;
+  background: #eef2f7;
+}
+
+.expense-ticket-preview-file {
+  display: grid;
+  min-height: 76px;
+  place-items: center;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+#edit-gasto-ticket-rotate {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+#edit-gasto-ticket-rotate[hidden] {
+  display: none;
+}
+
+.expense-ticket-rotate-button {
+  min-width: 0;
+  padding: 7px 8px;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.expense-ticket-rotate-button span {
+  font-size: 18px;
+  line-height: 1;
+}
+
 .trip-document-picker {
   display: inline-flex;
   align-items: center;
@@ -4702,20 +4782,31 @@ footer {
   }
 
   .expense-ticket-field .trip-document-picker {
+    min-width: 0;
     padding: 7px 5px;
     font-size: 12px;
+    line-height: 1.15;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .expense-ticket-field .ticket-ocr-button {
     min-width: 0;
     padding: 7px 5px;
     font-size: 12px;
-    line-height: 12px;
+    line-height: 1.15;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .edit-ticket-fields {
     align-items: start;
-    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .edit-ticket-current-panel,
+  .expense-ticket-field {
+    min-width: 0;
   }
 
   .trip-document-list li {

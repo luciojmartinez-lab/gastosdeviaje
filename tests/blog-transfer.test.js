@@ -130,6 +130,7 @@ test('cada imagen de una entrada del Blog se puede quitar al editar', () => {
 });
 
 test('los tickets e imágenes de Gastos se giran antes de actualizar el Blog', () => {
+  assert.match(html, /id="edit-gasto-ticket-preview"/);
   assert.match(html, /id="edit-gasto-ticket-rotate-left"/);
   assert.match(html, /id="edit-gasto-ticket-rotate-right"/);
   assert.match(app, /async function rotateRasterImageRecord\(image, direction\)/);
@@ -137,10 +138,15 @@ test('los tickets e imágenes de Gastos se giran antes de actualizar el Blog', (
   assert.match(app, /async function rotateOpenExpenseImage\(imageIndex, direction\)/);
   assert.match(app, /data-rotate-expense-image="\$\{index\}"/);
   assert.match(app, /ticketData: rotated\.data/);
+  assert.match(app, /activeEditTicketRecord = saved;[\s\S]*?renderEditExpenseTicket\(saved\)/);
+  assert.match(app, /const currentTicket = activeEditTicketRecord[\s\S]*?ticketData: currentTicket \? currentTicket\.ticketData : ''/);
   assert.match(app, /queueExpenseClassificationSave\(id, \{ extraImages \}\)/);
   assert.match(app, /function queueExpenseMediaSave\(callback\)/);
   assert.match(app, /await pendingExpenseMediaSave;[\s\S]*await pendingExpenseClassificationSave;/);
+  assert.match(app, /Terminando de girar el ticket antes de guardar/);
   assert.match(styles, /\.expense-image-rotate-actions/);
+  assert.match(styles, /\.expense-ticket-preview-open img[\s\S]*?object-fit: contain/);
+  assert.match(styles, /\.edit-ticket-fields \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
 });
 
 test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {
