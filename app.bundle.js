@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v211';
+const APP_VERSION = '700v212';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2192,7 +2192,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v211');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v212');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2224,7 +2224,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v211');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v212');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2824,7 +2824,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v211');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v212');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -9607,7 +9607,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v211');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v212');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -12417,8 +12417,7 @@ async function checkCloudOnEntry() {
     if (analysis.conflict || analysis.cloudIsPreferred) await openSyncDialog(metadata);
   } catch (error) {
     if (error instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(error && error.message || '')) {
-      appNetworkUnavailable = true;
-      updateOfflineStatus();
+      await refreshNetworkAvailability();
     }
     console.warn('No se pudo comprobar la sincronización al entrar', error);
   }
@@ -14498,12 +14497,30 @@ function updateOfflineStatus() {
   if (!offline) closeOfflineEntryNotice();
 }
 
+async function refreshNetworkAvailability() {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    appNetworkUnavailable = true;
+    updateOfflineStatus();
+    return false;
+  }
+  try {
+    const response = await fetch(`./version.txt?network=${Date.now()}`, { cache: 'no-store' });
+    appNetworkUnavailable = !response.ok;
+  } catch (_) {
+    appNetworkUnavailable = true;
+  }
+  updateOfflineStatus();
+  return !appNetworkUnavailable;
+}
+
 updateOfflineStatus();
 window.addEventListener('online', () => {
-  appNetworkUnavailable = false;
+  refreshNetworkAvailability();
+});
+window.addEventListener('offline', () => {
+  appNetworkUnavailable = true;
   updateOfflineStatus();
 });
-window.addEventListener('offline', updateOfflineStatus);
 
 window.addEventListener('DOMContentLoaded', async () => {
   try {

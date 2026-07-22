@@ -17,14 +17,17 @@ test('la app muestra estado claro cuando trabaja sin conexion', () => {
   assert.match(styles, /\.offline-status/);
   assert.match(styles, /\.offline-status\[hidden\]/);
   assert.match(app, /function updateOfflineStatus\(\)/);
-  assert.match(app, /window\.addEventListener\('online', \(\) => \{[\s\S]*?appNetworkUnavailable = false;[\s\S]*?updateOfflineStatus\(\)/);
-  assert.match(app, /window\.addEventListener\('offline', updateOfflineStatus\)/);
+  assert.match(app, /async function refreshNetworkAvailability\(\)/);
+  assert.match(app, /version\.txt\?network=\$\{Date\.now\(\)\}/);
+  assert.match(app, /window\.addEventListener\('online', \(\) => \{[\s\S]*?refreshNetworkAvailability\(\)/);
+  assert.match(app, /window\.addEventListener\('offline', \(\) => \{[\s\S]*?appNetworkUnavailable = true;[\s\S]*?updateOfflineStatus\(\)/);
   assert.match(html, /id="offline-entry-dialog"/);
   assert.match(html, /Continuar sin conexi.n/);
   assert.match(html, /mapas nuevos[\s\S]*?buscar lugares[\s\S]*?cambios de moneda[\s\S]*?sincronizar con la nube/);
   assert.match(app, /Sin conexi.n · entrando con datos locales/);
   assert.match(app, /function showOfflineEntryNotice\(\)/);
   assert.match(app, /failed to fetch\|networkerror\|load failed/);
+  assert.match(app, /failed to fetch\|networkerror\|load failed[\s\S]*?await refreshNetworkAvailability\(\)/);
   assert.match(app, /if \(typeof navigator !== 'undefined' && navigator\.onLine === false\) return;/);
   assert.match(app, /finishAppLoading\(\);\s+if \(!APP_HAS_SHARED_LAUNCH\) window\.setTimeout\(\(\) => checkCloudOnEntry\(\), 0\)/);
   assert.match(app, /No hay conexi.n para consultar el cambio/);
@@ -40,8 +43,8 @@ test('el service worker separa cache critica y opcional para no romper la instal
   assert.match(sw, /\.\/vendor\/pdfjs\/pdf\.min\.mjs/);
   assert.match(sw, /\.\/vendor\/tesseract\/tesseract\.esm\.min\.js/);
   assert.match(sw, /\.\/vendor\/tesseract\/lang\/spa\.traineddata\.gz/);
-  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v211/);
-  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v211/);
+  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v212/);
+  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v212/);
   assert.match(sw, /const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4\.10\.0'/);
   assert.match(sw, /\.\/vendor\/opencv\/4\.10\.0\/opencv\.js/);
   assert.match(sw, /\.then\(\(\) => cacheOcrRuntime\(\)\)/);
@@ -68,14 +71,17 @@ test('los mapas vistos se guardan en cache dinamica para uso offline', () => {
   assert.match(help, /Los mapas ya vistos se conservan en cach/);
 });
 
-test('la navegación busca primero la versión nueva y conserva una salida rápida sin red', () => {
+test('la navegación abre primero la copia local y actualiza en segundo plano con cualquier red', () => {
   const start = sw.indexOf('async function cachedNavigationResponse');
   const end = sw.indexOf("self.addEventListener('install'", start);
   const navigation = sw.slice(start, end);
-  assert.ok(navigation.indexOf('await updateNavigationCache(request)') < navigation.indexOf('caches.match(request, { ignoreSearch: true })'));
-  assert.match(sw, /const timeout = setTimeout\(\(\) => controller\.abort\(\), 1800\)/);
+  assert.ok(navigation.indexOf('caches.match(request, { ignoreSearch: true })') < navigation.indexOf('await updateNavigationCache(request)'));
+  assert.match(sw, /const timeout = setTimeout\(\(\) => controller\.abort\(\), 12000\)/);
   assert.match(sw, /fetch\(request, \{ cache: 'no-store', signal: controller\.signal \}\)/);
   assert.match(navigation, /caches\.match\('\.\/index\.html'\)/);
+  assert.match(navigation, /updateNavigationCache\(request\)\.catch\(\(\) => \{\}\)/);
+  assert.match(navigation, /offlineStartResponse\(\)/);
+  assert.match(sw, /Tus viajes y gastos no se han borrado/);
   assert.match(sw, /event\.respondWith\(cachedNavigationResponse\(event\.request\)\)/);
 });
 
@@ -85,7 +91,7 @@ test('una versión nueva provoca una sola recarga después de activar su service
   assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?await registration\.update\(\)/);
   assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
   assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
-  assert.match(sw, /const APP_VERSION = '700v211'/);
+  assert.match(sw, /const APP_VERSION = '700v212'/);
   assert.match(sw, /\.\/assets\/map-train-side\.webp/);
   assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
   assert.doesNotMatch(html, /window\.location\.reload\(\)/);

@@ -1,5 +1,5 @@
-const APP_VERSION = '700v211';
-const CACHE_NAME = 'gastosdeviaje-700v211-offline-start';
+const APP_VERSION = '700v212';
+const CACHE_NAME = 'gastosdeviaje-700v212-offline-start';
 const MAP_RUNTIME_CACHE = 'cuaderno-bitacora-map-runtime-v1';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4.10.0';
@@ -8,12 +8,12 @@ const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname
 const APP_SHELL_REQUIRED = [
   './',
   './index.html',
-  './styles.css?v=700v211',
-  './map-model.js?v=700v211',
-  './app.bundle.js?v=700v211',
+  './styles.css?v=700v212',
+  './map-model.js?v=700v212',
+  './app.bundle.js?v=700v212',
   './vendor/maplibre/maplibre-gl.css?v=5.24.0',
   './vendor/maplibre/maplibre-gl.js?v=5.24.0',
-  './manifest.webmanifest?v=700v211',
+  './manifest.webmanifest?v=700v212',
   './version.txt',
   './assets/bitacora-splash.png',
   './assets/bitacora-splash-mobile.png',
@@ -23,11 +23,11 @@ const APP_SHELL_REQUIRED = [
 const APP_SHELL_OPTIONAL = [
   './assets/app-icon-192.png',
   './assets/app-icon-512.png',
-  './ticket-ocr.js?v=700v211',
-  './ticket-image-worker.js?v=700v211',
-  './ticket-image-processing.js?v=700v211',
-  './image-location.js?v=700v211',
-  './share-pdf.js?v=700v211',
+  './ticket-ocr.js?v=700v212',
+  './ticket-image-worker.js?v=700v212',
+  './ticket-image-processing.js?v=700v212',
+  './image-location.js?v=700v212',
+  './share-pdf.js?v=700v212',
   './ayuda.html',
   './assets/help/01-viajes.png',
   './assets/help/02-configuracion.png',
@@ -99,7 +99,7 @@ async function cachedMapResponse(request) {
 
 async function updateNavigationCache(request) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1800);
+  const timeout = setTimeout(() => controller.abort(), 12000);
   try {
     const response = await fetch(request, { cache: 'no-store', signal: controller.signal });
     if (response && response.ok) {
@@ -117,14 +117,32 @@ async function updateNavigationCache(request) {
 }
 
 async function cachedNavigationResponse(request) {
+  const cached = await caches.match(request, { ignoreSearch: true })
+    || await caches.match('./index.html')
+    || await caches.match('./');
+  if (cached) {
+    updateNavigationCache(request).catch(() => {});
+    return cached;
+  }
   try {
     const current = await updateNavigationCache(request);
     if (current && current.ok) return current;
   } catch (_) {}
-  return await caches.match(request, { ignoreSearch: true })
-    || await caches.match('./index.html')
-    || await caches.match('./')
-    || Response.error();
+  return offlineStartResponse();
+}
+
+function offlineStartResponse() {
+  return new Response(`<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cuaderno de Bitácora · Sin conexión</title>
+<style>body{font-family:system-ui,sans-serif;margin:0;background:#f5f8fc;color:#172033}.box{max-width:34rem;margin:18vh auto;padding:1.5rem;background:#fff;border-radius:1rem;box-shadow:0 8px 28px #1b3d6a22}h1{margin-top:0;color:#0876c9}button{border:0;border-radius:.7rem;padding:.8rem 1rem;background:#0876c9;color:#fff;font-size:1rem}</style>
+</head><body><main class="box"><h1>Sin conexión</h1><p>No se ha podido cargar la copia local de la aplicación. Tus viajes y gastos no se han borrado.</p><p>Activa una conexión y vuelve a intentarlo para recuperar la pantalla de trabajo local.</p><button type="button" onclick="location.reload()">Volver a intentar</button></main><script>addEventListener('online',()=>location.reload())</script></body></html>`, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store'
+    }
+  });
 }
 
 async function cacheOcrRuntime() {
