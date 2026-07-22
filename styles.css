@@ -1442,16 +1442,31 @@ input[type="checkbox"] {
 
 .expense-blog-replace-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 0.72fr 1.35fr 1.18fr;
+  gap: 8px;
 }
 
 .expense-blog-replace-actions .btn,
 .expense-blog-replace-actions .ghost {
   min-height: 48px;
-  padding: 8px 6px;
-  font-size: 0.86rem;
-  line-height: 1.15;
+  padding: 8px;
+  font-size: 0.82rem;
+  line-height: 1.2;
   white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .expense-blog-replace-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .expense-blog-replace-actions .btn,
+  .expense-blog-replace-actions .ghost {
+    width: 100%;
+    min-height: 44px;
+    font-size: 0.95rem;
+  }
 }
 
 .blog-pdf-guide-modal {

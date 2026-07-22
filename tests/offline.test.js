@@ -34,16 +34,21 @@ test('el service worker separa cache critica y opcional para no romper la instal
   assert.match(sw, /const APP_SHELL_REQUIRED = \[/);
   assert.match(sw, /const APP_SHELL_OPTIONAL = \[/);
   assert.match(sw, /await cache\.addAll\(APP_SHELL_REQUIRED\)/);
-  assert.match(sw, /await cacheBestEffort\(cache, APP_SHELL_OPTIONAL\)/);
+  assert.match(sw, /event\.waitUntil\(activateCurrentVersion\)/);
+  assert.match(sw, /activateCurrentVersion[\s\S]*?\.then\(cache => cacheBestEffort\(cache, APP_SHELL_OPTIONAL\)\)/);
   assert.match(sw, /\.\/version\.txt/);
   assert.match(sw, /\.\/vendor\/pdfjs\/pdf\.min\.mjs/);
   assert.match(sw, /\.\/vendor\/tesseract\/tesseract\.esm\.min\.js/);
   assert.match(sw, /\.\/vendor\/tesseract\/lang\/spa\.traineddata\.gz/);
-  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v208/);
-  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v208/);
+  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v209/);
+  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v209/);
   assert.match(sw, /const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4\.10\.0'/);
   assert.match(sw, /\.\/vendor\/opencv\/4\.10\.0\/opencv\.js/);
-  assert.match(sw, /await cacheOcrRuntime\(\)/);
+  assert.match(sw, /\.then\(\(\) => cacheOcrRuntime\(\)\)/);
+  assert.doesNotMatch(sw, /event\.waitUntil\(Promise\.all\(\[activateCurrentVersion/);
+  const installStart = sw.indexOf("self.addEventListener('install'");
+  const activateStart = sw.indexOf("self.addEventListener('activate'");
+  assert.doesNotMatch(sw.slice(installStart, activateStart), /cacheBestEffort|cacheOcrRuntime/);
 });
 
 test('el trabajador de imagen espera OpenCV sin bloquearse por su objeto thenable', () => {
@@ -63,12 +68,13 @@ test('los mapas vistos se guardan en cache dinamica para uso offline', () => {
   assert.match(help, /Los mapas ya vistos se conservan en cach/);
 });
 
-test('la pantalla inicial se sirve desde cache aunque no haya red disponible', () => {
+test('la navegación busca primero la versión nueva y conserva una salida rápida sin red', () => {
   const start = sw.indexOf('async function cachedNavigationResponse');
   const end = sw.indexOf("self.addEventListener('install'", start);
   const navigation = sw.slice(start, end);
-  assert.ok(navigation.indexOf('caches.match(request, { ignoreSearch: true })') < navigation.indexOf('await updateNavigationCache(request)'));
-  assert.match(navigation, /if \(cached\) \{[\s\S]*?updateNavigationCache\(request\)\.catch\(\(\) => \{\}\);[\s\S]*?return cached/);
+  assert.ok(navigation.indexOf('await updateNavigationCache(request)') < navigation.indexOf('caches.match(request, { ignoreSearch: true })'));
+  assert.match(sw, /const timeout = setTimeout\(\(\) => controller\.abort\(\), 1800\)/);
+  assert.match(sw, /fetch\(request, \{ cache: 'no-store', signal: controller\.signal \}\)/);
   assert.match(navigation, /caches\.match\('\.\/index\.html'\)/);
   assert.match(sw, /event\.respondWith\(cachedNavigationResponse\(event\.request\)\)/);
 });
@@ -79,7 +85,7 @@ test('una versión nueva provoca una sola recarga después de activar su service
   assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?await registration\.update\(\)/);
   assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
   assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
-  assert.match(sw, /const APP_VERSION = '700v208'/);
+  assert.match(sw, /const APP_VERSION = '700v209'/);
   assert.match(sw, /\.\/assets\/map-train-side\.webp/);
   assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
   assert.doesNotMatch(html, /window\.location\.reload\(\)/);

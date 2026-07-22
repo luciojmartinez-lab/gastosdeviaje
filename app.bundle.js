@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v208';
+const APP_VERSION = '700v209';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -63,6 +63,7 @@ let localBackupHistoryCache = [];
 let currentCloudMetadata = null;
 let backupDirectorySettingCache;
 let activeTripDocumentsId = null;
+let activeEditExpenseActionAnchor = null;
 let activeBlogEntryId = null;
 let activeBlogEntryAnchor = null;
 let activeBlogEntryType = '';
@@ -2158,7 +2159,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v208');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v209');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2190,7 +2191,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v208');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v209');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2744,7 +2745,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v208');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v209');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5294,7 +5295,7 @@ function renderMapPaises() {
   } else if (scopeChanged) {
     select.value = '';
   }
-  renderTripMap();
+  if (state.activeTab === 'mapa') renderTripMap();
 }
 
 function renderResumenCiudades() {
@@ -9405,7 +9406,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v208');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v209');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11619,6 +11620,7 @@ function applySelectedTrip(id) {
 function openEditGasto(gasto) {
   const dialog = $('#edit-gasto-dialog');
   if (!dialog || !gasto) return;
+  activeEditExpenseActionAnchor = captureExpenseActionAnchor(gasto.id);
   $('#edit-gasto-id').value = gasto.id;
   $('#edit-gasto-fecha').value = gasto.fecha || todayIso();
   $('#edit-gasto-hora').value = expenseTimeValue(gasto) || currentLocalTime();
@@ -11652,13 +11654,18 @@ function openEditGasto(gasto) {
   else dialog.setAttribute('open', 'open');
 }
 
-function closeEditGasto() {
+function closeEditGasto({ restoreAnchor = true } = {}) {
   const dialog = $('#edit-gasto-dialog');
   if (!dialog) return;
+  const expenseActionAnchor = activeEditExpenseActionAnchor;
+  activeEditExpenseActionAnchor = null;
   pendingTicketOcr['edit-gasto'] = null;
   setTicketOcrStatus('edit-gasto', '');
   if (dialog.close) dialog.close();
   else dialog.removeAttribute('open');
+  if (restoreAnchor && expenseActionAnchor) {
+    setTab('gastos', { expenseActionAnchor });
+  }
 }
 
 function addExpenseDraftKey() {
@@ -13044,6 +13051,10 @@ function bindEvents() {
   };
   $('#edit-gasto-close').onclick = closeEditGasto;
   $('#edit-gasto-cancel').onclick = closeEditGasto;
+  $('#edit-gasto-dialog').oncancel = event => {
+    event.preventDefault();
+    closeEditGasto();
+  };
   $('#expense-files-close').onclick = closeExpenseFilesDialog;
   $('#expense-files-done').onclick = closeExpenseFilesDialog;
   $('#form-dialog-close').onclick = closeFormDialog;
@@ -13112,8 +13123,8 @@ function bindEvents() {
         ...ticketPatch
       });
       rememberTicketCategory('edit-gasto');
-      const expenseActionAnchor = captureExpenseActionAnchor(id);
-      closeEditGasto();
+      const expenseActionAnchor = activeEditExpenseActionAnchor || captureExpenseActionAnchor(id);
+      closeEditGasto({ restoreAnchor: false });
       await loadAll();
       setTab('gastos', { expenseActionAnchor });
     } catch (err) {

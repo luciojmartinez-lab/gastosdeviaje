@@ -72,6 +72,12 @@ test('el mapa diario separa los puntos y los números de destino', () => {
   assert.match(styles, /\.map-photo-popup\.tail-top::after/);
 });
 
+test('los cambios de datos no construyen el mapa mientras su pestaña está oculta', () => {
+  const start = app.indexOf('function renderMapPaises()');
+  const end = app.indexOf('function renderResumenCiudades()', start);
+  assert.match(app.slice(start, end), /if \(state\.activeTab === 'mapa'\) renderTripMap\(\)/);
+});
+
 test('el mapa oculta fechas y usa iconos minimos de transporte con notas', () => {
   assert.match(app, /function tripMapArrivalLabelLines\(item\)[\s\S]*?return \[name\];/);
   assert.match(app, /function tripMapTransportMarker\(record\)/);

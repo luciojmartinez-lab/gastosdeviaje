@@ -1,5 +1,5 @@
-const APP_VERSION = '700v208';
-const CACHE_NAME = 'gastosdeviaje-700v208-offline-start';
+const APP_VERSION = '700v209';
+const CACHE_NAME = 'gastosdeviaje-700v209-offline-start';
 const MAP_RUNTIME_CACHE = 'cuaderno-bitacora-map-runtime-v1';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4.10.0';
@@ -8,12 +8,12 @@ const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname
 const APP_SHELL_REQUIRED = [
   './',
   './index.html',
-  './styles.css?v=700v208',
-  './map-model.js?v=700v208',
-  './app.bundle.js?v=700v208',
+  './styles.css?v=700v209',
+  './map-model.js?v=700v209',
+  './app.bundle.js?v=700v209',
   './vendor/maplibre/maplibre-gl.css?v=5.24.0',
   './vendor/maplibre/maplibre-gl.js?v=5.24.0',
-  './manifest.webmanifest?v=700v208',
+  './manifest.webmanifest?v=700v209',
   './version.txt',
   './assets/bitacora-splash.png',
   './assets/bitacora-splash-mobile.png',
@@ -23,11 +23,11 @@ const APP_SHELL_REQUIRED = [
 const APP_SHELL_OPTIONAL = [
   './assets/app-icon-192.png',
   './assets/app-icon-512.png',
-  './ticket-ocr.js?v=700v208',
-  './ticket-image-worker.js?v=700v208',
-  './ticket-image-processing.js?v=700v208',
-  './image-location.js?v=700v208',
-  './share-pdf.js?v=700v208',
+  './ticket-ocr.js?v=700v209',
+  './ticket-image-worker.js?v=700v209',
+  './ticket-image-processing.js?v=700v209',
+  './image-location.js?v=700v209',
+  './share-pdf.js?v=700v209',
   './ayuda.html',
   './assets/help/01-viajes.png',
   './assets/help/02-configuracion.png',
@@ -98,31 +98,33 @@ async function cachedMapResponse(request) {
 }
 
 async function updateNavigationCache(request) {
-  const response = await fetch(request, { cache: 'no-store' });
-  if (response && response.ok) {
-    try {
-      const cache = await caches.open(CACHE_NAME);
-      const copy = response.clone();
-      await cache.put('./index.html', copy.clone());
-      await cache.put(request, copy);
-    } catch (_) {}
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1800);
+  try {
+    const response = await fetch(request, { cache: 'no-store', signal: controller.signal });
+    if (response && response.ok) {
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        const copy = response.clone();
+        await cache.put('./index.html', copy.clone());
+        await cache.put(request, copy);
+      } catch (_) {}
+    }
+    return response;
+  } finally {
+    clearTimeout(timeout);
   }
-  return response;
 }
 
 async function cachedNavigationResponse(request) {
-  const cached = await caches.match(request, { ignoreSearch: true })
-    || await caches.match('./index.html')
-    || await caches.match('./');
-  if (cached) {
-    updateNavigationCache(request).catch(() => {});
-    return cached;
-  }
   try {
     const current = await updateNavigationCache(request);
     if (current && current.ok) return current;
   } catch (_) {}
-  return Response.error();
+  return await caches.match(request, { ignoreSearch: true })
+    || await caches.match('./index.html')
+    || await caches.match('./')
+    || Response.error();
 }
 
 async function cacheOcrRuntime() {
@@ -140,15 +142,13 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
       await cache.addAll(APP_SHELL_REQUIRED);
-      await cacheBestEffort(cache, APP_SHELL_OPTIONAL);
-      await cacheOcrRuntime();
       await self.skipWaiting();
     })
   );
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
+  const activateCurrentVersion =
     caches.keys()
       .then(keys => Promise.all(keys
         .filter(key => key.startsWith('gastosdeviaje-') && key !== CACHE_NAME)
@@ -157,8 +157,13 @@ self.addEventListener('activate', event => {
       .then(async () => {
         const clients = await self.clients.matchAll({ type: 'window' });
         clients.forEach(client => client.postMessage({ type: 'APP_VERSION_ACTIVE', version: APP_VERSION }));
-      })
-  );
+      });
+  event.waitUntil(activateCurrentVersion);
+  activateCurrentVersion
+    .then(() => caches.open(CACHE_NAME))
+    .then(cache => cacheBestEffort(cache, APP_SHELL_OPTIONAL))
+    .then(() => cacheOcrRuntime())
+    .catch(() => {});
 });
 
 self.addEventListener('message', event => {

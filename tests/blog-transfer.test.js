@@ -13,17 +13,17 @@ test('al reemplazar un gasto existente en el blog permite conservar o reemplazar
   assert.match(html, /id="expense-blog-replace-dialog"/);
   assert.match(html, /id="expense-blog-replace-keep"/);
   assert.match(html, /id="expense-blog-replace-all"/);
-  assert.match(html, /id="expense-blog-replace-cancel">Mantener<\/button>/);
-  assert.match(html, /id="expense-blog-replace-all">Reemplazar todo<\/button>/);
-  assert.match(html, /id="expense-blog-replace-keep">Reemplazar datos<\/button>/);
+  assert.match(html, /id="expense-blog-replace-cancel">Cancelar<\/button>/);
+  assert.match(html, /id="expense-blog-replace-keep">Conservar Fecha\/hora Blog<\/button>/);
+  assert.match(html, /id="expense-blog-replace-all">Reemplazar Datos Blog<\/button>/);
   assert.doesNotMatch(html, /No aceptar/);
   assert.match(app, /function chooseExpenseBlogReplacement\(\)/);
   assert.match(app, /finish\('keep-date'\)/);
   assert.match(app, /finish\('replace-all'\)/);
   assert.match(app, /replacementMode === 'keep-date' \? existing\.fecha : gasto\.fecha \|\| currentLocalDate\(\)/);
   assert.match(app, /replacementMode === 'keep-date' \? existing\.hora : expenseBlogTime\(gasto\)/);
-  assert.match(styles, /\.expense-blog-replace-actions[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.match(help, /<em>Mantener<\/em> no cambia la entrada; <em>Reemplazar datos<\/em>/);
+  assert.match(styles, /@media \(max-width: 520px\)[\s\S]*?\.expense-blog-replace-actions \{[\s\S]*?grid-template-columns: 1fr/);
+  assert.match(help, /<em>Cancelar<\/em> no cambia la entrada; <em>Conservar Fecha\/hora Blog<\/em>/);
 });
 
 test('al anadir un gasto al blog permanece en Gastos', () => {
@@ -55,9 +55,17 @@ test('al editar un gasto vuelve a su desplegable y lo resalta temporalmente', ()
   const start = app.indexOf("$('#edit-gasto-form').onsubmit");
   const end = app.indexOf("$('#g-cuenta').onchange", start);
   const source = app.slice(start, end);
-  assert.match(source, /const expenseActionAnchor = captureExpenseActionAnchor\(id\)/);
+  assert.match(source, /const expenseActionAnchor = activeEditExpenseActionAnchor \|\| captureExpenseActionAnchor\(id\)/);
   assert.match(source, /setTab\('gastos', \{ expenseActionAnchor \}\)/);
   assert.match(app, /row\?\.classList\.remove\('expense-entry-return'\)/);
+});
+
+test('al cancelar, cerrar o pulsar Escape en la edición vuelve al gasto y lo resalta', () => {
+  assert.match(app, /activeEditExpenseActionAnchor = captureExpenseActionAnchor\(gasto\.id\)/);
+  assert.match(app, /function closeEditGasto\(\{ restoreAnchor = true \} = \{\}\)/);
+  assert.match(app, /if \(restoreAnchor && expenseActionAnchor\) \{[\s\S]*?setTab\('gastos', \{ expenseActionAnchor \}\)/);
+  assert.match(app, /\$\('#edit-gasto-dialog'\)\.oncancel = event => \{[\s\S]*?closeEditGasto\(\)/);
+  assert.match(app, /closeEditGasto\(\{ restoreAnchor: false \}\)/);
 });
 
 test('el conflicto de fecha y hora de una foto ofrece Mantener o Reemplazar', () => {
