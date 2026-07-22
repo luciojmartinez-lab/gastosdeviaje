@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v210';
+const APP_VERSION = '700v211';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -65,6 +65,8 @@ let backupDirectorySettingCache;
 let activeTripDocumentsId = null;
 let activeEditExpenseActionAnchor = null;
 let activeEditTicketRecord = null;
+const pendingExpenseTicketLocations = { g: null, 'edit-gasto': null };
+const pendingExpenseTicketLocationChecks = { g: Promise.resolve(), 'edit-gasto': Promise.resolve() };
 let activeBlogEntryId = null;
 let activeBlogEntryAnchor = null;
 let activeBlogEntryType = '';
@@ -923,6 +925,30 @@ function expenseExtraImages(gasto) {
     : [];
 }
 
+function expenseTicketImageRecord(gasto) {
+  if (!gasto?.ticketData) return null;
+  const data = normalizeTicketDataValue(gasto.ticketData);
+  if (!/^data:image\//i.test(data) && !fileLooksLikeImage({ type: gasto.ticketType, name: gasto.ticketName })) return null;
+  return normalizeStoredImageRecord({
+    id: `expense-ticket-${gasto.id || ''}`,
+    name: gasto.ticketName || 'ticket.jpg',
+    type: gasto.ticketType || 'image/jpeg',
+    size: gasto.ticketSize || 0,
+    data,
+    width: gasto.ticketWidth || 0,
+    height: gasto.ticketHeight || 0,
+    latitude: gasto.ticketLatitude,
+    longitude: gasto.ticketLongitude,
+    locationSource: gasto.ticketLocationSource || '',
+    photoTypeId: gasto.ticketPhotoTypeId || '',
+    photoTypeName: gasto.ticketPhotoTypeName || '',
+    mapEnabled: gasto.ticketMapEnabled === true,
+    capturedDate: gasto.ticketCapturedDate || '',
+    capturedTime: gasto.ticketCapturedTime || '',
+    createdAt: gasto.createdAt || ''
+  });
+}
+
 function isAccommodationExpense(gasto) {
   const category = state.categorias.find(item => Number(item.id) === Number(gasto && gasto.catId));
   return normalizePlaceName(category && category.nombre) === 'alojamiento';
@@ -1033,6 +1059,12 @@ async function expenseTicketBlogImage(gasto) {
       type: ticketType || 'image/jpeg',
       size: ticketInfo.blob.size,
       data: ticketInfo.data,
+      latitude: gasto.ticketLatitude,
+      longitude: gasto.ticketLongitude,
+      locationSource: gasto.ticketLocationSource || '',
+      mapEnabled: gasto.ticketMapEnabled === true,
+      capturedDate: gasto.ticketCapturedDate || '',
+      capturedTime: gasto.ticketCapturedTime || '',
       photoTypeId: String(gasto.ticketPhotoTypeId || ''),
       photoTypeName: String(gasto.ticketPhotoTypeName || ''),
       createdAt: gasto.createdAt || ''
@@ -2160,7 +2192,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v210');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v211');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2192,7 +2224,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v210');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v211');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2273,16 +2305,32 @@ function clearExpenseTicketSelection(prefix) {
   if (file) file.value = '';
   if (camera) camera.value = '';
   if (status) {
-    status.textContent = prefix === 'edit-gasto'
-      ? 'Ningún ticket nuevo seleccionado.'
-      : 'Ningún ticket seleccionado.';
+    const keepsCurrent = prefix === 'edit-gasto' && currentEditTicket()?.ticketData && !$('#edit-gasto-ticket-remove')?.checked;
+    status.textContent = keepsCurrent
+      ? 'El ticket actual se conserva. Usa Elegir archivo o Cámara solo para sustituirlo.'
+      : prefix === 'edit-gasto'
+        ? 'Este gasto quedará sin ticket salvo que elijas un archivo o uses la cámara.'
+        : 'El ticket es opcional. Elige archivo o Cámara para añadirlo.';
   }
+  pendingExpenseTicketLocations[prefix] = null;
+  pendingExpenseTicketLocationChecks[prefix] = Promise.resolve();
+  const mapOption = $(`#${prefix}-ticket-map-option`);
+  const mapCheckbox = $(`#${prefix}-ticket-map`);
+  if (mapOption) mapOption.hidden = true;
+  if (mapCheckbox) mapCheckbox.checked = false;
   const typeSelect = $(`#${prefix}-ticket-type`);
   if (typeSelect) typeSelect.value = '';
   pendingTicketOcr[prefix] = null;
   setTicketOcrStatus(prefix, '');
   syncTicketOcrAvailability(prefix);
   syncExpenseTicketTypeAvailability(prefix);
+}
+
+function syncExpenseTicketMapOption(prefix, point, checked = false) {
+  const option = $(`#${prefix}-ticket-map-option`);
+  const checkbox = $(`#${prefix}-ticket-map`);
+  if (option) option.hidden = !point;
+  if (checkbox) checkbox.checked = Boolean(point && checked);
 }
 
 function syncExpenseTicketTypeAvailability(prefix) {
@@ -2414,7 +2462,7 @@ async function readSelectedExpenseExtraImages(prefix) {
   return images;
 }
 
-function syncExpenseTicketSelection(prefix, source) {
+async function syncExpenseTicketSelection(prefix, source) {
   const file = $(`#${prefix}-ticket`);
   const camera = $(`#${prefix}-ticket-camera`);
   const status = $(`#${prefix}-ticket-selected`);
@@ -2425,11 +2473,40 @@ function syncExpenseTicketSelection(prefix, source) {
   if (prefix === 'edit-gasto' && $('#edit-gasto-ticket-remove')) {
     $('#edit-gasto-ticket-remove').checked = false;
   }
-  if (status) status.textContent = selected.files[0].name || (source === 'camera' ? 'Foto de cámara' : 'Ticket seleccionado');
+  const selectedFile = selected.files[0];
+  const selectedName = selectedFile.name || (source === 'camera' ? 'Foto de cámara' : 'Ticket seleccionado');
+  pendingExpenseTicketLocations[prefix] = null;
+  syncExpenseTicketMapOption(prefix, null);
+  if (status) status.textContent = fileLooksLikeImage(selectedFile)
+    ? `${selectedName} · comprobando GPS…`
+    : selectedName;
   pendingTicketOcr[prefix] = null;
   setTicketOcrStatus(prefix, 'Listo para leer en este dispositivo.');
   syncTicketOcrAvailability(prefix);
   syncExpenseTicketTypeAvailability(prefix);
+  if (!fileLooksLikeImage(selectedFile)) return;
+  const [point, captured] = await Promise.all([
+    imageGpsForFile(selectedFile),
+    imageDateTimeForFile(selectedFile)
+  ]);
+  if (selectedFileInput(`#${prefix}-ticket`, `#${prefix}-ticket-camera`)?.files?.[0] !== selectedFile) return;
+  pendingExpenseTicketLocations[prefix] = point ? {
+    latitude: point.latitude,
+    longitude: point.longitude,
+    locationSource: point.source || 'exif',
+    capturedDate: captured?.date || '',
+    capturedTime: captured?.time || ''
+  } : {
+    latitude: null,
+    longitude: null,
+    locationSource: '',
+    capturedDate: captured?.date || '',
+    capturedTime: captured?.time || ''
+  };
+  syncExpenseTicketMapOption(prefix, point, false);
+  if (status) status.textContent = point
+    ? `${selectedName} · con GPS del archivo. Puedes añadirlo al mapa.`
+    : `${selectedName} · sin GPS.`;
 }
 
 function normalizeTicketMerchantKey(value) {
@@ -2747,7 +2824,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v210');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v211');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3149,6 +3226,7 @@ function renderEditExpenseTicket(gasto = currentEditTicket()) {
   if (!gasto?.ticketData) {
     current.textContent = 'Sin ticket asociado.';
     preview.hidden = true;
+    syncExpenseTicketMapOption('edit-gasto', null);
     syncEditExpenseTicketRotation(gasto);
     return;
   }
@@ -3171,8 +3249,33 @@ function renderEditExpenseTicket(gasto = currentEditTicket()) {
     openButton.append(fileLabel);
   }
   preview.append(openButton);
-  preview.hidden = Boolean($('#edit-gasto-ticket-remove')?.checked);
+  const removingTicket = Boolean($('#edit-gasto-ticket-remove')?.checked);
+  preview.hidden = removingTicket;
+  const ticketImage = expenseTicketImageRecord(gasto);
+  const ticketPoint = removingTicket ? null : storedImageCoordinates(ticketImage);
+  syncExpenseTicketMapOption('edit-gasto', ticketPoint, ticketImage?.mapEnabled === true);
   syncEditExpenseTicketRotation(gasto);
+}
+
+async function detectStoredExpenseTicketLocation(gasto) {
+  if (!expenseTicketIsRasterImage(gasto) || storedImageCoordinates(expenseTicketImageRecord(gasto))) return;
+  const expectedId = Number(gasto.id);
+  const expectedData = normalizeTicketDataValue(gasto.ticketData);
+  const ticket = ticketDataInfo(expectedData, gasto.ticketType || 'image/jpeg');
+  const source = new File([ticket.blob], gasto.ticketName || 'ticket.jpg', { type: gasto.ticketType || ticket.blob.type || 'image/jpeg' });
+  const [point, captured] = await Promise.all([imageGpsForFile(source), imageDateTimeForFile(source)]);
+  const current = currentEditTicket();
+  if (!$('#edit-gasto-dialog')?.open || !point || Number(current?.id) !== expectedId || normalizeTicketDataValue(current.ticketData) !== expectedData) return;
+  activeEditTicketRecord = {
+    ...current,
+    ticketLatitude: point.latitude,
+    ticketLongitude: point.longitude,
+    ticketLocationSource: point.source || 'exif',
+    ticketCapturedDate: captured?.date || '',
+    ticketCapturedTime: captured?.time || '',
+    ticketMapEnabled: false
+  };
+  renderEditExpenseTicket(activeEditTicketRecord);
 }
 
 function openExpenseImage(gastoId, imageIndex) {
@@ -3230,8 +3333,9 @@ function renderEditExpenseImages(gasto) {
       const mapControl = point
         ? `<label><input type="checkbox" data-map-expense-image="${index}"${checked}> Mapa</label>`
         : '<span class="small">Sin GPS</span>';
-      const rotateControls = `<span class="expense-image-rotate-actions"><button type="button" class="ghost icon-btn" data-rotate-expense-image="${index}" data-rotate-direction="left" title="Girar a la izquierda" aria-label="Girar ${escapeHtml(image.name || `imagen ${index + 1}`)} a la izquierda">&#8634;</button><button type="button" class="ghost icon-btn" data-rotate-expense-image="${index}" data-rotate-direction="right" title="Girar a la derecha" aria-label="Girar ${escapeHtml(image.name || `imagen ${index + 1}`)} a la derecha">&#8635;</button></span>`;
-      return `<li><button type="button" class="ghost" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir ${escapeHtml(image.name || `imagen ${index + 1}`)}</button><select data-expense-image-type="${index}" aria-label="Tipo de ${escapeHtml(image.name || `imagen ${index + 1}`)}">${photoTypeOptionsHtml(image.photoTypeId)}</select>${rotateControls}${mapControl}<label><input type="checkbox" data-remove-expense-image="${index}"> Quitar</label></li>`;
+      const name = escapeHtml(image.name || `imagen ${index + 1}`);
+      const rotateControls = `<span class="expense-current-image-rotate"><button type="button" class="ghost expense-ticket-rotate-button" data-rotate-expense-image="${index}" data-rotate-direction="left" title="Girar a la izquierda" aria-label="Girar ${name} a la izquierda"><span aria-hidden="true">&#8634;</span> Izquierda</button><button type="button" class="ghost expense-ticket-rotate-button" data-rotate-expense-image="${index}" data-rotate-direction="right" title="Girar a la derecha" aria-label="Girar ${name} a la derecha"><span aria-hidden="true">&#8635;</span> Derecha</button></span>`;
+      return `<li><button type="button" class="expense-current-image-preview" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}" title="Abrir ${name}"><img src="${escapeHtml(normalizeTicketDataValue(image.data))}" alt="Vista previa de ${name}"></button><button type="button" class="ghost expense-current-image-open" data-open-expense-image="${gasto.id}" data-expense-image-index="${index}">Abrir ${name}</button><div class="expense-current-image-controls"><select data-expense-image-type="${index}" aria-label="Tipo de ${name}">${photoTypeOptionsHtml(image.photoTypeId)}</select>${rotateControls}</div><div class="expense-current-image-options">${mapControl}<label><input type="checkbox" data-remove-expense-image="${index}"> Quitar</label></div></li>`;
     }).join('')}</ul>`
     : '<p class="small">No hay imágenes adicionales.</p>';
 }
@@ -3587,7 +3691,7 @@ function tripReviewCityNames(ids) {
 function tripReviewImageRecords(tripId) {
   const fromExpenses = state.gastos
     .filter(gasto => Number(gasto.viajeId) === Number(tripId))
-    .flatMap(gasto => expenseExtraImages(gasto).map(image => ({
+    .flatMap(gasto => [expenseTicketImageRecord(gasto), ...expenseExtraImages(gasto)].filter(Boolean).map(image => ({
       ...image,
       source: 'Gastos',
       owner: gasto.desc || gasto.fecha || `gasto ${gasto.id || ''}`.trim()
@@ -4625,7 +4729,7 @@ async function delMoneda(codigo) {
   return deleteRecord('monedas', String(codigo).toUpperCase());
 }
 
-async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', ticketPhotoTypeId = '', ticketPhotoTypeName = '', extraImages = [] }) {
+async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', ticketSize = 0, ticketWidth = 0, ticketHeight = 0, ticketPhotoTypeId = '', ticketPhotoTypeName = '', ticketLatitude = null, ticketLongitude = null, ticketLocationSource = '', ticketCapturedDate = '', ticketCapturedTime = '', ticketMapEnabled = false, extraImages = [] }) {
   if (!hasValidCurrency(moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   const account = state.cuentas.find(c => c.id === Number(cuentaId));
   if (account && account.moneda !== moneda) throw new Error('La moneda del gasto debe coincidir con la cuenta');
@@ -4649,8 +4753,17 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     ticketName,
     ticketType,
     ticketData,
+    ticketSize: Math.max(0, Number(ticketSize) || 0),
+    ticketWidth: Math.max(0, Number(ticketWidth) || 0),
+    ticketHeight: Math.max(0, Number(ticketHeight) || 0),
     ticketPhotoTypeId: String(ticketPhotoTypeId || ''),
     ticketPhotoTypeName: String(ticketPhotoTypeName || ''),
+    ticketLatitude: storedImageCoordinate(ticketLatitude, -90, 90),
+    ticketLongitude: storedImageCoordinate(ticketLongitude, -180, 180),
+    ticketLocationSource: String(ticketLocationSource || ''),
+    ticketCapturedDate: String(ticketCapturedDate || ''),
+    ticketCapturedTime: String(ticketCapturedTime || ''),
+    ticketMapEnabled: ticketMapEnabled === true && storedImageCoordinate(ticketLatitude, -90, 90) != null && storedImageCoordinate(ticketLongitude, -180, 180) != null,
     extraImages: Array.isArray(extraImages) ? extraImages : [],
     createdAt: now,
     updatedAt: now
@@ -4671,6 +4784,12 @@ async function updateGasto(id, patch) {
   next.subcatId = next.subcatId ? Number(next.subcatId) : null;
   next.ticketPhotoTypeId = String(next.ticketPhotoTypeId || '');
   next.ticketPhotoTypeName = String(next.ticketPhotoTypeName || '');
+  next.ticketLatitude = storedImageCoordinate(next.ticketLatitude, -90, 90);
+  next.ticketLongitude = storedImageCoordinate(next.ticketLongitude, -180, 180);
+  next.ticketLocationSource = String(next.ticketLocationSource || '');
+  next.ticketCapturedDate = String(next.ticketCapturedDate || '');
+  next.ticketCapturedTime = String(next.ticketCapturedTime || '');
+  next.ticketMapEnabled = next.ticketMapEnabled === true && next.ticketLatitude != null && next.ticketLongitude != null;
   next.paisId = next.paisId ? Number(next.paisId) : null;
   next.ciudadId = next.ciudadId ? Number(next.ciudadId) : null;
   next.hora = normalizeExpenseTime(next.hora) || expenseTimeValue(current) || currentLocalTime();
@@ -4729,15 +4848,41 @@ async function saveOpenExpenseCategoryClassification() {
 
 async function saveOpenExpenseTicketClassification() {
   const id = Number($('#edit-gasto-id')?.value);
-  const current = state.gastos.find(gasto => Number(gasto.id) === id);
+  const current = currentEditTicket();
   if (!id || !current?.ticketData || $('#edit-gasto-ticket-remove')?.checked) return;
   const selected = photoTypeById($('#edit-gasto-ticket-type')?.value);
   const saved = await queueExpenseClassificationSave(id, {
     ticketPhotoTypeId: selected ? selected.id : '',
     ticketPhotoTypeName: selected ? selected.nombre : ''
   });
-  activeEditTicketRecord = saved;
+  activeEditTicketRecord = { ...activeEditTicketRecord, ...saved };
   setMessage('#msg-edit-gasto', 'Clasificación del ticket guardada');
+}
+
+function expenseTicketLocationPatch(prefix, gasto = null) {
+  const selected = pendingExpenseTicketLocations[prefix];
+  const existing = gasto ? expenseTicketImageRecord(gasto) : null;
+  const point = selected?.latitude != null && selected?.longitude != null
+    ? { latitude: selected.latitude, longitude: selected.longitude }
+    : storedImageCoordinates(existing);
+  return {
+    ticketLatitude: point ? point.latitude : null,
+    ticketLongitude: point ? point.longitude : null,
+    ticketLocationSource: point ? (selected?.locationSource || existing?.locationSource || 'exif') : '',
+    ticketCapturedDate: selected?.capturedDate || existing?.capturedDate || '',
+    ticketCapturedTime: selected?.capturedTime || existing?.capturedTime || '',
+    ticketMapEnabled: Boolean(point && $(`#${prefix}-ticket-map`)?.checked)
+  };
+}
+
+async function saveOpenExpenseTicketMapSetting() {
+  const id = Number($('#edit-gasto-id')?.value);
+  const current = currentEditTicket();
+  const selectedReplacement = selectedFileInput('#edit-gasto-ticket', '#edit-gasto-ticket-camera')?.files?.[0];
+  if (!id || !current?.ticketData || selectedReplacement) return;
+  const saved = await queueExpenseClassificationSave(id, expenseTicketLocationPatch('edit-gasto', current));
+  activeEditTicketRecord = { ...activeEditTicketRecord, ...saved };
+  setMessage('#msg-edit-gasto', $('#edit-gasto-ticket-map')?.checked ? 'Ticket añadido al mapa' : 'Ticket retirado del mapa');
 }
 
 function editExpenseImagesFromControls(gasto) {
@@ -4794,10 +4939,13 @@ async function rotateOpenExpenseTicket(direction) {
   const saved = await queueExpenseClassificationSave(id, {
     ticketName: rotated.name,
     ticketType: rotated.type,
-    ticketData: rotated.data
+    ticketData: rotated.data,
+    ticketSize: rotated.size || 0,
+    ticketWidth: rotated.width || 0,
+    ticketHeight: rotated.height || 0
   });
-  activeEditTicketRecord = saved;
-  renderEditExpenseTicket(saved);
+  activeEditTicketRecord = { ...activeEditTicketRecord, ...saved };
+  renderEditExpenseTicket(activeEditTicketRecord);
   setMessage('#msg-edit-gasto', 'Ticket girado y guardado');
 }
 
@@ -6433,6 +6581,18 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
   state.gastos
     .filter(gasto => scopedTripIds.has(Number(gasto.viajeId)))
     .forEach(gasto => {
+      const ticketImage = expenseTicketImageRecord(gasto);
+      if (ticketImage) append({
+        image: ticketImage,
+        fallbackKey: `gasto-${gasto.id}-ticket`,
+        descripcion: gasto.desc || 'Ticket del gasto',
+        fecha: ticketImage.capturedDate || gasto.fecha || '',
+        hora: ticketImage.capturedTime || expenseTimeValue(gasto),
+        paisId: gasto.paisId || null,
+        ciudadId: gasto.ciudadId || null,
+        viajeId: gasto.viajeId,
+        source: 'gasto-ticket'
+      });
       expenseExtraImages(gasto).forEach((image, index) => append({
         image,
         fallbackKey: `gasto-${gasto.id}-${index}`,
@@ -9447,7 +9607,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v210');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v211');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11688,6 +11848,7 @@ function openEditGasto(gasto) {
   $('#edit-gasto-ticket-type').value = gasto.ticketData ? String(gasto.ticketPhotoTypeId || '') : '';
   syncExpenseTicketTypeAvailability('edit-gasto');
   renderEditExpenseTicket(gasto);
+  pendingExpenseTicketLocationChecks['edit-gasto'] = detectStoredExpenseTicketLocation(gasto).catch(() => {});
   syncTicketOcrAvailability('edit-gasto');
   renderEditExpenseImages(gasto);
   setMessage('#msg-edit-gasto', '');
@@ -11701,6 +11862,8 @@ function closeEditGasto({ restoreAnchor = true } = {}) {
   const expenseActionAnchor = activeEditExpenseActionAnchor;
   activeEditExpenseActionAnchor = null;
   activeEditTicketRecord = null;
+  pendingExpenseTicketLocations['edit-gasto'] = null;
+  pendingExpenseTicketLocationChecks['edit-gasto'] = Promise.resolve();
   pendingTicketOcr['edit-gasto'] = null;
   setTicketOcrStatus('edit-gasto', '');
   if (dialog.close) dialog.close();
@@ -13017,17 +13180,20 @@ function bindEvents() {
     handleExpenseSubcategoryChange('edit-gasto');
     saveOpenExpenseCategoryClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
-  $('#g-ticket').onchange = () => syncExpenseTicketSelection('g', 'file');
-  $('#g-ticket-camera').onchange = () => syncExpenseTicketSelection('g', 'camera');
+  $('#g-ticket').onchange = () => { pendingExpenseTicketLocationChecks.g = syncExpenseTicketSelection('g', 'file'); };
+  $('#g-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks.g = syncExpenseTicketSelection('g', 'camera'); };
   $('#g-ticket-type').onchange = () => scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
   $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
-  $('#edit-gasto-ticket').onchange = () => syncExpenseTicketSelection('edit-gasto', 'file');
-  $('#edit-gasto-ticket-camera').onchange = () => syncExpenseTicketSelection('edit-gasto', 'camera');
+  $('#edit-gasto-ticket').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'file'); };
+  $('#edit-gasto-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'camera'); };
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
   $('#edit-gasto-ticket-type').onchange = () => {
     saveOpenExpenseTicketClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
+  };
+  $('#edit-gasto-ticket-map').onchange = () => {
+    saveOpenExpenseTicketMapSetting().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
   $('#edit-gasto-ticket-rotate-left').onclick = () => handleOpenExpenseTicketRotation('left');
   $('#edit-gasto-ticket-rotate-right').onclick = () => handleOpenExpenseTicketRotation('right');
@@ -13131,6 +13297,7 @@ function bindEvents() {
       }
       await pendingExpenseMediaSave;
       await pendingExpenseClassificationSave;
+      await pendingExpenseTicketLocationChecks['edit-gasto'];
       const id = Number($('#edit-gasto-id').value);
       const cuentaId = $('#edit-gasto-cuenta').value;
       const catId = $('#edit-gasto-cat').value;
@@ -13148,10 +13315,10 @@ function bindEvents() {
         .filter((image, index) => !removedExtraImageIndexes.has(index))
         .concat(newExtraImages);
       const ticketPatch = $('#edit-gasto-ticket-remove').checked
-        ? { ticketName: '', ticketType: '', ticketData: '', ticketPhotoTypeId: '', ticketPhotoTypeName: '' }
+        ? { ticketName: '', ticketType: '', ticketData: '', ticketSize: 0, ticketWidth: 0, ticketHeight: 0, ticketPhotoTypeId: '', ticketPhotoTypeName: '', ticketLatitude: null, ticketLongitude: null, ticketLocationSource: '', ticketCapturedDate: '', ticketCapturedTime: '', ticketMapEnabled: false }
         : ticket
-          ? { ticketName: ticket.name, ticketType: ticket.type, ticketData: ticket.data }
-          : { ticketName: currentTicket ? currentTicket.ticketName : '', ticketType: currentTicket ? currentTicket.ticketType : '', ticketData: currentTicket ? currentTicket.ticketData : '' };
+          ? { ticketName: ticket.name, ticketType: ticket.type, ticketData: ticket.data, ticketSize: ticket.size || 0, ticketWidth: ticket.width || 0, ticketHeight: ticket.height || 0, ...expenseTicketLocationPatch('edit-gasto') }
+          : { ticketName: currentTicket ? currentTicket.ticketName : '', ticketType: currentTicket ? currentTicket.ticketType : '', ticketData: currentTicket ? currentTicket.ticketData : '', ticketSize: currentTicket ? currentTicket.ticketSize || 0 : 0, ticketWidth: currentTicket ? currentTicket.ticketWidth || 0 : 0, ticketHeight: currentTicket ? currentTicket.ticketHeight || 0 : 0, ...expenseTicketLocationPatch('edit-gasto', currentTicket) };
       const selectedTicketType = photoTypeById($('#edit-gasto-ticket-type').value);
       if (ticketPatch.ticketData) {
         ticketPatch.ticketPhotoTypeId = selectedTicketType ? selectedTicketType.id : '';
@@ -13331,6 +13498,7 @@ function bindEvents() {
       const rawImporte = numberValue($('#g-importe').value);
       const importe = $('#g-tipo')?.value === 'ingreso' ? -Math.abs(rawImporte) : Math.abs(rawImporte);
       if (!cuentaId || !catId || importe === 0) throw new Error('Completa cuenta, categoría e importe');
+      await pendingExpenseTicketLocationChecks.g;
       const ticket = await readFileData(selectedFileInput('#g-ticket', '#g-ticket-camera'));
       const selectedTicketType = ticket ? photoTypeById($('#g-ticket-type').value) : null;
       const extraImages = await readSelectedExpenseExtraImages('g');
@@ -13349,8 +13517,12 @@ function bindEvents() {
         ticketName: ticket ? ticket.name : '',
         ticketType: ticket ? ticket.type : '',
         ticketData: ticket ? ticket.data : '',
+        ticketSize: ticket ? ticket.size || 0 : 0,
+        ticketWidth: ticket ? ticket.width || 0 : 0,
+        ticketHeight: ticket ? ticket.height || 0 : 0,
         ticketPhotoTypeId: selectedTicketType ? selectedTicketType.id : '',
         ticketPhotoTypeName: selectedTicketType ? selectedTicketType.nombre : '',
+        ...(ticket ? expenseTicketLocationPatch('g') : {}),
         extraImages
       });
       clearFormDraft(addExpenseDraftKey());

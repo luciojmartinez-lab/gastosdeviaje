@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v210">
+  <link rel="manifest" href="manifest.webmanifest?v=700v211">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v210">
+  <link rel="stylesheet" href="styles.css?v=700v211">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v210 · 22/07/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v211 · 22/07/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v210</div>
+  <div class="app-version">700v211</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -496,10 +496,11 @@
         </label>
         <button type="button" class="btn ghost ticket-ocr-button" id="g-ticket-read" disabled>Leer ticket</button>
       </div>
-      <p id="g-ticket-selected" class="small">Ningún ticket seleccionado.</p>
+      <p id="g-ticket-selected" class="small">El ticket es opcional. Elige archivo o Cámara para añadirlo.</p>
       <p id="g-ticket-ocr-status" class="small ticket-ocr-status" aria-live="polite"></p>
       <label for="g-ticket-type">Clasificación del ticket</label>
       <select id="g-ticket-type" disabled><option value="">Sin clasificar</option></select>
+      <label class="check-option photo-map-option" id="g-ticket-map-option" hidden><input type="checkbox" id="g-ticket-map"> Añadir el ticket al mapa</label>
     </div>
     <div class="expense-ticket-field expense-extra-images-field">
       <label>Imágenes adicionales</label>
@@ -566,7 +567,7 @@
           </label>
           <button type="button" class="btn ghost ticket-ocr-button" id="edit-gasto-ticket-read" disabled>Leer ticket</button>
         </div>
-        <p id="edit-gasto-ticket-selected" class="small">Ningún ticket nuevo seleccionado.</p>
+        <p id="edit-gasto-ticket-selected" class="small">El ticket actual se conserva. Usa Elegir archivo o Cámara solo para sustituirlo.</p>
         <p id="edit-gasto-ticket-ocr-status" class="small ticket-ocr-status" aria-live="polite"></p>
       </div>
       <div class="edit-ticket-current-panel">
@@ -575,6 +576,7 @@
         <div id="edit-gasto-ticket-preview" class="expense-ticket-preview" aria-live="polite"></div>
         <label for="edit-gasto-ticket-type">Clasificación del ticket</label>
         <select id="edit-gasto-ticket-type" disabled><option value="">Sin clasificar</option></select>
+        <label class="check-option photo-map-option" id="edit-gasto-ticket-map-option" hidden><input type="checkbox" id="edit-gasto-ticket-map"> Añadir el ticket al mapa</label>
         <div id="edit-gasto-ticket-rotate" class="expense-image-rotate-actions" hidden>
           <button type="button" class="ghost expense-ticket-rotate-button" id="edit-gasto-ticket-rotate-left" title="Girar ticket a la izquierda" aria-label="Girar ticket a la izquierda"><span aria-hidden="true">&#8634;</span> Izquierda</button>
           <button type="button" class="ghost expense-ticket-rotate-button" id="edit-gasto-ticket-rotate-right" title="Girar ticket a la derecha" aria-label="Girar ticket a la derecha"><span aria-hidden="true">&#8635;</span> Derecha</button>
@@ -1043,11 +1045,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v210"></script>
-<script src="app.bundle.js?v=700v210"></script>
+<script src="map-model.js?v=700v211"></script>
+<script src="app.bundle.js?v=700v211"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v210';
+    const pageVersion = '700v211';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1099,7 +1101,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v210', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v211', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

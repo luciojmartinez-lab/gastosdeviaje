@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v210</title>
+  <title>Manual de Cuaderno de Bitácora - 700v211</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     const embeddedHelpMode = helpParams.get('embedded');
@@ -193,7 +193,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 22 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v210</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 22 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v211</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -235,7 +235,7 @@
         <ol class="workflow">
           <li><strong>Seleccionar el viaje.</strong> En <a href="#viajes">Viajes</a>, marca el viaje activo. El Blog solo se habilita cuando hay exactamente uno seleccionado.</li>
           <li><strong>Anotar cada movimiento.</strong> Usa <a href="#gasto-formulario">Añadir gastos</a>. Para varios gastos seguidos, pulsa <em>Añadir y seguir</em>; se conservarán los datos útiles para el siguiente registro.</li>
-          <li><strong>Guardar el justificante.</strong> Fotografía o elige el ticket, usa <a href="#ocr">Leer ticket</a> si conviene y asigna una <a href="#clasificaciones">clasificación</a>. Las imágenes adicionales pueden conservar GPS, clasificarse y girarse individualmente.</li>
+          <li><strong>Guardar el justificante.</strong> Fotografía o elige el ticket, usa <a href="#ocr">Leer ticket</a> si conviene y asigna una <a href="#clasificaciones">clasificación</a>. El ticket y las imágenes adicionales muestran una vista previa, pueden girarse individualmente y, cuando tienen GPS, permiten añadirse al mapa.</li>
           <li><strong>Contar lo ocurrido.</strong> Añade al <a href="#blog-formulario">Blog</a> texto, imágenes o puntos geolocalizados. Usa <a href="#en-ruta">En ruta</a> para una huella intermedia del recorrido.</li>
           <li><strong>Reutilizar gastos en el relato.</strong> Desde <a href="#gastos-tabla">Acciones del gasto</a>, elige <em>Añadir al blog</em>. La aplicación permanece en Gastos y conserva ese registro a la vista para continuar con el siguiente.</li>
           <li><strong>Registrar movimientos entre cuentas.</strong> Una recarga, retirada o cambio de divisa se anota como <a href="#transferencias">transferencia</a>, no como gasto, porque el dinero solo cambia de cuenta.</li>
@@ -407,7 +407,8 @@
             <tr><td id="ocr">Leer ticket</td><td>Lee el justificante y propone comercio, fecha, hora, importe, categoría y subcategoría cuando los reconoce con claridad. Admite tickets comerciales y justificantes de tarjeta, y entiende etiquetas habituales en español, catalán, inglés, finés y otros idiomas europeos. Al editar un gasto completa solo los campos vacíos; no sustituye datos existentes ni rellena un importe dudoso. Revisa siempre el resultado antes de guardar.</td></tr>
             <tr><td>Clasificación del ticket</td><td>Tipo visual independiente de la categoría económica.</td></tr>
             <tr><td>Vista previa y Girar</td><td>Al editar un gasto muestra el ticket actual. Pulsar la imagen lo abre a tamaño completo; Izquierda y Derecha lo giran y actualizan inmediatamente la vista previa. Si se pulsa Guardar cambios mientras el giro está terminando, la aplicación espera y conserva siempre la última orientación.</td></tr>
-            <tr><td>Imágenes adicionales</td><td>Admite varias fotografías. Cada una puede conservar GPS, recibir clasificación y añadirse al mapa. Si la fecha u hora de la primera foto no coincide con la del gasto, <em>Mantener</em> conserva las del gasto y <em>Reemplazar</em> aplica las de la foto.</td></tr>
+            <tr><td>GPS y mapa del ticket</td><td>Cuando el ticket es una fotografía con coordenadas, aparece <em>Añadir el ticket al mapa</em>. La aplicación guarda su GPS antes de compactar la imagen y lo representa como una fotografía del gasto; los PDF no ofrecen esta opción.</td></tr>
+            <tr><td>Imágenes adicionales</td><td>Admite varias fotografías. Al editar, cada imagen actual se ve antes de decidir si se gira, se abre a tamaño completo al pulsarla y tiene sus propios botones Izquierda y Derecha. Cada una puede conservar GPS, recibir clasificación y añadirse al mapa. Si la fecha u hora de la primera foto no coincide con la del gasto, <em>Mantener</em> conserva las del gasto y <em>Reemplazar</em> aplica las de la foto.</td></tr>
             <tr><td>Añadir y salir</td><td>Guarda y cierra.</td></tr>
             <tr><td>Añadir y seguir</td><td>Guarda y prepara otro gasto conservando el contexto útil.</td></tr>
             <tr><td>Cancelar / X</td><td>Cancelar descarta el borrador; la X cierra y permite recuperarlo después. Los archivos deben elegirse de nuevo.</td></tr>
@@ -511,7 +512,7 @@
 
         <div class="subsection screen-start" id="mapa">
           <h3>3.6 Mapa</h3>
-          <p>Combina la ruta planificada con ciudades, gastos, puntos del Blog y fotografías GPS. Los trayectos se representan mediante líneas rectas discontinuas. El mapa interactivo usa cartografía vectorial; los mapas copiados al Blog o incluidos en PDF se generan como imagen.</p>
+          <p>Combina la ruta planificada con ciudades, gastos, puntos del Blog y fotografías GPS, incluidos los tickets fotográficos marcados para aparecer en el mapa. Los trayectos se representan mediante líneas rectas discontinuas. El mapa interactivo usa cartografía vectorial; los mapas copiados al Blog o incluidos en PDF se generan como imagen.</p>
           <p>Para mantener el mapa despejado, las fechas no se escriben junto a los marcadores: se muestran al pulsar el punto o la ciudad. En un punto geolocalizado se puede marcar <strong>Caminar</strong>, <strong>Coche</strong>, <strong>Tren</strong>, <strong>Bus</strong> o <strong>Avión</strong> para sustituir el marcador por un pequeño icono, sin aumentar el espacio ocupado. El tren se representa de perfil con una locomotora inspirada en la portada. Al pulsar el icono aparecen su descripción, lugar, fecha, hora y las notas del punto cuando existan.</p>
           <figure><img src="assets/help/07-mapa.png" alt="Mapa con filtros, ruta, destinos y grupos de fotos"><figcaption>Mapa por día con tres ciudades y fotografías geolocalizadas.</figcaption></figure>
           <ol class="legend"><li><b>1</b>Centrar y filtros de día o ciudad.</li><li><b>2</b>Capas y modos de visualización.</li><li><b>3</b>Signo + de fotos y contador naranja.</li><li><b>4</b>Ciudad o destino con nombre.</li><li><b>5</b>Área interactiva del mapa.</li></ol>
@@ -656,10 +657,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 22 de julio de 2026 para Cuaderno de Bitácora 700v210.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 22 de julio de 2026 para Cuaderno de Bitácora 700v211.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v210 · 22 de julio de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v211 · 22 de julio de 2026</div>
 </body>
 </html>

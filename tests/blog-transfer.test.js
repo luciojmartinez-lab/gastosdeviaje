@@ -138,7 +138,7 @@ test('los tickets e imágenes de Gastos se giran antes de actualizar el Blog', (
   assert.match(app, /async function rotateOpenExpenseImage\(imageIndex, direction\)/);
   assert.match(app, /data-rotate-expense-image="\$\{index\}"/);
   assert.match(app, /ticketData: rotated\.data/);
-  assert.match(app, /activeEditTicketRecord = saved;[\s\S]*?renderEditExpenseTicket\(saved\)/);
+  assert.match(app, /activeEditTicketRecord = \{ \.\.\.activeEditTicketRecord, \.\.\.saved \};[\s\S]*?renderEditExpenseTicket\(activeEditTicketRecord\)/);
   assert.match(app, /const currentTicket = activeEditTicketRecord[\s\S]*?ticketData: currentTicket \? currentTicket\.ticketData : ''/);
   assert.match(app, /queueExpenseClassificationSave\(id, \{ extraImages \}\)/);
   assert.match(app, /function queueExpenseMediaSave\(callback\)/);
@@ -147,6 +147,24 @@ test('los tickets e imágenes de Gastos se giran antes de actualizar el Blog', (
   assert.match(styles, /\.expense-image-rotate-actions/);
   assert.match(styles, /\.expense-ticket-preview-open img[\s\S]*?object-fit: contain/);
   assert.match(styles, /\.edit-ticket-fields \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(app, /class="expense-current-image-preview"[\s\S]*?<img src=/);
+  assert.match(app, /class="expense-current-image-rotate"[\s\S]*?Izquierda[\s\S]*?Derecha/);
+  assert.match(styles, /\.expense-current-image-preview img[\s\S]*?object-fit: contain/);
+});
+
+test('el ticket explica cuándo se conserva y puede añadirse al mapa si tiene GPS', () => {
+  assert.match(html, /El ticket es opcional\. Elige archivo o Cámara para añadirlo\./);
+  assert.match(html, /El ticket actual se conserva\. Usa Elegir archivo o Cámara solo para sustituirlo\./);
+  assert.match(html, /id="g-ticket-map-option"[\s\S]*?id="g-ticket-map"/);
+  assert.match(html, /id="edit-gasto-ticket-map-option"[\s\S]*?id="edit-gasto-ticket-map"/);
+  assert.match(app, /async function syncExpenseTicketSelection\(prefix, source\)[\s\S]*?imageGpsForFile\(selectedFile/);
+  assert.match(app, /function expenseTicketLocationPatch\(prefix, gasto = null\)/);
+  assert.match(app, /ticketMapEnabled: Boolean\(point/);
+  assert.match(app, /const ticketImage = expenseTicketImageRecord\(gasto\);[\s\S]*?source: 'gasto-ticket'/);
+  assert.match(app, /await pendingExpenseTicketLocationChecks\['edit-gasto'\]/);
+  assert.match(app, /await pendingExpenseTicketLocationChecks\.g/);
+  assert.match(help, /GPS y mapa del ticket/);
+  assert.match(help, /cada imagen actual se ve antes de decidir si se gira/);
 });
 
 test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {
