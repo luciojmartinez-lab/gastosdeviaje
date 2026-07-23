@@ -294,9 +294,9 @@ test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neu
   assert.match(app, /\.blog-print-image\.landscape \{ width: 62%; \}/);
   assert.match(app, /\.blog-print-image\.portrait \{ width: 28%; min-width: 42mm; \}/);
   assert.match(app, /\.blog-print-image\.ticket-document \{ filter: grayscale\(1\) contrast\(1\.06\) brightness\(1\.06\)/);
-  assert.match(app, /\.blog-print-gallery \{ display: grid; width: 84%;/);
-  assert.match(app, /\.blog-print-gallery figure \{ display: flex; aspect-ratio: 4 \/ 3;/);
-  assert.match(app, /\.blog-print-gallery \.blog-print-image \{ width: 100%; min-width: 0; height: 100%; max-height: none;/);
+  assert.match(app, /\.blog-print-gallery \{ display: grid; width: 84%; grid-template-columns: repeat\(4, minmax\(0, 1fr\)\); grid-auto-rows: 19mm;/);
+  assert.match(app, /\.blog-print-gallery figure \{ display: flex; height: 19mm;/);
+  assert.match(app, /\.blog-print-gallery \.blog-print-image,[\s\S]*?\.blog-print-day\.compact \.blog-print-gallery \.blog-print-image \{ width: auto; min-width: 0; max-width: 100%; height: 19mm; max-height: 19mm;/);
   assert.match(app, /\.blog-print-featured \.blog-print-image \{ width: 100%; max-width: 100%; \}/);
   assert.match(app, /\.blog-print-featured \.blog-print-image\.portrait \{ width: 80%; max-width: 80%; \}/);
   assert.match(app, /\.blog-print-day \{ break-before: page; page-break-before: always; \}/);
@@ -310,7 +310,7 @@ test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neu
   assert.match(app, /\.blog-print-day\.compact \.blog-print-gallery \{ width: 78%; gap: 2mm; \}/);
   assert.match(app, /\.blog-print-entry \{ break-inside: auto; page-break-inside: auto;/);
   assert.match(app, /class="blog-print-entry-heading"/);
-  assert.match(help, /galerías usan celdas de igual altura/);
+  assert.match(help, /Las galerías colocan hasta cuatro fotografías por fila y muestran verticales y horizontales con la misma altura visible/);
   assert.match(help, /tickets se imprimen con un tono neutro/);
   assert.match(help, /Cada día comienza en una hoja nueva/);
   assert.match(help, /En los días largos, el PDF reduce automáticamente un poco más las imágenes y las separaciones/);

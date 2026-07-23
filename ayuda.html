@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v215</title>
+  <title>Manual de Cuaderno de Bitácora - 700v216</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     const embeddedHelpMode = helpParams.get('embedded');
@@ -193,7 +193,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 23 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v215</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 23 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v216</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -444,7 +444,7 @@
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Control / opción</th><th>Uso</th></tr></thead><tbody>
             <tr><td>Añadir entrada</td><td>Abre el selector Texto, Imagen o Punto geolocalizado.</td></tr>
             <tr><td>Última entrada</td><td>Abre el día necesario y lleva a la última entrada visible con los filtros actuales.</td></tr>
-            <tr><td id="blog-pdf">Vista / PDF</td><td>Genera una vista HTML adaptable con las entradas que cumplen los filtros activos y abre el guardado en PDF. Cada día comienza en una hoja nueva. En los días largos, el PDF reduce automáticamente un poco más las imágenes y las separaciones para aprovechar mejor cada hoja; los días cortos conservan el tamaño normal. También iguala la altura de las fotografías de cada fila de una galería y neutraliza el tono de los tickets para tratarlos como documentos. La guía previa recuerda que, en Android, hay que dejar seleccionado <strong>Guardar como PDF</strong>, pulsar el botón redondo con el icono PDF, elegir carpeta y confirmar con <strong>Guardar</strong>; seleccionar solamente la opción superior no crea aún el archivo. Al cerrar el cuadro de impresión, la vista HTML permanece y ofrece <strong>Compartir HTML</strong>, <strong>Descargar HTML</strong> e <strong>Imprimir / PDF</strong>. Para enviar la vista se usa Compartir HTML, no el menú de Chrome, que solo compartiría la dirección temporal <code>about:blank</code>. Sin filtros, incluye el relato completo.</td></tr>
+            <tr><td id="blog-pdf">Vista / PDF</td><td>Genera una vista HTML adaptable con las entradas que cumplen los filtros activos y abre el guardado en PDF. Cada día comienza en una hoja nueva. En los días largos, el PDF reduce automáticamente un poco más las imágenes y las separaciones para aprovechar mejor cada hoja; los días cortos conservan el tamaño normal. Las galerías colocan hasta cuatro fotografías por fila y muestran verticales y horizontales con la misma altura visible, sin recortarlas ni deformarlas. Los tickets se imprimen con un tono neutro para tratarlos como documentos. La guía previa recuerda que, en Android, hay que dejar seleccionado <strong>Guardar como PDF</strong>, pulsar el botón redondo con el icono PDF, elegir carpeta y confirmar con <strong>Guardar</strong>; seleccionar solamente la opción superior no crea aún el archivo. Al cerrar el cuadro de impresión, la vista HTML permanece y ofrece <strong>Compartir HTML</strong>, <strong>Descargar HTML</strong> e <strong>Imprimir / PDF</strong>. Para enviar la vista se usa Compartir HTML, no el menú de Chrome, que solo compartiría la dirección temporal <code>about:blank</code>. Sin filtros, incluye el relato completo.</td></tr>
             <tr><td>PDF del día</td><td>El botón inferior toma el día que está desplegado y genera únicamente sus entradas, sin obligar a volver arriba ni a cambiar el filtro. Si hay varios días abiertos, utiliza el último que se desplegó. Este PDF diario no añade la portada general ni otros días.</td></tr>
             <tr><td>WordPress</td><td>Elige días y descarga un archivo con un post borrador por día.</td></tr>
             <tr><td>Filtros</td><td>Día, país y ciudad. Se pueden combinar y determinan tanto las entradas visibles como el contenido de Vista / PDF.</td></tr>
@@ -596,7 +596,7 @@
           <h4 id="csv">Exportar CSV</h4>
           <p>Genera una tabla de movimientos con Fecha, Hora, Viaje, Categoría, Subcategoría, Cuenta, Moneda, Importe, EUR, Descripción y Archivos. Usa UTF-8 con BOM para abrir correctamente los acentos en Excel.</p>
           <h4>PDF del Blog</h4>
-          <p>El PDF respeta los filtros activos del Blog: día, país, ciudad o cualquier combinación de ellos. Solo incluye las entradas mostradas por esa selección; si no hay filtros, incluye el relato completo. Cuando el Blog contiene la portada general, esta se mantiene como primera página con el mapa y la lista de ciudades del viaje aunque haya filtros. <em>Preparativos Viaje</em> solo aparece si existen entradas anteriores al inicio que cumplen la selección activa; nunca se crea como página vacía. Los días continúan en el espacio libre de la página anterior, las fotografías horizontales se compactan, las galerías usan celdas de igual altura, las imágenes verticales aisladas se muestran aproximadamente un 20 % más pequeñas y los tickets se imprimen con un tono neutro. No se añade un mapa geolocalizado automático al final.</p>
+          <p>El PDF respeta los filtros activos del Blog: día, país, ciudad o cualquier combinación de ellos. Solo incluye las entradas mostradas por esa selección; si no hay filtros, incluye el relato completo. Cuando el Blog contiene la portada general, esta se mantiene como primera página con el mapa y la lista de ciudades del viaje aunque haya filtros. <em>Preparativos Viaje</em> solo aparece si existen entradas anteriores al inicio que cumplen la selección activa; nunca se crea como página vacía. Cada día empieza en una hoja nueva y los días largos se compactan automáticamente. Las galerías colocan hasta cuatro fotografías por fila y ajustan verticales y horizontales a una altura visible común; las imágenes verticales aisladas se muestran aproximadamente un 20 % más pequeñas y los tickets se imprimen con un tono neutro. No se añade un mapa geolocalizado automático al final.</p>
           <h4>WordPress</h4>
           <p>Exporta un post por día, inicialmente como borrador, con texto, imágenes, destacados y puntos. Requiere instalar el importador incluido en la aplicación.</p>
           <h4>PDF de esta ayuda</h4>
@@ -658,10 +658,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 23 de julio de 2026 para Cuaderno de Bitácora 700v215.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 23 de julio de 2026 para Cuaderno de Bitácora 700v216.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v215 · 23 de julio de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v216 · 23 de julio de 2026</div>
 </body>
 </html>

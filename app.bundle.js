@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v215';
+const APP_VERSION = '700v216';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2192,7 +2192,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v215');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v216');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2224,7 +2224,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v215');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v216');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2824,7 +2824,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v215');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v216');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -9607,7 +9607,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v215');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v216');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11562,10 +11562,11 @@ function printBlog(options = {}) {
     .blog-print-day.compact .blog-print-image.landscape { width: 52%; }
     .blog-print-day.compact .blog-print-image.portrait { width: 24%; min-width: 36mm; }
     .blog-print-image.ticket-document { filter: grayscale(1) contrast(1.06) brightness(1.06); background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .blog-print-gallery { display: grid; width: 84%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; align-items: stretch; margin: 3mm auto 0; }
+    .blog-print-gallery { display: grid; width: 84%; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 19mm; gap: 3mm; align-items: stretch; margin: 3mm auto 0; }
     .blog-print-day.compact .blog-print-gallery { width: 78%; gap: 2mm; }
-    .blog-print-gallery figure { display: flex; aspect-ratio: 4 / 3; align-items: center; justify-content: center; break-inside: avoid; page-break-inside: avoid; margin: 0; overflow: hidden; background: #fff; }
-    .blog-print-gallery .blog-print-image { width: 100%; min-width: 0; height: 100%; max-height: none; margin: 0; object-fit: contain; }
+    .blog-print-gallery figure { display: flex; height: 19mm; align-items: center; justify-content: center; break-inside: avoid; page-break-inside: avoid; margin: 0; overflow: hidden; background: #fff; }
+    .blog-print-gallery .blog-print-image,
+    .blog-print-day.compact .blog-print-gallery .blog-print-image { width: auto; min-width: 0; max-width: 100%; height: 19mm; max-height: 19mm; margin: 0; object-fit: contain; }
     .blog-print-point { display: flex; flex-wrap: wrap; gap: 3mm 7mm; align-items: center; margin-top: 4mm; padding: 4mm; border: 1px solid #c4b5fd; border-radius: 3mm; background: #f5f3ff; font-size: 11px; }
     .blog-print-point p { flex-basis: 100%; margin: 0; white-space: pre-line; }
     .blog-print-point a { color: #5b21b6; }
