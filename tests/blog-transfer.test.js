@@ -287,7 +287,7 @@ test('el Blog y su PDF no añaden un mapa automático de puntos al final', () =>
   assert.doesNotMatch(app, /blogPrintPointMapHtml\(timeline\)/);
 });
 
-test('el PDF del Blog compacta páginas, iguala galerías y neutraliza tickets', () => {
+test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neutraliza tickets', () => {
   assert.match(app, /function blogPrintImageClasses\(image\)/);
   assert.match(app, /startsWith\('expense-ticket-'\)/);
   assert.match(app, /ticket-document/);
@@ -299,12 +299,13 @@ test('el PDF del Blog compacta páginas, iguala galerías y neutraliza tickets',
   assert.match(app, /\.blog-print-gallery \.blog-print-image \{ width: 100%; min-width: 0; height: 100%; max-height: none;/);
   assert.match(app, /\.blog-print-featured \.blog-print-image \{ width: 100%; max-width: 100%; \}/);
   assert.match(app, /\.blog-print-featured \.blog-print-image\.portrait \{ width: 80%; max-width: 80%; \}/);
-  assert.match(app, /\.blog-print-day \{ break-before: auto; page-break-before: auto; \}/);
-  assert.doesNotMatch(app, /\.blog-print-day \{ break-before: page; page-break-before: always; \}/);
+  assert.match(app, /\.blog-print-day \{ break-before: page; page-break-before: always; \}/);
+  assert.match(app, /\.blog-print-day \+ \.blog-print-day \{ margin-top: 0; padding-top: 0; border-top: 0; \}/);
   assert.match(app, /\.blog-print-entry \{ break-inside: auto; page-break-inside: auto;/);
   assert.match(app, /class="blog-print-entry-heading"/);
   assert.match(help, /galerías usan celdas de igual altura/);
   assert.match(help, /tickets se imprimen con un tono neutro/);
+  assert.match(help, /Cada día comienza en una hoja nueva/);
 });
 
 test('el PDF del Blog respeta los filtros activos de día, país y ciudad', () => {
