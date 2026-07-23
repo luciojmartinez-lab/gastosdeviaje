@@ -288,17 +288,29 @@ test('el Blog y su PDF no añaden un mapa automático de puntos al final', () =>
 });
 
 test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neutraliza tickets', () => {
-  assert.match(app, /function blogPrintImageClasses\(image\)/);
+  assert.match(app, /function blogPrintImageClasses\(image, context = ''\)/);
   assert.match(app, /startsWith\('expense-ticket-'\)/);
   assert.match(app, /ticket-document/);
+  assert.match(app, /important-ticket/);
+  assert.match(app, /minor-ticket/);
+  assert.match(app, /tren\|ave\|renfe\|ferrocarril/);
+  assert.match(app, /avion\|vuelo\|aerolinea\|boarding/);
+  assert.match(app, /hotel\|hostal\|alojamiento\|apartamento\|apartahotel\|pension\|camping\|booking\|reserva/);
   assert.match(app, /\.blog-print-image\.landscape \{ width: 62%; \}/);
   assert.match(app, /\.blog-print-image\.portrait \{ width: 28%; min-width: 42mm; \}/);
   assert.match(app, /\.blog-print-image\.ticket-document \{ filter: grayscale\(1\) contrast\(1\.06\) brightness\(1\.06\)/);
-  assert.match(app, /\.blog-print-gallery \{ display: grid; width: 84%; grid-template-columns: repeat\(4, minmax\(0, 1fr\)\); grid-auto-rows: 19mm;/);
-  assert.match(app, /\.blog-print-gallery figure \{ display: flex; height: 19mm;/);
-  assert.match(app, /\.blog-print-gallery \.blog-print-image,[\s\S]*?\.blog-print-day\.compact \.blog-print-gallery \.blog-print-image \{ width: auto; min-width: 0; max-width: 100%; height: 19mm; max-height: 19mm;/);
+  assert.match(app, /\.blog-print-image\.ticket-document\.minor-ticket \{ width: 18\.5%; min-width: 28mm; \}/);
+  assert.match(app, /\.blog-print-gallery \{ --gallery-row-height: 23mm; display: grid; width: 90%; grid-template-columns: repeat\(4, minmax\(0, 1fr\)\); grid-auto-rows: var\(--gallery-row-height\); gap: 1mm;/);
+  assert.match(app, /\.blog-print-gallery\.count-2 \{ --gallery-row-height: 41mm; width: 80%; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); gap: 2mm; \}/);
+  assert.match(app, /\.blog-print-gallery\.count-3 \{ --gallery-row-height: 27mm; width: 80%; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); gap: 2mm; \}/);
+  assert.match(app, /\.blog-print-gallery figure \{ display: flex; height: var\(--gallery-row-height\);/);
+  assert.match(app, /\.blog-print-gallery \.blog-print-image,[\s\S]*?\.blog-print-day\.compact \.blog-print-gallery \.blog-print-image \{ width: auto; min-width: 0; max-width: 100%; height: var\(--gallery-row-height\); max-height: var\(--gallery-row-height\);/);
+  assert.match(app, /\.blog-print-gallery \.blog-print-image\.ticket-document\.minor-ticket,[\s\S]*?height: 66\.666%; max-height: 66\.666%;/);
   assert.match(app, /\.blog-print-featured \.blog-print-image \{ width: 100%; max-width: 100%; \}/);
   assert.match(app, /\.blog-print-featured \.blog-print-image\.portrait \{ width: 80%; max-width: 80%; \}/);
+  assert.match(app, /\.blog-print-featured\.daily-map \.blog-print-image,[\s\S]*?width: 100%; max-width: 100%;/);
+  assert.match(app, /const dailyMap = group\.entries\.find\(entry =>[\s\S]*?entry\.dailyMapDate[\s\S]*?group\.date[\s\S]*?blogEntryImages\(entry\)\.length[\s\S]*?\) \|\| null/);
+  assert.match(app, /const featured = dailyMap \|\| group\.entries\.find\(entry => entry\.tipo === 'imagen' && entry\.featuredImage && blogEntryImages\(entry\)\.length\) \|\| null/);
   assert.match(app, /\.blog-print-day \{ break-before: page; page-break-before: always; \}/);
   assert.match(app, /\.blog-print-day \+ \.blog-print-day \{ margin-top: 0; padding-top: 0; border-top: 0; \}/);
   assert.match(app, /const imageCount = group\.entries\.reduce\(\(total, entry\) => total \+ blogEntryImages\(entry\)\.length, 0\)/);
@@ -307,10 +319,12 @@ test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neu
   assert.match(app, /\.blog-print-day\.compact \.blog-print-entry \{ padding-bottom: 2\.5mm; margin-bottom: 2\.5mm; \}/);
   assert.match(app, /\.blog-print-day\.compact \.blog-print-image\.landscape \{ width: 52%; \}/);
   assert.match(app, /\.blog-print-day\.compact \.blog-print-image\.portrait \{ width: 24%; min-width: 36mm; \}/);
-  assert.match(app, /\.blog-print-day\.compact \.blog-print-gallery \{ width: 78%; gap: 2mm; \}/);
+  assert.match(app, /\.blog-print-day\.compact \.blog-print-gallery \{ width: 90%; gap: 1mm; \}/);
   assert.match(app, /\.blog-print-entry \{ break-inside: auto; page-break-inside: auto;/);
   assert.match(app, /class="blog-print-entry-heading"/);
-  assert.match(help, /Las galerías colocan hasta cuatro fotografías por fila y muestran verticales y horizontales con la misma altura visible/);
+  assert.match(help, /Las galerías de cuatro fotos usan una separación mínima para mostrarlas mayores/);
+  assert.match(help, /las de dos o tres ocupan el 80 % del ancho/);
+  assert.match(help, /billetes de tren o avión y los documentos de alojamiento conservan el tamaño grande/);
   assert.match(help, /tickets se imprimen con un tono neutro/);
   assert.match(help, /Cada día comienza en una hoja nueva/);
   assert.match(help, /En los días largos, el PDF reduce automáticamente un poco más las imágenes y las separaciones/);
@@ -345,6 +359,8 @@ test('copiar el mapa diario al Blog conserva el dia seleccionado', () => {
   const copyEnd = app.indexOf('\nfunction copyCurrentMapToBlog()', copyStart);
   const copySource = app.slice(copyStart, copyEnd);
   assert.match(copySource, /await loadAll\(\);[\s\S]*?tripMapState\.day = day;[\s\S]*?tripMapState\.cityId = 0;[\s\S]*?renderTripMap\(\);/);
+  assert.match(copySource, /featuredImage: true/);
+  assert.match(copySource, /previousFeatured[\s\S]*?featuredImage: false/);
   assert.match(help, /mantiene ese d[\s\S]*?seleccionado/);
 });
 

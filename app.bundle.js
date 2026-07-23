@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v216';
+const APP_VERSION = '700v217';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2192,7 +2192,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v216');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v217');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2224,7 +2224,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v216');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v217');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2824,7 +2824,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v216');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v217');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -7781,9 +7781,17 @@ async function copyDailyMapToBlog() {
     imageMapEnabled: false,
     galleryImages: [],
     wordpressIncluded: true,
-    featuredImage: false,
+    featuredImage: true,
     dailyMapDate: day
   };
+  const previousFeatured = state.blogEntries.find(entry =>
+    Number(entry.viajeId) === Number(trip.id)
+    && entry.tipo === 'imagen'
+    && entry.fecha === day
+    && entry.featuredImage
+    && Number(entry.id) !== Number(existing && existing.id)
+  );
+  if (previousFeatured) await updateBlogEntry(previousFeatured.id, { featuredImage: false });
   if (existing) {
     await updateBlogEntry(existing.id, { ...snapshot, updatedAt: new Date().toISOString() });
   } else {
@@ -9607,7 +9615,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v216');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v217');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11213,17 +11221,19 @@ async function addExpenseToBlog(gasto, options = {}) {
   return true;
 }
 
-function blogPrintImageClasses(image) {
+function blogPrintImageClasses(image, context = '') {
   const orientation = Number(image.width) > Number(image.height) ? 'landscape' : 'portrait';
   const identity = normalizePlaceName([
     image.id,
     image.name,
     image.photoTypeName,
-    photoTypeLabel(image)
+    photoTypeLabel(image),
+    context
   ].filter(Boolean).join(' '));
   const ticketDocument = String(image.id || '').startsWith('expense-ticket-')
     || /\b(ticket|factura|recibo|justificante)\b/.test(identity);
-  return `${orientation}${ticketDocument ? ' ticket-document' : ''}`;
+  const importantTicket = ticketDocument && /\b(tren|ave|renfe|ferrocarril|avion|vuelo|aerolinea|boarding|embarque|hotel|hostal|alojamiento|apartamento|apartahotel|pension|camping|booking|reserva)\b/.test(identity);
+  return `${orientation}${ticketDocument ? ' ticket-document' : ''}${importantTicket ? ' important-ticket' : ticketDocument ? ' minor-ticket' : ''}`;
 }
 
 function blogPrintImagesHtml(images, description) {
@@ -11231,11 +11241,12 @@ function blogPrintImagesHtml(images, description) {
   if (!normalized.length) return '';
   if (normalized.length === 1) {
     const image = normalized[0];
-    const imageClass = blogPrintImageClasses(image);
+    const imageClass = blogPrintImageClasses(image, description);
     return `<img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(description || 'Imagen')}">`;
   }
-  return `<div class="blog-print-gallery">${normalized.map(image => {
-    const imageClass = blogPrintImageClasses(image);
+  const countClass = normalized.length === 2 ? ' count-2' : normalized.length === 3 ? ' count-3' : ' count-4-plus';
+  return `<div class="blog-print-gallery${countClass}">${normalized.map(image => {
+    const imageClass = blogPrintImageClasses(image, description);
     return `<figure><img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(description || 'Imagen')}"></figure>`;
   }).join('')}</div>`;
 }
@@ -11265,15 +11276,21 @@ function blogPrintEntryHtml(entry, options = {}) {
 function blogPrintFeaturedHtml(entry) {
   const image = entry ? blogEntryImages(entry)[0] : null;
   if (!image || !image.data) return '';
-  const imageClass = blogPrintImageClasses(image);
-  return `<figure class="blog-print-featured">
+  const imageClass = blogPrintImageClasses(image, entry.descripcion);
+  const dailyMap = String(entry.dailyMapDate || '') === String(entry.fecha || '');
+  return `<figure class="blog-print-featured${dailyMap ? ' daily-map' : ''}">
     <img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(entry.descripcion || 'Imagen destacada')}">
     <figcaption>${escapeHtml(entry.descripcion || '')}</figcaption>
   </figure>`;
 }
 
 function blogPrintDayHtml(group) {
-  const featured = group.entries.find(entry => entry.tipo === 'imagen' && entry.featuredImage && blogEntryImages(entry).length) || null;
+  const dailyMap = group.entries.find(entry =>
+    entry.tipo === 'imagen'
+    && String(entry.dailyMapDate || '') === String(group.date || '')
+    && blogEntryImages(entry).length
+  ) || null;
+  const featured = dailyMap || group.entries.find(entry => entry.tipo === 'imagen' && entry.featuredImage && blogEntryImages(entry).length) || null;
   const timeline = group.entries.filter(entry => !featured || Number(entry.id) !== Number(featured.id) || blogEntryImages(entry).length > 1);
   const imageCount = group.entries.reduce((total, entry) => total + blogEntryImages(entry).length, 0);
   const compact = group.entries.length >= 4 || imageCount >= 3;
@@ -11562,11 +11579,19 @@ function printBlog(options = {}) {
     .blog-print-day.compact .blog-print-image.landscape { width: 52%; }
     .blog-print-day.compact .blog-print-image.portrait { width: 24%; min-width: 36mm; }
     .blog-print-image.ticket-document { filter: grayscale(1) contrast(1.06) brightness(1.06); background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .blog-print-gallery { display: grid; width: 84%; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 19mm; gap: 3mm; align-items: stretch; margin: 3mm auto 0; }
-    .blog-print-day.compact .blog-print-gallery { width: 78%; gap: 2mm; }
-    .blog-print-gallery figure { display: flex; height: 19mm; align-items: center; justify-content: center; break-inside: avoid; page-break-inside: avoid; margin: 0; overflow: hidden; background: #fff; }
+    .blog-print-image.ticket-document.minor-ticket { width: 18.5%; min-width: 28mm; }
+    .blog-print-day.compact .blog-print-image.ticket-document.minor-ticket { width: 16%; min-width: 24mm; }
+    .blog-print-gallery { --gallery-row-height: 23mm; display: grid; width: 90%; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: var(--gallery-row-height); gap: 1mm; align-items: stretch; margin: 3mm auto 0; }
+    .blog-print-day.compact .blog-print-gallery { width: 90%; gap: 1mm; }
+    .blog-print-gallery.count-2 { --gallery-row-height: 41mm; width: 80%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2mm; }
+    .blog-print-gallery.count-3 { --gallery-row-height: 27mm; width: 80%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2mm; }
+    .blog-print-day.compact .blog-print-gallery.count-2,
+    .blog-print-day.compact .blog-print-gallery.count-3 { width: 80%; gap: 2mm; }
+    .blog-print-gallery figure { display: flex; height: var(--gallery-row-height); align-items: center; justify-content: center; break-inside: avoid; page-break-inside: avoid; margin: 0; overflow: hidden; background: #fff; }
     .blog-print-gallery .blog-print-image,
-    .blog-print-day.compact .blog-print-gallery .blog-print-image { width: auto; min-width: 0; max-width: 100%; height: 19mm; max-height: 19mm; margin: 0; object-fit: contain; }
+    .blog-print-day.compact .blog-print-gallery .blog-print-image { width: auto; min-width: 0; max-width: 100%; height: var(--gallery-row-height); max-height: var(--gallery-row-height); margin: 0; object-fit: contain; }
+    .blog-print-gallery .blog-print-image.ticket-document.minor-ticket,
+    .blog-print-day.compact .blog-print-gallery .blog-print-image.ticket-document.minor-ticket { width: auto; min-width: 0; height: 66.666%; max-height: 66.666%; }
     .blog-print-point { display: flex; flex-wrap: wrap; gap: 3mm 7mm; align-items: center; margin-top: 4mm; padding: 4mm; border: 1px solid #c4b5fd; border-radius: 3mm; background: #f5f3ff; font-size: 11px; }
     .blog-print-point p { flex-basis: 100%; margin: 0; white-space: pre-line; }
     .blog-print-point a { color: #5b21b6; }
@@ -11575,6 +11600,8 @@ function printBlog(options = {}) {
     .blog-print-featured .blog-print-image.portrait { width: 80%; max-width: 80%; }
     .blog-print-day.compact .blog-print-featured .blog-print-image { width: 82%; max-width: 82%; }
     .blog-print-day.compact .blog-print-featured .blog-print-image.portrait { width: 64%; max-width: 64%; }
+    .blog-print-featured.daily-map .blog-print-image,
+    .blog-print-day.compact .blog-print-featured.daily-map .blog-print-image { width: 100%; max-width: 100%; }
     .blog-print-featured figcaption { margin-top: 2mm; color: #64748b; font-size: 11px; }
     .blog-preview-toolbar { position: sticky; z-index: 10; top: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -8mm -8mm 8mm; padding: 10px; border-bottom: 1px solid #cbd5e1; background: #ffffffee; box-shadow: 0 4px 14px #0f172a1f; }
     .blog-preview-toolbar button { min-height: 42px; padding: 8px 12px; border: 1px solid #b9c8da; border-radius: 6px; color: #173d63; background: #eef5ff; font: inherit; font-weight: 650; }
