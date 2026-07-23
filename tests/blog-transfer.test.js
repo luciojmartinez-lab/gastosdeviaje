@@ -301,11 +301,19 @@ test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neu
   assert.match(app, /\.blog-print-featured \.blog-print-image\.portrait \{ width: 80%; max-width: 80%; \}/);
   assert.match(app, /\.blog-print-day \{ break-before: page; page-break-before: always; \}/);
   assert.match(app, /\.blog-print-day \+ \.blog-print-day \{ margin-top: 0; padding-top: 0; border-top: 0; \}/);
+  assert.match(app, /const imageCount = group\.entries\.reduce\(\(total, entry\) => total \+ blogEntryImages\(entry\)\.length, 0\)/);
+  assert.match(app, /const compact = group\.entries\.length >= 4 \|\| imageCount >= 3/);
+  assert.match(app, /class="blog-print-day\$\{compact \? ' compact' : ''\}"/);
+  assert.match(app, /\.blog-print-day\.compact \.blog-print-entry \{ padding-bottom: 2\.5mm; margin-bottom: 2\.5mm; \}/);
+  assert.match(app, /\.blog-print-day\.compact \.blog-print-image\.landscape \{ width: 52%; \}/);
+  assert.match(app, /\.blog-print-day\.compact \.blog-print-image\.portrait \{ width: 24%; min-width: 36mm; \}/);
+  assert.match(app, /\.blog-print-day\.compact \.blog-print-gallery \{ width: 78%; gap: 2mm; \}/);
   assert.match(app, /\.blog-print-entry \{ break-inside: auto; page-break-inside: auto;/);
   assert.match(app, /class="blog-print-entry-heading"/);
   assert.match(help, /galerías usan celdas de igual altura/);
   assert.match(help, /tickets se imprimen con un tono neutro/);
   assert.match(help, /Cada día comienza en una hoja nueva/);
+  assert.match(help, /En los días largos, el PDF reduce automáticamente un poco más las imágenes y las separaciones/);
 });
 
 test('el PDF del Blog respeta los filtros activos de día, país y ciudad', () => {

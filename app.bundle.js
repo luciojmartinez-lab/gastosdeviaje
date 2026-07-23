@@ -1,6 +1,6 @@
 ﻿const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v214';
+const APP_VERSION = '700v215';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2192,7 +2192,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v214');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v215');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2224,7 +2224,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v214');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v215');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2824,7 +2824,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v214');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v215');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -9607,7 +9607,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v214');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v215');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11275,7 +11275,9 @@ function blogPrintFeaturedHtml(entry) {
 function blogPrintDayHtml(group) {
   const featured = group.entries.find(entry => entry.tipo === 'imagen' && entry.featuredImage && blogEntryImages(entry).length) || null;
   const timeline = group.entries.filter(entry => !featured || Number(entry.id) !== Number(featured.id) || blogEntryImages(entry).length > 1);
-  return `<section class="blog-print-day">
+  const imageCount = group.entries.reduce((total, entry) => total + blogEntryImages(entry).length, 0);
+  const compact = group.entries.length >= 4 || imageCount >= 3;
+  return `<section class="blog-print-day${compact ? ' compact' : ''}">
     <h1>${escapeHtml(blogDayHeading(group.date, group.entries))}</h1>
     ${blogPrintFeaturedHtml(featured)}
     ${timeline.map(entry => blogPrintEntryHtml(entry, { skipFirstImage: Boolean(featured && Number(entry.id) === Number(featured.id)) })).join('')}
@@ -11550,14 +11552,18 @@ function printBlog(options = {}) {
     .blog-print-day + .blog-print-day { margin-top: 0; padding-top: 0; border-top: 0; }
     .blog-print-day > h1 { break-after: avoid-page; page-break-after: avoid; }
     .blog-print-entry { break-inside: auto; page-break-inside: auto; padding: 0 0 4mm; margin: 0 0 4mm; border-bottom: 1px solid #dbe3ef; }
+    .blog-print-day.compact .blog-print-entry { padding-bottom: 2.5mm; margin-bottom: 2.5mm; }
     .blog-print-entry-heading { break-inside: avoid; page-break-inside: avoid; break-after: avoid-page; page-break-after: avoid; }
     .blog-print-meta { display: flex; flex-wrap: wrap; gap: 3mm 7mm; color: #64748b; font-size: 11px; }
     .blog-print-text { margin-top: 3mm; font-size: 12px; line-height: 1.5; white-space: normal; }
     .blog-print-image { display: block; height: auto; max-height: 205mm; margin: 3mm auto 0; object-fit: contain; break-inside: avoid; page-break-inside: avoid; background: #fff; }
     .blog-print-image.landscape { width: 62%; }
     .blog-print-image.portrait { width: 28%; min-width: 42mm; }
+    .blog-print-day.compact .blog-print-image.landscape { width: 52%; }
+    .blog-print-day.compact .blog-print-image.portrait { width: 24%; min-width: 36mm; }
     .blog-print-image.ticket-document { filter: grayscale(1) contrast(1.06) brightness(1.06); background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .blog-print-gallery { display: grid; width: 84%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3mm; align-items: stretch; margin: 3mm auto 0; }
+    .blog-print-day.compact .blog-print-gallery { width: 78%; gap: 2mm; }
     .blog-print-gallery figure { display: flex; aspect-ratio: 4 / 3; align-items: center; justify-content: center; break-inside: avoid; page-break-inside: avoid; margin: 0; overflow: hidden; background: #fff; }
     .blog-print-gallery .blog-print-image { width: 100%; min-width: 0; height: 100%; max-height: none; margin: 0; object-fit: contain; }
     .blog-print-point { display: flex; flex-wrap: wrap; gap: 3mm 7mm; align-items: center; margin-top: 4mm; padding: 4mm; border: 1px solid #c4b5fd; border-radius: 3mm; background: #f5f3ff; font-size: 11px; }
@@ -11566,6 +11572,8 @@ function printBlog(options = {}) {
     .blog-print-featured { margin: 0 0 8mm; text-align: center; }
     .blog-print-featured .blog-print-image { width: 100%; max-width: 100%; }
     .blog-print-featured .blog-print-image.portrait { width: 80%; max-width: 80%; }
+    .blog-print-day.compact .blog-print-featured .blog-print-image { width: 82%; max-width: 82%; }
+    .blog-print-day.compact .blog-print-featured .blog-print-image.portrait { width: 64%; max-width: 64%; }
     .blog-print-featured figcaption { margin-top: 2mm; color: #64748b; font-size: 11px; }
     .blog-preview-toolbar { position: sticky; z-index: 10; top: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -8mm -8mm 8mm; padding: 10px; border-bottom: 1px solid #cbd5e1; background: #ffffffee; box-shadow: 0 4px 14px #0f172a1f; }
     .blog-preview-toolbar button { min-height: 42px; padding: 8px 12px; border: 1px solid #b9c8da; border-radius: 6px; color: #173d63; background: #eef5ff; font: inherit; font-weight: 650; }
