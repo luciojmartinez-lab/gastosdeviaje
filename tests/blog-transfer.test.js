@@ -167,6 +167,24 @@ test('el ticket explica cuándo se conserva y puede añadirse al mapa si tiene G
   assert.match(help, /cada imagen actual se ve antes de decidir si se gira/);
 });
 
+test('editar y guardar un gasto tolera tickets o imágenes nulos sin intentar leer su latitud', () => {
+  const coordinateSource = app.match(/function storedImageCoordinate\([\s\S]*?\n\}/)?.[0];
+  const normalizeSource = app.match(/function normalizeStoredImageRecord\([\s\S]*?\n\}/)?.[0];
+  assert.ok(coordinateSource);
+  assert.ok(normalizeSource);
+  const normalizeStoredImageRecord = Function(`${coordinateSource}\n${normalizeSource}\nreturn normalizeStoredImageRecord;`)();
+  assert.doesNotThrow(() => normalizeStoredImageRecord(null));
+  assert.deepEqual(
+    {
+      latitude: normalizeStoredImageRecord(null).latitude,
+      longitude: normalizeStoredImageRecord(null).longitude,
+      mapEnabled: normalizeStoredImageRecord(null).mapEnabled
+    },
+    { latitude: null, longitude: null, mapEnabled: false }
+  );
+  assert.match(app, /function expenseTicketLocationPatch\(prefix, gasto = null\)[\s\S]*?storedImageCoordinates\(existing\)/);
+});
+
 test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {
   assert.match(html, /id="config-photo-types"/);
   assert.match(html, /id="g-extra-images-classifications"/);
