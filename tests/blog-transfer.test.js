@@ -316,8 +316,8 @@ test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neu
   assert.match(app, /hotel\|hostal\|alojamiento\|apartamento\|apartahotel\|pension\|camping\|booking\|reserva/);
   assert.match(app, /\.blog-print-image\.landscape \{ width: 62%; \}/);
   assert.match(app, /\.blog-print-image\.portrait \{ width: 28%; min-width: 42mm; \}/);
-  assert.match(app, /\.blog-print-image\.ticket-document \{ filter: grayscale\(1\) contrast\(1\.06\) brightness\(1\.06\)/);
-  assert.match(app, /\.blog-print-image\.ticket-document\.minor-ticket \{ width: 18\.5%; min-width: 28mm; \}/);
+  assert.match(app, /\.blog-print-image\.ticket-document \{ background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; \}/);
+  assert.match(app, /\.blog-print-image\.ticket-document\.minor-ticket \{ filter: grayscale\(1\) contrast\(1\.06\) brightness\(1\.06\); width: 18\.5%; min-width: 28mm; \}/);
   assert.match(app, /\.blog-print-gallery \{ --gallery-row-height: 23mm; display: grid; width: 90%; grid-template-columns: repeat\(4, minmax\(0, 1fr\)\); grid-auto-rows: var\(--gallery-row-height\); gap: 1mm;/);
   assert.match(app, /\.blog-print-gallery\.count-2 \{ --gallery-row-height: 41mm; width: 80%; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); gap: 2mm; \}/);
   assert.match(app, /\.blog-print-gallery\.count-3 \{ --gallery-row-height: 27mm; width: 80%; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); gap: 2mm; \}/);
@@ -342,8 +342,8 @@ test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neu
   assert.match(app, /class="blog-print-entry-heading"/);
   assert.match(help, /Las galerías de cuatro fotos usan una separación mínima para mostrarlas mayores/);
   assert.match(help, /las de dos o tres ocupan el 80 % del ancho/);
-  assert.match(help, /billetes de tren o avión y los documentos de alojamiento conservan el tamaño grande/);
-  assert.match(help, /tickets se imprimen con un tono neutro/);
+  assert.match(help, /tickets ordinarios se muestran aproximadamente un tercio más pequeños y con tono neutro/);
+  assert.match(help, /billetes de tren o avión y los documentos de alojamiento conservan el tamaño grande y el color original/);
   assert.match(help, /Cada día comienza en una hoja nueva/);
   assert.match(help, /En los días largos, el PDF reduce automáticamente un poco más las imágenes y las separaciones/);
 });

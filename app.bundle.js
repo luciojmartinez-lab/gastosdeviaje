@@ -1,6 +1,6 @@
-﻿const DB_NAME = 'gastos_viaje_db';
+const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v218';
+const APP_VERSION = '700v219';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2193,7 +2193,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v218');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v219');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2225,7 +2225,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v218');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v219');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2825,7 +2825,7 @@ async function readExpenseTicket(prefix) {
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v218');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v219');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -9616,7 +9616,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v218');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v219');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11243,12 +11243,12 @@ function blogPrintImagesHtml(images, description) {
   if (normalized.length === 1) {
     const image = normalized[0];
     const imageClass = blogPrintImageClasses(image, description);
-    return `<img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(description || 'Imagen')}">`;
+    return `<img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(description || 'Imagen')}" data-blog-lightbox="1">`;
   }
   const countClass = normalized.length === 2 ? ' count-2' : normalized.length === 3 ? ' count-3' : ' count-4-plus';
   return `<div class="blog-print-gallery${countClass}">${normalized.map(image => {
     const imageClass = blogPrintImageClasses(image, description);
-    return `<figure><img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(description || 'Imagen')}"></figure>`;
+    return `<figure><img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(description || 'Imagen')}" data-blog-lightbox="1"></figure>`;
   }).join('')}</div>`;
 }
 
@@ -11280,7 +11280,7 @@ function blogPrintFeaturedHtml(entry) {
   const imageClass = blogPrintImageClasses(image, entry.descripcion);
   const dailyMap = String(entry.dailyMapDate || '') === String(entry.fecha || '');
   return `<figure class="blog-print-featured${dailyMap ? ' daily-map' : ''}">
-    <img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(entry.descripcion || 'Imagen destacada')}">
+    <img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(entry.descripcion || 'Imagen destacada')}" data-blog-lightbox="1">
     <figcaption>${escapeHtml(entry.descripcion || '')}</figcaption>
   </figure>`;
 }
@@ -11574,13 +11574,13 @@ function printBlog(options = {}) {
     .blog-print-entry-heading { break-inside: avoid; page-break-inside: avoid; break-after: avoid-page; page-break-after: avoid; }
     .blog-print-meta { display: flex; flex-wrap: wrap; gap: 3mm 7mm; color: #64748b; font-size: 11px; }
     .blog-print-text { margin-top: 3mm; font-size: 12px; line-height: 1.5; white-space: normal; }
-    .blog-print-image { display: block; height: auto; max-height: 205mm; margin: 3mm auto 0; object-fit: contain; break-inside: avoid; page-break-inside: avoid; background: #fff; }
+    .blog-print-image { display: block; height: auto; max-height: 205mm; margin: 3mm auto 0; object-fit: contain; break-inside: avoid; page-break-inside: avoid; background: #fff; cursor: zoom-in; }
     .blog-print-image.landscape { width: 62%; }
     .blog-print-image.portrait { width: 28%; min-width: 42mm; }
     .blog-print-day.compact .blog-print-image.landscape { width: 52%; }
     .blog-print-day.compact .blog-print-image.portrait { width: 24%; min-width: 36mm; }
-    .blog-print-image.ticket-document { filter: grayscale(1) contrast(1.06) brightness(1.06); background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .blog-print-image.ticket-document.minor-ticket { width: 18.5%; min-width: 28mm; }
+    .blog-print-image.ticket-document { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .blog-print-image.ticket-document.minor-ticket { filter: grayscale(1) contrast(1.06) brightness(1.06); width: 18.5%; min-width: 28mm; }
     .blog-print-day.compact .blog-print-image.ticket-document.minor-ticket { width: 16%; min-width: 24mm; }
     .blog-print-gallery { --gallery-row-height: 23mm; display: grid; width: 90%; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: var(--gallery-row-height); gap: 1mm; align-items: stretch; margin: 3mm auto 0; }
     .blog-print-day.compact .blog-print-gallery { width: 90%; gap: 1mm; }
@@ -11608,21 +11608,46 @@ function printBlog(options = {}) {
     .blog-preview-toolbar button { min-height: 42px; padding: 8px 12px; border: 1px solid #b9c8da; border-radius: 6px; color: #173d63; background: #eef5ff; font: inherit; font-weight: 650; }
     .blog-preview-toolbar button.primary { border-color: #0876c9; color: #fff; background: #0876c9; }
     .blog-preview-status { flex: 1 1 100%; margin: 0; color: #475569; font-size: 12px; }
+    .blog-lightbox { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 18px; background: rgba(15, 23, 42, 0.92); }
+    .blog-lightbox[hidden] { display: none; }
+    .blog-lightbox img { display: block; max-width: 96vw; max-height: 92vh; width: auto; height: auto; object-fit: contain; border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,0.55); }
+    .blog-lightbox button { position: fixed; top: 14px; right: 14px; width: 44px; height: 44px; border: 0; border-radius: 999px; background: #fff; color: #111827; font-size: 28px; line-height: 1; cursor: pointer; }
     @media screen { body { max-width: 210mm; margin: 0 auto; padding: 12mm; } }
-    @media print { .blog-preview-toolbar { display: none; } }
+    @media print { .blog-preview-toolbar, .blog-lightbox { display: none !important; } .blog-print-image { cursor: default; } }
   </style></head><body><nav class="blog-preview-toolbar" aria-label="Acciones de la vista del Blog">
     <button type="button" class="primary" id="blog-preview-share">Compartir HTML</button>
     <button type="button" id="blog-preview-download">Descargar HTML</button>
     <button type="button" id="blog-preview-print">Imprimir / PDF</button>
     <button type="button" id="blog-preview-close">Cerrar</button>
     <p class="blog-preview-status" id="blog-preview-status">Usa estos botones; el menú de Chrome compartiría solamente about:blank.</p>
-  </nav>${body}<script>
+  </nav>${body}<div class="blog-lightbox" id="blog-lightbox" hidden><button type="button" id="blog-lightbox-close" aria-label="Cerrar">×</button><img id="blog-lightbox-image" alt=""></div><script data-keep-html="1">
+    (function(){
+      var lightbox = document.getElementById('blog-lightbox');
+      var lightboxImage = document.getElementById('blog-lightbox-image');
+      var closeButton = document.getElementById('blog-lightbox-close');
+      function closeLightbox(){ lightbox.hidden = true; lightboxImage.removeAttribute('src'); lightboxImage.alt = ''; }
+      document.addEventListener('click', function(event) {
+        var target = event.target;
+        var image = target && target.closest ? target.closest('[data-blog-lightbox]') : null;
+        if (image) {
+          event.preventDefault();
+          lightboxImage.src = image.currentSrc || image.src;
+          lightboxImage.alt = image.alt || 'Imagen';
+          lightbox.hidden = false;
+          return;
+        }
+        if (event.target === lightbox) closeLightbox();
+      });
+      closeButton.addEventListener('click', closeLightbox);
+      document.addEventListener('keydown', function(event){ if (event.key === 'Escape' && !lightbox.hidden) closeLightbox(); });
+    })();
+  </script><script>
     var htmlFileName = ${JSON.stringify(htmlFileName)};
     function htmlFileContent(){
       var clone = document.documentElement.cloneNode(true);
       var toolbar = clone.querySelector('.blog-preview-toolbar');
       if(toolbar) toolbar.remove();
-      Array.from(clone.querySelectorAll('script')).forEach(function(script){script.remove();});
+      Array.from(clone.querySelectorAll('script:not([data-keep-html])')).forEach(function(script){script.remove();});
       return '<!doctype html>\\n' + clone.outerHTML;
     }
     function createHtmlFile(){return new File([htmlFileContent()],htmlFileName,{type:'text/html'});}
