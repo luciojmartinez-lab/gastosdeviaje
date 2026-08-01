@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [app, html, help] = await Promise.all([
+const [app, html, styles, help] = await Promise.all([
   readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
+  readFile(new URL('../styles.css', import.meta.url), 'utf8'),
   readFile(new URL('../ayuda.html', import.meta.url), 'utf8')
 ]);
 
@@ -18,13 +19,23 @@ test('Viajes muestra y suma la duración inclusiva de cada viaje', () => {
   assert.equal(inclusiveDateDays('2026-10-24', '2026-10-26'), 3);
   assert.equal(inclusiveDateDays('', '2026-07-12'), 0);
   assert.equal(inclusiveDateDays('2026-07-12', '2026-07-10'), 0);
-  assert.match(html, /<th>Final<\/th><th>Días<\/th><th title="Media de gastos diarios">Media\/día<\/th><th>Gastos<\/th>/);
+  assert.match(html, /class="trip-end-col">Final<\/th><th class="trip-days-col">Días<\/th><th class="trip-daily-col" title="Media de gastos diarios"><span class="trip-daily-label-full">Media\/día<\/span>/);
   assert.match(app, /let yearDays = 0;[\s\S]*?yearDays \+= days;/);
   assert.match(app, /const dailyAverage = tripDailyExpenseAverage\(total, days\)/);
   assert.match(app, /const yearDailyAverage = tripDailyExpenseAverage\(yearTotal, yearDays\)/);
-  assert.match(app, /Subtotal \$\{escapeHtml\(year\)\}<\/td><td>\$\{yearDays \|\| '-'\}<\/td><td>\$\{yearDailyAverage === null \? '-' : fmtCurrency\(yearDailyAverage, 'EUR'\)\}<\/td><td>\$\{yearExpenses\}/);
+  assert.match(app, /Subtotal \$\{escapeHtml\(year\)\}<\/td><td class="trip-days-col">\$\{yearDays \|\| '-'\}<\/td><td class="trip-daily-col">\$\{yearDailyAverage === null \? '-' : fmtCurrency\(yearDailyAverage, 'EUR'\)\}<\/td><td class="trip-expenses-col">\$\{yearExpenses\}/);
   assert.match(help, /Duración del viaje calculada entre Inicio y Final, contando ambos días/);
   assert.match(help, /Gasto total del viaje convertido a EUR dividido entre sus días/);
+});
+
+test('Viajes compacta fechas, media diaria y total en la anchura del móvil', () => {
+  assert.match(app, /const fmtTripDate = iso => \{/);
+  assert.match(app, /<span class="trip-date-compact"><span>\$\{escapeHtml\(weekday\)\}<\/span><span>\$\{day\}-\$\{month\}-\$\{year\.slice\(-2\)\}<\/span><\/span>/);
+  assert.match(app, /trip-home-action-select trip-home-action-mobile/);
+  assert.match(styles, /#tabla-viajes-home \{[\s\S]*?table-layout: fixed;/);
+  assert.match(styles, /#tabla-viajes-home \.trip-expenses-col,[\s\S]*?#tabla-viajes-home \.trip-actions-col \{\s*display: none;/);
+  assert.match(styles, /#tabla-viajes-home \.trip-daily-col,[\s\S]*?#tabla-viajes-home \.trip-total-col \{[\s\S]*?white-space: nowrap;/);
+  assert.match(help, /En móvil, Inicio y Final se muestran en dos líneas/);
 });
 
 test('la media diaria divide el gasto EUR entre los días del viaje', () => {

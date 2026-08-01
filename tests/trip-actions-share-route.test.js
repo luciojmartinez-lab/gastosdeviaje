@@ -12,7 +12,7 @@ const [app, styles, help, sw, sharePdf, html] = await Promise.all([
 ]);
 
 test('Viajes muestra sus acciones en un desplegable', () => {
-  assert.match(app, /class="trip-home-action-select" data-trip-home-action="\$\{v\.id\}"/);
+  assert.match(app, /class="trip-home-action-select[^\"]*" data-trip-home-action="\$\{v\.id\}"/);
   assert.match(app, /tripHomeActionId = target\.dataset\.tripHomeAction/);
   assert.match(styles, /\.trip-home-action-select/);
 });
