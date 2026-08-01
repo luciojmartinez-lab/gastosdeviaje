@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v219</title>
+  <title>Manual de Cuaderno de Bitácora - 700v220</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     const embeddedHelpMode = helpParams.get('embedded');
@@ -193,7 +193,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 26 de julio de 2026</span><span><strong>Versión documentada:</strong> 700v219</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 1 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v220</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -333,7 +333,7 @@
             <tr><td>Subir / Bajar</td><td>Mueve una ciudad en la secuencia.</td></tr>
             <tr><td>X</td><td>Quita la ciudad del viaje sin borrarla de Configuración.</td></tr>
             <tr><td>Restablecer</td><td>Recupera el orden inicial propuesto.</td></tr>
-            <tr><td>Tabla Viajes creados</td><td>Muestra viaje, países, fechas y presupuesto. Acciones: Revisar, Documentos, Editar y Eliminar.</td></tr>
+            <tr><td>Tabla Viajes creados</td><td>Muestra viaje, países, fechas y presupuesto. Un doble clic sobre la fila abre directamente la edición; el menú Acciones mantiene Revisar, Documentos, Editar y Eliminar.</td></tr>
           </tbody></table></div>
 
           <h4 id="ruta-paradas">Añadir o modificar paradas</h4>
@@ -378,11 +378,14 @@
             <tr><td>Editar / Eliminar</td><td>Cambia el nombre o retira el tipo. Las clasificaciones se incluyen en backups y sincronización.</td></tr>
           </tbody></table></div>
 
+          <h4 id="idiomas-tickets">Idiomas para leer tickets</h4>
+          <p>El español está siempre disponible. En Configuración se pueden activar catalán, inglés, finés, polaco, francés, alemán, italiano, portugués, neerlandés, japonés y coreano. Además, el país del viaje activa automáticamente su idioma: por ejemplo, Polonia prepara polaco, Japón prepara japonés y Corea prepara coreano. Cada paquete se descarga una sola vez cuando hay conexión y después queda disponible para lecturas locales sin internet.</p>
+
           <h4 id="config-backups">Backups desde Configuración</h4>
           <p>Los botones abren <a href="#backup">Exportar / backup</a>, <a href="#sincronizacion">Sincronizar</a>, <a href="#csv">Exportar CSV</a>, <a href="#informes">Imprimir / PDF</a> e <a href="#backup-importar">Importar JSON</a>. Las últimas cinco copias completas permanecen en el dispositivo.</p>
 
           <h4 id="avanzado">Avanzado</h4>
-          <p>Reducir espacio ocupado recomprime las imágenes ya guardadas en Gastos, Blog y Documentos de viaje; no modifica PDF ni otros documentos. En Avanzado puedes ver cuántos borradores hay y limpiarlos manualmente mediante <em>Limpiar borradores</em>. <em>Reparar / Resetear datos</em> borra caché, service worker y base local; úsalo únicamente tras tener una copia reciente y cuando la aplicación no responda.</p>
+          <p>Reducir espacio ocupado recomprime las imágenes ya guardadas en Gastos, Blog y Documentos de viaje; no modifica PDF ni otros documentos. En Avanzado puedes ver cuántos borradores hay y limpiarlos manualmente mediante <em>Limpiar borradores</em>; esta acción también limpia los datos visibles que hubieran quedado en el formulario Nuevo gasto. <em>Reparar / Resetear datos</em> borra caché, service worker y base local; úsalo únicamente tras tener una copia reciente y cuando la aplicación no responda.</p>
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
@@ -403,15 +406,15 @@
             <tr><td>Importe</td><td>Valor en la moneda seleccionada.</td></tr>
             <tr><td>Tipo</td><td><em>Gasto</em> descuenta; <em>Ingreso / devolución</em> se guarda como importe negativo y reduce el total gastado.</td></tr>
             <tr><td>Descripción</td><td>Cuadro amplio de varias líneas para identificar el movimiento y revisar el texto completo mientras se escribe. Después permite localizarlo mediante los filtros.</td></tr>
-            <tr><td>Elegir archivo / Cámara</td><td>Añade un ticket como imagen o PDF.</td></tr>
-            <tr><td id="ocr">Leer ticket</td><td>Lee el justificante y propone comercio, fecha, hora, importe, categoría y subcategoría cuando los reconoce con claridad. Admite tickets comerciales y justificantes de tarjeta, y entiende etiquetas habituales en español, catalán, inglés, finés y otros idiomas europeos. Al editar un gasto completa solo los campos vacíos; no sustituye datos existentes ni rellena un importe dudoso. Revisa siempre el resultado antes de guardar.</td></tr>
+            <tr><td>Elegir archivo / Cámara</td><td>Añade un ticket como imagen o PDF. Cuando es una fotografía, se muestra inmediatamente dentro del formulario para comprobar su orientación antes de guardar.</td></tr>
+            <tr><td id="ocr">Leer ticket</td><td>Lee el justificante y propone comercio, fecha, hora, importe, categoría y subcategoría cuando los reconoce con claridad. Usa los <a href="#idiomas-tickets">idiomas elegidos o activados por el país del viaje</a>, incluidos japonés y coreano. Al editar completa solo campos vacíos y nunca rellena un importe dudoso. Revisa el resultado antes de guardar.</td></tr>
             <tr><td>Clasificación del ticket</td><td>Tipo visual independiente de la categoría económica.</td></tr>
-            <tr><td>Vista previa y Girar</td><td>Al editar un gasto muestra el ticket actual. Pulsar la imagen lo abre a tamaño completo; Izquierda y Derecha lo giran y actualizan inmediatamente la vista previa. Si se pulsa Guardar cambios mientras el giro está terminando, la aplicación espera y conserva siempre la última orientación.</td></tr>
+            <tr><td>Vista previa y Girar</td><td>Una foto nueva tomada con Cámara o elegida como archivo aparece en el propio formulario y se puede girar antes de guardar. Al editar también se muestra el ticket ya guardado. Si se pulsa Guardar mientras el giro está terminando, la aplicación espera y conserva siempre la última orientación.</td></tr>
             <tr><td>GPS y mapa del ticket</td><td>Cuando el ticket es una fotografía con coordenadas, aparece <em>Añadir el ticket al mapa</em>. La aplicación guarda su GPS antes de compactar la imagen y lo representa como una fotografía del gasto; los PDF no ofrecen esta opción.</td></tr>
             <tr><td>Imágenes adicionales</td><td>Admite varias fotografías. Al editar, cada imagen actual se ve antes de decidir si se gira, se abre a tamaño completo al pulsarla y tiene sus propios botones Izquierda y Derecha. Cada una puede conservar GPS, recibir clasificación y añadirse al mapa. Si la fecha u hora de la primera foto no coincide con la del gasto, <em>Mantener</em> conserva las del gasto y <em>Reemplazar</em> aplica las de la foto.</td></tr>
             <tr><td>Añadir y salir</td><td>Guarda y cierra.</td></tr>
             <tr><td>Añadir y seguir</td><td>Guarda y prepara otro gasto conservando el contexto útil.</td></tr>
-            <tr><td>Cancelar / X</td><td>Cancelar descarta el borrador; la X cierra y permite recuperarlo después. Los archivos deben elegirse de nuevo.</td></tr>
+            <tr><td>Cancelar / X</td><td>Cancelar descarta el borrador y limpia todos los datos propuestos por Leer ticket; al abrir de nuevo aparece un formulario limpio. La X cierra y permite recuperar lo escrito después. Los archivos deben elegirse de nuevo.</td></tr>
           </tbody></table></div>
 
           <h4 id="gastos-tabla">Lista, filtros y acciones</h4>
@@ -643,7 +646,7 @@
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Función</th><th>Sin internet</th></tr></thead><tbody>
             <tr><td>Abrir la aplicación ya instalada</td><td>Sí, con la versión almacenada.</td></tr>
             <tr><td>Crear y editar datos</td><td>Sí.</td></tr>
-            <tr><td>Leer tickets</td><td>Sí, una vez cargada por completo la versión actual; el enderezado y el OCR funcionan localmente.</td></tr>
+            <tr><td>Leer tickets</td><td>Sí. Español queda incluido al instalar la versión; cada idioma adicional funciona sin internet después de su primera descarga automática.</td></tr>
             <tr><td>Mapas ya vistos</td><td>En la medida en que el navegador conserve sus recursos. Al instalarse una versión nueva, la aplicación carga primero la portada actualizada y no espera a abrir Mapa para completar el cambio.</td></tr>
             <tr><td>GPS del teléfono</td><td>Sí; puede obtener la posición sin datos móviles, aunque la primera lectura puede tardar.</td></tr>
             <tr><td>Mapas nuevos, buscar descripciones y tipos de cambio</td><td>No; consultan servicios externos.</td></tr>
@@ -658,10 +661,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 26 de julio de 2026 para Cuaderno de Bitácora 700v219.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 1 de agosto de 2026 para Cuaderno de Bitácora 700v220.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v219 · 26 de julio de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v220 · 1 de agosto de 2026</div>
 </body>
 </html>

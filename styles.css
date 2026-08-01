@@ -2264,6 +2264,21 @@ input[type="checkbox"] {
   color: #b91c1c;
 }
 
+.ticket-ocr-language-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ticket-ocr-language-list .check-option {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
 #edit-gasto-ticket-current {
   display: flex;
   flex-wrap: wrap;
@@ -2313,6 +2328,22 @@ input[type="checkbox"] {
   background: #eef2f7;
 }
 
+.selected-expense-ticket-preview {
+  padding: 6px;
+  border: 1px solid #bfdbfe;
+  border-radius: 9px;
+  background: #f8fbff;
+}
+
+.selected-expense-ticket-preview img {
+  display: block;
+  width: 100%;
+  height: 180px;
+  object-fit: contain;
+  border-radius: 5px;
+  background: #eef2f7;
+}
+
 .expense-ticket-preview-file {
   display: grid;
   min-height: 76px;
@@ -2321,6 +2352,7 @@ input[type="checkbox"] {
   font-weight: 700;
 }
 
+.selected-expense-ticket-rotate,
 #edit-gasto-ticket-rotate {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2328,6 +2360,7 @@ input[type="checkbox"] {
   margin-top: 6px;
 }
 
+.selected-expense-ticket-rotate[hidden],
 #edit-gasto-ticket-rotate[hidden] {
   display: none;
 }

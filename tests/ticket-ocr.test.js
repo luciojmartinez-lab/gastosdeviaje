@@ -72,6 +72,10 @@ test('reconoce más formatos de fecha y hora', () => {
   assert.equal(extractTicketDate('Päivämäärä 19 heinäkuu 2026'), '2026-07-19');
   assert.equal(extractTicketDate('Date 19 July 2026'), '2026-07-19');
   assert.equal(extractTicketTime('Aika 18.26'), '18:26');
+  assert.equal(extractTicketDate('日付 2026年8月1日'), '2026-08-01');
+  assert.equal(extractTicketDate('날짜 2026년 8월 1일'), '2026-08-01');
+  assert.equal(extractTicketTime('時刻 12時34分'), '12:34');
+  assert.equal(extractTicketTime('시간 19시 05분'), '19:05');
 });
 
 test('elige Total o Importe y no confunde IVA ni base imponible', () => {
@@ -92,6 +96,40 @@ test('elige Total o Importe y no confunde IVA ni base imponible', () => {
   assert.equal(extractTicketTotal('YHTEENSÄ 24,90 EUR'), 24.9);
   assert.equal(extractTicketTotal('MAKSETTAVAA\n24,90 EUR'), 24.9);
   assert.equal(extractTicketTotal('VÄLISUMMA 20,00\nALV 4,90'), null);
+  assert.equal(extractTicketTotal('小計 ¥1,100\n消費税 ¥110\n合計 ¥1,210'), 1210);
+  assert.equal(extractTicketTotal('소계 ₩10,000\n부가세 ₩1,000\n결제금액 ₩11,000'), 11000);
+});
+
+test('extrae los datos principales de tickets japoneses y coreanos', () => {
+  assert.deepEqual(extractTicketFields(`東京食堂
+領収書
+日付 2026年8月1日
+時刻 12時34分
+合計 ¥1,280`), {
+    documentType: 'receipt',
+    date: '2026-08-01',
+    time: '12:34',
+    merchant: '東京食堂',
+    total: 1280
+  });
+  assert.deepEqual(extractTicketFields(`서울식당
+영수증
+날짜 2026년 8월 1일
+시간 19시 05분
+결제금액 ₩12,000`), {
+    documentType: 'receipt',
+    date: '2026-08-01',
+    time: '19:05',
+    merchant: '서울식당',
+    total: 12000
+  });
+});
+
+test('el lector cambia de paquete según los idiomas solicitados', () => {
+  const ocr = readFileSync(new URL('../ticket-ocr.js', import.meta.url), 'utf8');
+  assert.match(ocr, /normalizeWorkerLanguages\(languages\)/);
+  assert.match(ocr, /createWorker\(languageKey/);
+  assert.match(ocr, /options\.languages \|\| \['spa'\]/);
 });
 
 test('deduce comida por los conceptos y restaurante por cantidad o total', () => {
@@ -271,9 +309,10 @@ test('la ayuda explica solo el resultado de Leer ticket y su alcance multilingü
   const help = readFileSync(new URL('../ayuda.html', import.meta.url), 'utf8');
   const section = help.match(/<td id="ocr">Leer ticket<\/td><td>([\s\S]*?)<\/td>/)?.[1] || '';
   assert.match(section, /propone comercio, fecha, hora, importe, categoría y subcategoría/);
-  assert.match(section, /español, catalán, inglés, finés y otros idiomas europeos/);
-  assert.match(section, /completa solo los campos vacíos/);
-  assert.match(section, /no sustituye datos existentes ni rellena un importe dudoso/);
+  assert.match(section, /idiomas elegidos o activados por el país del viaje/);
+  assert.match(section, /japonés y coreano/);
+  assert.match(section, /completa solo campos vacíos/);
+  assert.match(section, /nunca rellena un importe dudoso/);
   assert.ok(section.length < 600, `La explicación de Leer ticket vuelve a ser demasiado larga (${section.length})`);
   assert.doesNotMatch(section, /perspectiva|contraste adaptativo|esquinas|procesamiento|lecturas complementarias/);
 });

@@ -1,7 +1,7 @@
 {
   "name": "gastosdeviaje",
   "private": true,
-  "version": "700.219.0",
+  "version": "700.220.0",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js"
@@ -9,6 +9,17 @@
   "dependencies": {
     "@netlify/blobs": "^9.1.0",
     "@techstark/opencv-js": "4.10.0-release.1",
+    "@tesseract.js-data/cat": "^1.0.0",
+    "@tesseract.js-data/deu": "^1.0.0",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/fin": "^1.0.0",
+    "@tesseract.js-data/fra": "^1.0.0",
+    "@tesseract.js-data/ita": "^1.0.0",
+    "@tesseract.js-data/jpn": "^1.0.0",
+    "@tesseract.js-data/kor": "^1.0.0",
+    "@tesseract.js-data/nld": "^1.0.0",
+    "@tesseract.js-data/pol": "^1.0.0",
+    "@tesseract.js-data/por": "^1.0.0",
     "@tesseract.js-data/spa": "^1.0.0",
     "maplibre-gl": "5.24.0",
     "pdfjs-dist": "^5.4.530",

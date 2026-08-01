@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v219';
+const APP_VERSION = '700v220';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -13,6 +13,8 @@ const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
 const SYNC_STATE_STORAGE = 'gastos_viaje_sync_state_v1';
 const BACKUP_DIRECTORY_SETTING_KEY = 'backupDirectory';
 const PHOTO_TYPES_SETTING_KEY = 'photoTypes';
+const TICKET_OCR_LANGUAGES_SETTING_KEY = 'ticketOcrLanguages';
+const TICKET_OCR_LANGUAGE_CACHE = 'cuaderno-bitacora-ocr-languages-v1';
 const SYNC_ENDPOINT = '/api/travel-sync';
 const LOCAL_BACKUP_LIMIT = 5;
 const CLOUD_ATTACHMENT_CHUNK_CHARS = 2_500_000;
@@ -28,6 +30,33 @@ const DEFAULT_PHOTO_TYPES = [
   { id: 'retrato', nombre: 'Retrato', useAsDestination: false },
   { id: 'selfie', nombre: 'Selfie', useAsDestination: false }
 ];
+const TICKET_OCR_LANGUAGES = [
+  { code: 'spa', name: 'Español', fixed: true },
+  { code: 'cat', name: 'Catalán' },
+  { code: 'eng', name: 'Inglés' },
+  { code: 'fin', name: 'Finés' },
+  { code: 'pol', name: 'Polaco' },
+  { code: 'fra', name: 'Francés' },
+  { code: 'deu', name: 'Alemán' },
+  { code: 'ita', name: 'Italiano' },
+  { code: 'por', name: 'Portugués' },
+  { code: 'nld', name: 'Neerlandés' },
+  { code: 'jpn', name: 'Japonés' },
+  { code: 'kor', name: 'Coreano' }
+];
+const TICKET_OCR_COUNTRY_ALIASES = {
+  spa: ['espana', 'spain'],
+  eng: ['reino unido', 'gran bretana', 'inglaterra', 'escocia', 'gales', 'irlanda', 'united kingdom', 'great britain', 'england', 'scotland', 'wales', 'ireland', 'estados unidos', 'united states', 'australia', 'nueva zelanda', 'new zealand'],
+  fin: ['finlandia', 'finland', 'suomi'],
+  pol: ['polonia', 'poland', 'polska'],
+  fra: ['francia', 'france'],
+  deu: ['alemania', 'germany', 'deutschland', 'austria', 'osterreich'],
+  ita: ['italia', 'italy'],
+  por: ['portugal', 'brasil', 'brazil'],
+  nld: ['paises bajos', 'holanda', 'netherlands', 'holland'],
+  jpn: ['japon', 'japan', 'nippon'],
+  kor: ['corea', 'corea del sur', 'south korea', 'republic of korea', 'korea']
+};
 const DIALOG_HELP_TARGETS = {
   'offline-entry-dialog': 'offline',
   'add-gasto-dialog': 'gasto-formulario',
@@ -67,6 +96,7 @@ let activeEditExpenseActionAnchor = null;
 let activeEditTicketRecord = null;
 const pendingExpenseTicketLocations = { g: null, 'edit-gasto': null };
 const pendingExpenseTicketLocationChecks = { g: Promise.resolve(), 'edit-gasto': Promise.resolve() };
+const pendingExpenseTicketPreviews = { g: null, 'edit-gasto': null };
 let activeBlogEntryId = null;
 let activeBlogEntryAnchor = null;
 let activeBlogEntryType = '';
@@ -624,11 +654,13 @@ function clearAllFormDrafts() {
   const drafts = pruneExpiredFormDrafts();
   const count = Object.keys(drafts).length;
   if (!count) {
+    resetAddExpenseForm();
     renderFormDraftStatus('No hay borradores guardados.');
     return;
   }
   if (!confirm(`Se borrarán ${count} ${count === 1 ? 'borrador guardado' : 'borradores guardados'} en este dispositivo. ¿Continuar?`)) return;
   writeFormDrafts({});
+  resetAddExpenseForm();
   renderFormDraftStatus('Borradores eliminados.');
 }
 
@@ -837,6 +869,7 @@ const state = {
   cuentas: [],
   categorias: [],
   photoTypes: [],
+  ticketOcrLanguages: ['spa'],
   lugares: [],
   gastos: [],
   viajes: [],
@@ -1292,6 +1325,116 @@ function lugarHasCoords(lugar) {
 
 function normalizePlaceName(name) {
   return String(name || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function normalizeTicketOcrLanguages(codes = []) {
+  const supported = new Set(TICKET_OCR_LANGUAGES.map(language => language.code));
+  const normalized = [...new Set((Array.isArray(codes) ? codes : []).map(String).filter(code => supported.has(code)))];
+  if (!normalized.includes('spa')) normalized.unshift('spa');
+  return normalized;
+}
+
+function ticketOcrLanguageName(code) {
+  return TICKET_OCR_LANGUAGES.find(language => language.code === code)?.name || code;
+}
+
+function ticketOcrLanguageCodesForCountry(countryName) {
+  const normalized = normalizePlaceName(countryName);
+  if (!normalized) return [];
+  return Object.entries(TICKET_OCR_COUNTRY_ALIASES)
+    .filter(([, aliases]) => aliases.some(alias => normalized === alias || normalized.startsWith(`${alias} `)))
+    .map(([code]) => code);
+}
+
+function automaticTicketOcrLanguagesForCountryIds(countryIds = []) {
+  return [...new Set((countryIds || []).flatMap(countryId => {
+    const country = state.lugares.find(place => Number(place.id) === Number(countryId) && !place.parentId);
+    return ticketOcrLanguageCodesForCountry(country?.nombre);
+  }))];
+}
+
+function automaticTicketOcrLanguagesForTrip(tripId) {
+  const trip = state.viajes.find(item => Number(item.id) === Number(tripId));
+  return trip ? automaticTicketOcrLanguagesForCountryIds(tripCountryIds(trip)) : [];
+}
+
+function ticketOcrLanguagesForTrip(tripId) {
+  return normalizeTicketOcrLanguages([
+    ...automaticTicketOcrLanguagesForTrip(tripId),
+    ...state.ticketOcrLanguages
+  ]);
+}
+
+function ticketOcrLanguagesForExpense(prefix) {
+  return ticketOcrLanguagesForTrip(Number($(`#${prefix}-viaje`)?.value));
+}
+
+async function cacheTicketOcrLanguage(code) {
+  const supported = TICKET_OCR_LANGUAGES.some(language => language.code === code);
+  if (!supported) throw new Error(`Idioma de tickets no compatible: ${code}`);
+  const url = new URL(`./vendor/tesseract/lang/${code}.traineddata.gz`, window.location.href).href;
+  if (!window.caches) {
+    const response = await fetch(url, { cache: 'force-cache' });
+    if (!response.ok) throw new Error(`No se pudo descargar ${ticketOcrLanguageName(code)}`);
+    return;
+  }
+  const cache = await caches.open(TICKET_OCR_LANGUAGE_CACHE);
+  if (await cache.match(url)) return;
+  const response = await fetch(url, { cache: 'reload' });
+  if (!response.ok) throw new Error(`No se pudo descargar ${ticketOcrLanguageName(code)}`);
+  await cache.put(url, response.clone());
+}
+
+async function warmTicketOcrLanguages(codes = []) {
+  const languages = normalizeTicketOcrLanguages(codes);
+  await Promise.all(languages.map(cacheTicketOcrLanguage));
+  return languages;
+}
+
+function warmTicketOcrLanguagesForTrip(tripId) {
+  return warmTicketOcrLanguages(ticketOcrLanguagesForTrip(tripId));
+}
+
+function renderTicketOcrLanguageControls() {
+  const container = $('#ticket-ocr-language-list');
+  if (!container) return;
+  const configured = new Set(normalizeTicketOcrLanguages(state.ticketOcrLanguages));
+  container.innerHTML = TICKET_OCR_LANGUAGES.map(language => `<label class="check-option"><input type="checkbox" data-ticket-ocr-language="${escapeHtml(language.code)}"${configured.has(language.code) ? ' checked' : ''}${language.fixed ? ' disabled' : ''}> ${escapeHtml(language.name)}${language.fixed ? ' · siempre' : ''}</label>`).join('');
+  const automatic = [...new Set(selectedTripIds().flatMap(automaticTicketOcrLanguagesForTrip))];
+  const status = $('#msg-ticket-ocr-languages');
+  if (status && !status.dataset.busy) {
+    status.textContent = automatic.length
+      ? `Por el viaje seleccionado se activará automáticamente: ${automatic.map(ticketOcrLanguageName).join(', ')}.`
+      : 'Los idiomas adicionales se descargan una sola vez y después funcionan sin conexión.';
+    status.classList.remove('error');
+  }
+}
+
+async function saveTicketOcrLanguageSettings() {
+  const status = $('#msg-ticket-ocr-languages');
+  const codes = normalizeTicketOcrLanguages($$('[data-ticket-ocr-language]:checked').map(input => input.dataset.ticketOcrLanguage));
+  state.ticketOcrLanguages = codes;
+  await putRecord('appSettings', {
+    key: TICKET_OCR_LANGUAGES_SETTING_KEY,
+    codes,
+    updatedAt: new Date().toISOString()
+  });
+  if (status) {
+    status.dataset.busy = '1';
+    status.textContent = 'Descargando los idiomas elegidos para usarlos también sin conexión…';
+    status.classList.remove('error');
+  }
+  try {
+    await warmTicketOcrLanguages(codes);
+    if (status) status.textContent = 'Idiomas preparados. Ya pueden usarse sin conexión.';
+  } catch (error) {
+    if (status) {
+      status.textContent = `${error.message || error}. Se volverá a intentar cuando haya conexión.`;
+      status.classList.add('error');
+    }
+  } finally {
+    if (status) delete status.dataset.busy;
+  }
 }
 
 function normalizePhotoTypes(types = []) {
@@ -2193,7 +2336,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v219');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v220');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2225,7 +2368,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v219');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v220');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2299,6 +2442,46 @@ async function applyExpenseImageDateTime(prefix, captured) {
   );
 }
 
+function renderSelectedExpenseTicketPreview(prefix) {
+  const preview = $(`#${prefix}-ticket-new-preview`);
+  const rotate = $(`#${prefix}-ticket-new-rotate`);
+  const image = pendingExpenseTicketPreviews[prefix];
+  if (preview) {
+    preview.replaceChildren();
+    preview.hidden = !image?.data;
+    if (image?.data) {
+      const element = document.createElement('img');
+      element.src = image.data;
+      element.alt = `Vista previa de ${image.name || 'ticket seleccionado'}`;
+      preview.appendChild(element);
+    }
+  }
+  if (rotate) rotate.hidden = !image?.data;
+}
+
+async function readSelectedExpenseTicket(prefix) {
+  const preview = pendingExpenseTicketPreviews[prefix];
+  if (preview?.data) return { ...preview };
+  return readFileData(selectedFileInput(`#${prefix}-ticket`, `#${prefix}-ticket-camera`));
+}
+
+async function rotateSelectedExpenseTicket(prefix, direction) {
+  const current = pendingExpenseTicketPreviews[prefix];
+  if (!current?.data) throw new Error('Selecciona o fotografía primero un ticket.');
+  pendingExpenseTicketPreviews[prefix] = await rotateRasterImageRecord(current, direction);
+  pendingTicketOcr[prefix] = null;
+  renderSelectedExpenseTicketPreview(prefix);
+  setTicketOcrStatus(prefix, 'Orientación cambiada. Puedes leer el ticket o guardar el gasto.');
+}
+
+function handleSelectedExpenseTicketRotation(prefix, direction) {
+  const buttons = $$(`[data-selected-ticket-rotate="${prefix}"]`);
+  buttons.forEach(button => { button.disabled = true; });
+  queueExpenseMediaSave(() => rotateSelectedExpenseTicket(prefix, direction))
+    .catch(error => setMessage(prefix === 'g' ? '#msg-gasto' : '#msg-edit-gasto', error.message || String(error), true))
+    .finally(() => buttons.forEach(button => { button.disabled = false; }));
+}
+
 function clearExpenseTicketSelection(prefix) {
   const file = $(`#${prefix}-ticket`);
   const camera = $(`#${prefix}-ticket-camera`);
@@ -2321,6 +2504,8 @@ function clearExpenseTicketSelection(prefix) {
   if (mapCheckbox) mapCheckbox.checked = false;
   const typeSelect = $(`#${prefix}-ticket-type`);
   if (typeSelect) typeSelect.value = '';
+  pendingExpenseTicketPreviews[prefix] = null;
+  renderSelectedExpenseTicketPreview(prefix);
   pendingTicketOcr[prefix] = null;
   setTicketOcrStatus(prefix, '');
   syncTicketOcrAvailability(prefix);
@@ -2476,6 +2661,8 @@ async function syncExpenseTicketSelection(prefix, source) {
   }
   const selectedFile = selected.files[0];
   const selectedName = selectedFile.name || (source === 'camera' ? 'Foto de cámara' : 'Ticket seleccionado');
+  pendingExpenseTicketPreviews[prefix] = null;
+  renderSelectedExpenseTicketPreview(prefix);
   pendingExpenseTicketLocations[prefix] = null;
   syncExpenseTicketMapOption(prefix, null);
   if (status) status.textContent = fileLooksLikeImage(selectedFile)
@@ -2486,11 +2673,14 @@ async function syncExpenseTicketSelection(prefix, source) {
   syncTicketOcrAvailability(prefix);
   syncExpenseTicketTypeAvailability(prefix);
   if (!fileLooksLikeImage(selectedFile)) return;
-  const [point, captured] = await Promise.all([
+  const [point, captured, preview] = await Promise.all([
     imageGpsForFile(selectedFile),
-    imageDateTimeForFile(selectedFile)
+    imageDateTimeForFile(selectedFile),
+    readFileData(selected)
   ]);
   if (selectedFileInput(`#${prefix}-ticket`, `#${prefix}-ticket-camera`)?.files?.[0] !== selectedFile) return;
+  pendingExpenseTicketPreviews[prefix] = preview;
+  renderSelectedExpenseTicketPreview(prefix);
   pendingExpenseTicketLocations[prefix] = point ? {
     latitude: point.latitude,
     longitude: point.longitude,
@@ -2665,6 +2855,8 @@ function currentEditTicket() {
 }
 
 function ticketOcrSource(prefix) {
+  const preview = pendingExpenseTicketPreviews[prefix];
+  if (preview?.data) return { source: preview.data, type: preview.type, name: preview.name };
   const input = selectedFileInput(`#${prefix}-ticket`, `#${prefix}-ticket-camera`);
   const file = input?.files?.[0];
   if (file) return { source: file, type: file.type, name: file.name };
@@ -2680,11 +2872,12 @@ function syncTicketOcrAvailability(prefix) {
   if (button && !button.dataset.busy) button.disabled = !ticketOcrSource(prefix);
 }
 
-function ticketOcrProgressLabel(message) {
+function ticketOcrProgressLabel(message, languages = ['spa']) {
+  const languageNames = normalizeTicketOcrLanguages(languages).map(ticketOcrLanguageName).join(', ');
   const labels = {
     'loading tesseract core': 'Preparando el lector local',
     'initializing tesseract': 'Iniciando el lector',
-    'loading language traineddata': 'Cargando el idioma español',
+    'loading language traineddata': `Cargando idiomas: ${languageNames}`,
     'initializing api': 'Preparando el idioma',
     'recognizing text': 'Leyendo el ticket'
   };
@@ -2820,17 +3013,20 @@ async function readExpenseTicket(prefix) {
     return;
   }
   const button = $(`#${prefix}-ticket-read`);
+  const languages = ticketOcrLanguagesForExpense(prefix);
   try {
     button.dataset.busy = '1';
     button.disabled = true;
     button.textContent = 'Leyendo…';
-    setTicketOcrStatus(prefix, 'La lectura se realiza íntegramente en este dispositivo.');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v219');
+    setTicketOcrStatus(prefix, `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
+    await warmTicketOcrLanguages(languages);
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v220');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
       name: source.name,
-      onProgress: message => setTicketOcrStatus(prefix, ticketOcrProgressLabel(message))
+      languages,
+      onProgress: message => setTicketOcrStatus(prefix, ticketOcrProgressLabel(message, languages))
     });
     if (result.fields?.merchant) {
       result.fields.merchant = ocr.correctTicketMerchantFromKnown(
@@ -5023,7 +5219,7 @@ async function delTransferencia(id) {
 }
 
 async function loadAll() {
-  const [cuentas, categorias, lugares, gastos, viajes, viajeDocumentos, blogEntries, monedas, transferencias, photoTypeSetting] = await Promise.all([
+  const [cuentas, categorias, lugares, gastos, viajes, viajeDocumentos, blogEntries, monedas, transferencias, photoTypeSetting, ticketOcrLanguageSetting] = await Promise.all([
     getAll('cuentas'),
     getAll('categorias'),
     getAll('lugares'),
@@ -5033,7 +5229,8 @@ async function loadAll() {
     getAll('blogEntries'),
     getAll('monedas'),
     getAll('transferencias'),
-    getOne('appSettings', PHOTO_TYPES_SETTING_KEY)
+    getOne('appSettings', PHOTO_TYPES_SETTING_KEY),
+    getOne('appSettings', TICKET_OCR_LANGUAGES_SETTING_KEY)
   ]);
   state.cuentas = cuentas.sort(byName);
   state.categorias = sortCategoriasHierarchical(categorias);
@@ -5042,6 +5239,7 @@ async function loadAll() {
     state.photoTypes = normalizePhotoTypes(DEFAULT_PHOTO_TYPES);
     await putRecord('appSettings', { key: PHOTO_TYPES_SETTING_KEY, items: state.photoTypes, updatedAt: new Date().toISOString() });
   }
+  state.ticketOcrLanguages = normalizeTicketOcrLanguages(ticketOcrLanguageSetting?.codes || ['spa']);
   state.lugares = sortLugaresHierarchical(lugares);
   state.gastos = gastos.map(g => ({
     ...g,
@@ -5064,6 +5262,7 @@ async function loadAll() {
   state.transferencias = transferencias.sort(compareTransferenciasChronologically);
   renderAll();
   restoreInlineFormDrafts();
+  selectedTripIds().forEach(tripId => warmTicketOcrLanguagesForTrip(tripId).catch(() => {}));
   if (state.activeTab === 'resumen') renderResumen();
   if (state.activeTab === 'mapa') renderMapPaises();
 }
@@ -5081,6 +5280,7 @@ function renderAll() {
   renderMonedasConfig();
   renderCategorias();
   renderPhotoTypeControls();
+  renderTicketOcrLanguageControls();
   renderLugares();
   renderGastosTabla();
   renderBackupStatus();
@@ -5585,6 +5785,8 @@ function renderViajes() {
     const budget = numberValue(v.presupuesto);
     const documentCount = tripDocumentsFor(v.id).length;
     const tr = document.createElement('tr');
+    tr.className = 'trip-row';
+    tr.dataset.tripId = String(v.id);
     tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${escapeHtml(tripCountryLabel(v))}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td><select class="trip-config-action-select" data-trip-config-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}"><option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="edit">Editar</option><option value="delete">Eliminar</option></select></td>`;
     tbody.appendChild(tr);
   });
@@ -5613,6 +5815,7 @@ function renderViajesHome() {
   const info = $('#selected-trip-info');
   const selectedIds = selectedTripSet();
   info.textContent = selectedTripsLabel();
+  renderTicketOcrLanguageControls();
   if (!state.viajes.length) {
     const tr = document.createElement('tr');
     tr.innerHTML = '<td colspan="10">Todavía no hay viajes. Puedes crearlos en Configuración.</td>';
@@ -5649,6 +5852,8 @@ function renderViajesHome() {
       yearBudget += budget;
       const tr = document.createElement('tr');
       if (remaining !== null && remaining < 0) tr.className = 'warning-row';
+      tr.classList.add('trip-row');
+      tr.dataset.tripId = String(v.id);
       const documentCount = tripDocumentsFor(v.id).length;
       tr.innerHTML = `<td><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${days || '-'}</td><td>${dailyAverage === null ? '-' : fmtCurrency(dailyAverage, 'EUR')}</td><td>${expenses.length}</td><td>${fmtCurrency(total, 'EUR')}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td>${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions"><select class="trip-home-action-select" data-trip-home-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}"><option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="edit">Editar</option></select></td>`;
       tbody.appendChild(tr);
@@ -8897,6 +9102,7 @@ function buildBackupData(scope = 'all', tripId = null) {
     cuentas: state.cuentas,
     categorias: state.categorias,
     photoTypes: state.photoTypes,
+    ticketOcrLanguages: state.ticketOcrLanguages,
     lugares: state.lugares,
     gastos: state.gastos,
     viajes: state.viajes,
@@ -8930,6 +9136,7 @@ function buildTripBackupData(tripId) {
     cuentas,
     categorias: state.categorias,
     photoTypes: state.photoTypes,
+    ticketOcrLanguages: state.ticketOcrLanguages,
     lugares: state.lugares,
     gastos,
     viajes: [trip],
@@ -8948,6 +9155,11 @@ async function importAll(data) {
   await putRecord('appSettings', {
     key: PHOTO_TYPES_SETTING_KEY,
     items: normalizePhotoTypes(Array.isArray(data.photoTypes) ? data.photoTypes : DEFAULT_PHOTO_TYPES),
+    updatedAt: new Date().toISOString()
+  });
+  await putRecord('appSettings', {
+    key: TICKET_OCR_LANGUAGES_SETTING_KEY,
+    codes: normalizeTicketOcrLanguages(data.ticketOcrLanguages || ['spa']),
     updatedAt: new Date().toISOString()
   });
   await ensureBaseCurrency();
@@ -9257,10 +9469,12 @@ function openEditViajeDialog(v) {
       { name: 'ciudadIds', label: 'Ciudades planificadas', type: 'multiselect', size: 6, value: tripCityIds(v), options: plannedCityOptionsForCountries(tripCountryIds(v), tripCityIds(v)), reorder: true, routeList: true, routeTripId: v.id },
       { name: 'presupuesto', label: 'Presupuesto del viaje (EUR)', type: 'number', step: '0.01', min: '0', value: v.presupuesto || 0 }
     ],
-    onSubmit: values => {
+    onSubmit: async values => {
       if (values.fechaFin < values.fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
       if (!(values.paisIds || []).length) throw new Error('Selecciona al menos un país');
-      return updateViaje(v.id, { nombre: values.nombre.trim() || v.nombre, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin, paisIds: values.paisIds || [], ciudadIds: values.ciudadIds || [], presupuesto: numberValue(values.presupuesto) });
+      const updated = await updateViaje(v.id, { nombre: values.nombre.trim() || v.nombre, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin, paisIds: values.paisIds || [], ciudadIds: values.ciudadIds || [], presupuesto: numberValue(values.presupuesto) });
+      warmTicketOcrLanguages([...automaticTicketOcrLanguagesForCountryIds(values.paisIds), ...state.ticketOcrLanguages]).catch(() => {});
+      return updated;
     }
   });
 }
@@ -9616,7 +9830,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v219');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v220');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11931,6 +12145,7 @@ function openEditGasto(gasto) {
   syncTicketOcrAvailability('edit-gasto');
   renderEditExpenseImages(gasto);
   setMessage('#msg-edit-gasto', '');
+  warmTicketOcrLanguagesForTrip(Number($('#edit-gasto-viaje')?.value)).catch(() => {});
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute('open', 'open');
 }
@@ -11944,6 +12159,8 @@ function closeEditGasto({ restoreAnchor = true } = {}) {
   pendingExpenseTicketLocations['edit-gasto'] = null;
   pendingExpenseTicketLocationChecks['edit-gasto'] = Promise.resolve();
   pendingTicketOcr['edit-gasto'] = null;
+  pendingExpenseTicketPreviews['edit-gasto'] = null;
+  renderSelectedExpenseTicketPreview('edit-gasto');
   setTicketOcrStatus('edit-gasto', '');
   if (dialog.close) dialog.close();
   else dialog.removeAttribute('open');
@@ -11978,22 +12195,38 @@ function discardAddExpenseDraft() {
   setMessage('#msg-gasto', '');
 }
 
+function resetAddExpenseForm() {
+  const form = $('#add-gasto-form');
+  if (!form) return;
+  form.reset();
+  clearExpenseTicketSelection('g');
+  clearExpenseExtraImageSelection('g');
+  pendingTicketOcr.g = null;
+  $('#g-fecha').value = todayIso();
+  $('#g-hora').value = currentLocalTime();
+  const ids = selectedTripIds();
+  if (ids.length === 1 && $('#g-viaje')) $('#g-viaje').value = String(ids[0]);
+  renderGastoAccountSelector();
+  renderSubcategories();
+  renderCiudades();
+  applyDefaultExpenseLocation();
+  rememberLastValidExpenseCategory('g');
+  setMessage('#msg-gasto', '');
+}
+
 function openAddGasto() {
   const dialog = $('#add-gasto-dialog');
   if (!dialog) return;
-  setMessage('#msg-gasto', '');
-  clearExpenseTicketSelection('g');
-  clearExpenseExtraImageSelection('g');
-  const restored = restoreAddExpenseDraft();
-  if (!restored) {
-    if (!$('#g-fecha').value) $('#g-fecha').value = todayIso();
-    $('#g-hora').value = currentLocalTime();
-    const ids = selectedTripIds();
-    if (ids.length === 1 && $('#g-viaje')) $('#g-viaje').value = String(ids[0]);
-    renderGastoAccountSelector();
-    applyDefaultExpenseLocation();
+  const hasDraft = Boolean(getFormDraft(addExpenseDraftKey()));
+  if (!hasDraft) {
+    resetAddExpenseForm();
+  } else {
+    clearExpenseTicketSelection('g');
+    clearExpenseExtraImageSelection('g');
+    restoreAddExpenseDraft();
   }
   rememberLastValidExpenseCategory('g');
+  warmTicketOcrLanguagesForTrip(Number($('#g-viaje')?.value)).catch(() => {});
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute('open', 'open');
 }
@@ -12002,6 +12235,8 @@ function closeAddGasto() {
   const dialog = $('#add-gasto-dialog');
   if (!dialog) return;
   pendingTicketOcr.g = null;
+  pendingExpenseTicketPreviews.g = null;
+  renderSelectedExpenseTicketPreview('g');
   setTicketOcrStatus('g', '');
   if (dialog.close) dialog.close();
   else dialog.removeAttribute('open');
@@ -12972,7 +13207,10 @@ async function resetDataValue(option) {
       for (const reg of regs) await reg.unregister();
     }
     await clearStores(stores);
-    if (value === 'todo') await deleteRecord('appSettings', PHOTO_TYPES_SETTING_KEY);
+    if (value === 'todo') {
+      await deleteRecord('appSettings', PHOTO_TYPES_SETTING_KEY);
+      await deleteRecord('appSettings', TICKET_OCR_LANGUAGES_SETTING_KEY);
+    }
     if (value === 'todo' || value === 'monedas') await ensureBaseCurrency();
     if (value === 'todo' || value === 'cuentas') await seedDefaultAccounts();
     if (value === 'todo' || value === 'categorias') await seedDefaultCategories();
@@ -13224,6 +13462,7 @@ function bindEvents() {
   $('#add-gasto-close').onclick = closeAddGasto;
   $('#add-gasto-cancel').onclick = () => {
     discardAddExpenseDraft();
+    resetAddExpenseForm();
     closeAddGasto();
   };
   $('#add-gasto-dialog').oncancel = () => closeAddGasto();
@@ -13275,6 +13514,9 @@ function bindEvents() {
   };
   $('#edit-gasto-ticket-rotate-left').onclick = () => handleOpenExpenseTicketRotation('left');
   $('#edit-gasto-ticket-rotate-right').onclick = () => handleOpenExpenseTicketRotation('right');
+  $$('[data-selected-ticket-rotate]').forEach(button => {
+    button.onclick = () => handleSelectedExpenseTicketRotation(button.dataset.selectedTicketRotate, button.dataset.rotateDirection);
+  });
   $('#edit-gasto-extra-images').onchange = () => syncExpenseExtraImageSelection('edit-gasto', { applyDateTime: true, resetClassifications: true });
   $('#edit-gasto-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('edit-gasto', { applyDateTime: true, resetClassifications: true });
   $('#edit-gasto-extra-images-current').onchange = event => {
@@ -13334,6 +13576,7 @@ function bindEvents() {
   $('#edit-gasto-viaje').onchange = () => {
     renderEditGastoAccountSelector();
     renderEditCiudades();
+    warmTicketOcrLanguagesForTrip(Number($('#edit-gasto-viaje').value)).catch(() => {});
   };
   $('#edit-gasto-close').onclick = closeEditGasto;
   $('#edit-gasto-cancel').onclick = closeEditGasto;
@@ -13386,7 +13629,7 @@ function bindEvents() {
       const currentTicket = activeEditTicketRecord && Number(activeEditTicketRecord.id) === id
         ? activeEditTicketRecord
         : current;
-      const ticket = await readFileData(selectedFileInput('#edit-gasto-ticket', '#edit-gasto-ticket-camera'));
+      const ticket = await readSelectedExpenseTicket('edit-gasto');
       const newExtraImages = await readSelectedExpenseExtraImages('edit-gasto');
       const removedExtraImageIndexes = new Set($$('[data-remove-expense-image]:checked').map(input => Number(input.dataset.removeExpenseImage)));
       const extraImages = editExpenseImagesFromControls(current)
@@ -13433,6 +13676,7 @@ function bindEvents() {
   $('#g-viaje').onchange = () => {
     renderGastoAccountSelector();
     applyDefaultExpenseLocation();
+    warmTicketOcrLanguagesForTrip(Number($('#g-viaje').value)).catch(() => {});
     scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   };
   $('#g-moneda').onchange = () => {
@@ -13576,8 +13820,9 @@ function bindEvents() {
       const rawImporte = numberValue($('#g-importe').value);
       const importe = $('#g-tipo')?.value === 'ingreso' ? -Math.abs(rawImporte) : Math.abs(rawImporte);
       if (!cuentaId || !catId || importe === 0) throw new Error('Completa cuenta, categoría e importe');
+      await pendingExpenseMediaSave;
       await pendingExpenseTicketLocationChecks.g;
-      const ticket = await readFileData(selectedFileInput('#g-ticket', '#g-ticket-camera'));
+      const ticket = await readSelectedExpenseTicket('g');
       const selectedTicketType = ticket ? photoTypeById($('#g-ticket-type').value) : null;
       const extraImages = await readSelectedExpenseExtraImages('g');
       await addGasto({
@@ -13690,13 +13935,14 @@ function bindEvents() {
       if (fechaFin < fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
       const paisIds = selectedMultiValues('#v-paises');
       if (!paisIds.length) throw new Error('Selecciona al menos un país');
-      await addViaje({ nombre, fechaInicio, fechaFin, presupuesto: $('#v-presu').value, paisIds, ciudadIds: allMultiValues('#v-ciudades') });
+      const newTripId = await addViaje({ nombre, fechaInicio, fechaFin, presupuesto: $('#v-presu').value, paisIds, ciudadIds: allMultiValues('#v-ciudades') });
       clearFormDraft('config-viaje');
       ['#v-nombre', '#v-inicio', '#v-fin', '#v-presu'].forEach(sel => $(sel).value = '');
       if ($('#v-paises')) [...$('#v-paises').options].forEach(opt => { opt.selected = false; });
       if ($('#v-ciudades')) [...$('#v-ciudades').options].forEach(opt => { opt.selected = false; });
       setMessage('#msg-viaje', 'Viaje anadido');
       await loadAll();
+      warmTicketOcrLanguagesForTrip(newTripId).catch(() => {});
     } catch (err) {
       setMessage('#msg-viaje', err.message || String(err), true);
     }
@@ -13859,6 +14105,10 @@ function bindEvents() {
 
   document.addEventListener('change', async event => {
     const target = event.target;
+    if (target instanceof HTMLInputElement && target.dataset.ticketOcrLanguage) {
+      await saveTicketOcrLanguageSettings();
+      return;
+    }
     if (target instanceof HTMLInputElement && target.dataset.tripCheck) {
       toggleSelectedTrip(target.dataset.tripCheck, target.checked);
       renderViajesHome();
@@ -13911,6 +14161,12 @@ function bindEvents() {
   document.addEventListener('dblclick', event => {
     const target = event.target;
     if (!(target instanceof Element) || target.closest('button, select, input, textarea, a')) return;
+    const tripRow = target.closest('#tabla-viajes-home .trip-row[data-trip-id], #tabla-viajes .trip-row[data-trip-id]');
+    if (tripRow) {
+      event.preventDefault();
+      handleTripConfigAction(tripRow.dataset.tripId, 'edit').catch(error => alert(error.message || String(error)));
+      return;
+    }
     const expenseRow = target.closest('#tabla-gastos .expense-row[data-gasto-id]');
     if (expenseRow) {
       event.preventDefault();

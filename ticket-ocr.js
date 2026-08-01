@@ -1,4 +1,5 @@
 let workerPromise = null;
+let workerLanguageKey = '';
 let progressListener = () => {};
 const OCR_PSM_AUTO = '3';
 const OCR_PSM_SINGLE_BLOCK = '6';
@@ -10,7 +11,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v219';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v220';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -51,7 +52,7 @@ export function extractTicketDate(text) {
   const candidates = [];
   lines.forEach((line, index) => {
     const normalized = normalizeTicketConcepts(line);
-    const labeled = /\b(fecha|date|fec|data|paivamaara|datum)\b/.test(normalized);
+    const labeled = /\b(fecha|date|fec|data|paivamaara|datum)\b/.test(normalized) || /(?:日付|年月日|날짜|일자)/u.test(line);
     const regex = /\b(0?[1-9]|[12]\d|3[01])[\/.-](0?[1-9]|1[0-2])[\/.-](\d{2}|\d{4})\b/g;
     let match;
     while ((match = regex.exec(line))) {
@@ -62,6 +63,11 @@ export function extractTicketDate(text) {
     while ((match = isoRegex.exec(line))) {
       const value = validDateParts(Number(match[3]), Number(match[2]), Number(match[1]));
       if (value) candidates.push({ value, score: (labeled ? 35 : 14) - index * 0.05 });
+    }
+    const eastAsianRegex = /(\d{4})\s*(?:年|년)\s*(0?[1-9]|1[0-2])\s*(?:月|월)\s*(0?[1-9]|[12]\d|3[01])\s*(?:日|일)?/gu;
+    while ((match = eastAsianRegex.exec(line))) {
+      const value = validDateParts(Number(match[3]), Number(match[2]), Number(match[1]));
+      if (value) candidates.push({ value, score: (labeled ? 38 : 18) - index * 0.05 });
     }
     const monthRegex = new RegExp(`\\b(0?[1-9]|[12]\\d|3[01])[\\s/.-]+(${TICKET_MONTH_PATTERN})[\\s/.-]+(\\d{2}|\\d{4})\\b`, 'g');
     while ((match = monthRegex.exec(normalized))) {
@@ -85,7 +91,7 @@ export function extractTicketTime(text) {
   const candidates = [];
   lines.forEach((line, index) => {
     const normalized = normalizeTicketText(line);
-    const labeled = /\b(hora|time|aika|heure|ora|zeit)\b/.test(normalized);
+    const labeled = /\b(hora|time|aika|heure|ora|zeit)\b/.test(normalized) || /(?:時刻|時間|시간)/u.test(line);
     const sharesLineWithDate = /\b(?:0?[1-9]|[12]\d|3[01])[\/.-](?:0?[1-9]|1[0-2])[\/.-](?:\d{2}|\d{4})\b|\b\d{4}[\/.-](?:0?[1-9]|1[0-2])[\/.-](?:0?[1-9]|[12]\d|3[01])\b/.test(normalized);
     const regex = /\b([01]?\d|2[0-3])\s*([:.h])\s*([0-5]\d)(?::[0-5]\d)?\b/gi;
     let match;
@@ -95,6 +101,10 @@ export function extractTicketTime(text) {
         value: `${String(Number(match[1])).padStart(2, '0')}:${match[3]}`,
         score: (labeled ? 35 : 12) + (sharesLineWithDate ? 12 : 0) - index * 0.05
       });
+    }
+    const eastAsianRegex = /\b([01]?\d|2[0-3])\s*(?:時|시)\s*([0-5]?\d)\s*(?:分|분)?/gu;
+    while ((match = eastAsianRegex.exec(line))) {
+      candidates.push({ value: `${String(Number(match[1])).padStart(2, '0')}:${String(Number(match[2])).padStart(2, '0')}`, score: (labeled ? 38 : 18) - index * 0.05 });
     }
     if (labeled) {
       const compactRegex = /\b([01]\d|2[0-3])([0-5]\d)\b/g;
@@ -131,6 +141,18 @@ function amountsInLine(line) {
   const numericText = String(line || '').replace(/(?<=\d)[oO](?=\d|\b)/g, '0');
   const matches = numericText.match(/(?:\d{1,3}(?:[.\s]\d{3})+|\d+)(?:[,.]\d{1,2})/g) || [];
   return matches.map(parseTicketAmount).filter(value => Number.isFinite(value));
+}
+
+function integerCurrencyAmountsInLine(line) {
+  const matches = String(line || '').match(/(?:[¥₩]\s*(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)|(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)\s*(?:円|원|jpy|krw))/giu) || [];
+  return matches.map(value => Number(value.replace(/\D/g, ''))).filter(value => Number.isFinite(value));
+}
+
+function standaloneIntegerAmount(line) {
+  const value = String(line || '').trim();
+  if (!/^(?:[¥₩]\s*)?(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)(?:\s*(?:円|원|jpy|krw))?$/iu.test(value)) return [];
+  const amount = Number(value.replace(/\D/g, ''));
+  return Number.isFinite(amount) ? [amount] : [];
 }
 
 const FOOD_CONCEPT_WORDS = new Set([
@@ -193,6 +215,7 @@ export function extractTicketFoodEvidence(text, total = null) {
 
 const CARD_PAYMENT_SIGNALS = /\b(copia\s+(?:cliente|comercio)|justificante|customer\s+copy|cardholder\s+copy|autorizacion|authorization|terminal|operacion|transaction|transaccion|contactless|tpv|datafono|visa|mastercard|redsys|servired|getnet|global\s+payments)\b/g;
 const RECEIPT_SIGNALS = /\b(ticket|receipt|kuitti|factura(?:\s+simplificada)?|invoice|lasku|base\s+(?:imponible|imposable)|subtotal|article|articulo|item|tuote|unidades|cambio|change|mesa|iva|vat|alv)\b/g;
+const EAST_ASIAN_RECEIPT_SIGNALS = /(?:領収書|レシート|請求書|영수증|계산서)/gu;
 
 const BEST_TOTAL_LABEL = /\b(?:grand\s+total|total\s+(?:importe?|amount|summa|a\s+)?(?:pagar|abonar|due|payable)?|(?:importe?|amount|balance)\s+(?:total|due|payable)|importe?\s+(?:a|per|poder)\s+(?:pagar|abonar)|(?:a|per)\s+(?:pagar|abonar)|pendent\s+de\s+cobrament|montant\s+(?:total|a\s+payer)|betrag\s+(?:gesamt|zu\s+zahlen)|zu\s+zahlen|importo\s+(?:totale|da\s+pagare)|da\s+pagare|valor\s+a\s+pagar|loppusumma|kokonaissumma|maksettav(?:a|aa))\b/;
 const GENERIC_TOTAL_LABEL = /\b(?:total|yhteensa|loppusumma|kokonaissumma|gesamtbetrag)\b/;
@@ -203,10 +226,13 @@ const TOTAL_TAX_LABEL = /\b(?:iva|vat|alv|tax|vero|tva|mwst)\b/;
 const TOTAL_TAX_INCLUDED = /\b(?:iva|vat|alv|tax|vero|tva|mwst)\s+(?:incl|included|sis|compris)/;
 const TOTAL_EXCLUDED_LABEL = /\b(?:subtotal|sub\s+total|valisumma|base\s+(?:imponible|imposable|iva)|taxable\s+amount|net\s+amount|netto|cuota\s+iva|cambio|change|vaihtoraha|entregado|efectivo|cash|kateinen|descuento|discount|alennus|propina|tip|juomaraha)\b/;
 const TOTAL_LABEL_ONLY = /^(?:(?:grand\s+)?total|importe?|amount|summa|betrag|montant|importo|valor|yhteensa|loppusumma|kokonaissumma|gesamtbetrag|maksettav(?:a|aa)|zu\s+zahlen|a\s+payer|da\s+pagare|(?:importe?\s+)?(?:a|per|poder)\s+(?:pagar|abonar)|pendiente\s+de\s+cobro|cobro\s+pendiente|pendent\s+de\s+cobrament)(?:\s+(?:eur|euro|euros|gbp|pounds?|sek|nok|dkk))?$/;
+const EAST_ASIAN_BEST_TOTAL_LABEL = /(?:総合計|合計金額|お支払(?:い)?(?:合計|金額)?|お会計|合計|支払合計|합계금액|총결제금액|결제금액|받을금액|총액|합계)/u;
+const EAST_ASIAN_TOTAL_LABEL_ONLY = /^(?:総合計|合計金額|お支払(?:い)?(?:合計|金額)?|お会計|合計|支払合計|합계금액|총결제금액|결제금액|받을금액|총액|합계)(?:\s*(?:jpy|krw|円|원))?$/iu;
+const EAST_ASIAN_EXCLUDED_TOTAL_LABEL = /(?:小計|消費税|税額|お預り|お釣り|소계|부가세|세액|거스름돈)/u;
 
 function ticketTotalLineExcluded(normalized) {
   const taxBreakdown = TOTAL_TAX_LABEL.test(normalized) && !TOTAL_TAX_INCLUDED.test(normalized);
-  return TOTAL_EXCLUDED_LABEL.test(normalized) || taxBreakdown;
+  return TOTAL_EXCLUDED_LABEL.test(normalized) || EAST_ASIAN_EXCLUDED_TOTAL_LABEL.test(normalized) || taxBreakdown;
 }
 
 export function detectTicketDocumentType(text) {
@@ -215,6 +241,7 @@ export function detectTicketDocumentType(text) {
   const receiptSignals = normalized.match(RECEIPT_SIGNALS) || [];
   let cardScore = cardSignals.length * 2;
   let receiptScore = receiptSignals.length * 2;
+  receiptScore += (String(text || '').match(EAST_ASIAN_RECEIPT_SIGNALS) || []).length * 3;
   if (/copia\s+(?:para\s+el\s+)?cliente|copia\s+comercio/.test(normalized)) cardScore += 5;
   if (/factura\s+simplificada|base\s+imponible|desglose\s+iva/.test(normalized)) receiptScore += 5;
   if (/\b(?:bbva|santander|caixabank|bankinter|sabadell|ing|unicaja|abanca|revolut|comercia|worldline)\b/.test(normalized)) cardScore += 2;
@@ -226,27 +253,30 @@ export function extractTicketTotal(text) {
   const candidates = [];
   lines.forEach((line, index) => {
     const normalized = normalizeTicketConcepts(line);
-    const amounts = amountsInLine(line);
-    const hasBestLabel = BEST_TOTAL_LABEL.test(normalized) || /\btotal\s+(?:compra|operacion|ticket)\b/.test(normalized);
+    let amounts = amountsInLine(line);
+    const hasBestLabel = BEST_TOTAL_LABEL.test(normalized) || /\btotal\s+(?:compra|operacion|ticket)\b/.test(normalized) || EAST_ASIAN_BEST_TOTAL_LABEL.test(line);
     const hasTotalLabel = GENERIC_TOTAL_LABEL.test(normalized) && !/\b(?:subtotal|sub\s+total|valisumma)\b/.test(normalized);
     const hasAmountLabel = AMOUNT_TOTAL_LABEL.test(normalized);
     const hasPaymentDueLabel = PAYMENT_DUE_LABEL.test(normalized);
     const tableHeader = TOTAL_TABLE_HEADER.test(normalized);
     const excluded = ticketTotalLineExcluded(normalized);
+    const integerCurrencyAmounts = integerCurrencyAmountsInLine(line);
+    if (integerCurrencyAmounts.length && (hasBestLabel || hasTotalLabel || hasPaymentDueLabel)) amounts = integerCurrencyAmounts;
     let labelScore = hasBestLabel ? 130 : hasTotalLabel ? 115 : hasPaymentDueLabel ? 105 : hasAmountLabel ? 95 : 0;
     if (tableHeader && !hasTotalLabel) labelScore = 0;
     if (hasAmountLabel && !hasTotalLabel && !hasPaymentDueLabel && amounts.length > 1) labelScore = 0;
     if (excluded) labelScore -= 120;
     if (labelScore > 0 && amounts.length) {
-      candidates.push({ value: amounts.at(-1), score: labelScore + (/\b(?:eur|euro|euros|gbp|pounds?|sek|nok|dkk)\b|[€£]/i.test(line) ? 10 : 0) + index / Math.max(lines.length, 1) });
+      candidates.push({ value: amounts.at(-1), score: labelScore + (/\b(?:eur|euro|euros|gbp|pounds?|sek|nok|dkk|jpy|krw)\b|[€£¥₩円원]/iu.test(line) ? 10 : 0) + index / Math.max(lines.length, 1) });
     }
-    const labelOnly = TOTAL_LABEL_ONLY.test(normalized.replace(/[-_=.:]/g, ' ').replace(/\s+/g, ' ').trim());
+    const cleanedLabel = normalized.replace(/[-_=.:]/g, ' ').replace(/\s+/g, ' ').trim();
+    const labelOnly = TOTAL_LABEL_ONLY.test(cleanedLabel) || EAST_ASIAN_TOTAL_LABEL_ONLY.test(String(line || '').replace(/[-_=.:]/g, ' ').replace(/\s+/g, ' ').trim());
     const separatedLabel = hasBestLabel || labelOnly || hasPaymentDueLabel;
     if (labelScore > 0 && separatedLabel && !amounts.length) {
       [-1, 1].forEach(offset => {
         const nearbyIndex = index + offset;
         if (nearbyIndex < 0 || nearbyIndex >= lines.length) return;
-        const nearbyAmounts = amountsInLine(lines[nearbyIndex]);
+        const nearbyAmounts = amountsInLine(lines[nearbyIndex]).concat(integerCurrencyAmountsInLine(lines[nearbyIndex]), standaloneIntegerAmount(lines[nearbyIndex]));
         const nearbyNormalized = normalizeTicketConcepts(lines[nearbyIndex]);
         if (nearbyAmounts.length === 1 && !ticketTotalLineExcluded(nearbyNormalized)) {
           candidates.push({ value: nearbyAmounts[0], score: labelScore - (offset < 0 ? 6 : 8) });
@@ -259,6 +289,7 @@ export function extractTicketTotal(text) {
 
 const MERCHANT_EXCLUSIONS = /^(ticket|receipt|kuitti|factura|invoice|lasku|simplificada|copia|cliente|customer|fecha|date|hora|time|mesa|caja|cajero|nif|cif|n\.i\.f|tel|telefono|www\.|https?|gracias|iva|vat|alv|total|subtotal|importe|import|amount|summa|yhteensa|direccion|domicilio|articulo|item|descripcion|description|unidades|venta|compra|operacion|transaction|transaccion|autorizacion|authorization|terminal|contactless|aprobada|aceptada)/i;
 const MERCHANT_METADATA_WORDS = /\b(fecha|hora|date|time|data|paivamaara|aika|mesa|comensales|caja|cajero|nif|cif|telefono|ticket|receipt|kuitti|factura|invoice|lasku|total|subtotal|importe|import|amount|summa|yhteensa|iva|vat|alv|descripcion|description|kuvaus|unidades|units|maara|precio|price|hinta)\b/i;
+const EAST_ASIAN_MERCHANT_METADATA_WORDS = /(?:領収書|レシート|請求書|日付|時刻|合計|小計|消費税|영수증|계산서|날짜|시간|합계|소계|부가세)/u;
 const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|rua|rúa|cp\s*\d|codigo postal|tlf|telefono|madrid|barcelona)\b/i;
 const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet)$/i;
 const PAYMENT_TERMINAL_LINE = /^(?:venta\b|compra\b|visa\b|mastercard\b|contactless\b|aut(?:orizacion)?[:.\s]|op(?:eracion)?[:.\s]|tran(?:saccion)?[:.\s]|terminal[:.\s]|app\s+(?:bbva|santander|caixabank|sabadell))/i;
@@ -275,7 +306,7 @@ export function extractTicketMerchant(text) {
   const lines = ticketLines(text).slice(0, 24);
   const documentType = detectTicketDocumentType(text);
   const explicit = lines.map((line, index) => {
-    const match = line.match(/^\s*(?:comercio|establecimiento|merchant|nombre\s+comercio)\s*[:.-]\s*(.+)$/i);
+    const match = line.match(/^\s*(?:comercio|establecimiento|merchant|nombre\s+comercio|店名|店舗名|상호|가맹점)\s*[:.-]?\s*(.+)$/iu);
     return match ? { value: cleanMerchantCandidate(match[1]), score: 100 - index } : null;
   }).filter(item => item && /\p{L}{3}/iu.test(item.value) && !/^\d+$/.test(item.value));
   if (explicit.length) return explicit.sort((a, b) => b.score - a.score)[0].value;
@@ -292,7 +323,7 @@ export function extractTicketMerchant(text) {
     const uppercase = line.match(/\p{Lu}/gu) || [];
     let score = Math.max(0, 10 - index * 0.6);
     if (letters.length < 3 || line.length > 70 || MERCHANT_EXCLUSIONS.test(line)) score -= 30;
-    if (MERCHANT_METADATA_WORDS.test(normalizeTicketText(line))) score -= 60;
+    if (MERCHANT_METADATA_WORDS.test(normalizeTicketText(line)) || EAST_ASIAN_MERCHANT_METADATA_WORDS.test(line)) score -= 60;
     if (BANK_BRAND_LINE.test(line)) score -= 60;
     if (PAYMENT_TERMINAL_LINE.test(line)) score -= 35;
     if (/\b\d{5}\b|@|\.com\b|\b(es|com|net)\b$/i.test(line) || ADDRESS_WORDS.test(line)) score -= 12;
@@ -319,10 +350,11 @@ export function extractTicketMerchant(text) {
 export function isPlausibleTicketMerchant(value) {
   const line = cleanLine(value);
   const normalized = normalizeTicketText(line);
-  const letters = normalized.match(/[a-z]/g) || [];
-  const compact = normalized.replace(/[^a-z0-9]/g, '');
-  if (letters.length < 5 || compact.length < 5 || line.length > 60) return false;
-  if (MERCHANT_EXCLUSIONS.test(line) || MERCHANT_METADATA_WORDS.test(normalized)) return false;
+  const letters = normalized.match(/\p{L}/gu) || [];
+  const compact = normalized.replace(/[^\p{L}\d]/gu, '');
+  const minimumLetters = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/u.test(line) ? 2 : 5;
+  if (letters.length < minimumLetters || compact.length < minimumLetters || line.length > 60) return false;
+  if (MERCHANT_EXCLUSIONS.test(line) || MERCHANT_METADATA_WORDS.test(normalized) || EAST_ASIAN_MERCHANT_METADATA_WORDS.test(line)) return false;
   if (ADDRESS_WORDS.test(line) || BANK_BRAND_LINE.test(line) || PAYMENT_TERMINAL_LINE.test(line)) return false;
   if (/\b\d{1,2}[:./-]\d{1,2}\b|^\d+$/.test(normalized)) return false;
   return letters.length / Math.max(1, line.replace(/\s/g, '').length) >= 0.58;
@@ -717,12 +749,29 @@ async function preparePdf(source, onProgress) {
   return { primary: canvas, binary: null, documentDetected: true };
 }
 
-async function getWorker(onProgress) {
+function normalizeWorkerLanguages(languages) {
+  const values = Array.isArray(languages) ? languages : String(languages || 'spa').split('+');
+  const normalized = [...new Set(values.map(value => String(value || '').trim()).filter(value => /^[a-z]{3}$/.test(value)))];
+  return (normalized.length ? normalized : ['spa']).join('+');
+}
+
+async function getWorker(onProgress, languages = ['spa']) {
   progressListener = onProgress;
+  const languageKey = normalizeWorkerLanguages(languages);
+  if (workerPromise && workerLanguageKey !== languageKey) {
+    const previousWorker = workerPromise;
+    workerPromise = null;
+    workerLanguageKey = '';
+    try {
+      const worker = await previousWorker;
+      await worker.terminate();
+    } catch (_) {}
+  }
   if (!workerPromise) {
+    workerLanguageKey = languageKey;
     workerPromise = import('./vendor/tesseract/tesseract.esm.min.js').then(async module => {
       const Tesseract = module.default || module;
-      const worker = await Tesseract.createWorker('spa', Tesseract.OEM.LSTM_ONLY, {
+      const worker = await Tesseract.createWorker(languageKey, Tesseract.OEM.LSTM_ONLY, {
         workerPath: new URL('./vendor/tesseract/worker.min.js', import.meta.url).href,
         corePath: new URL('./vendor/tesseract/core', import.meta.url).href,
         langPath: new URL('./vendor/tesseract/lang', import.meta.url).href,
@@ -736,6 +785,7 @@ async function getWorker(onProgress) {
       return worker;
     }).catch(error => {
       workerPromise = null;
+      workerLanguageKey = '';
       throw error;
     });
   }
@@ -751,7 +801,7 @@ export async function recognizeTicket(source, options = {}) {
   const preparedResult = isPdf ? await preparePdf(source, onProgress) : await prepareImage(source, onProgress);
   const prepared = preparedResult.primary;
   onProgress({ status: 'Preparando el lector local', progress: 0.08 });
-  const worker = await getWorker(onProgress);
+  const worker = await getWorker(onProgress, options.languages || ['spa']);
   const recognitionPsm = preparedResult.binary && preparedResult.documentDetected
     ? OCR_PSM_SINGLE_BLOCK
     : OCR_PSM_AUTO;

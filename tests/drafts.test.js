@@ -30,7 +30,9 @@ test('nuevo gasto guarda borrador y lo descarta solo al cancelar o guardar', () 
   assert.match(app, /function restoreAddExpenseDraft\(\)/);
   assert.match(app, /bindFormDraft\(addExpenseDraftKey\(\), ADD_EXPENSE_DRAFT_FIELDS\)/);
   assert.match(app, /clearFormDraft\(addExpenseDraftKey\(\)\)/);
-  assert.match(app, /discardAddExpenseDraft\(\);\s+closeAddGasto\(\);/);
+  assert.match(app, /discardAddExpenseDraft\(\);\s+resetAddExpenseForm\(\);\s+closeAddGasto\(\);/);
+  assert.match(app, /function resetAddExpenseForm\(\)[\s\S]*?form\.reset\(\)[\s\S]*?pendingTicketOcr\.g = null/);
+  assert.match(app, /function clearAllFormDrafts\(\)[\s\S]*?resetAddExpenseForm\(\)/);
   assert.match(app, /Si hab.as elegido tickets o fotos, tendr.s que volver a seleccionarlos/);
 });
 
