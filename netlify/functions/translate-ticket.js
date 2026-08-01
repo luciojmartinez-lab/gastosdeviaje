@@ -33,8 +33,8 @@ export default async function translateTicket(request) {
     : [];
 
   try {
-    const apiKey = Netlify.env.get('OPENAI_API_KEY');
-    const baseURL = Netlify.env.get('OPENAI_BASE_URL');
+    const apiKey = Netlify.env.get('NETLIFY_AI_GATEWAY_KEY') || Netlify.env.get('OPENAI_API_KEY');
+    const baseURL = Netlify.env.get('NETLIFY_AI_GATEWAY_BASE_URL') || Netlify.env.get('OPENAI_BASE_URL');
     if (!apiKey || !baseURL) return json({ error: 'gateway_not_configured' }, 503);
     const client = new OpenAI({ apiKey, baseURL, timeout: 45000, maxRetries: 1 });
     const completion = await client.chat.completions.create({
