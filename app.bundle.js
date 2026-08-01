@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v220';
+const APP_VERSION = '700v221';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -16,6 +16,7 @@ const PHOTO_TYPES_SETTING_KEY = 'photoTypes';
 const TICKET_OCR_LANGUAGES_SETTING_KEY = 'ticketOcrLanguages';
 const TICKET_OCR_LANGUAGE_CACHE = 'cuaderno-bitacora-ocr-languages-v1';
 const SYNC_ENDPOINT = '/api/travel-sync';
+const TICKET_TRANSLATION_ENDPOINT = '/api/translate-ticket';
 const LOCAL_BACKUP_LIMIT = 5;
 const CLOUD_ATTACHMENT_CHUNK_CHARS = 2_500_000;
 const CLOUD_ATTACHMENT_CHECK_BATCH = 75;
@@ -97,6 +98,7 @@ let activeEditTicketRecord = null;
 const pendingExpenseTicketLocations = { g: null, 'edit-gasto': null };
 const pendingExpenseTicketLocationChecks = { g: Promise.resolve(), 'edit-gasto': Promise.resolve() };
 const pendingExpenseTicketPreviews = { g: null, 'edit-gasto': null };
+const pendingExpenseTicketTranslations = { g: null, 'edit-gasto': null };
 let activeBlogEntryId = null;
 let activeBlogEntryAnchor = null;
 let activeBlogEntryType = '';
@@ -983,6 +985,20 @@ function expenseTicketImageRecord(gasto) {
   });
 }
 
+function expenseTicketTranslationRecord(gasto) {
+  if (!gasto?.ticketTranslationData) return null;
+  return normalizeStoredImageRecord({
+    id: `expense-ticket-${gasto.id || ''}-translation`,
+    name: gasto.ticketTranslationName || 'Traducción al español · ticket.jpg',
+    type: gasto.ticketTranslationType || 'image/jpeg',
+    size: gasto.ticketTranslationSize || 0,
+    data: normalizeTicketDataValue(gasto.ticketTranslationData),
+    width: gasto.ticketTranslationWidth || 0,
+    height: gasto.ticketTranslationHeight || 0,
+    createdAt: gasto.updatedAt || gasto.createdAt || ''
+  });
+}
+
 function isAccommodationExpense(gasto) {
   const category = state.categorias.find(item => Number(item.id) === Number(gasto && gasto.catId));
   return normalizePlaceName(category && category.nombre) === 'alojamiento';
@@ -1143,12 +1159,16 @@ async function expenseTicketBlogImage(gasto) {
 
 async function expenseBlogImages(gasto) {
   const images = expenseExtraImages(gasto);
+  const translationImage = expenseTicketTranslationRecord(gasto);
   const ticketImage = await expenseTicketBlogImage(gasto);
+  if (translationImage) images.unshift(normalizeBlogImageRecord(translationImage));
   if (ticketImage) images.unshift(ticketImage);
   return images;
 }
 function expenseAttachmentCount(gasto) {
-  return (gasto && gasto.ticketData ? 1 : 0) + expenseExtraImages(gasto).length;
+  return (gasto && gasto.ticketData ? 1 : 0)
+    + (gasto && gasto.ticketTranslationData ? 1 : 0)
+    + expenseExtraImages(gasto).length;
 }
 const numberValue = value => {
   const n = parseFloat(String(value || '').replace(',', '.'));
@@ -2336,7 +2356,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v220');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v221');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2368,7 +2388,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v220');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v221');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2457,6 +2477,156 @@ function renderSelectedExpenseTicketPreview(prefix) {
     }
   }
   if (rotate) rotate.hidden = !image?.data;
+  renderExpenseTicketTranslation(prefix);
+}
+
+function ticketTranslationPatch(record = null) {
+  return {
+    ticketTranslationName: record?.name || '',
+    ticketTranslationType: record?.type || '',
+    ticketTranslationData: record?.data || '',
+    ticketTranslationSize: Math.max(0, Number(record?.size) || 0),
+    ticketTranslationWidth: Math.max(0, Number(record?.width) || 0),
+    ticketTranslationHeight: Math.max(0, Number(record?.height) || 0),
+    ticketTranslationText: String(record?.text || ''),
+    ticketTranslationSourceLanguages: Array.isArray(record?.sourceLanguages) ? record.sourceLanguages.map(String) : []
+  };
+}
+
+function ticketTranslationRecordFromExpense(gasto) {
+  const image = expenseTicketTranslationRecord(gasto);
+  return image ? {
+    ...image,
+    text: String(gasto.ticketTranslationText || ''),
+    sourceLanguages: Array.isArray(gasto.ticketTranslationSourceLanguages)
+      ? gasto.ticketTranslationSourceLanguages.map(String)
+      : []
+  } : null;
+}
+
+function openTicketTranslationRecord(record) {
+  if (!record?.data) throw new Error('No se encuentra la traducción del ticket');
+  const blob = dataUrlToBlob(record.data, record.type || 'image/jpeg');
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function fillTicketTranslationPreview(container, record) {
+  if (!container) return;
+  container.replaceChildren();
+  container.hidden = !record?.data;
+  if (!record?.data) return;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'expense-ticket-preview-open';
+  button.title = 'Abrir traducción al español';
+  button.onclick = () => openTicketTranslationRecord(record);
+  const image = document.createElement('img');
+  image.src = record.data;
+  image.alt = 'Vista previa de la traducción al español del ticket';
+  button.append(image);
+  container.append(button);
+}
+
+function renderExpenseTicketTranslation(prefix) {
+  const record = pendingExpenseTicketTranslations[prefix];
+  if (prefix === 'g') {
+    fillTicketTranslationPreview($('#g-ticket-translation-preview'), record);
+    return;
+  }
+  const hasReplacement = Boolean(selectedFileInput('#edit-gasto-ticket', '#edit-gasto-ticket-camera')?.files?.[0]);
+  fillTicketTranslationPreview($('#edit-gasto-ticket-new-translation-preview'), hasReplacement ? record : null);
+  fillTicketTranslationPreview($('#edit-gasto-ticket-translation-preview'), hasReplacement ? null : record);
+}
+
+function wrapTicketTranslationLines(context, source, maxWidth) {
+  const lines = [];
+  const appendWord = (line, word) => {
+    if (context.measureText(word).width <= maxWidth) return [line, word];
+    let part = '';
+    for (const character of word) {
+      if (part && context.measureText(part + character).width > maxWidth) {
+        lines.push(part);
+        part = character;
+      } else {
+        part += character;
+      }
+    }
+    return ['', part];
+  };
+  String(source || '').replace(/\r\n?/g, '\n').split('\n').forEach(paragraph => {
+    if (!paragraph.trim()) {
+      lines.push('');
+      return;
+    }
+    let line = '';
+    paragraph.trim().split(/\s+/).forEach(word => {
+      if (!line && context.measureText(word).width > maxWidth) {
+        [, line] = appendWord(line, word);
+        return;
+      }
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && context.measureText(candidate).width > maxWidth) {
+        lines.push(line);
+        line = '';
+        if (context.measureText(word).width > maxWidth) [, line] = appendWord(line, word);
+        else line = word;
+      } else {
+        line = candidate;
+      }
+    });
+    lines.push(line);
+  });
+  return lines;
+}
+
+async function createTicketTranslationImage(translation, sourceLanguages) {
+  const width = 1400;
+  const padding = 82;
+  const lineHeight = 43;
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  context.font = '28px Arial, sans-serif';
+  const lines = wrapTicketTranslationLines(context, translation, width - padding * 2).slice(0, 220);
+  canvas.width = width;
+  canvas.height = Math.max(720, padding + 115 + lines.length * lineHeight + padding);
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#2378c9';
+  context.fillRect(0, 0, canvas.width, 18);
+  context.fillStyle = '#122033';
+  context.font = 'bold 38px Arial, sans-serif';
+  context.fillText('TRADUCCIÓN AL ESPAÑOL', padding, padding + 24);
+  context.fillStyle = '#68758a';
+  context.font = '22px Arial, sans-serif';
+  context.fillText('Texto reconocido del ticket original', padding, padding + 67);
+  context.strokeStyle = '#d7dee8';
+  context.beginPath();
+  context.moveTo(padding, padding + 88);
+  context.lineTo(width - padding, padding + 88);
+  context.stroke();
+  context.fillStyle = '#172235';
+  context.font = '28px Arial, sans-serif';
+  let y = padding + 132;
+  lines.forEach(line => {
+    context.fillText(line, padding, y);
+    y += lineHeight;
+  });
+  const blob = await canvasToJpeg(canvas, 0.9);
+  const record = {
+    name: 'Traducción al español · ticket.jpg',
+    type: 'image/jpeg',
+    size: blob.size,
+    data: await readBlobAsDataUrl(blob),
+    width: canvas.width,
+    height: canvas.height,
+    text: String(translation || ''),
+    sourceLanguages: Array.isArray(sourceLanguages) ? sourceLanguages.map(String) : []
+  };
+  canvas.width = 1;
+  canvas.height = 1;
+  return record;
 }
 
 async function readSelectedExpenseTicket(prefix) {
@@ -2470,6 +2640,7 @@ async function rotateSelectedExpenseTicket(prefix, direction) {
   if (!current?.data) throw new Error('Selecciona o fotografía primero un ticket.');
   pendingExpenseTicketPreviews[prefix] = await rotateRasterImageRecord(current, direction);
   pendingTicketOcr[prefix] = null;
+  pendingExpenseTicketTranslations[prefix] = null;
   renderSelectedExpenseTicketPreview(prefix);
   setTicketOcrStatus(prefix, 'Orientación cambiada. Puedes leer el ticket o guardar el gasto.');
 }
@@ -2505,6 +2676,7 @@ function clearExpenseTicketSelection(prefix) {
   const typeSelect = $(`#${prefix}-ticket-type`);
   if (typeSelect) typeSelect.value = '';
   pendingExpenseTicketPreviews[prefix] = null;
+  pendingExpenseTicketTranslations[prefix] = null;
   renderSelectedExpenseTicketPreview(prefix);
   pendingTicketOcr[prefix] = null;
   setTicketOcrStatus(prefix, '');
@@ -2662,6 +2834,7 @@ async function syncExpenseTicketSelection(prefix, source) {
   const selectedFile = selected.files[0];
   const selectedName = selectedFile.name || (source === 'camera' ? 'Foto de cámara' : 'Ticket seleccionado');
   pendingExpenseTicketPreviews[prefix] = null;
+  pendingExpenseTicketTranslations[prefix] = null;
   renderSelectedExpenseTicketPreview(prefix);
   pendingExpenseTicketLocations[prefix] = null;
   syncExpenseTicketMapOption(prefix, null);
@@ -2869,7 +3042,10 @@ function ticketOcrSource(prefix) {
 
 function syncTicketOcrAvailability(prefix) {
   const button = $(`#${prefix}-ticket-read`);
-  if (button && !button.dataset.busy) button.disabled = !ticketOcrSource(prefix);
+  const translateButton = $(`#${prefix}-ticket-translate`);
+  const unavailable = !ticketOcrSource(prefix);
+  if (button && !button.dataset.busy) button.disabled = unavailable;
+  if (translateButton && !translateButton.dataset.busy) translateButton.disabled = unavailable;
 }
 
 function ticketOcrProgressLabel(message, languages = ['spa']) {
@@ -3010,7 +3186,7 @@ async function readExpenseTicket(prefix) {
   const source = ticketOcrSource(prefix);
   if (!source) {
     setTicketOcrStatus(prefix, 'Selecciona o fotografía primero un ticket.', true);
-    return;
+    return null;
   }
   const button = $(`#${prefix}-ticket-read`);
   const languages = ticketOcrLanguagesForExpense(prefix);
@@ -3020,7 +3196,7 @@ async function readExpenseTicket(prefix) {
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v220');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v221');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3036,12 +3212,76 @@ async function readExpenseTicket(prefix) {
     }
     setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result));
     if (prefix === 'g') scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
+    return result;
   } catch (error) {
     console.error(error);
     setTicketOcrStatus(prefix, error?.message || 'No se ha podido leer el ticket.', true);
+    return null;
   } finally {
     delete button.dataset.busy;
     button.textContent = 'Leer ticket';
+    syncTicketOcrAvailability(prefix);
+  }
+}
+
+async function translateExpenseTicket(prefix) {
+  const button = $(`#${prefix}-ticket-translate`);
+  if (!ticketOcrSource(prefix)) {
+    setTicketOcrStatus(prefix, 'Selecciona o fotografía primero un ticket.', true);
+    return;
+  }
+  if (!navigator.onLine) {
+    setTicketOcrStatus(prefix, 'La traducción necesita conexión. El ticket original sigue disponible y puedes continuar en local.', true);
+    return;
+  }
+  try {
+    button.dataset.busy = '1';
+    button.disabled = true;
+    button.textContent = 'Traduciendo…';
+    let sourceText = String(pendingTicketOcr[prefix]?.text || '').trim();
+    if (!sourceText) {
+      setTicketOcrStatus(prefix, 'Primero se leerá el ticket en este dispositivo…');
+      const result = await readExpenseTicket(prefix);
+      sourceText = String(pendingTicketOcr[prefix]?.text || result?.text || '').trim();
+    }
+    if (!sourceText) throw new Error('No se ha podido obtener texto suficiente para traducir. Prueba a girar la foto o a tomarla de nuevo.');
+    const languageCodes = ticketOcrLanguagesForExpense(prefix);
+    setTicketOcrStatus(prefix, 'Traduciendo al español. Solo se está enviando el texto leído…');
+    const response = await fetch(TICKET_TRANSLATION_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: sourceText,
+        sourceLanguages: languageCodes.map(ticketOcrLanguageName)
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.translation) {
+      const messages = {
+        text_too_long: 'El texto del ticket es demasiado largo para traducirlo de una sola vez.',
+        translation_unavailable: 'El servicio de traducción no está disponible ahora. Puedes seguir trabajando en local y probar más tarde.'
+      };
+      throw new Error(messages[payload.error] || 'No se ha podido traducir el ticket. Comprueba la conexión y vuelve a intentarlo.');
+    }
+    const record = await createTicketTranslationImage(payload.translation, languageCodes);
+    pendingExpenseTicketTranslations[prefix] = record;
+    renderExpenseTicketTranslation(prefix);
+    const selectedReplacement = prefix === 'edit-gasto'
+      && selectedFileInput('#edit-gasto-ticket', '#edit-gasto-ticket-camera')?.files?.[0];
+    if (prefix === 'edit-gasto' && !selectedReplacement && !$('#edit-gasto-ticket-remove')?.checked) {
+      const id = Number($('#edit-gasto-id')?.value);
+      if (id) {
+        const saved = await queueExpenseClassificationSave(id, ticketTranslationPatch(record));
+        activeEditTicketRecord = { ...activeEditTicketRecord, ...saved };
+      }
+    }
+    setTicketOcrStatus(prefix, `Traducción preparada${prefix === 'edit-gasto' && !selectedReplacement ? ' y guardada' : ''}. Aparece junto al ticket original.`);
+  } catch (error) {
+    console.error(error);
+    setTicketOcrStatus(prefix, error?.message || 'No se ha podido traducir el ticket.', true);
+  } finally {
+    delete button.dataset.busy;
+    button.textContent = 'Traducir al español';
     syncTicketOcrAvailability(prefix);
   }
 }
@@ -3146,6 +3386,16 @@ async function prepareCloudBackupData(sourceData) {
     } else {
       delete next.ticketRef;
     }
+    if (gasto.ticketTranslationData) {
+      next.ticketTranslationRef = await addAttachment({
+        data: gasto.ticketTranslationData,
+        name: gasto.ticketTranslationName || 'traduccion-ticket.jpg',
+        mime: gasto.ticketTranslationType || 'image/jpeg'
+      });
+      delete next.ticketTranslationData;
+    } else {
+      delete next.ticketTranslationRef;
+    }
     const sourceExtraImages = Array.isArray(gasto.extraImages) ? gasto.extraImages : [];
     next.extraImages = [];
     for (let imageIndex = 0; imageIndex < sourceExtraImages.length; imageIndex += 1) {
@@ -3219,7 +3469,7 @@ async function prepareCloudBackupData(sourceData) {
   return {
     data: {
       ...sourceData,
-      cloudFormat: 6,
+      cloudFormat: 7,
       gastos,
       viajeDocumentos,
       blogEntries,
@@ -3297,11 +3547,17 @@ async function uploadCloudAttachments(attachments) {
 
 async function localAttachmentDataById() {
   const result = new Map();
-  const gastos = state.gastos.filter(gasto => gasto.ticketData);
+  const gastos = state.gastos.filter(gasto => gasto.ticketData || gasto.ticketTranslationData);
   for (let index = 0; index < gastos.length; index += 1) {
     const gasto = gastos[index];
-    const ticket = ticketDataInfo(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
-    result.set(await sha256Hex(ticket.blob), ticket.data);
+    if (gasto.ticketData) {
+      const ticket = ticketDataInfo(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
+      result.set(await sha256Hex(ticket.blob), ticket.data);
+    }
+    if (gasto.ticketTranslationData) {
+      const translation = ticketDataInfo(gasto.ticketTranslationData, gasto.ticketTranslationType || 'image/jpeg');
+      result.set(await sha256Hex(translation.blob), translation.data);
+    }
   }
   const expenseImages = state.gastos.flatMap(gasto => expenseExtraImages(gasto));
   for (let index = 0; index < expenseImages.length; index += 1) {
@@ -3373,6 +3629,7 @@ async function hydrateCloudBackupData(sourceData) {
     gastos: (sourceData.gastos || []).map(gasto => ({
       ...gasto,
       ticketData: gasto.ticketRef ? (downloaded.get(gasto.ticketRef) || '') : (gasto.ticketData || ''),
+      ticketTranslationData: gasto.ticketTranslationRef ? (downloaded.get(gasto.ticketTranslationRef) || '') : (gasto.ticketTranslationData || ''),
       extraImages: (Array.isArray(gasto.extraImages) ? gasto.extraImages : []).map(image => ({
         ...image,
         data: image.fileRef ? (downloaded.get(image.fileRef) || '') : (image.data || '')
@@ -3402,6 +3659,13 @@ function openTicket(gastoId) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+function openTicketTranslation(gastoId) {
+  const gasto = state.gastos.find(g => Number(g.id) === Number(gastoId));
+  const record = ticketTranslationRecordFromExpense(gasto);
+  if (!record) throw new Error('No se encuentra la traducción del ticket');
+  openTicketTranslationRecord(record);
+}
+
 function expenseTicketIsRasterImage(gasto) {
   if (!gasto?.ticketData) return false;
   const ticketData = normalizeTicketDataValue(gasto.ticketData);
@@ -3425,6 +3689,7 @@ function renderEditExpenseTicket(gasto = currentEditTicket()) {
     preview.hidden = true;
     syncExpenseTicketMapOption('edit-gasto', null);
     syncEditExpenseTicketRotation(gasto);
+    renderExpenseTicketTranslation('edit-gasto');
     return;
   }
   const name = String(gasto.ticketName || 'Ticket');
@@ -3448,6 +3713,7 @@ function renderEditExpenseTicket(gasto = currentEditTicket()) {
   preview.append(openButton);
   const removingTicket = Boolean($('#edit-gasto-ticket-remove')?.checked);
   preview.hidden = removingTicket;
+  renderExpenseTicketTranslation('edit-gasto');
   const ticketImage = expenseTicketImageRecord(gasto);
   const ticketPoint = removingTicket ? null : storedImageCoordinates(ticketImage);
   syncExpenseTicketMapOption('edit-gasto', ticketPoint, ticketImage?.mapEnabled === true);
@@ -3492,6 +3758,9 @@ function renderExpenseFilesDialog(gasto) {
   if (gasto.ticketData) {
     const ticketTypeLabel = photoTypeLabel({ photoTypeId: gasto.ticketPhotoTypeId, photoTypeName: gasto.ticketPhotoTypeName });
     items.push(`<li><span class="trip-document-info"><strong>Ticket principal</strong><span>${escapeHtml(gasto.ticketName || 'Ticket')} · ${escapeHtml(ticketTypeLabel || 'Sin clasificar')}</span></span><button type="button" class="ghost" data-open-ticket="${gasto.id}">Abrir</button></li>`);
+  }
+  if (gasto.ticketTranslationData) {
+    items.push(`<li><span class="trip-document-info"><strong>Traducción al español</strong><span>${escapeHtml(gasto.ticketTranslationName || 'Traducción del ticket')}</span></span><button type="button" class="ghost" data-open-ticket-translation="${gasto.id}">Abrir</button></li>`);
   }
   expenseExtraImages(gasto).forEach((image, index) => {
     const typeLabel = photoTypeLabel(image);
@@ -4926,7 +5195,7 @@ async function delMoneda(codigo) {
   return deleteRecord('monedas', String(codigo).toUpperCase());
 }
 
-async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', ticketSize = 0, ticketWidth = 0, ticketHeight = 0, ticketPhotoTypeId = '', ticketPhotoTypeName = '', ticketLatitude = null, ticketLongitude = null, ticketLocationSource = '', ticketCapturedDate = '', ticketCapturedTime = '', ticketMapEnabled = false, extraImages = [] }) {
+async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', ticketSize = 0, ticketWidth = 0, ticketHeight = 0, ticketPhotoTypeId = '', ticketPhotoTypeName = '', ticketLatitude = null, ticketLongitude = null, ticketLocationSource = '', ticketCapturedDate = '', ticketCapturedTime = '', ticketMapEnabled = false, ticketTranslationName = '', ticketTranslationType = '', ticketTranslationData = '', ticketTranslationSize = 0, ticketTranslationWidth = 0, ticketTranslationHeight = 0, ticketTranslationText = '', ticketTranslationSourceLanguages = [], extraImages = [] }) {
   if (!hasValidCurrency(moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   const account = state.cuentas.find(c => c.id === Number(cuentaId));
   if (account && account.moneda !== moneda) throw new Error('La moneda del gasto debe coincidir con la cuenta');
@@ -4961,6 +5230,14 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     ticketCapturedDate: String(ticketCapturedDate || ''),
     ticketCapturedTime: String(ticketCapturedTime || ''),
     ticketMapEnabled: ticketMapEnabled === true && storedImageCoordinate(ticketLatitude, -90, 90) != null && storedImageCoordinate(ticketLongitude, -180, 180) != null,
+    ticketTranslationName: String(ticketTranslationName || ''),
+    ticketTranslationType: String(ticketTranslationType || ''),
+    ticketTranslationData: normalizeTicketDataValue(ticketTranslationData),
+    ticketTranslationSize: Math.max(0, Number(ticketTranslationSize) || 0),
+    ticketTranslationWidth: Math.max(0, Number(ticketTranslationWidth) || 0),
+    ticketTranslationHeight: Math.max(0, Number(ticketTranslationHeight) || 0),
+    ticketTranslationText: String(ticketTranslationText || ''),
+    ticketTranslationSourceLanguages: Array.isArray(ticketTranslationSourceLanguages) ? ticketTranslationSourceLanguages.map(String) : [],
     extraImages: Array.isArray(extraImages) ? extraImages : [],
     createdAt: now,
     updatedAt: now
@@ -4987,6 +5264,14 @@ async function updateGasto(id, patch) {
   next.ticketCapturedDate = String(next.ticketCapturedDate || '');
   next.ticketCapturedTime = String(next.ticketCapturedTime || '');
   next.ticketMapEnabled = next.ticketMapEnabled === true && next.ticketLatitude != null && next.ticketLongitude != null;
+  next.ticketTranslationName = String(next.ticketTranslationName || '');
+  next.ticketTranslationType = String(next.ticketTranslationType || '');
+  next.ticketTranslationData = normalizeTicketDataValue(next.ticketTranslationData);
+  next.ticketTranslationSize = Math.max(0, Number(next.ticketTranslationSize) || 0);
+  next.ticketTranslationWidth = Math.max(0, Number(next.ticketTranslationWidth) || 0);
+  next.ticketTranslationHeight = Math.max(0, Number(next.ticketTranslationHeight) || 0);
+  next.ticketTranslationText = String(next.ticketTranslationText || '');
+  next.ticketTranslationSourceLanguages = Array.isArray(next.ticketTranslationSourceLanguages) ? next.ticketTranslationSourceLanguages.map(String) : [];
   next.paisId = next.paisId ? Number(next.paisId) : null;
   next.ciudadId = next.ciudadId ? Number(next.ciudadId) : null;
   next.hora = normalizeExpenseTime(next.hora) || expenseTimeValue(current) || currentLocalTime();
@@ -9830,7 +10115,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v220');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v221');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -12136,11 +12421,13 @@ function openEditGasto(gasto) {
   $('#edit-gasto-importe').value = Math.abs(currentAmount);
   $('#edit-gasto-desc').value = gasto.desc || '';
   clearExpenseTicketSelection('edit-gasto');
+  pendingExpenseTicketTranslations['edit-gasto'] = ticketTranslationRecordFromExpense(gasto);
   clearExpenseExtraImageSelection('edit-gasto');
   $('#edit-gasto-ticket-remove').checked = false;
   $('#edit-gasto-ticket-type').value = gasto.ticketData ? String(gasto.ticketPhotoTypeId || '') : '';
   syncExpenseTicketTypeAvailability('edit-gasto');
   renderEditExpenseTicket(gasto);
+  renderExpenseTicketTranslation('edit-gasto');
   pendingExpenseTicketLocationChecks['edit-gasto'] = detectStoredExpenseTicketLocation(gasto).catch(() => {});
   syncTicketOcrAvailability('edit-gasto');
   renderEditExpenseImages(gasto);
@@ -12160,6 +12447,7 @@ function closeEditGasto({ restoreAnchor = true } = {}) {
   pendingExpenseTicketLocationChecks['edit-gasto'] = Promise.resolve();
   pendingTicketOcr['edit-gasto'] = null;
   pendingExpenseTicketPreviews['edit-gasto'] = null;
+  pendingExpenseTicketTranslations['edit-gasto'] = null;
   renderSelectedExpenseTicketPreview('edit-gasto');
   setTicketOcrStatus('edit-gasto', '');
   if (dialog.close) dialog.close();
@@ -12236,6 +12524,7 @@ function closeAddGasto() {
   if (!dialog) return;
   pendingTicketOcr.g = null;
   pendingExpenseTicketPreviews.g = null;
+  pendingExpenseTicketTranslations.g = null;
   renderSelectedExpenseTicketPreview('g');
   setTicketOcrStatus('g', '');
   if (dialog.close) dialog.close();
@@ -13501,11 +13790,13 @@ function bindEvents() {
   $('#g-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks.g = syncExpenseTicketSelection('g', 'camera'); };
   $('#g-ticket-type').onchange = () => scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
+  $('#g-ticket-translate').onclick = () => translateExpenseTicket('g');
   $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#edit-gasto-ticket').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'file'); };
   $('#edit-gasto-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'camera'); };
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
+  $('#edit-gasto-ticket-translate').onclick = () => translateExpenseTicket('edit-gasto');
   $('#edit-gasto-ticket-type').onchange = () => {
     saveOpenExpenseTicketClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
@@ -13539,6 +13830,7 @@ function bindEvents() {
       clearExpenseTicketSelection('edit-gasto');
     } else {
       const current = currentEditTicket();
+      pendingExpenseTicketTranslations['edit-gasto'] = ticketTranslationRecordFromExpense(current);
       $('#edit-gasto-ticket-type').value = current?.ticketData ? String(current.ticketPhotoTypeId || '') : '';
       syncExpenseTicketTypeAvailability('edit-gasto');
     }
@@ -13636,10 +13928,10 @@ function bindEvents() {
         .filter((image, index) => !removedExtraImageIndexes.has(index))
         .concat(newExtraImages);
       const ticketPatch = $('#edit-gasto-ticket-remove').checked
-        ? { ticketName: '', ticketType: '', ticketData: '', ticketSize: 0, ticketWidth: 0, ticketHeight: 0, ticketPhotoTypeId: '', ticketPhotoTypeName: '', ticketLatitude: null, ticketLongitude: null, ticketLocationSource: '', ticketCapturedDate: '', ticketCapturedTime: '', ticketMapEnabled: false }
+        ? { ticketName: '', ticketType: '', ticketData: '', ticketSize: 0, ticketWidth: 0, ticketHeight: 0, ticketPhotoTypeId: '', ticketPhotoTypeName: '', ticketLatitude: null, ticketLongitude: null, ticketLocationSource: '', ticketCapturedDate: '', ticketCapturedTime: '', ticketMapEnabled: false, ...ticketTranslationPatch(null) }
         : ticket
-          ? { ticketName: ticket.name, ticketType: ticket.type, ticketData: ticket.data, ticketSize: ticket.size || 0, ticketWidth: ticket.width || 0, ticketHeight: ticket.height || 0, ...expenseTicketLocationPatch('edit-gasto') }
-          : { ticketName: currentTicket ? currentTicket.ticketName : '', ticketType: currentTicket ? currentTicket.ticketType : '', ticketData: currentTicket ? currentTicket.ticketData : '', ticketSize: currentTicket ? currentTicket.ticketSize || 0 : 0, ticketWidth: currentTicket ? currentTicket.ticketWidth || 0 : 0, ticketHeight: currentTicket ? currentTicket.ticketHeight || 0 : 0, ...expenseTicketLocationPatch('edit-gasto', currentTicket) };
+          ? { ticketName: ticket.name, ticketType: ticket.type, ticketData: ticket.data, ticketSize: ticket.size || 0, ticketWidth: ticket.width || 0, ticketHeight: ticket.height || 0, ...expenseTicketLocationPatch('edit-gasto'), ...ticketTranslationPatch(pendingExpenseTicketTranslations['edit-gasto']) }
+          : { ticketName: currentTicket ? currentTicket.ticketName : '', ticketType: currentTicket ? currentTicket.ticketType : '', ticketData: currentTicket ? currentTicket.ticketData : '', ticketSize: currentTicket ? currentTicket.ticketSize || 0 : 0, ticketWidth: currentTicket ? currentTicket.ticketWidth || 0 : 0, ticketHeight: currentTicket ? currentTicket.ticketHeight || 0 : 0, ...expenseTicketLocationPatch('edit-gasto', currentTicket), ...ticketTranslationPatch(pendingExpenseTicketTranslations['edit-gasto'] || ticketTranslationRecordFromExpense(currentTicket)) };
       const selectedTicketType = photoTypeById($('#edit-gasto-ticket-type').value);
       if (ticketPatch.ticketData) {
         ticketPatch.ticketPhotoTypeId = selectedTicketType ? selectedTicketType.id : '';
@@ -13846,6 +14138,7 @@ function bindEvents() {
         ticketPhotoTypeId: selectedTicketType ? selectedTicketType.id : '',
         ticketPhotoTypeName: selectedTicketType ? selectedTicketType.nombre : '',
         ...(ticket ? expenseTicketLocationPatch('g') : {}),
+        ...ticketTranslationPatch(ticket ? pendingExpenseTicketTranslations.g : null),
         extraImages
       });
       clearFormDraft(addExpenseDraftKey());
@@ -14380,6 +14673,11 @@ function bindEvents() {
       const openTicketButton = target.closest('[data-open-ticket]');
       if (openTicketButton) {
         openTicket(openTicketButton.dataset.openTicket);
+        return;
+      }
+      const openTicketTranslationButton = target.closest('[data-open-ticket-translation]');
+      if (openTicketTranslationButton) {
+        openTicketTranslation(openTicketTranslationButton.dataset.openTicketTranslation);
         return;
       }
       const tripReviewButton = target.closest('[data-review-trip]');
