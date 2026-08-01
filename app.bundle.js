@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v222';
+const APP_VERSION = '700v223';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2356,7 +2356,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v222');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v223');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2388,7 +2388,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v222');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v223');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -3196,7 +3196,7 @@ async function readExpenseTicket(prefix) {
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v222');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v223');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6264,6 +6264,18 @@ function clearExpenseFilters() {
   renderTransferAccountSelectors();
   renderBackupStatus();
   renderResumen();
+}
+
+function applyExpenseFilters() {
+  renderGastosTabla();
+  closeFiltersPanel();
+  const trigger = $('#btn-open-filters');
+  if (!trigger) return;
+  try {
+    trigger.focus({ preventScroll: true });
+  } catch (_) {
+    trigger.focus();
+  }
 }
 
 function expenseGroupKey(expense) {
@@ -10118,7 +10130,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v222');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v223');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -14397,6 +14409,7 @@ function bindEvents() {
 
   $('#f-clear').onclick = clearExpenseFilters;
   $('#f-clear-mobile').onclick = clearExpenseFilters;
+  $('#f-apply').onclick = applyExpenseFilters;
   $('#btn-reset').onclick = resetDataPrompt;
 
   document.addEventListener('change', async event => {

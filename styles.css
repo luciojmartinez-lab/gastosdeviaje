@@ -12,6 +12,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  overscroll-behavior: none;
 }
 
 * { box-sizing: border-box; }
@@ -21,6 +22,7 @@ body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
+  overscroll-behavior: none;
 }
 
 header {
@@ -992,6 +994,16 @@ input[type="checkbox"] {
 .row4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .filters { grid-template-columns: repeat(9, minmax(0, 1fr)); }
 .filter-action { align-self: end; }
+
+.filter-actions {
+  display: flex;
+  grid-column: span 2;
+  gap: 8px;
+}
+
+.filter-actions .btn {
+  flex: 1 1 auto;
+}
 
 .expense-dialog-form .add-amount-fields,
 .expense-dialog-form .edit-amount-fields {
@@ -4468,6 +4480,17 @@ footer {
     overflow: auto;
     border-radius: 0;
     box-shadow: none;
+    overscroll-behavior: contain;
+  }
+
+  .filter-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    grid-column: 1 / -1;
+    margin: 4px -4px -4px;
+    padding: 10px 4px 4px;
+    background: linear-gradient(transparent, #fff 22%);
   }
 
   .filter-modal-head {
