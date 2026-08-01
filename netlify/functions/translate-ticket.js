@@ -1,8 +1,5 @@
 import OpenAI from 'openai';
 
-const MODEL = 'gpt-5.4-nano';
-const MAX_TEXT_CHARS = 12000;
-
 function json(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -14,6 +11,8 @@ function json(payload, status = 200) {
 }
 
 export default async function translateTicket(request) {
+  const model = 'gpt-5.4-nano';
+  const maxTextChars = 12000;
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
   if (!String(request.headers.get('content-type') || '').toLowerCase().includes('application/json')) {
     return json({ error: 'invalid_content_type' }, 415);
@@ -28,15 +27,18 @@ export default async function translateTicket(request) {
 
   const sourceText = String(body && body.text || '').trim();
   if (!sourceText) return json({ error: 'missing_text' }, 400);
-  if (sourceText.length > MAX_TEXT_CHARS) return json({ error: 'text_too_long' }, 413);
+  if (sourceText.length > maxTextChars) return json({ error: 'text_too_long' }, 413);
   const languages = Array.isArray(body && body.sourceLanguages)
     ? body.sourceLanguages.map(value => String(value || '').trim()).filter(Boolean).slice(0, 12)
     : [];
 
   try {
-    const client = new OpenAI({ timeout: 45000, maxRetries: 1 });
+    const apiKey = Netlify.env.get('OPENAI_API_KEY');
+    const baseURL = Netlify.env.get('OPENAI_BASE_URL');
+    if (!apiKey || !baseURL) return json({ error: 'gateway_not_configured' }, 503);
+    const client = new OpenAI({ apiKey, baseURL, timeout: 45000, maxRetries: 1 });
     const completion = await client.chat.completions.create({
-      model: MODEL,
+      model,
       messages: [
         {
           role: 'system',
@@ -56,10 +58,16 @@ export default async function translateTicket(request) {
     });
     const translation = String(completion.choices && completion.choices[0] && completion.choices[0].message && completion.choices[0].message.content || '').trim();
     if (!translation) return json({ error: 'empty_translation' }, 502);
-    return json({ translation, model: MODEL });
+    return json({ translation, model });
   } catch (error) {
     console.error('Ticket translation failed', error && (error.status || error.code || error.message));
-    return json({ error: 'translation_unavailable' }, 503);
+    const status = Number(error && error.status);
+    const reason = status === 401 || status === 403
+      ? 'gateway_unauthorized'
+      : status === 404
+        ? 'model_unavailable'
+        : 'translation_unavailable';
+    return json({ error: reason }, 503);
   }
 }
 

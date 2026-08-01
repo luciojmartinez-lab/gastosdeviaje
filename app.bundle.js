@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v221';
+const APP_VERSION = '700v222';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2356,7 +2356,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v221');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v222');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2388,7 +2388,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v221');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v222');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -3196,7 +3196,7 @@ async function readExpenseTicket(prefix) {
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v221');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v222');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3259,6 +3259,9 @@ async function translateExpenseTicket(prefix) {
     if (!response.ok || !payload.translation) {
       const messages = {
         text_too_long: 'El texto del ticket es demasiado largo para traducirlo de una sola vez.',
+        gateway_not_configured: 'La traducción todavía no está configurada en Netlify. El ticket original sigue disponible.',
+        gateway_unauthorized: 'Netlify no ha autorizado el servicio de traducción. El ticket original sigue disponible.',
+        model_unavailable: 'El modelo de traducción no está disponible ahora. Puedes probar de nuevo más tarde.',
         translation_unavailable: 'El servicio de traducción no está disponible ahora. Puedes seguir trabajando en local y probar más tarde.'
       };
       throw new Error(messages[payload.error] || 'No se ha podido traducir el ticket. Comprueba la conexión y vuelve a intentarlo.');
@@ -10115,7 +10118,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v221');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v222');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }

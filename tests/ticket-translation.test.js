@@ -17,8 +17,9 @@ test('el ticket puede traducirse al español sin enviar la fotografía', () => {
   assert.match(html, /Solo se envía el texto leído, nunca la fotografía/);
   assert.match(app, /fetch\(TICKET_TRANSLATION_ENDPOINT,[\s\S]*?text: sourceText,[\s\S]*?sourceLanguages/);
   assert.doesNotMatch(app.slice(app.indexOf('async function translateExpenseTicket'), app.indexOf('function ticketLink')), /ticketData|source\.source/);
-  assert.match(translationFunction, /model: MODEL/);
-  assert.match(translationFunction, /const MODEL = 'gpt-5\.4-nano'/);
+  assert.match(translationFunction, /const model = 'gpt-5\.4-nano'/);
+  assert.match(translationFunction, /Netlify\.env\.get\('OPENAI_API_KEY'\)/);
+  assert.match(translationFunction, /Netlify\.env\.get\('OPENAI_BASE_URL'\)/);
   assert.match(translationFunction, /path: '\/api\/translate-ticket'/);
   assert.match(translationFunction, /rateLimit:[\s\S]*?windowLimit: 6/);
   assert.match(pkg, /"openai": "\^7\.3\.0"/);
