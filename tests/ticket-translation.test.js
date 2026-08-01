@@ -20,6 +20,8 @@ test('el ticket puede traducirse al español sin enviar la fotografía', () => {
   assert.match(translationFunction, /const model = 'gpt-5\.4-nano'/);
   assert.match(translationFunction, /Netlify\.env\.get\('OPENAI_API_KEY'\)/);
   assert.match(translationFunction, /Netlify\.env\.get\('OPENAI_BASE_URL'\)/);
+  assert.match(translationFunction, /NETLIFY_AI_GATEWAY_KEY/);
+  assert.match(translationFunction, /NETLIFY_AI_GATEWAY_BASE_URL/);
   assert.match(translationFunction, /path: '\/api\/translate-ticket'/);
   assert.match(translationFunction, /rateLimit:[\s\S]*?windowLimit: 6/);
   assert.match(pkg, /"openai": "\^7\.3\.0"/);
