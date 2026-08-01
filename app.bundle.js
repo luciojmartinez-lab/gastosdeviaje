@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v225';
+const APP_VERSION = '700v226';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2365,7 +2365,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v225');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v226');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2397,7 +2397,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v225');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v226');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -3205,7 +3205,7 @@ async function readExpenseTicket(prefix) {
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v225');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v226');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -6153,14 +6153,14 @@ function renderViajesHome() {
       tr.dataset.tripId = String(v.id);
       const documentCount = tripDocumentsFor(v.id).length;
       const actionOptions = `<option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="edit">Editar</option>`;
-      tr.innerHTML = `<td class="trip-name-col"><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td class="trip-start-col">${fmtTripDate(v.fechaInicio)}</td><td class="trip-end-col">${fmtTripDate(v.fechaFin)}</td><td class="trip-days-col">${days || '-'}</td><td class="trip-daily-col">${dailyAverage === null ? '-' : fmtCurrency(dailyAverage, 'EUR')}</td><td class="trip-expenses-col">${expenses.length}</td><td class="trip-total-col">${fmtCurrency(total, 'EUR')}</td><td class="trip-budget-col">${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td class="trip-remaining-col">${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions trip-actions-col"><select class="trip-home-action-select" data-trip-home-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}">${actionOptions}</select></td>`;
+      tr.innerHTML = `<td class="trip-name-col"><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td class="trip-start-col">${fmtTripDate(v.fechaInicio)}</td><td class="trip-end-col">${fmtTripDate(v.fechaFin)}</td><td class="trip-days-col">${days || '-'}</td><td class="trip-daily-col">${dailyAverage === null ? '-' : fmtCurrency(dailyAverage, 'EUR')}</td><td class="trip-total-col">${fmtCurrency(total, 'EUR')}</td><td class="trip-expenses-col">${expenses.length}</td><td class="trip-budget-col">${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td class="trip-remaining-col">${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions trip-actions-col"><select class="trip-home-action-select" data-trip-home-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}">${actionOptions}</select></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
     const yearRemaining = yearBudget ? yearBudget - yearTotal : null;
     const yearDailyAverage = tripDailyExpenseAverage(yearTotal, yearDays);
     subtotal.className = yearRemaining !== null && yearRemaining < 0 ? 'warning-row' : 'subtotal-row';
-    subtotal.innerHTML = `<td class="trip-subtotal-label" colspan="3">Subtotal ${escapeHtml(year)}</td><td class="trip-days-col">${yearDays || '-'}</td><td class="trip-daily-col">${yearDailyAverage === null ? '-' : fmtCurrency(yearDailyAverage, 'EUR')}</td><td class="trip-expenses-col">${yearExpenses}</td><td class="trip-total-col">${fmtCurrency(yearTotal, 'EUR')}</td><td class="trip-budget-col">${yearBudget ? fmtCurrency(yearBudget, 'EUR') : '-'}</td><td class="trip-remaining-col">${yearRemaining === null ? '-' : fmtCurrency(yearRemaining, 'EUR')}</td><td class="trip-actions-col"></td>`;
+    subtotal.innerHTML = `<td class="trip-subtotal-label" colspan="3">Subtotal ${escapeHtml(year)}</td><td class="trip-days-col">${yearDays || '-'}</td><td class="trip-daily-col">${yearDailyAverage === null ? '-' : fmtCurrency(yearDailyAverage, 'EUR')}</td><td class="trip-total-col">${fmtCurrency(yearTotal, 'EUR')}</td><td class="trip-expenses-col">${yearExpenses}</td><td class="trip-budget-col">${yearBudget ? fmtCurrency(yearBudget, 'EUR') : '-'}</td><td class="trip-remaining-col">${yearRemaining === null ? '-' : fmtCurrency(yearRemaining, 'EUR')}</td><td class="trip-actions-col"></td>`;
     tbody.appendChild(subtotal);
     if (yearInput) yearInput.indeterminate = !yearChecked && yearTrips.some(v => selectedIds.has(v.id));
   });
@@ -10140,7 +10140,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v225');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v226');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }

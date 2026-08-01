@@ -4596,8 +4596,8 @@ footer {
   }
 
   #tabla-viajes-home {
-    width: 562px;
-    min-width: 562px;
+    width: 584px;
+    min-width: 584px;
     table-layout: fixed;
     font-size: 11px;
   }
@@ -4611,33 +4611,33 @@ footer {
   }
 
   #tabla-viajes-home .trip-name-col {
-    width: 82px;
+    width: 90px;
   }
 
   #tabla-viajes-home .trip-start-col,
   #tabla-viajes-home .trip-end-col {
-    width: 40px;
+    width: 38px;
     text-align: center;
     font-size: 9px;
   }
 
   #tabla-viajes-home .trip-days-col {
-    width: 24px;
+    width: 22px;
     text-align: center;
     font-size: 10px;
   }
 
   #tabla-viajes-home .trip-daily-col {
-    width: 50px;
-  }
-
-  #tabla-viajes-home .trip-expenses-col {
-    width: 32px;
-    text-align: center;
+    width: 42px;
   }
 
   #tabla-viajes-home .trip-total-col {
+    width: 48px;
+  }
+
+  #tabla-viajes-home .trip-expenses-col {
     width: 50px;
+    text-align: center;
   }
 
   #tabla-viajes-home .trip-budget-col,
@@ -4646,7 +4646,9 @@ footer {
   }
 
   #tabla-viajes-home .trip-actions-col {
-    width: 100px;
+    width: 112px;
+    border-left: 1px solid #dfe6f2;
+    padding-left: 8px;
   }
 
   #tabla-viajes-home .trip-daily-col,
@@ -4687,6 +4689,11 @@ footer {
   #tabla-viajes-home thead .trip-total-col {
     border-left: 1px solid #dfe6f2;
     text-align: center;
+  }
+
+  #tabla-viajes-home thead .trip-expenses-col {
+    font-size: 9px;
+    white-space: normal;
   }
 
   #tabla-viajes-home .trip-check {
