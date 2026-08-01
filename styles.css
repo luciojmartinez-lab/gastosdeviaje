@@ -983,8 +983,8 @@ input[type="checkbox"] {
 
 .trip-date-compact,
 .trip-daily-label-mobile,
-.trip-total-label-mobile,
-.trip-home-action-mobile {
+.trip-expenses-label-mobile,
+.trip-total-label-mobile {
   display: none;
 }
 
@@ -4591,12 +4591,13 @@ footer {
   }
 
   #view-viajes .table-wrap {
-    overflow-x: hidden;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
   }
 
   #tabla-viajes-home {
-    width: 100%;
-    min-width: 0;
+    width: 562px;
+    min-width: 562px;
     table-layout: fixed;
     font-size: 11px;
   }
@@ -4610,41 +4611,59 @@ footer {
   }
 
   #tabla-viajes-home .trip-name-col {
-    width: 30%;
+    width: 82px;
   }
 
   #tabla-viajes-home .trip-start-col,
   #tabla-viajes-home .trip-end-col {
-    width: 15%;
+    width: 40px;
     text-align: center;
+    font-size: 9px;
   }
 
   #tabla-viajes-home .trip-days-col {
-    width: 7%;
+    width: 24px;
+    text-align: center;
+    font-size: 10px;
+  }
+
+  #tabla-viajes-home .trip-daily-col {
+    width: 50px;
+  }
+
+  #tabla-viajes-home .trip-expenses-col {
+    width: 32px;
     text-align: center;
   }
 
-  #tabla-viajes-home .trip-daily-col,
   #tabla-viajes-home .trip-total-col {
-    width: 16.5%;
+    width: 50px;
+  }
+
+  #tabla-viajes-home .trip-budget-col,
+  #tabla-viajes-home .trip-remaining-col {
+    width: 72px;
+  }
+
+  #tabla-viajes-home .trip-actions-col {
+    width: 100px;
+  }
+
+  #tabla-viajes-home .trip-daily-col,
+  #tabla-viajes-home .trip-total-col,
+  #tabla-viajes-home .trip-budget-col,
+  #tabla-viajes-home .trip-remaining-col {
     text-align: right;
     white-space: nowrap;
     font-size: 10px;
     font-variant-numeric: tabular-nums;
   }
 
-  #tabla-viajes-home .trip-expenses-col,
-  #tabla-viajes-home .trip-budget-col,
-  #tabla-viajes-home .trip-remaining-col,
-  #tabla-viajes-home .trip-actions-col {
-    display: none;
-  }
-
   #tabla-viajes-home .trip-date-full,
   #tabla-viajes-home .trip-daily-label-full,
+  #tabla-viajes-home .trip-expenses-label-full,
   #tabla-viajes-home .trip-total-label-full,
-  #tabla-viajes-home .trip-year-help,
-  #tabla-viajes-home .trip-home-action-desktop {
+  #tabla-viajes-home .trip-year-help {
     display: none;
   }
 
@@ -4654,12 +4673,13 @@ footer {
     white-space: nowrap;
   }
 
+  #tabla-viajes-home .trip-daily-label-mobile,
+  #tabla-viajes-home .trip-expenses-label-mobile,
   #tabla-viajes-home .trip-total-label-mobile {
     display: inline;
   }
 
   #tabla-viajes-home .trip-daily-label-mobile {
-    display: inline;
     white-space: normal;
   }
 
@@ -4685,12 +4705,9 @@ footer {
     overflow-wrap: anywhere;
   }
 
-  #tabla-viajes-home .trip-home-action-mobile {
-    display: block;
-    width: calc(100% - 22px);
-    min-height: 24px;
-    margin: 4px 0 0 22px;
-    padding: 3px 2px;
+  #tabla-viajes-home .trip-home-action-select {
+    min-height: 28px;
+    padding: 3px 4px;
     font-size: 10px;
   }
 

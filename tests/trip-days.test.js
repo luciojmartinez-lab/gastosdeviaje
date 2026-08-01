@@ -31,11 +31,15 @@ test('Viajes muestra y suma la duración inclusiva de cada viaje', () => {
 test('Viajes compacta fechas, media diaria y total en la anchura del móvil', () => {
   assert.match(app, /const fmtTripDate = iso => \{/);
   assert.match(app, /<span class="trip-date-compact"><span>\$\{escapeHtml\(weekday\)\}<\/span><span>\$\{day\}-\$\{month\}-\$\{year\.slice\(-2\)\}<\/span><\/span>/);
-  assert.match(app, /trip-home-action-select trip-home-action-mobile/);
+  assert.doesNotMatch(app, /trip-home-action-mobile/);
+  assert.match(app, /trip-home-actions trip-actions-col"><select class="trip-home-action-select"/);
   assert.match(styles, /#tabla-viajes-home \{[\s\S]*?table-layout: fixed;/);
-  assert.match(styles, /#tabla-viajes-home \.trip-expenses-col,[\s\S]*?#tabla-viajes-home \.trip-actions-col \{\s*display: none;/);
-  assert.match(styles, /#tabla-viajes-home \.trip-daily-col,[\s\S]*?#tabla-viajes-home \.trip-total-col \{[\s\S]*?white-space: nowrap;/);
+  assert.match(styles, /#view-viajes \.table-wrap \{\s*overflow-x: auto;/);
+  assert.match(styles, /#tabla-viajes-home \{\s*width: 562px;\s*min-width: 562px;/);
+  assert.doesNotMatch(styles, /#tabla-viajes-home \.trip-expenses-col,[\s\S]*?#tabla-viajes-home \.trip-actions-col \{\s*display: none;/);
+  assert.match(styles, /#tabla-viajes-home \.trip-daily-col,[\s\S]*?#tabla-viajes-home \.trip-total-col,[\s\S]*?white-space: nowrap;/);
   assert.match(help, /En móvil, Inicio y Final se muestran en dos líneas/);
+  assert.match(help, /No se oculta ninguna columna/);
 });
 
 test('la media diaria divide el gasto EUR entre los días del viaje', () => {
