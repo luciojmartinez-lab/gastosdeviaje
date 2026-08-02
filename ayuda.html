@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v226</title>
+  <title>Manual de Cuaderno de Bitácora - 700v227</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     const embeddedHelpMode = helpParams.get('embedded');
@@ -193,7 +193,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 1 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v226</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 2 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v227</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -235,7 +235,7 @@
         <ol class="workflow">
           <li><strong>Seleccionar el viaje.</strong> En <a href="#viajes">Viajes</a>, marca el viaje activo. El Blog solo se habilita cuando hay exactamente uno seleccionado.</li>
           <li><strong>Anotar cada movimiento.</strong> Usa <a href="#gasto-formulario">Añadir gastos</a>. Para varios gastos seguidos, pulsa <em>Añadir y seguir</em>; se conservarán los datos útiles para el siguiente registro.</li>
-          <li><strong>Guardar el justificante.</strong> Fotografía o elige el ticket, usa <a href="#ocr">Leer ticket</a> si conviene y asigna una <a href="#clasificaciones">clasificación</a>. El ticket y las imágenes adicionales muestran una vista previa, pueden girarse individualmente y, cuando tienen GPS, permiten añadirse al mapa. Si está en otro idioma, <a href="#traducir-ticket">Traducir al español</a> crea una segunda imagen junto al original.</li>
+          <li><strong>Guardar el justificante.</strong> Fotografía o elige el ticket, usa <a href="#ocr">Leer ticket</a> si conviene y asigna una <a href="#clasificaciones">clasificación</a>. El ticket y las imágenes adicionales muestran una vista previa, se amplían al pulsarlas, pueden compartirse y, cuando tienen GPS, permiten añadirse al mapa. Si está en otro idioma, <a href="#traducir-ticket">Google Lens</a> permite crear fuera de la aplicación una traducción que se guarda junto al original.</li>
           <li><strong>Contar lo ocurrido.</strong> Añade al <a href="#blog-formulario">Blog</a> texto, imágenes o puntos geolocalizados. Usa <a href="#en-ruta">En ruta</a> para una huella intermedia del recorrido.</li>
           <li><strong>Reutilizar gastos en el relato.</strong> Desde <a href="#gastos-tabla">Acciones del gasto</a>, elige <em>Añadir al blog</em>. La aplicación permanece en Gastos y conserva ese registro a la vista para continuar con el siguiente.</li>
           <li><strong>Registrar movimientos entre cuentas.</strong> Una recarga, retirada o cambio de divisa se anota como <a href="#transferencias">transferencia</a>, no como gasto, porque el dinero solo cambia de cuenta.</li>
@@ -380,7 +380,7 @@
           </tbody></table></div>
 
           <h4 id="idiomas-tickets">Idiomas para leer tickets</h4>
-          <p>El español está siempre disponible. En Configuración se pueden activar catalán, inglés, finés, polaco, francés, alemán, italiano, portugués, neerlandés, japonés y coreano. Además, el país del viaje activa automáticamente su idioma: por ejemplo, Polonia prepara polaco, Japón prepara japonés y Corea prepara coreano. Cada paquete se descarga una sola vez cuando hay conexión y después queda disponible para lecturas locales sin internet.</p>
+          <p>El español está siempre disponible. En Configuración se pueden activar catalán, inglés, finés, polaco, francés, alemán, italiano, portugués, neerlandés, japonés y coreano. Además, el país del viaje activa automáticamente su idioma: por ejemplo, Polonia prepara polaco, Japón prepara japonés y Corea prepara coreano. En cada ticket, <em>Idioma de lectura</em> permite mantener ese modo automático o elegir expresamente otro idioma; resulta útil para probar un ticket japonés dentro de un viaje español. Cada paquete se descarga una sola vez cuando hay conexión y después queda disponible para lecturas locales sin internet.</p>
 
           <h4 id="config-backups">Backups desde Configuración</h4>
           <p>Los botones abren <a href="#backup">Exportar / backup</a>, <a href="#sincronizacion">Sincronizar</a>, <a href="#csv">Exportar CSV</a>, <a href="#informes">Imprimir / PDF</a> e <a href="#backup-importar">Importar JSON</a>. Las últimas cinco copias completas permanecen en el dispositivo.</p>
@@ -408,12 +408,12 @@
             <tr><td>Tipo</td><td><em>Gasto</em> descuenta; <em>Ingreso / devolución</em> se guarda como importe negativo y reduce el total gastado.</td></tr>
             <tr><td>Descripción</td><td>Cuadro amplio de varias líneas para identificar el movimiento y revisar el texto completo mientras se escribe. Después permite localizarlo mediante los filtros.</td></tr>
             <tr><td>Elegir archivo / Cámara</td><td>Añade un ticket como imagen o PDF. Cuando es una fotografía, se muestra inmediatamente dentro del formulario para comprobar su orientación antes de guardar.</td></tr>
-            <tr><td id="ocr">Leer ticket</td><td>Lee el justificante y propone comercio, fecha, hora, importe, categoría y subcategoría cuando los reconoce con claridad. Usa los <a href="#idiomas-tickets">idiomas elegidos o activados por el país del viaje</a>, incluidos japonés y coreano. Al editar completa solo campos vacíos y nunca rellena un importe dudoso. Revisa el resultado antes de guardar.</td></tr>
-            <tr><td id="traducir-ticket">Traducir al español</td><td>Lee el ticket si todavía no se ha leído, traduce su texto y crea una segunda imagen blanca con la traducción. Se muestra junto al original, se guarda con el gasto y pasa después al Blog y a su PDF inmediatamente detrás del ticket. Necesita conexión; solo se envía el texto reconocido, nunca la fotografía. Sin conexión, el original permanece disponible y se puede seguir trabajando en local.</td></tr>
+            <tr><td id="ocr">Leer ticket</td><td>Lee el justificante y propone comercio, fecha, hora, importe, categoría y subcategoría cuando los reconoce con claridad. <em>Idioma de lectura</em> usa por defecto los idiomas elegidos o activados por el país del viaje, incluidos japonés y coreano, y permite elegir otro para ese ticket. Al editar completa solo campos vacíos y nunca rellena un importe dudoso. Revisa el resultado antes de guardar.</td></tr>
+            <tr><td id="traducir-ticket">Traducir con Google Lens</td><td>Abre el ticket a tamaño completo. Pulsa <em>Compartir / Google Lens</em>, elige Lens y traduce la imagen. Desde el resultado de Lens, vuelve a compartirla con Cuaderno de Bitácora y elige <em>Gasto existente → Ticket → Añadir como traducción</em>. La traducción queda junto al original y pasa también al Blog y a su PDF. Es un flujo gratuito: Cuaderno de Bitácora comparte el archivo real y no contrata ni llama a ningún servicio de traducción de pago.</td></tr>
             <tr><td>Clasificación del ticket</td><td>Tipo visual independiente de la categoría económica.</td></tr>
-            <tr><td>Vista previa y Girar</td><td>Una foto nueva tomada con Cámara o elegida como archivo aparece en el propio formulario y se puede girar antes de guardar. Al editar también se muestra el ticket ya guardado. Si se pulsa Guardar mientras el giro está terminando, la aplicación espera y conserva siempre la última orientación.</td></tr>
+            <tr><td>Vista previa, ampliar, compartir y Girar</td><td>Una foto nueva tomada con Cámara o elegida como archivo aparece en el propio formulario y se puede girar antes de guardar. Al pulsarla se abre completa y se puede compartir como archivo real, por ejemplo con Google Lens. Al editar también se muestra el ticket ya guardado. Si se pulsa Guardar mientras el giro está terminando, la aplicación espera y conserva siempre la última orientación.</td></tr>
             <tr><td>GPS y mapa del ticket</td><td>Cuando el ticket es una fotografía con coordenadas, aparece <em>Añadir el ticket al mapa</em>. La aplicación guarda su GPS antes de compactar la imagen y lo representa como una fotografía del gasto; los PDF no ofrecen esta opción.</td></tr>
-            <tr><td>Imágenes adicionales</td><td>Admite varias fotografías. Al editar, cada imagen actual se ve antes de decidir si se gira, se abre a tamaño completo al pulsarla y tiene sus propios botones Izquierda y Derecha. Cada una puede conservar GPS, recibir clasificación y añadirse al mapa. Si la fecha u hora de la primera foto no coincide con la del gasto, <em>Mantener</em> conserva las del gasto y <em>Reemplazar</em> aplica las de la foto.</td></tr>
+            <tr><td>Imágenes adicionales</td><td>Admite varias fotografías. Tanto las nuevas como las ya guardadas muestran miniatura, se abren a tamaño completo al pulsarlas y pueden compartirse; cada imagen actual se ve antes de decidir si se gira y tiene sus propios botones Izquierda y Derecha. Cada una puede conservar GPS, recibir clasificación y añadirse al mapa. Si la fecha u hora de la primera foto no coincide con la del gasto, <em>Mantener</em> conserva las del gasto y <em>Reemplazar</em> aplica las de la foto.</td></tr>
             <tr><td>Añadir y salir</td><td>Guarda y cierra.</td></tr>
             <tr><td>Añadir y seguir</td><td>Guarda y prepara otro gasto conservando el contexto útil.</td></tr>
             <tr><td>Cancelar / X</td><td>Cancelar descarta el borrador y limpia todos los datos propuestos por Leer ticket; al abrir de nuevo aparece un formulario limpio. La X cierra y permite recuperar lo escrito después. Los archivos deben elegirse de nuevo.</td></tr>
@@ -428,7 +428,7 @@
           <p>Hora, Ciudad, Categoría, Subcategoría, Cuenta, Moneda, Importe, equivalencia EUR, Descripción y Acciones. Cada cabecera identifica el día, la ciudad de destino y los países del grupo, sin repetir el nombre del viaje. Si durante el día hay gastos en varias ciudades, se toma como destino la última ciudad registrada cronológicamente. El pie muestra el total del filtro. La impresión incluye todos los grupos filtrados, aunque alguno esté plegado en pantalla.</p>
           <h4>Desplegable Acciones</h4>
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Opción</th><th>Efecto</th></tr></thead><tbody>
-            <tr><td id="gasto-archivos">Archivos</td><td>Abre el ticket, su traducción al español si existe y todas las imágenes del gasto para consultarlas. La edición del gasto permite además clasificarlas, girarlas, sustituirlas o quitarlas.</td></tr>
+            <tr><td id="gasto-archivos">Archivos</td><td>Abre el ticket, su traducción o segundo ticket si existe y todas las imágenes del gasto. Las imágenes se amplían y pueden compartirse desde el visor. La edición permite además clasificarlas, girarlas, sustituirlas o quitarlas.</td></tr>
             <tr><td id="gasto-a-blog">Añadir al blog / Actualizar blog</td><td>Crea o actualiza la entrada enlazada. Si ya existe, <em>Cancelar</em> no cambia la entrada; <em>Conservar Fecha/hora Blog</em> actualiza su contenido conservando la fecha y hora editadas en el Blog; <em>Reemplazar Datos Blog</em> usa también la fecha y hora del gasto.</td></tr>
             <tr><td>Editar</td><td>Abre todos los campos y permite ver, sustituir, quitar, clasificar o girar tickets e imágenes. En móvil los controles del ticket ocupan todo el ancho para que sus textos sean legibles. Al guardar, vuelve al mismo gasto y lo enmarca en verde durante unos segundos.</td></tr>
             <tr><td>Duplicar</td><td>Crea un nuevo formulario a partir del gasto actual.</td></tr>
@@ -582,14 +582,17 @@
 
         <div class="subsection" id="compartir">
           <h3>3.8 Compartir desde Android</h3>
-          <p>Cuaderno de Bitácora puede aparecer en el menú Compartir del teléfono.</p>
+          <p>Cuaderno de Bitácora puede aparecer en el menú Compartir del teléfono. Si la aplicación ya está abierta, la primera compartición reutiliza esa misma ventana y muestra directamente la preparación del contenido.</p>
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Contenido recibido</th><th>Resultado</th></tr></thead><tbody>
-            <tr><td>Una o varias imágenes</td><td>Permite elegir viaje y destino: nueva entrada del Blog o nuevo gasto. Antes se puede corregir la descripción.</td></tr>
+            <tr><td>Una o varias imágenes</td><td>Permite elegir viaje y destino: nueva entrada del Blog, nuevo gasto o gasto existente. La miniatura se amplía al pulsarla y permite comprobar qué se está importando.</td></tr>
+            <tr><td>Imagen para un gasto</td><td>Pregunta si es <em>Ticket</em> o <em>Foto asociada</em>. Se coloca inmediatamente en el apartado elegido y se ve antes de guardar.</td></tr>
+            <tr><td>Ticket para un gasto que ya tiene otro</td><td>Permite <em>Reemplazar el ticket actual</em>, <em>Añadir como traducción</em> o <em>Añadir como segundo ticket</em>. La traducción y el segundo ticket aparecen al lado del principal.</td></tr>
             <tr><td>Texto seleccionado</td><td>Permite elegir viaje y abre una entrada de tipo Texto para revisarla.</td></tr>
             <tr><td>Archivo TXT</td><td>Se trata como texto compartido y se revisa antes de guardar.</td></tr>
             <tr><td>Archivo incompatible</td><td>La aplicación informa de que no puede tratarlo; no se guarda como imagen.</td></tr>
           </tbody></table></div>
-          <p>Al recibir contenido, la aplicación mantiene una única pantalla de preparación mientras recupera la imagen, crea la miniatura y comprueba el GPS. El selector de destino solo aparece cuando esos datos están listos.</p>
+          <p>Al recibir contenido, la aplicación mantiene una única pantalla de preparación mientras recupera la imagen, crea la miniatura y comprueba el GPS. Nada se guarda hasta confirmar después el formulario del Blog o del gasto.</p>
+          <p>Para traducir un ticket, ábrelo dentro de Cuaderno de Bitácora y pulsa <em>Compartir / Google Lens</em>. El visor entrega a Android la fotografía como archivo real; por eso Lens puede aparecer entre las aplicaciones disponibles. Tras traducir, comparte el resultado de Lens de vuelta y clasifícalo como traducción.</p>
           <p>Android decide qué metadatos entrega. Para conservar GPS en fotos antiguas, suele ser más fiable elegirlas desde Archivos → Almacenamiento interno → DCIM → Camera.</p>
           <a class="back" href="#indice">Volver al índice</a>
         </div>
@@ -649,7 +652,7 @@
             <tr><td>Abrir la aplicación ya instalada</td><td>Sí, con la versión almacenada.</td></tr>
             <tr><td>Crear y editar datos</td><td>Sí.</td></tr>
             <tr><td>Leer tickets</td><td>Sí. Español queda incluido al instalar la versión; cada idioma adicional funciona sin internet después de su primera descarga automática.</td></tr>
-            <tr><td>Traducir tickets</td><td>No. La traducción necesita conexión porque solo entonces se envía el texto reconocido al servicio de traducción. El ticket original y los datos del gasto continúan disponibles sin internet.</td></tr>
+            <tr><td>Traducir tickets</td><td>Cuaderno de Bitácora puede abrir y compartir el original sin conexión. Google Lens suele necesitar conexión para producir la traducción; si no la hay, el ticket original y los datos del gasto continúan disponibles.</td></tr>
             <tr><td>Mapas ya vistos</td><td>En la medida en que el navegador conserve sus recursos. Al instalarse una versión nueva, la aplicación carga primero la portada actualizada y no espera a abrir Mapa para completar el cambio.</td></tr>
             <tr><td>GPS del teléfono</td><td>Sí; puede obtener la posición sin datos móviles, aunque la primera lectura puede tardar.</td></tr>
             <tr><td>Mapas nuevos, buscar descripciones y tipos de cambio</td><td>No; consultan servicios externos.</td></tr>
@@ -664,10 +667,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 1 de agosto de 2026 para Cuaderno de Bitácora 700v226.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 2 de agosto de 2026 para Cuaderno de Bitácora 700v227.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v226 · 1 de agosto de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v227 · 2 de agosto de 2026</div>
 </body>
 </html>

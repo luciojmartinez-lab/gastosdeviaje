@@ -11,7 +11,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v226';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v227';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -148,6 +148,12 @@ function integerCurrencyAmountsInLine(line) {
   return matches.map(value => Number(value.replace(/\D/g, ''))).filter(value => Number.isFinite(value));
 }
 
+function groupedIntegerAmountsInLine(line) {
+  return Array.from(String(line || '').matchAll(/(?:^|[^\d])((?:\d{1,3})(?:[,.\s]\d{3})+)(?!\d)/g))
+    .map(match => Number(String(match[1] || '').replace(/\D/g, '')))
+    .filter(value => Number.isFinite(value));
+}
+
 function standaloneIntegerAmount(line) {
   const value = String(line || '').trim();
   if (!/^(?:[¥₩]\s*)?(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)(?:\s*(?:円|원|jpy|krw))?$/iu.test(value)) return [];
@@ -226,8 +232,8 @@ const TOTAL_TAX_LABEL = /\b(?:iva|vat|alv|tax|vero|tva|mwst)\b/;
 const TOTAL_TAX_INCLUDED = /\b(?:iva|vat|alv|tax|vero|tva|mwst)\s+(?:incl|included|sis|compris)/;
 const TOTAL_EXCLUDED_LABEL = /\b(?:subtotal|sub\s+total|valisumma|base\s+(?:imponible|imposable|iva)|taxable\s+amount|net\s+amount|netto|cuota\s+iva|cambio|change|vaihtoraha|entregado|efectivo|cash|kateinen|descuento|discount|alennus|propina|tip|juomaraha)\b/;
 const TOTAL_LABEL_ONLY = /^(?:(?:grand\s+)?total|importe?|amount|summa|betrag|montant|importo|valor|yhteensa|loppusumma|kokonaissumma|gesamtbetrag|maksettav(?:a|aa)|zu\s+zahlen|a\s+payer|da\s+pagare|(?:importe?\s+)?(?:a|per|poder)\s+(?:pagar|abonar)|pendiente\s+de\s+cobro|cobro\s+pendiente|pendent\s+de\s+cobrament)(?:\s+(?:eur|euro|euros|gbp|pounds?|sek|nok|dkk))?$/;
-const EAST_ASIAN_BEST_TOTAL_LABEL = /(?:総合計|合計金額|お支払(?:い)?(?:合計|金額)?|お会計|合計|支払合計|합계금액|총결제금액|결제금액|받을금액|총액|합계)/u;
-const EAST_ASIAN_TOTAL_LABEL_ONLY = /^(?:総合計|合計金額|お支払(?:い)?(?:合計|金額)?|お会計|合計|支払合計|합계금액|총결제금액|결제금액|받을금액|총액|합계)(?:\s*(?:jpy|krw|円|원))?$/iu;
+const EAST_ASIAN_BEST_TOTAL_LABEL = /(?:総\s*合\s*計|合\s*計\s*金\s*額|お\s*支\s*払(?:\s*い)?(?:\s*合\s*計|\s*金\s*額)?|お\s*会\s*計|合\s*計|支\s*払\s*合\s*計|합\s*계\s*금\s*액|총\s*결\s*제\s*금\s*액|결\s*제\s*금\s*액|받\s*을\s*금\s*액|총\s*액|합\s*계)/u;
+const EAST_ASIAN_TOTAL_LABEL_ONLY = /^(?:総\s*合\s*計|合\s*計\s*金\s*額|お\s*支\s*払(?:\s*い)?(?:\s*合\s*計|\s*金\s*額)?|お\s*会\s*計|合\s*計|支\s*払\s*合\s*計|합\s*계\s*금\s*액|총\s*결\s*제\s*금\s*액|결\s*제\s*금\s*액|받\s*을\s*금\s*액|총\s*액|합\s*계)(?:\s*(?:jpy|krw|円|원))?$/iu;
 const EAST_ASIAN_EXCLUDED_TOTAL_LABEL = /(?:小計|消費税|税額|お預り|お釣り|소계|부가세|세액|거스름돈)/u;
 
 function ticketTotalLineExcluded(normalized) {
@@ -254,7 +260,8 @@ export function extractTicketTotal(text) {
   lines.forEach((line, index) => {
     const normalized = normalizeTicketConcepts(line);
     let amounts = amountsInLine(line);
-    const hasBestLabel = BEST_TOTAL_LABEL.test(normalized) || /\btotal\s+(?:compra|operacion|ticket)\b/.test(normalized) || EAST_ASIAN_BEST_TOTAL_LABEL.test(line);
+    const hasEastAsianBestLabel = EAST_ASIAN_BEST_TOTAL_LABEL.test(line);
+    const hasBestLabel = BEST_TOTAL_LABEL.test(normalized) || /\btotal\s+(?:compra|operacion|ticket)\b/.test(normalized) || hasEastAsianBestLabel;
     const hasTotalLabel = GENERIC_TOTAL_LABEL.test(normalized) && !/\b(?:subtotal|sub\s+total|valisumma)\b/.test(normalized);
     const hasAmountLabel = AMOUNT_TOTAL_LABEL.test(normalized);
     const hasPaymentDueLabel = PAYMENT_DUE_LABEL.test(normalized);
@@ -262,6 +269,10 @@ export function extractTicketTotal(text) {
     const excluded = ticketTotalLineExcluded(normalized);
     const integerCurrencyAmounts = integerCurrencyAmountsInLine(line);
     if (integerCurrencyAmounts.length && (hasBestLabel || hasTotalLabel || hasPaymentDueLabel)) amounts = integerCurrencyAmounts;
+    else if (hasEastAsianBestLabel) {
+      const groupedIntegers = groupedIntegerAmountsInLine(line);
+      if (groupedIntegers.length) amounts = groupedIntegers;
+    }
     let labelScore = hasBestLabel ? 130 : hasTotalLabel ? 115 : hasPaymentDueLabel ? 105 : hasAmountLabel ? 95 : 0;
     if (tableHeader && !hasTotalLabel) labelScore = 0;
     if (hasAmountLabel && !hasTotalLabel && !hasPaymentDueLabel && amounts.length > 1) labelScore = 0;

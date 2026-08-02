@@ -20,6 +20,10 @@ test('el destino Compartir acepta imagenes, texto y archivos TXT', () => {
   assert.match(sw, /!files\.length && !sharedTextParts\.length/);
 });
 
+test('la primera compartición reutiliza la aplicación ya abierta', () => {
+  assert.equal(manifest.launch_handler.client_mode, 'navigate-existing');
+});
+
 test('el service worker recibe texto sin exigir una imagen', async () => {
   const functionStart = sw.indexOf('async function receiveSharedContent');
   const functionEnd = sw.indexOf("self.addEventListener('fetch'", functionStart);
@@ -57,10 +61,11 @@ test('el service worker recibe texto sin exigir una imagen', async () => {
   assert.deepEqual(metadata.files, []);
 });
 
-test('las fotos compartidas piden una descripción editable y no imponen Texto compartido', () => {
+test('las fotos compartidas distinguen Blog, ticket y foto asociada', () => {
   assert.match(html, /id="shared-images-description"/);
   assert.match(html, /Describe la foto antes de continuar/);
-  assert.match(app, /requiresDescription = hasImages && !existing/);
+  assert.match(html, /id="shared-images-kind"/);
+  assert.match(app, /requiresDescription = hasImages && destination === 'blog'/);
   assert.match(app, /Escribe una descripción para la foto/);
   assert.match(app, /#g-desc'\)\) \$\('#g-desc'\)\.value = suggestedDescription/);
   assert.doesNotMatch(app, /title \|\| firstLine \|\| 'Texto compartido'/);

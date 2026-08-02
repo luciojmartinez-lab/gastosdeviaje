@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v226">
+  <link rel="manifest" href="manifest.webmanifest?v=700v227">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v226">
+  <link rel="stylesheet" href="styles.css?v=700v227">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v226 · 01/08/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v227 · 02/08/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v226</div>
+  <div class="app-version">700v227</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -509,8 +509,10 @@
       </div>
       <p id="g-ticket-selected" class="small">El ticket es opcional. Elige archivo o Cámara para añadirlo.</p>
       <p id="g-ticket-ocr-status" class="small ticket-ocr-status" aria-live="polite"></p>
-      <button type="button" class="btn ghost ticket-translate-button" id="g-ticket-translate" disabled>Traducir al español</button>
-      <p class="small ticket-translate-note">Necesita conexión. Solo se envía el texto leído, nunca la fotografía.</p>
+      <label for="g-ticket-language">Idioma de lectura</label>
+      <select id="g-ticket-language" class="ticket-language-select"></select>
+      <button type="button" class="btn ghost ticket-translate-button" id="g-ticket-translate" disabled>Traducir con Google Lens</button>
+      <p class="small ticket-translate-note">Comparte la fotografía real. En Android, elige Lens para traducirla y vuelve a compartir el resultado con Cuaderno de Bitácora.</p>
       <div class="expense-ticket-preview-pair">
         <div id="g-ticket-new-preview" class="expense-ticket-preview selected-expense-ticket-preview" hidden aria-live="polite"></div>
         <div id="g-ticket-translation-preview" class="expense-ticket-preview ticket-translation-preview" hidden aria-live="polite"></div>
@@ -590,8 +592,10 @@
         </div>
         <p id="edit-gasto-ticket-selected" class="small">El ticket actual se conserva. Usa Elegir archivo o Cámara solo para sustituirlo.</p>
         <p id="edit-gasto-ticket-ocr-status" class="small ticket-ocr-status" aria-live="polite"></p>
-        <button type="button" class="btn ghost ticket-translate-button" id="edit-gasto-ticket-translate" disabled>Traducir al español</button>
-        <p class="small ticket-translate-note">Necesita conexión. Solo se envía el texto leído, nunca la fotografía.</p>
+        <label for="edit-gasto-ticket-language">Idioma de lectura</label>
+        <select id="edit-gasto-ticket-language" class="ticket-language-select"></select>
+        <button type="button" class="btn ghost ticket-translate-button" id="edit-gasto-ticket-translate" disabled>Traducir con Google Lens</button>
+        <p class="small ticket-translate-note">Comparte la fotografía real. En Android, elige Lens para traducirla y vuelve a compartir el resultado con Cuaderno de Bitácora.</p>
         <div class="expense-ticket-preview-pair">
           <div id="edit-gasto-ticket-new-preview" class="expense-ticket-preview selected-expense-ticket-preview" hidden aria-live="polite"></div>
           <div id="edit-gasto-ticket-new-translation-preview" class="expense-ticket-preview ticket-translation-preview" hidden aria-live="polite"></div>
@@ -663,6 +667,22 @@
     <div id="expense-files-list"></div>
     <div class="actions"><button type="button" class="ghost" id="expense-files-done">Cerrar</button></div>
   </form>
+</dialog>
+
+<dialog id="image-viewer-dialog" class="modal image-viewer-modal" aria-labelledby="image-viewer-title">
+  <div class="image-viewer-shell">
+    <div class="modal-head">
+      <h2 id="image-viewer-title">Imagen</h2>
+      <button type="button" class="ghost icon-btn" id="image-viewer-close" aria-label="Cerrar">x</button>
+    </div>
+    <div class="image-viewer-stage"><img id="image-viewer-image" alt=""></div>
+    <p id="image-viewer-note" class="small">La imagen se comparte como archivo real. En Android puedes elegir Google Lens para traducirla.</p>
+    <p id="image-viewer-status" class="small" aria-live="polite"></p>
+    <div class="actions image-viewer-actions">
+      <button type="button" class="btn" id="image-viewer-share">Compartir / Google Lens</button>
+      <button type="button" class="ghost" id="image-viewer-done">Cerrar</button>
+    </div>
+  </div>
 </dialog>
 
 <dialog id="form-dialog" class="modal">
@@ -903,6 +923,22 @@
       <label for="shared-images-expense">Gasto</label>
       <select id="shared-images-expense"></select>
     </div>
+    <div id="shared-images-kind-row" hidden>
+      <label for="shared-images-kind">Usar la imagen como</label>
+      <select id="shared-images-kind">
+        <option value="ticket">Ticket</option>
+        <option value="photo">Foto asociada</option>
+      </select>
+    </div>
+    <div id="shared-images-ticket-action-row" hidden>
+      <label for="shared-images-ticket-action">Este gasto ya tiene ticket</label>
+      <select id="shared-images-ticket-action">
+        <option value="replace">Reemplazar el ticket actual</option>
+        <option value="translation">Añadir como traducción</option>
+        <option value="secondary">Añadir como segundo ticket</option>
+      </select>
+      <p id="shared-images-ticket-action-note" class="small"></p>
+    </div>
     <div class="actions">
       <button type="submit" class="btn" id="shared-images-continue">Continuar</button>
       <button type="button" class="ghost" id="shared-images-cancel">Cancelar</button>
@@ -1079,11 +1115,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v226"></script>
-<script src="app.bundle.js?v=700v226"></script>
+<script src="map-model.js?v=700v227"></script>
+<script src="app.bundle.js?v=700v227"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v226';
+    const pageVersion = '700v227';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1135,7 +1171,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v226', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v227', { updateViaCache: 'none' })
         .then(registration => {
           activateWaitingWorker(registration);
           registration.update()

@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v226';
+const APP_VERSION = '700v227';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -16,7 +16,6 @@ const PHOTO_TYPES_SETTING_KEY = 'photoTypes';
 const TICKET_OCR_LANGUAGES_SETTING_KEY = 'ticketOcrLanguages';
 const TICKET_OCR_LANGUAGE_CACHE = 'cuaderno-bitacora-ocr-languages-v1';
 const SYNC_ENDPOINT = '/api/travel-sync';
-const TICKET_TRANSLATION_ENDPOINT = '/api/translate-ticket';
 const LOCAL_BACKUP_LIMIT = 5;
 const CLOUD_ATTACHMENT_CHUNK_CHARS = 2_500_000;
 const CLOUD_ATTACHMENT_CHECK_BATCH = 75;
@@ -64,6 +63,7 @@ const DIALOG_HELP_TARGETS = {
   'edit-gasto-dialog': 'gasto-formulario',
   'image-datetime-dialog': 'gasto-formulario',
   'expense-files-dialog': 'gasto-archivos',
+  'image-viewer-dialog': 'traducir-ticket',
   'form-dialog': 'referencia',
   'route-dialog': 'ruta-paradas',
   'trip-documents-dialog': 'documentos-viaje',
@@ -99,6 +99,10 @@ const pendingExpenseTicketLocations = { g: null, 'edit-gasto': null };
 const pendingExpenseTicketLocationChecks = { g: Promise.resolve(), 'edit-gasto': Promise.resolve() };
 const pendingExpenseTicketPreviews = { g: null, 'edit-gasto': null };
 const pendingExpenseTicketTranslations = { g: null, 'edit-gasto': null };
+const ticketOcrRunIds = { g: 0, 'edit-gasto': 0 };
+const pendingExpenseExtraPreviewUrls = { g: [], 'edit-gasto': [] };
+let activeImageViewerRecord = null;
+let activeImageViewerUrl = '';
 let activeBlogEntryId = null;
 let activeBlogEntryAnchor = null;
 let activeBlogEntryType = '';
@@ -653,6 +657,8 @@ function renderFormDraftStatus(message = '') {
 }
 
 function clearAllFormDrafts() {
+  formDraftTimers.forEach(timer => window.clearTimeout(timer));
+  formDraftTimers.clear();
   const drafts = pruneExpiredFormDrafts();
   const count = Object.keys(drafts).length;
   if (!count) {
@@ -987,15 +993,17 @@ function expenseTicketImageRecord(gasto) {
 
 function expenseTicketTranslationRecord(gasto) {
   if (!gasto?.ticketTranslationData) return null;
+  const kind = gasto.ticketTranslationKind === 'secondary-ticket' ? 'secondary-ticket' : 'translation';
   return normalizeStoredImageRecord({
     id: `expense-ticket-${gasto.id || ''}-translation`,
-    name: gasto.ticketTranslationName || 'Traducción al español · ticket.jpg',
+    name: gasto.ticketTranslationName || (kind === 'secondary-ticket' ? 'segundo-ticket.jpg' : 'traduccion-ticket.jpg'),
     type: gasto.ticketTranslationType || 'image/jpeg',
     size: gasto.ticketTranslationSize || 0,
     data: normalizeTicketDataValue(gasto.ticketTranslationData),
     width: gasto.ticketTranslationWidth || 0,
     height: gasto.ticketTranslationHeight || 0,
-    createdAt: gasto.updatedAt || gasto.createdAt || ''
+    createdAt: gasto.updatedAt || gasto.createdAt || '',
+    kind
   });
 }
 
@@ -1363,6 +1371,12 @@ function normalizeTicketOcrLanguages(codes = []) {
   return normalized;
 }
 
+function normalizeRequestedTicketOcrLanguages(codes = []) {
+  const supported = new Set(TICKET_OCR_LANGUAGES.map(language => language.code));
+  const normalized = [...new Set((Array.isArray(codes) ? codes : []).map(String).filter(code => supported.has(code)))];
+  return normalized.length ? normalized : ['spa'];
+}
+
 function ticketOcrLanguageName(code) {
   return TICKET_OCR_LANGUAGES.find(language => language.code === code)?.name || code;
 }
@@ -1395,7 +1409,17 @@ function ticketOcrLanguagesForTrip(tripId) {
 }
 
 function ticketOcrLanguagesForExpense(prefix) {
+  const chosenLanguage = String($(`#${prefix}-ticket-language`)?.value || '');
+  if (TICKET_OCR_LANGUAGES.some(language => language.code === chosenLanguage)) return [chosenLanguage];
   return ticketOcrLanguagesForTrip(Number($(`#${prefix}-viaje`)?.value));
+}
+
+function renderExpenseTicketLanguageSelect(prefix) {
+  const select = $(`#${prefix}-ticket-language`);
+  if (!select) return;
+  const previous = String(select.value || '');
+  select.innerHTML = `<option value="">Automático · viaje y configuración</option>${TICKET_OCR_LANGUAGES.map(language => `<option value="${escapeHtml(language.code)}">${escapeHtml(language.name)}</option>`).join('')}`;
+  select.value = TICKET_OCR_LANGUAGES.some(language => language.code === previous) ? previous : '';
 }
 
 async function cacheTicketOcrLanguage(code) {
@@ -1415,7 +1439,7 @@ async function cacheTicketOcrLanguage(code) {
 }
 
 async function warmTicketOcrLanguages(codes = []) {
-  const languages = normalizeTicketOcrLanguages(codes);
+  const languages = normalizeRequestedTicketOcrLanguages(codes);
   await Promise.all(languages.map(cacheTicketOcrLanguage));
   return languages;
 }
@@ -2365,7 +2389,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v226');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v227');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2397,7 +2421,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v226');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v227');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -2479,10 +2503,16 @@ function renderSelectedExpenseTicketPreview(prefix) {
     preview.replaceChildren();
     preview.hidden = !image?.data;
     if (image?.data) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'expense-ticket-preview-open';
+      button.title = `Ampliar ${image.name || 'ticket seleccionado'}`;
+      button.onclick = () => openImageViewer(image, image.name || 'Ticket seleccionado');
       const element = document.createElement('img');
       element.src = image.data;
       element.alt = `Vista previa de ${image.name || 'ticket seleccionado'}`;
-      preview.appendChild(element);
+      button.appendChild(element);
+      preview.appendChild(button);
     }
   }
   if (rotate) rotate.hidden = !image?.data;
@@ -2498,7 +2528,8 @@ function ticketTranslationPatch(record = null) {
     ticketTranslationWidth: Math.max(0, Number(record?.width) || 0),
     ticketTranslationHeight: Math.max(0, Number(record?.height) || 0),
     ticketTranslationText: String(record?.text || ''),
-    ticketTranslationSourceLanguages: Array.isArray(record?.sourceLanguages) ? record.sourceLanguages.map(String) : []
+    ticketTranslationSourceLanguages: Array.isArray(record?.sourceLanguages) ? record.sourceLanguages.map(String) : [],
+    ticketTranslationKind: record?.kind === 'secondary-ticket' ? 'secondary-ticket' : (record?.data ? 'translation' : '')
   };
 }
 
@@ -2509,16 +2540,14 @@ function ticketTranslationRecordFromExpense(gasto) {
     text: String(gasto.ticketTranslationText || ''),
     sourceLanguages: Array.isArray(gasto.ticketTranslationSourceLanguages)
       ? gasto.ticketTranslationSourceLanguages.map(String)
-      : []
+      : [],
+    kind: gasto.ticketTranslationKind === 'secondary-ticket' ? 'secondary-ticket' : 'translation'
   } : null;
 }
 
 function openTicketTranslationRecord(record) {
   if (!record?.data) throw new Error('No se encuentra la traducción del ticket');
-  const blob = dataUrlToBlob(record.data, record.type || 'image/jpeg');
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  openImageViewer(record, record.kind === 'secondary-ticket' ? 'Segundo ticket' : 'Traducción del ticket');
 }
 
 function fillTicketTranslationPreview(container, record) {
@@ -2529,11 +2558,14 @@ function fillTicketTranslationPreview(container, record) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'expense-ticket-preview-open';
-  button.title = 'Abrir traducción al español';
+  const secondary = record.kind === 'secondary-ticket';
+  const label = secondary ? 'Segundo ticket' : 'Traducción';
+  button.dataset.companionLabel = label;
+  button.title = `Ampliar ${label.toLocaleLowerCase('es')}`;
   button.onclick = () => openTicketTranslationRecord(record);
   const image = document.createElement('img');
   image.src = record.data;
-  image.alt = 'Vista previa de la traducción al español del ticket';
+  image.alt = `Vista previa de ${label.toLocaleLowerCase('es')}`;
   button.append(image);
   container.append(button);
 }
@@ -2547,95 +2579,6 @@ function renderExpenseTicketTranslation(prefix) {
   const hasReplacement = Boolean(selectedFileInput('#edit-gasto-ticket', '#edit-gasto-ticket-camera')?.files?.[0]);
   fillTicketTranslationPreview($('#edit-gasto-ticket-new-translation-preview'), hasReplacement ? record : null);
   fillTicketTranslationPreview($('#edit-gasto-ticket-translation-preview'), hasReplacement ? null : record);
-}
-
-function wrapTicketTranslationLines(context, source, maxWidth) {
-  const lines = [];
-  const appendWord = (line, word) => {
-    if (context.measureText(word).width <= maxWidth) return [line, word];
-    let part = '';
-    for (const character of word) {
-      if (part && context.measureText(part + character).width > maxWidth) {
-        lines.push(part);
-        part = character;
-      } else {
-        part += character;
-      }
-    }
-    return ['', part];
-  };
-  String(source || '').replace(/\r\n?/g, '\n').split('\n').forEach(paragraph => {
-    if (!paragraph.trim()) {
-      lines.push('');
-      return;
-    }
-    let line = '';
-    paragraph.trim().split(/\s+/).forEach(word => {
-      if (!line && context.measureText(word).width > maxWidth) {
-        [, line] = appendWord(line, word);
-        return;
-      }
-      const candidate = line ? `${line} ${word}` : word;
-      if (line && context.measureText(candidate).width > maxWidth) {
-        lines.push(line);
-        line = '';
-        if (context.measureText(word).width > maxWidth) [, line] = appendWord(line, word);
-        else line = word;
-      } else {
-        line = candidate;
-      }
-    });
-    lines.push(line);
-  });
-  return lines;
-}
-
-async function createTicketTranslationImage(translation, sourceLanguages) {
-  const width = 1400;
-  const padding = 82;
-  const lineHeight = 43;
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-  context.font = '28px Arial, sans-serif';
-  const lines = wrapTicketTranslationLines(context, translation, width - padding * 2).slice(0, 220);
-  canvas.width = width;
-  canvas.height = Math.max(720, padding + 115 + lines.length * lineHeight + padding);
-  context.fillStyle = '#ffffff';
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = '#2378c9';
-  context.fillRect(0, 0, canvas.width, 18);
-  context.fillStyle = '#122033';
-  context.font = 'bold 38px Arial, sans-serif';
-  context.fillText('TRADUCCIÓN AL ESPAÑOL', padding, padding + 24);
-  context.fillStyle = '#68758a';
-  context.font = '22px Arial, sans-serif';
-  context.fillText('Texto reconocido del ticket original', padding, padding + 67);
-  context.strokeStyle = '#d7dee8';
-  context.beginPath();
-  context.moveTo(padding, padding + 88);
-  context.lineTo(width - padding, padding + 88);
-  context.stroke();
-  context.fillStyle = '#172235';
-  context.font = '28px Arial, sans-serif';
-  let y = padding + 132;
-  lines.forEach(line => {
-    context.fillText(line, padding, y);
-    y += lineHeight;
-  });
-  const blob = await canvasToJpeg(canvas, 0.9);
-  const record = {
-    name: 'Traducción al español · ticket.jpg',
-    type: 'image/jpeg',
-    size: blob.size,
-    data: await readBlobAsDataUrl(blob),
-    width: canvas.width,
-    height: canvas.height,
-    text: String(translation || ''),
-    sourceLanguages: Array.isArray(sourceLanguages) ? sourceLanguages.map(String) : []
-  };
-  canvas.width = 1;
-  canvas.height = 1;
-  return record;
 }
 
 async function readSelectedExpenseTicket(prefix) {
@@ -2663,6 +2606,7 @@ function handleSelectedExpenseTicketRotation(prefix, direction) {
 }
 
 function clearExpenseTicketSelection(prefix) {
+  ticketOcrRunIds[prefix] = (ticketOcrRunIds[prefix] || 0) + 1;
   const file = $(`#${prefix}-ticket`);
   const camera = $(`#${prefix}-ticket-camera`);
   const status = $(`#${prefix}-ticket-selected`);
@@ -2740,6 +2684,11 @@ function selectedExpenseExtraImageRecords(prefix) {
   ];
 }
 
+function revokePendingExpenseExtraPreviewUrls(prefix) {
+  (pendingExpenseExtraPreviewUrls[prefix] || []).forEach(url => URL.revokeObjectURL(url));
+  pendingExpenseExtraPreviewUrls[prefix] = [];
+}
+
 function renderSelectedExpenseImageClassifications(prefix, reset = false) {
   const inputs = expenseExtraImageInputs(prefix);
   if (!inputs.classifications) return;
@@ -2747,8 +2696,14 @@ function renderSelectedExpenseImageClassifications(prefix, reset = false) {
     ? []
     : selectedExpenseExtraImageRecords(prefix).map((record, index) => $(`[data-new-expense-image-type="${prefix}-${index}"]`)?.value || '');
   const records = selectedExpenseExtraImageRecords(prefix);
+  revokePendingExpenseExtraPreviewUrls(prefix);
   inputs.classifications.innerHTML = records.length
-    ? `<p class="small"><strong>Clasificación de cada imagen nueva</strong></p><div class="pending-expense-image-list">${records.map((record, index) => `<label><span>${escapeHtml(record.file.name || `Imagen ${index + 1}`)}</span><select data-new-expense-image-type="${prefix}-${index}" aria-label="Clasificación de ${escapeHtml(record.file.name || `imagen ${index + 1}`)}">${photoTypeOptionsHtml(previous[index])}</select></label>`).join('')}</div>`
+    ? `<p class="small"><strong>Clasificación de cada imagen nueva</strong></p><div class="pending-expense-image-list">${records.map((record, index) => {
+      const url = URL.createObjectURL(record.file);
+      pendingExpenseExtraPreviewUrls[prefix].push(url);
+      const name = escapeHtml(record.file.name || `Imagen ${index + 1}`);
+      return `<label><button type="button" class="pending-expense-image-preview" data-open-pending-expense-image="${prefix}" data-pending-expense-image-index="${index}" title="Ampliar ${name}"><img src="${escapeHtml(url)}" alt="Vista previa de ${name}"></button><span>${name}</span><select data-new-expense-image-type="${prefix}-${index}" aria-label="Clasificación de ${name}">${photoTypeOptionsHtml(previous[index])}</select></label>`;
+    }).join('')}</div>`
     : '';
 }
 
@@ -2763,6 +2718,7 @@ function clearExpenseExtraImageSelection(prefix) {
   }
   if (inputs.mapOption) inputs.mapOption.hidden = true;
   if (inputs.mapCheckbox) inputs.mapCheckbox.checked = false;
+  revokePendingExpenseExtraPreviewUrls(prefix);
   if (inputs.classifications) inputs.classifications.innerHTML = '';
 }
 
@@ -2830,6 +2786,7 @@ async function readSelectedExpenseExtraImages(prefix) {
 }
 
 async function syncExpenseTicketSelection(prefix, source) {
+  ticketOcrRunIds[prefix] = (ticketOcrRunIds[prefix] || 0) + 1;
   const file = $(`#${prefix}-ticket`);
   const camera = $(`#${prefix}-ticket-camera`);
   const status = $(`#${prefix}-ticket-selected`);
@@ -3058,7 +3015,7 @@ function syncTicketOcrAvailability(prefix) {
 }
 
 function ticketOcrProgressLabel(message, languages = ['spa']) {
-  const languageNames = normalizeTicketOcrLanguages(languages).map(ticketOcrLanguageName).join(', ');
+  const languageNames = normalizeRequestedTicketOcrLanguages(languages).map(ticketOcrLanguageName).join(', ');
   const labels = {
     'loading tesseract core': 'Preparando el lector local',
     'initializing tesseract': 'Iniciando el lector',
@@ -3199,13 +3156,15 @@ async function readExpenseTicket(prefix) {
   }
   const button = $(`#${prefix}-ticket-read`);
   const languages = ticketOcrLanguagesForExpense(prefix);
+  const runId = (ticketOcrRunIds[prefix] || 0) + 1;
+  ticketOcrRunIds[prefix] = runId;
   try {
     button.dataset.busy = '1';
     button.disabled = true;
     button.textContent = 'Leyendo…';
     setTicketOcrStatus(prefix, `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v226');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v227');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3213,6 +3172,9 @@ async function readExpenseTicket(prefix) {
       languages,
       onProgress: message => setTicketOcrStatus(prefix, ticketOcrProgressLabel(message, languages))
     });
+    if (ticketOcrRunIds[prefix] !== runId) return null;
+    const dialog = prefix === 'g' ? $('#add-gasto-dialog') : $('#edit-gasto-dialog');
+    if (dialog && !dialog.open) return null;
     if (result.fields?.merchant) {
       result.fields.merchant = ocr.correctTicketMerchantFromKnown(
         result.fields.merchant,
@@ -3235,65 +3197,37 @@ async function readExpenseTicket(prefix) {
 
 async function translateExpenseTicket(prefix) {
   const button = $(`#${prefix}-ticket-translate`);
-  if (!ticketOcrSource(prefix)) {
+  const source = ticketOcrSource(prefix);
+  if (!source) {
     setTicketOcrStatus(prefix, 'Selecciona o fotografía primero un ticket.', true);
     return;
   }
-  if (!navigator.onLine) {
-    setTicketOcrStatus(prefix, 'La traducción necesita conexión. El ticket original sigue disponible y puedes continuar en local.', true);
+  if (!fileLooksLikeImage({ type: source.type, name: source.name }) && !/^data:image\//i.test(String(source.source || ''))) {
+    setTicketOcrStatus(prefix, 'Google Lens necesita una imagen. Si el ticket es un PDF, abre una página o haz una captura antes de compartirla.', true);
     return;
   }
   try {
     button.dataset.busy = '1';
     button.disabled = true;
-    button.textContent = 'Traduciendo…';
-    let sourceText = String(pendingTicketOcr[prefix]?.text || '').trim();
-    if (!sourceText) {
-      setTicketOcrStatus(prefix, 'Primero se leerá el ticket en este dispositivo…');
-      const result = await readExpenseTicket(prefix);
-      sourceText = String(pendingTicketOcr[prefix]?.text || result?.text || '').trim();
+    button.textContent = 'Abriendo…';
+    const blob = source.source instanceof Blob
+      ? source.source
+      : dataUrlToBlob(source.source, source.type || 'image/jpeg');
+    openImageViewer({
+      name: source.name || 'ticket.jpg',
+      type: source.type || blob.type || 'image/jpeg',
+      blob
+    }, 'Traducir ticket con Google Lens');
+    if ($('#image-viewer-status')) {
+      $('#image-viewer-status').textContent = 'Pulsa «Compartir / Google Lens», elige Lens y traduce. Desde el resultado, compártelo de nuevo con Cuaderno de Bitácora como traducción.';
     }
-    if (!sourceText) throw new Error('No se ha podido obtener texto suficiente para traducir. Prueba a girar la foto o a tomarla de nuevo.');
-    const languageCodes = ticketOcrLanguagesForExpense(prefix);
-    setTicketOcrStatus(prefix, 'Traduciendo al español. Solo se está enviando el texto leído…');
-    const response = await fetch(TICKET_TRANSLATION_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: sourceText,
-        sourceLanguages: languageCodes.map(ticketOcrLanguageName)
-      })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.translation) {
-      const messages = {
-        text_too_long: 'El texto del ticket es demasiado largo para traducirlo de una sola vez.',
-        gateway_not_configured: 'La traducción todavía no está configurada en Netlify. El ticket original sigue disponible.',
-        gateway_unauthorized: 'Netlify no ha autorizado el servicio de traducción. El ticket original sigue disponible.',
-        model_unavailable: 'El modelo de traducción no está disponible ahora. Puedes probar de nuevo más tarde.',
-        translation_unavailable: 'El servicio de traducción no está disponible ahora. Puedes seguir trabajando en local y probar más tarde.'
-      };
-      throw new Error(messages[payload.error] || 'No se ha podido traducir el ticket. Comprueba la conexión y vuelve a intentarlo.');
-    }
-    const record = await createTicketTranslationImage(payload.translation, languageCodes);
-    pendingExpenseTicketTranslations[prefix] = record;
-    renderExpenseTicketTranslation(prefix);
-    const selectedReplacement = prefix === 'edit-gasto'
-      && selectedFileInput('#edit-gasto-ticket', '#edit-gasto-ticket-camera')?.files?.[0];
-    if (prefix === 'edit-gasto' && !selectedReplacement && !$('#edit-gasto-ticket-remove')?.checked) {
-      const id = Number($('#edit-gasto-id')?.value);
-      if (id) {
-        const saved = await queueExpenseClassificationSave(id, ticketTranslationPatch(record));
-        activeEditTicketRecord = { ...activeEditTicketRecord, ...saved };
-      }
-    }
-    setTicketOcrStatus(prefix, `Traducción preparada${prefix === 'edit-gasto' && !selectedReplacement ? ' y guardada' : ''}. Aparece junto al ticket original.`);
+    setTicketOcrStatus(prefix, 'Ticket listo para compartir con Google Lens. La aplicación no usa ningún servicio de pago.');
   } catch (error) {
     console.error(error);
-    setTicketOcrStatus(prefix, error?.message || 'No se ha podido traducir el ticket.', true);
+    setTicketOcrStatus(prefix, error?.message || 'No se ha podido preparar el ticket para Google Lens.', true);
   } finally {
     delete button.dataset.busy;
-    button.textContent = 'Traducir al español';
+    button.textContent = 'Traducir con Google Lens';
     syncTicketOcrAvailability(prefix);
   }
 }
@@ -3353,6 +3287,88 @@ function ticketDataInfo(value, fallbackType = 'application/octet-stream') {
 
 function dataUrlToBlob(dataUrl, fallbackType = 'application/octet-stream') {
   return ticketDataInfo(dataUrl, fallbackType).blob;
+}
+
+function imageViewerBlob(record) {
+  if (record?.file instanceof Blob) return record.file;
+  if (record?.blob instanceof Blob) return record.blob;
+  if (record?.data) return dataUrlToBlob(record.data, record.type || 'image/jpeg');
+  return null;
+}
+
+function closeImageViewer() {
+  const dialog = $('#image-viewer-dialog');
+  if (dialog?.close) dialog.close();
+  else dialog?.removeAttribute('open');
+  if (activeImageViewerUrl) URL.revokeObjectURL(activeImageViewerUrl);
+  activeImageViewerUrl = '';
+  activeImageViewerRecord = null;
+  if ($('#image-viewer-image')) {
+    $('#image-viewer-image').removeAttribute('src');
+    $('#image-viewer-image').alt = '';
+  }
+  if ($('#image-viewer-status')) $('#image-viewer-status').textContent = '';
+}
+
+function openImageViewer(record, title = '') {
+  const blob = imageViewerBlob(record);
+  const name = String(record?.name || title || 'imagen.jpg');
+  const type = String(record?.type || blob?.type || 'image/jpeg');
+  if (!blob || !/^image\//i.test(type)) throw new Error('Esta vista ampliada solo está disponible para imágenes.');
+  if (activeImageViewerUrl) URL.revokeObjectURL(activeImageViewerUrl);
+  activeImageViewerUrl = URL.createObjectURL(blob);
+  activeImageViewerRecord = { name, type, blob };
+  if ($('#image-viewer-title')) $('#image-viewer-title').textContent = title || name;
+  if ($('#image-viewer-image')) {
+    $('#image-viewer-image').src = activeImageViewerUrl;
+    $('#image-viewer-image').alt = `Vista ampliada de ${name}`;
+  }
+  if ($('#image-viewer-status')) $('#image-viewer-status').textContent = '';
+  const dialog = $('#image-viewer-dialog');
+  if (dialog?.showModal) dialog.showModal();
+  else dialog?.setAttribute('open', 'open');
+}
+
+function downloadImageViewerFile(file) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = file.name || 'imagen.jpg';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function shareImageViewerFile() {
+  const status = $('#image-viewer-status');
+  const record = activeImageViewerRecord;
+  if (!record?.blob) throw new Error('No se encuentra la imagen que quieres compartir.');
+  const file = new File([record.blob], record.name || 'imagen.jpg', {
+    type: record.type || record.blob.type || 'image/jpeg',
+    lastModified: Date.now()
+  });
+  const shareData = { files: [file] };
+  let supportsFileShare = typeof navigator.share === 'function';
+  if (supportsFileShare && typeof navigator.canShare === 'function') {
+    try {
+      supportsFileShare = navigator.canShare(shareData);
+    } catch {
+      supportsFileShare = false;
+    }
+  }
+  if (!supportsFileShare) {
+    downloadImageViewerFile(file);
+    if (status) status.textContent = 'El navegador no permite compartir archivos desde aquí. Se ha descargado la imagen para que puedas abrirla o compartirla con Google Lens.';
+    return;
+  }
+  try {
+    if (status) status.textContent = 'Elige Google Lens para traducir el ticket. Después comparte la imagen traducida de nuevo con Cuaderno de Bitácora.';
+    await navigator.share(shareData);
+  } catch (error) {
+    if (error?.name !== 'AbortError') throw error;
+    if (status) status.textContent = 'No se ha compartido la imagen.';
+  }
 }
 
 async function sha256Hex(blob) {
@@ -3665,6 +3681,11 @@ async function hydrateCloudBackupData(sourceData) {
 function openTicket(gastoId) {
   const gasto = state.gastos.find(g => Number(g.id) === Number(gastoId));
   if (!gasto || !gasto.ticketData) throw new Error('No se encuentra el ticket');
+  const image = expenseTicketImageRecord(gasto);
+  if (image) {
+    openImageViewer(image, gasto.ticketName || 'Ticket');
+    return;
+  }
   const blob = dataUrlToBlob(gasto.ticketData, gasto.ticketType || 'application/octet-stream');
   const url = URL.createObjectURL(blob);
   window.open(url, '_blank');
@@ -3757,10 +3778,7 @@ function openExpenseImage(gastoId, imageIndex) {
   const gasto = state.gastos.find(g => Number(g.id) === Number(gastoId));
   const image = expenseExtraImages(gasto)[Number(imageIndex)];
   if (!image || !image.data) throw new Error('No se encuentra la imagen');
-  const blob = dataUrlToBlob(image.data, image.type || 'image/jpeg');
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  openImageViewer(image, image.name || 'Imagen asociada');
 }
 
 function renderExpenseFilesDialog(gasto) {
@@ -3772,7 +3790,8 @@ function renderExpenseFilesDialog(gasto) {
     items.push(`<li><span class="trip-document-info"><strong>Ticket principal</strong><span>${escapeHtml(gasto.ticketName || 'Ticket')} · ${escapeHtml(ticketTypeLabel || 'Sin clasificar')}</span></span><button type="button" class="ghost" data-open-ticket="${gasto.id}">Abrir</button></li>`);
   }
   if (gasto.ticketTranslationData) {
-    items.push(`<li><span class="trip-document-info"><strong>Traducción al español</strong><span>${escapeHtml(gasto.ticketTranslationName || 'Traducción del ticket')}</span></span><button type="button" class="ghost" data-open-ticket-translation="${gasto.id}">Abrir</button></li>`);
+    const companionLabel = gasto.ticketTranslationKind === 'secondary-ticket' ? 'Segundo ticket' : 'Traducción del ticket';
+    items.push(`<li><span class="trip-document-info"><strong>${companionLabel}</strong><span>${escapeHtml(gasto.ticketTranslationName || companionLabel)}</span></span><button type="button" class="ghost" data-open-ticket-translation="${gasto.id}">Abrir</button></li>`);
   }
   expenseExtraImages(gasto).forEach((image, index) => {
     const typeLabel = photoTypeLabel(image);
@@ -5207,7 +5226,7 @@ async function delMoneda(codigo) {
   return deleteRecord('monedas', String(codigo).toUpperCase());
 }
 
-async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', ticketSize = 0, ticketWidth = 0, ticketHeight = 0, ticketPhotoTypeId = '', ticketPhotoTypeName = '', ticketLatitude = null, ticketLongitude = null, ticketLocationSource = '', ticketCapturedDate = '', ticketCapturedTime = '', ticketMapEnabled = false, ticketTranslationName = '', ticketTranslationType = '', ticketTranslationData = '', ticketTranslationSize = 0, ticketTranslationWidth = 0, ticketTranslationHeight = 0, ticketTranslationText = '', ticketTranslationSourceLanguages = [], extraImages = [] }) {
+async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', ticketSize = 0, ticketWidth = 0, ticketHeight = 0, ticketPhotoTypeId = '', ticketPhotoTypeName = '', ticketLatitude = null, ticketLongitude = null, ticketLocationSource = '', ticketCapturedDate = '', ticketCapturedTime = '', ticketMapEnabled = false, ticketTranslationName = '', ticketTranslationType = '', ticketTranslationData = '', ticketTranslationSize = 0, ticketTranslationWidth = 0, ticketTranslationHeight = 0, ticketTranslationText = '', ticketTranslationSourceLanguages = [], ticketTranslationKind = '', extraImages = [] }) {
   if (!hasValidCurrency(moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   const account = state.cuentas.find(c => c.id === Number(cuentaId));
   if (account && account.moneda !== moneda) throw new Error('La moneda del gasto debe coincidir con la cuenta');
@@ -5250,6 +5269,7 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     ticketTranslationHeight: Math.max(0, Number(ticketTranslationHeight) || 0),
     ticketTranslationText: String(ticketTranslationText || ''),
     ticketTranslationSourceLanguages: Array.isArray(ticketTranslationSourceLanguages) ? ticketTranslationSourceLanguages.map(String) : [],
+    ticketTranslationKind: ticketTranslationData ? (ticketTranslationKind === 'secondary-ticket' ? 'secondary-ticket' : 'translation') : '',
     extraImages: Array.isArray(extraImages) ? extraImages : [],
     createdAt: now,
     updatedAt: now
@@ -5284,6 +5304,7 @@ async function updateGasto(id, patch) {
   next.ticketTranslationHeight = Math.max(0, Number(next.ticketTranslationHeight) || 0);
   next.ticketTranslationText = String(next.ticketTranslationText || '');
   next.ticketTranslationSourceLanguages = Array.isArray(next.ticketTranslationSourceLanguages) ? next.ticketTranslationSourceLanguages.map(String) : [];
+  next.ticketTranslationKind = next.ticketTranslationData ? (next.ticketTranslationKind === 'secondary-ticket' ? 'secondary-ticket' : 'translation') : '';
   next.paisId = next.paisId ? Number(next.paisId) : null;
   next.ciudadId = next.ciudadId ? Number(next.ciudadId) : null;
   next.hora = normalizeExpenseTime(next.hora) || expenseTimeValue(current) || currentLocalTime();
@@ -5578,6 +5599,8 @@ function renderAll() {
   renderCategorias();
   renderPhotoTypeControls();
   renderTicketOcrLanguageControls();
+  renderExpenseTicketLanguageSelect('g');
+  renderExpenseTicketLanguageSelect('edit-gasto');
   renderLugares();
   renderGastosTabla();
   renderBackupStatus();
@@ -10140,7 +10163,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v226');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v227');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11292,6 +11315,39 @@ function renderSharedExpenseOptions() {
   select.disabled = !expenses.length;
 }
 
+function selectedSharedExpense() {
+  const tripId = Number($('#shared-images-trip')?.value || 0);
+  const expenseId = Number($('#shared-images-expense')?.value || 0);
+  return state.gastos.find(gasto => Number(gasto.id) === expenseId && Number(gasto.viajeId) === tripId) || null;
+}
+
+function syncSharedTicketAction() {
+  const destination = $('#shared-images-destination')?.value || 'blog';
+  const kind = $('#shared-images-kind')?.value || 'ticket';
+  const gasto = destination === 'expense-existing' ? selectedSharedExpense() : null;
+  const actionRow = $('#shared-images-ticket-action-row');
+  const action = $('#shared-images-ticket-action')?.value || 'replace';
+  const needsAction = Boolean(gasto?.ticketData && kind === 'ticket');
+  if (actionRow) actionRow.hidden = !needsAction;
+  const note = $('#shared-images-ticket-action-note');
+  if (!note) return;
+  if (!needsAction) {
+    note.textContent = gasto && kind === 'ticket'
+      ? 'La imagen se preparará como ticket principal.'
+      : '';
+    return;
+  }
+  if (action === 'replace') {
+    note.textContent = 'La imagen sustituirá al ticket principal actual cuando guardes el gasto.';
+    return;
+  }
+  const companionExists = Boolean(gasto.ticketTranslationData);
+  const label = action === 'secondary' ? 'segundo ticket' : 'traducción';
+  note.textContent = companionExists
+    ? `Ya existe ${gasto.ticketTranslationKind === 'secondary-ticket' ? 'un segundo ticket' : 'una traducción'}. Esta imagen la reemplazará como ${label} cuando guardes.`
+    : `La imagen se colocará junto al ticket principal como ${label}.`;
+}
+
 function sharedPayloadText(payload) {
   const text = String(payload?.text || '').trim();
   const sourceUrl = String(payload?.sourceUrl || '').trim();
@@ -11314,13 +11370,16 @@ function sharedPayloadDescription(payload, text = sharedPayloadText(payload)) {
 function syncSharedImagesDestination() {
   const hasImages = Boolean(pendingSharedImagesPayload?.files?.length);
   const hasText = Boolean(sharedPayloadText(pendingSharedImagesPayload));
-  const existing = hasImages && $('#shared-images-destination')?.value === 'expense-existing';
-  const requiresDescription = hasImages && !existing;
+  const destination = $('#shared-images-destination')?.value || 'blog';
+  const existing = hasImages && destination === 'expense-existing';
+  const expenseDestination = hasImages && (existing || destination === 'expense-new');
+  const requiresDescription = hasImages && destination === 'blog';
   const description = String($('#shared-images-description')?.value || '').trim();
-  if ($('#shared-images-description-row')) $('#shared-images-description-row').hidden = !requiresDescription;
+  if ($('#shared-images-description-row')) $('#shared-images-description-row').hidden = !hasImages || existing;
   if ($('#shared-images-description')) $('#shared-images-description').required = requiresDescription;
   if ($('#shared-images-expense-row')) $('#shared-images-expense-row').hidden = !existing;
-  if (existing) renderSharedExpenseOptions();
+  if ($('#shared-images-kind-row')) $('#shared-images-kind-row').hidden = !expenseDestination;
+  syncSharedTicketAction();
   const canContinue = (hasImages || hasText)
     && Boolean($('#shared-images-trip')?.value)
     && (!existing || Boolean($('#shared-images-expense')?.value))
@@ -11373,7 +11432,7 @@ async function openSharedImagesDialog(payload) {
       ? payload.files.map((file, index) => {
         const url = URL.createObjectURL(file);
         sharedImagePreviewUrls.push(url);
-        return `<figure><img src="${escapeHtml(url)}" alt="Imagen compartida ${index + 1}"><figcaption>${escapeHtml(file.name || `Imagen ${index + 1}`)}</figcaption></figure>`;
+        return `<figure><button type="button" data-open-shared-image="${index}" title="Ampliar ${escapeHtml(file.name || `imagen ${index + 1}`)}"><img src="${escapeHtml(url)}" alt="Imagen compartida ${index + 1}"></button><figcaption>${escapeHtml(file.name || `Imagen ${index + 1}`)}</figcaption></figure>`;
       }).join('')
       : escapeHtml(sharedText).replace(/\n/g, '<br>');
   }
@@ -11389,6 +11448,8 @@ async function openSharedImagesDialog(payload) {
     tripSelect.disabled = !trips.length;
   }
   if ($('#shared-images-destination')) $('#shared-images-destination').value = 'blog';
+  if ($('#shared-images-kind')) $('#shared-images-kind').value = 'ticket';
+  if ($('#shared-images-ticket-action')) $('#shared-images-ticket-action').value = 'replace';
   if ($('#shared-images-destination-field')) $('#shared-images-destination-field').hidden = !hasImages;
   if ($('#shared-images-description')) $('#shared-images-description').value = hasImages
     ? sharedPayloadDescription(payload, sharedText)
@@ -11396,6 +11457,7 @@ async function openSharedImagesDialog(payload) {
   const descriptionLabel = $('#shared-images-description-row label');
   if (descriptionLabel) descriptionLabel.textContent = payload.files.length === 1 ? 'Descripción de la foto' : 'Descripción de las fotos';
   if ($('#msg-shared-images')) setMessage('#msg-shared-images', '');
+  renderSharedExpenseOptions();
   syncSharedImagesDestination();
   await Promise.all([
     waitForSharedPreviewImages(),
@@ -11433,18 +11495,55 @@ async function prepareSharedBlogImages(files) {
   return images;
 }
 
+async function prepareSharedTicketCompanion(file, kind) {
+  const image = await compressBlogImage(file, { skipMetadata: true });
+  return {
+    ...image,
+    name: file.name || image.name,
+    text: '',
+    sourceLanguages: [],
+    kind: kind === 'secondary' ? 'secondary-ticket' : 'translation'
+  };
+}
+
+async function routeSharedExpenseImages(prefix, files, kind, action = 'replace') {
+  const [first, ...remaining] = files;
+  if (kind === 'photo') {
+    assignSharedFilesToInput($(`#${prefix}-extra-images`), files);
+    await syncExpenseExtraImageSelection(prefix, { resetClassifications: true });
+    return;
+  }
+  if (action === 'translation' || action === 'secondary') {
+    pendingExpenseTicketTranslations[prefix] = await prepareSharedTicketCompanion(first, action);
+    renderExpenseTicketTranslation(prefix);
+    setTicketOcrStatus(prefix, action === 'secondary'
+      ? 'Segundo ticket preparado junto al ticket principal. Revisa y guarda el gasto.'
+      : 'Traducción preparada junto al ticket principal. Revisa y guarda el gasto.');
+  } else {
+    assignSharedFilesToInput($(`#${prefix}-ticket`), [first]);
+    await syncExpenseTicketSelection(prefix, 'file');
+  }
+  if (remaining.length) {
+    assignSharedFilesToInput($(`#${prefix}-extra-images`), remaining);
+    await syncExpenseExtraImageSelection(prefix, { resetClassifications: true });
+  }
+}
+
 async function continueSharedImagesImport() {
   const payload = pendingSharedImagesPayload;
   const tripId = Number($('#shared-images-trip')?.value || 0);
   const destination = $('#shared-images-destination')?.value || 'blog';
   const files = Array.isArray(payload?.files) ? payload.files.slice() : [];
   const sharedText = sharedPayloadText(payload);
+  const sharedKind = $('#shared-images-kind')?.value || 'ticket';
+  const ticketAction = $('#shared-images-ticket-action')?.value || 'replace';
+  const expenseId = Number($('#shared-images-expense')?.value || 0);
   if (!files.length && !sharedText) throw new Error('No hay contenido compartido disponible.');
   if (!tripId || !state.viajes.some(trip => Number(trip.id) === tripId)) throw new Error('Elige un viaje.');
   const suggestedDescription = files.length
     ? String($('#shared-images-description')?.value || '').trim()
     : sharedPayloadDescription(payload, sharedText);
-  if (files.length && destination !== 'expense-existing' && !suggestedDescription) {
+  if (files.length && destination === 'blog' && !suggestedDescription) {
     throw new Error('Escribe una descripción para la foto.');
   }
   if (!files.length) {
@@ -11477,16 +11576,13 @@ async function continueSharedImagesImport() {
   if (destination === 'expense-new') {
     openAddGasto();
     if ($('#g-desc')) $('#g-desc').value = suggestedDescription;
-    assignSharedFilesToInput($('#g-extra-images'), files);
-    await syncExpenseExtraImageSelection('g');
+    await routeSharedExpenseImages('g', files, sharedKind);
     return;
   }
-  const expenseId = Number($('#shared-images-expense')?.value || 0);
   const gasto = state.gastos.find(item => Number(item.id) === expenseId && Number(item.viajeId) === tripId);
   if (!gasto) throw new Error('Elige un gasto existente.');
   openEditGasto(gasto);
-  assignSharedFilesToInput($('#edit-gasto-extra-images'), files);
-  await syncExpenseExtraImageSelection('edit-gasto');
+  await routeSharedExpenseImages('edit-gasto', files, sharedKind, gasto.ticketData ? ticketAction : 'replace');
 }
 
 async function consumeSharedImagesLaunch() {
@@ -13601,9 +13697,14 @@ function bindEvents() {
     renderSharedExpenseOptions();
     syncSharedImagesDestination();
   };
-  $('#shared-images-destination').onchange = syncSharedImagesDestination;
+  $('#shared-images-destination').onchange = () => {
+    if ($('#shared-images-destination').value === 'expense-existing') renderSharedExpenseOptions();
+    syncSharedImagesDestination();
+  };
   $('#shared-images-description').oninput = syncSharedImagesDestination;
   $('#shared-images-expense').onchange = syncSharedImagesDestination;
+  $('#shared-images-kind').onchange = syncSharedImagesDestination;
+  $('#shared-images-ticket-action').onchange = syncSharedImagesDestination;
   $('#shared-images-form').onsubmit = async event => {
     event.preventDefault();
     const button = $('#shared-images-continue');
@@ -13816,12 +13917,22 @@ function bindEvents() {
   $('#g-ticket-type').onchange = () => scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
   $('#g-ticket-translate').onclick = () => translateExpenseTicket('g');
+  $('#g-ticket-language').onchange = () => {
+    pendingTicketOcr.g = null;
+    setTicketOcrStatus('g', `Lectura preparada en ${ticketOcrLanguagesForExpense('g').map(ticketOcrLanguageName).join(', ')}.`);
+    warmTicketOcrLanguages(ticketOcrLanguagesForExpense('g')).catch(() => {});
+  };
   $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#edit-gasto-ticket').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'file'); };
   $('#edit-gasto-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'camera'); };
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
   $('#edit-gasto-ticket-translate').onclick = () => translateExpenseTicket('edit-gasto');
+  $('#edit-gasto-ticket-language').onchange = () => {
+    pendingTicketOcr['edit-gasto'] = null;
+    setTicketOcrStatus('edit-gasto', `Lectura preparada en ${ticketOcrLanguagesForExpense('edit-gasto').map(ticketOcrLanguageName).join(', ')}.`);
+    warmTicketOcrLanguages(ticketOcrLanguagesForExpense('edit-gasto')).catch(() => {});
+  };
   $('#edit-gasto-ticket-type').onchange = () => {
     saveOpenExpenseTicketClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
@@ -13903,6 +14014,23 @@ function bindEvents() {
   };
   $('#expense-files-close').onclick = closeExpenseFilesDialog;
   $('#expense-files-done').onclick = closeExpenseFilesDialog;
+  $('#image-viewer-close').onclick = closeImageViewer;
+  $('#image-viewer-done').onclick = closeImageViewer;
+  $('#image-viewer-dialog').oncancel = event => {
+    event.preventDefault();
+    closeImageViewer();
+  };
+  $('#image-viewer-share').onclick = async () => {
+    const button = $('#image-viewer-share');
+    try {
+      button.disabled = true;
+      await shareImageViewerFile();
+    } catch (error) {
+      if ($('#image-viewer-status')) $('#image-viewer-status').textContent = error?.message || 'No se ha podido compartir la imagen.';
+    } finally {
+      button.disabled = false;
+    }
+  };
   $('#form-dialog-close').onclick = closeFormDialog;
   $('#form-dialog-cancel').onclick = closeFormDialog;
   $('#form-dialog-form').onsubmit = async event => {
@@ -14681,6 +14809,23 @@ function bindEvents() {
     const target = event.target;
     if (!(target instanceof Element)) return;
     try {
+      const sharedImageButton = target.closest('[data-open-shared-image]');
+      if (sharedImageButton) {
+        const index = Number(sharedImageButton.dataset.openSharedImage);
+        const file = pendingSharedImagesPayload?.files?.[index];
+        if (!file) throw new Error('La imagen compartida ya no está disponible.');
+        openImageViewer({ file, name: file.name, type: file.type }, file.name || `Imagen ${index + 1}`);
+        return;
+      }
+      const pendingExpenseImageButton = target.closest('[data-open-pending-expense-image]');
+      if (pendingExpenseImageButton) {
+        const prefix = pendingExpenseImageButton.dataset.openPendingExpenseImage;
+        const index = Number(pendingExpenseImageButton.dataset.pendingExpenseImageIndex);
+        const file = selectedExpenseExtraImageRecords(prefix)[index]?.file;
+        if (!file) throw new Error('La imagen seleccionada ya no está disponible.');
+        openImageViewer({ file, name: file.name, type: file.type }, file.name || `Imagen ${index + 1}`);
+        return;
+      }
       const localBackupButton = target.closest('[data-download-local-backup]');
       if (localBackupButton) {
         await downloadStoredLocalBackup(localBackupButton.dataset.downloadLocalBackup);
