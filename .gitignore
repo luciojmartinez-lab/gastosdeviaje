@@ -1,2 +1,4 @@
 node_modules/
-
+.codex-remote-attachments/
+.netlify/
+tmp/
