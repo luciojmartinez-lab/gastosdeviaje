@@ -348,6 +348,11 @@ test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neu
   assert.match(help, /En los días largos, el PDF reduce automáticamente un poco más las imágenes y las separaciones/);
 });
 
+test('la vista HTML separa la portada general del primer día sin alterar el salto del PDF', () => {
+  assert.match(app, /@media screen \{[\s\S]*?\.blog-print-overview \{ margin-bottom: 6mm; padding-bottom: 5mm; border-bottom: 1px solid #94a3b8; \}/);
+  assert.match(app, /\.blog-print-overview \{ display: block; width: 100%; break-after: page; page-break-after: always; \}/);
+});
+
 test('el PDF del Blog respeta los filtros activos de día, país y ciudad', () => {
   assert.match(app, /function filteredBlogEntries\(entries\)[\s\S]*?entry\.fecha === date[\s\S]*?entry\.paisId\) === countryId[\s\S]*?entry\.ciudadId\) === cityId/);
   const printStart = app.indexOf('function printBlog(options = {})');

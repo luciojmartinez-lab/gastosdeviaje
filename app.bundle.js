@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v228';
+const APP_VERSION = '700v229';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2396,7 +2396,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v228');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v229');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2428,7 +2428,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v228');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v229');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -3170,7 +3170,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v228');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v229');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -10251,7 +10251,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v228');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v229');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -12470,7 +12470,10 @@ function printBlog(options = {}) {
     .blog-lightbox[hidden] { display: none; }
     .blog-lightbox img { display: block; max-width: 96vw; max-height: 92vh; width: auto; height: auto; object-fit: contain; border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,0.55); }
     .blog-lightbox button { position: fixed; top: 14px; right: 14px; width: 44px; height: 44px; border: 0; border-radius: 999px; background: #fff; color: #111827; font-size: 28px; line-height: 1; cursor: pointer; }
-    @media screen { body { max-width: 210mm; margin: 0 auto; padding: 12mm; } }
+    @media screen {
+      body { max-width: 210mm; margin: 0 auto; padding: 12mm; }
+      .blog-print-overview { margin-bottom: 6mm; padding-bottom: 5mm; border-bottom: 1px solid #94a3b8; }
+    }
     @media print { .blog-preview-toolbar, .blog-lightbox { display: none !important; } .blog-print-image { cursor: default; } }
   </style></head><body><nav class="blog-preview-toolbar" aria-label="Acciones de la vista del Blog">
     <button type="button" class="primary" id="blog-preview-share">Compartir HTML</button>
