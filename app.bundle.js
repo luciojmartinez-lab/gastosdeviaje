@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v227';
+const APP_VERSION = '700v228';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -9,6 +9,7 @@ const DATA_UPDATED_KEY = 'gastos_viaje_data_updated_at';
 const FORM_DRAFTS_KEY = 'gastos_viaje_form_drafts_v1';
 const FORM_DRAFT_MAX_AGE_DAYS = 30;
 const OFFLINE_ENTRY_NOTICE_KEY = 'gastos_viaje_offline_notice_shown';
+const LENS_RETURN_TARGET_KEY = 'gastos_viaje_lens_return_target_v1';
 const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
 const SYNC_STATE_STORAGE = 'gastos_viaje_sync_state_v1';
 const BACKUP_DIRECTORY_SETTING_KEY = 'backupDirectory';
@@ -119,6 +120,12 @@ let lastCurrentImageLocation = null;
 let blogPointLocationRequestToken = 0;
 let pendingSharedImagesPayload = null;
 let sharedImagePreviewUrls = [];
+let pendingLensReturnTarget = null;
+let sharedContentAppReady = false;
+let pendingSharedLaunchTargets = [];
+let sharedLaunchDrainPromise = Promise.resolve();
+const consumedSharedContentIds = new Set();
+const sharedContentConsumptionPromises = new Map();
 let activeContextHelpTrigger = null;
 const tripMapPhotoLookup = new Map();
 const tripMapMarkerDetailLookup = new Map();
@@ -2389,7 +2396,7 @@ async function imageGpsForFile(file, options = {}) {
   if (point === undefined) {
     point = null;
     try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v227');
+      imageLocationModulePromise ||= import('./image-location.js?v=700v228');
       const locationReader = await imageLocationModulePromise;
       const exifPoint = await locationReader.extractImageGps(file);
       point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
@@ -2421,7 +2428,7 @@ async function imageDateTimeForFile(file) {
   if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
   let captured = null;
   try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v227');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v228');
     const locationReader = await imageLocationModulePromise;
     captured = await locationReader.extractImageDateTime(file);
   } catch (error) {
@@ -3047,7 +3054,7 @@ function ticketDateAlignedToTrip(prefix, value) {
     : { value: date, corrected: false };
 }
 
-function applyTicketOcrFields(prefix, result) {
+function applyTicketOcrFields(prefix, result, options = {}) {
   const fields = result.fields || {};
   const detected = [];
   const applied = [];
@@ -3058,7 +3065,7 @@ function applyTicketOcrFields(prefix, result) {
     const control = $(`#${prefix}-${field}`);
     if (!control) return false;
     const current = String(control.value || '').trim();
-    if (prefix === 'edit-gasto' && current) {
+    if ((prefix === 'edit-gasto' || options.onlyEmpty) && current) {
       if (current !== String(value).trim()) preserved.push(label);
       return false;
     }
@@ -3101,7 +3108,8 @@ function applyTicketOcrFields(prefix, result) {
     categoryEdited: false
   };
   if (!detected.length) throw new Error('No se han podido reconocer datos claros en este ticket. Puedes introducirlos manualmente.');
-  const documentLabel = fields.documentType === 'card_payment' ? 'Justificante de tarjeta detectado.' : 'Ticket de comercio detectado.';
+  const documentLabel = options.documentLabel
+    || (fields.documentType === 'card_payment' ? 'Justificante de tarjeta detectado.' : 'Ticket de comercio detectado.');
   const missingAmount = Number.isFinite(fields.total) && fields.total > 0
     ? ''
     : ' No se encontró un total claro en el justificante; se mantiene el importe que ya figuraba.';
@@ -3148,23 +3156,21 @@ function handleExpenseSubcategoryChange(prefix) {
   markTicketCategoryEdited(prefix);
 }
 
-async function readExpenseTicket(prefix) {
-  const source = ticketOcrSource(prefix);
-  if (!source) {
-    setTicketOcrStatus(prefix, 'Selecciona o fotografía primero un ticket.', true);
-    return null;
-  }
-  const button = $(`#${prefix}-ticket-read`);
-  const languages = ticketOcrLanguagesForExpense(prefix);
+async function recognizeExpenseTicketSource(prefix, source, options = {}) {
+  const button = options.button || null;
+  const languages = normalizeRequestedTicketOcrLanguages(options.languages || ticketOcrLanguagesForExpense(prefix));
   const runId = (ticketOcrRunIds[prefix] || 0) + 1;
   ticketOcrRunIds[prefix] = runId;
   try {
-    button.dataset.busy = '1';
-    button.disabled = true;
-    button.textContent = 'Leyendo…';
-    setTicketOcrStatus(prefix, `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
+    if (button) {
+      button.dataset.busy = '1';
+      button.disabled = true;
+      button.textContent = 'Leyendo…';
+    }
+    setTicketOcrStatus(prefix, options.preparingMessage
+      || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v227');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v228');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3181,7 +3187,7 @@ async function readExpenseTicket(prefix) {
         state.gastos.map(item => item.descripcion)
       );
     }
-    setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result));
+    setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result, options));
     if (prefix === 'g') scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
     return result;
   } catch (error) {
@@ -3189,10 +3195,87 @@ async function readExpenseTicket(prefix) {
     setTicketOcrStatus(prefix, error?.message || 'No se ha podido leer el ticket.', true);
     return null;
   } finally {
-    delete button.dataset.busy;
-    button.textContent = 'Leer ticket';
+    if (button) {
+      delete button.dataset.busy;
+      button.textContent = 'Leer ticket';
+    }
     syncTicketOcrAvailability(prefix);
   }
+}
+
+async function readExpenseTicket(prefix) {
+  const source = ticketOcrSource(prefix);
+  if (!source) {
+    setTicketOcrStatus(prefix, 'Selecciona o fotografía primero un ticket.', true);
+    return null;
+  }
+  return recognizeExpenseTicketSource(prefix, source, {
+    button: $(`#${prefix}-ticket-read`),
+    languages: ticketOcrLanguagesForExpense(prefix)
+  });
+}
+
+async function readLensTicketTranslation(prefix, record) {
+  if (!record?.data) return null;
+  const previousStatus = 'Traducción preparada junto al ticket principal.';
+  try {
+    const result = await recognizeExpenseTicketSource(prefix, {
+      source: record.data,
+      type: record.type || 'image/jpeg',
+      name: record.name || 'traduccion-lens.jpg'
+    }, {
+      languages: ['spa'],
+      onlyEmpty: true,
+      documentLabel: 'Traducción de Google Lens leída.',
+      preparingMessage: 'Leyendo localmente la traducción de Google Lens…'
+    });
+    if (result) {
+      record.text = result.text || '';
+      record.sourceLanguages = ['spa'];
+    } else {
+      setTicketOcrStatus(prefix, `${previousStatus} No se encontraron otros datos claros; puedes completarlos manualmente.`);
+    }
+    return result;
+  } catch (error) {
+    console.warn('No se pudieron completar datos desde la traducción de Lens', error);
+    setTicketOcrStatus(prefix, `${previousStatus} No se encontraron otros datos claros; puedes completarlos manualmente.`);
+    return null;
+  }
+}
+
+function writeLensReturnTarget(target = null) {
+  pendingLensReturnTarget = target;
+  try {
+    if (target) sessionStorage.setItem(LENS_RETURN_TARGET_KEY, JSON.stringify(target));
+    else sessionStorage.removeItem(LENS_RETURN_TARGET_KEY);
+  } catch (_) {}
+}
+
+function currentLensReturnTarget() {
+  let target = pendingLensReturnTarget;
+  if (!target) {
+    try {
+      target = JSON.parse(sessionStorage.getItem(LENS_RETURN_TARGET_KEY) || 'null');
+    } catch (_) {
+      target = null;
+    }
+  }
+  const startedAt = Number(target?.startedAt || 0);
+  if (!target || !['g', 'edit-gasto'].includes(target.prefix) || Date.now() - startedAt > 30 * 60 * 1000) {
+    writeLensReturnTarget(null);
+    return null;
+  }
+  pendingLensReturnTarget = target;
+  return target;
+}
+
+function rememberLensReturnTarget(prefix) {
+  writeLensReturnTarget({
+    prefix,
+    expenseId: prefix === 'edit-gasto' ? Number($('#edit-gasto-id')?.value || 0) : 0,
+    tripId: Number($(`#${prefix}-viaje`)?.value || 0),
+    startedAt: Date.now()
+  });
 }
 
 async function translateExpenseTicket(prefix) {
@@ -3213,10 +3296,12 @@ async function translateExpenseTicket(prefix) {
     const blob = source.source instanceof Blob
       ? source.source
       : dataUrlToBlob(source.source, source.type || 'image/jpeg');
+    rememberLensReturnTarget(prefix);
     openImageViewer({
       name: source.name || 'ticket.jpg',
       type: source.type || blob.type || 'image/jpeg',
-      blob
+      blob,
+      data: typeof source.source === 'string' ? source.source : ''
     }, 'Traducir ticket con Google Lens');
     if ($('#image-viewer-status')) {
       $('#image-viewer-status').textContent = 'Pulsa «Compartir / Google Lens», elige Lens y traduce. Desde el resultado, compártelo de nuevo con Cuaderno de Bitácora como traducción.';
@@ -3316,11 +3401,14 @@ function openImageViewer(record, title = '') {
   const type = String(record?.type || blob?.type || 'image/jpeg');
   if (!blob || !/^image\//i.test(type)) throw new Error('Esta vista ampliada solo está disponible para imágenes.');
   if (activeImageViewerUrl) URL.revokeObjectURL(activeImageViewerUrl);
-  activeImageViewerUrl = URL.createObjectURL(blob);
+  const embeddedImageUrl = /^data:image\//i.test(String(record?.data || '')) ? String(record.data) : '';
+  const displayUrl = embeddedImageUrl || (typeof URL.createObjectURL === 'function' ? URL.createObjectURL(blob) : '');
+  if (!displayUrl) throw new Error('El navegador no ha podido preparar la vista ampliada de esta imagen.');
+  activeImageViewerUrl = embeddedImageUrl ? '' : displayUrl;
   activeImageViewerRecord = { name, type, blob };
   if ($('#image-viewer-title')) $('#image-viewer-title').textContent = title || name;
   if ($('#image-viewer-image')) {
-    $('#image-viewer-image').src = activeImageViewerUrl;
+    $('#image-viewer-image').src = displayUrl;
     $('#image-viewer-image').alt = `Vista ampliada de ${name}`;
   }
   if ($('#image-viewer-status')) $('#image-viewer-status').textContent = '';
@@ -10163,7 +10251,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v227');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v228');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -10758,7 +10846,7 @@ function showBlogImages(images = []) {
         manualCount ? `${manualCount} con ubicación manual` : '',
         normalized.length > located.length ? `${normalized.length - located.length} sin GPS` : ''
       ].filter(Boolean).join(' · ');
-      $('#blog-image-status').textContent = `${normalized.length} imágenes preparadas para la galería${locationParts ? ` · ${locationParts}` : ''}. Toca una miniatura para convertirla en la primera imagen.`;
+      $('#blog-image-status').textContent = `${normalized.length} imágenes preparadas para la galería${locationParts ? ` · ${locationParts}` : ''}. Toca una foto para ampliarla o usa «Hacer primera» para cambiar el orden.`;
     }
   }
   if ($('#blog-image-preview')) {
@@ -10771,7 +10859,7 @@ function showBlogImages(images = []) {
   }
   if ($('#blog-image-rotate-actions')) $('#blog-image-rotate-actions').hidden = normalized.length === 0;
   if ($('#blog-gallery-preview')) {
-    $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure class="${index === 0 ? 'is-primary' : ''}"><button type="button" class="blog-gallery-select" data-blog-primary-image="${index}" title="Usar como primera imagen"><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"></button><figcaption>${index === 0 ? '<strong>Primera</strong> · ' : ''}${escapeHtml(image.name)} · ${storedImageCoordinates(image) ? 'GPS' : 'sin GPS'}</figcaption><select data-blog-image-type="${index}" aria-label="Tipo de ${escapeHtml(image.name || `imagen ${index + 1}`)}">${photoTypeOptionsHtml(image.photoTypeId)}</select><button type="button" class="ghost blog-gallery-remove" data-blog-remove-image="${index}" aria-label="Quitar ${escapeHtml(image.name || `imagen ${index + 1}`)}">Quitar</button></figure>`).join('');
+    $('#blog-gallery-preview').innerHTML = normalized.map((image, index) => `<figure class="${index === 0 ? 'is-primary' : ''}"><button type="button" class="blog-gallery-select" data-open-blog-gallery-image="${index}" title="Ampliar ${escapeHtml(image.name || `imagen ${index + 1}`)}"><img src="${escapeHtml(image.data)}" alt="Imagen ${index + 1}"></button><figcaption>${index === 0 ? '<strong>Primera</strong> · ' : ''}${escapeHtml(image.name)} · ${storedImageCoordinates(image) ? 'GPS' : 'sin GPS'}</figcaption><select data-blog-image-type="${index}" aria-label="Tipo de ${escapeHtml(image.name || `imagen ${index + 1}`)}">${photoTypeOptionsHtml(image.photoTypeId)}</select><button type="button" class="ghost blog-gallery-primary" data-blog-primary-image="${index}" ${index === 0 ? 'disabled' : ''}>${index === 0 ? 'Primera' : 'Hacer primera'}</button><button type="button" class="ghost blog-gallery-remove" data-blog-remove-image="${index}" aria-label="Quitar ${escapeHtml(image.name || `imagen ${index + 1}`)}">Quitar</button></figure>`).join('');
     $('#blog-gallery-preview').hidden = normalized.length === 0;
   }
   if ($('#blog-images-map-option')) {
@@ -11301,18 +11389,52 @@ function revokeSharedImagePreviewUrls() {
   sharedImagePreviewUrls = [];
 }
 
+function openBlogGalleryImage(index = 0) {
+  const images = [activeBlogImage, ...activeBlogGalleryImages].filter(Boolean);
+  const imageIndex = Number(index);
+  if (!Number.isInteger(imageIndex) || imageIndex < 0 || imageIndex >= images.length) return;
+  const image = images[imageIndex];
+  openImageViewer(image, image.name || `Imagen ${imageIndex + 1}`);
+}
+
+function activeSharedExpenseFormTarget(tripId = Number($('#shared-images-trip')?.value || 0)) {
+  const addDialog = $('#add-gasto-dialog');
+  const editDialog = $('#edit-gasto-dialog');
+  let prefix = '';
+  if (addDialog?.open && Number($('#g-viaje')?.value || 0) === Number(tripId)) prefix = 'g';
+  else if (editDialog?.open && Number($('#edit-gasto-viaje')?.value || 0) === Number(tripId)) prefix = 'edit-gasto';
+  if (!prefix) return null;
+  const amount = numberValue($(`#${prefix}-importe`)?.value);
+  const description = String($(`#${prefix}-desc`)?.value || '').trim() || (prefix === 'g' ? 'Nuevo gasto' : 'Gasto abierto');
+  const expenseId = prefix === 'edit-gasto' ? Number($('#edit-gasto-id')?.value || 0) : 0;
+  const gasto = expenseId ? state.gastos.find(item => Number(item.id) === expenseId) || null : null;
+  return {
+    value: `current:${prefix}`,
+    prefix,
+    expenseId,
+    gasto,
+    hasTicket: Boolean(ticketOcrSource(prefix)),
+    companionExists: Boolean(pendingExpenseTicketTranslations[prefix]?.data),
+    label: `${prefix === 'g' ? 'Gasto abierto sin guardar' : 'Gasto que estás editando'} · ${description}${amount ? ` · ${fmtCurrency(Math.abs(amount), $(`#${prefix}-moneda`)?.value || 'EUR')}` : ''}`
+  };
+}
+
 function renderSharedExpenseOptions() {
   const select = $('#shared-images-expense');
   if (!select) return;
   const tripId = Number($('#shared-images-trip')?.value || 0);
+  const previousValue = select.value;
+  const currentTarget = activeSharedExpenseFormTarget(tripId);
   const expenses = state.gastos
     .filter(gasto => Number(gasto.viajeId) === tripId)
     .slice()
     .sort((a, b) => compareExpensesChronologically(b, a));
-  select.innerHTML = expenses.length
-    ? expenses.map(gasto => `<option value="${gasto.id}">${escapeHtml(`${summaryDocumentDate(gasto.fecha, true)} ${expenseTimeValue(gasto) || ''} · ${gasto.desc || 'Gasto'} · ${fmtCurrency(Math.abs(numberValue(gasto.importe)), gasto.moneda || 'EUR')}`)}</option>`).join('')
-    : '<option value="">(este viaje no tiene gastos)</option>';
-  select.disabled = !expenses.length;
+  const options = [];
+  if (currentTarget) options.push(`<option value="${currentTarget.value}">${escapeHtml(currentTarget.label)}</option>`);
+  options.push(...expenses.map(gasto => `<option value="${gasto.id}">${escapeHtml(`${summaryDocumentDate(gasto.fecha, true)} ${expenseTimeValue(gasto) || ''} · ${gasto.desc || 'Gasto'} · ${fmtCurrency(Math.abs(numberValue(gasto.importe)), gasto.moneda || 'EUR')}`)}</option>`));
+  select.innerHTML = options.length ? options.join('') : '<option value="">(este viaje no tiene gastos)</option>';
+  select.disabled = !options.length;
+  if (previousValue && [...select.options].some(option => option.value === previousValue)) select.value = previousValue;
 }
 
 function selectedSharedExpense() {
@@ -11321,18 +11443,43 @@ function selectedSharedExpense() {
   return state.gastos.find(gasto => Number(gasto.id) === expenseId && Number(gasto.viajeId) === tripId) || null;
 }
 
+function selectedSharedExpenseTarget() {
+  const value = String($('#shared-images-expense')?.value || '');
+  if (value.startsWith('current:')) {
+    const current = activeSharedExpenseFormTarget();
+    return current?.value === value ? current : null;
+  }
+  const gasto = selectedSharedExpense();
+  return gasto ? {
+    value,
+    prefix: '',
+    expenseId: Number(gasto.id),
+    gasto,
+    hasTicket: Boolean(gasto.ticketData),
+    companionExists: Boolean(gasto.ticketTranslationData)
+  } : null;
+}
+
 function syncSharedTicketAction() {
   const destination = $('#shared-images-destination')?.value || 'blog';
   const kind = $('#shared-images-kind')?.value || 'ticket';
-  const gasto = destination === 'expense-existing' ? selectedSharedExpense() : null;
+  const target = destination === 'expense-existing' ? selectedSharedExpenseTarget() : null;
+  const gasto = target?.gasto || null;
+  const lensResult = Boolean(pendingSharedImagesPayload?.fromLens);
   const actionRow = $('#shared-images-ticket-action-row');
-  const action = $('#shared-images-ticket-action')?.value || 'replace';
-  const needsAction = Boolean(gasto?.ticketData && kind === 'ticket');
+  const actionSelect = $('#shared-images-ticket-action');
+  const actionLabel = $('#shared-images-ticket-action-label');
+  const secondaryOption = actionSelect?.querySelector('option[value="secondary"]');
+  if (secondaryOption) secondaryOption.hidden = lensResult;
+  if (lensResult && actionSelect) actionSelect.value = 'translation';
+  if (actionLabel) actionLabel.textContent = lensResult ? 'Resultado recibido de Google Lens' : 'Este gasto ya tiene ticket';
+  const action = actionSelect?.value || 'replace';
+  const needsAction = Boolean(target?.hasTicket && kind === 'ticket');
   if (actionRow) actionRow.hidden = !needsAction;
   const note = $('#shared-images-ticket-action-note');
   if (!note) return;
   if (!needsAction) {
-    note.textContent = gasto && kind === 'ticket'
+    note.textContent = target && kind === 'ticket'
       ? 'La imagen se preparará como ticket principal.'
       : '';
     return;
@@ -11341,10 +11488,10 @@ function syncSharedTicketAction() {
     note.textContent = 'La imagen sustituirá al ticket principal actual cuando guardes el gasto.';
     return;
   }
-  const companionExists = Boolean(gasto.ticketTranslationData);
+  const companionExists = Boolean(target?.companionExists);
   const label = action === 'secondary' ? 'segundo ticket' : 'traducción';
   note.textContent = companionExists
-    ? `Ya existe ${gasto.ticketTranslationKind === 'secondary-ticket' ? 'un segundo ticket' : 'una traducción'}. Esta imagen la reemplazará como ${label} cuando guardes.`
+    ? `Ya existe ${gasto?.ticketTranslationKind === 'secondary-ticket' ? 'un segundo ticket' : 'una traducción'}. Esta imagen la reemplazará como ${label} cuando guardes.`
     : `La imagen se colocará junto al ticket principal como ${label}.`;
 }
 
@@ -11365,6 +11512,13 @@ function sharedPayloadDescription(payload, text = sharedPayloadText(payload)) {
   const title = meaningfulDescription(payload?.title);
   const firstLine = meaningfulDescription(String(text || '').split(/\r?\n/)[0]);
   return (title || firstLine).slice(0, 240);
+}
+
+function sharedPayloadLooksLikeLens(payload) {
+  const hint = [payload?.title, payload?.text, payload?.sourceUrl]
+    .map(value => String(value || ''))
+    .join(' ');
+  return Boolean(currentLensReturnTarget()) || /google\s*lens|traducid[oa]\s+con\s+google\s+lens|lens\b/i.test(hint);
 }
 
 function syncSharedImagesDestination() {
@@ -11415,6 +11569,8 @@ function waitForSharedPreviewImages() {
 
 async function openSharedImagesDialog(payload) {
   payload = { ...payload, files: Array.isArray(payload?.files) ? payload.files : [] };
+  payload.fromLens = Boolean(payload.fromLens || sharedPayloadLooksLikeLens(payload));
+  if (payload.fromLens && $('#image-viewer-dialog')?.open) closeImageViewer();
   pendingSharedImagesPayload = payload;
   revokeSharedImagePreviewUrls();
   const hasImages = payload.files.length > 0;
@@ -11422,7 +11578,9 @@ async function openSharedImagesDialog(payload) {
   if ($('#shared-content-title')) $('#shared-content-title').textContent = hasImages ? 'Imágenes recibidas' : 'Texto recibido';
   if ($('#shared-content-intro')) {
     $('#shared-content-intro').textContent = hasImages
-      ? 'Elige dónde preparar las imágenes compartidas. No se guardará nada hasta que confirmes el formulario correspondiente.'
+      ? payload.fromLens
+        ? 'Se ha recibido el resultado de Google Lens. La traducción se añadirá al gasto que tenías abierto y podrás revisarla antes de guardar.'
+        : 'Elige dónde preparar las imágenes compartidas. No se guardará nada hasta que confirmes el formulario correspondiente.'
       : 'Elige el viaje. El texto se preparará como una nueva entrada del Blog y podrás revisarlo antes de guardarlo.';
   }
   const preview = $('#shared-images-preview');
@@ -11439,7 +11597,10 @@ async function openSharedImagesDialog(payload) {
   const tripSelect = $('#shared-images-trip');
   const trips = state.viajes.slice().sort((a, b) => (b.fechaInicio || '').localeCompare(a.fechaInicio || '') || String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
   const selectedIds = selectedTripIds();
-  const defaultTripId = selectedIds.length === 1 ? Number(selectedIds[0]) : Number(trips[0]?.id || 0);
+  const lensTarget = payload.fromLens ? currentLensReturnTarget() : null;
+  const defaultTripId = lensTarget?.tripId && trips.some(trip => Number(trip.id) === Number(lensTarget.tripId))
+    ? Number(lensTarget.tripId)
+    : selectedIds.length === 1 ? Number(selectedIds[0]) : Number(trips[0]?.id || 0);
   if (tripSelect) {
     tripSelect.innerHTML = trips.length
       ? trips.map(trip => `<option value="${trip.id}">${escapeHtml(trip.nombre)}</option>`).join('')
@@ -11447,9 +11608,17 @@ async function openSharedImagesDialog(payload) {
     tripSelect.value = defaultTripId ? String(defaultTripId) : '';
     tripSelect.disabled = !trips.length;
   }
-  if ($('#shared-images-destination')) $('#shared-images-destination').value = 'blog';
+  const currentFormTarget = activeSharedExpenseFormTarget(defaultTripId);
+  const preferredStoredExpense = lensTarget?.expenseId
+    ? state.gastos.find(item => Number(item.id) === Number(lensTarget.expenseId) && Number(item.viajeId) === Number(defaultTripId))
+    : null;
+  if ($('#shared-images-destination')) {
+    $('#shared-images-destination').value = payload.fromLens && (currentFormTarget || preferredStoredExpense)
+      ? 'expense-existing'
+      : payload.fromLens ? 'expense-new' : 'blog';
+  }
   if ($('#shared-images-kind')) $('#shared-images-kind').value = 'ticket';
-  if ($('#shared-images-ticket-action')) $('#shared-images-ticket-action').value = 'replace';
+  if ($('#shared-images-ticket-action')) $('#shared-images-ticket-action').value = payload.fromLens ? 'translation' : 'replace';
   if ($('#shared-images-destination-field')) $('#shared-images-destination-field').hidden = !hasImages;
   if ($('#shared-images-description')) $('#shared-images-description').value = hasImages
     ? sharedPayloadDescription(payload, sharedText)
@@ -11458,6 +11627,12 @@ async function openSharedImagesDialog(payload) {
   if (descriptionLabel) descriptionLabel.textContent = payload.files.length === 1 ? 'Descripción de la foto' : 'Descripción de las fotos';
   if ($('#msg-shared-images')) setMessage('#msg-shared-images', '');
   renderSharedExpenseOptions();
+  if ($('#shared-images-expense') && payload.fromLens) {
+    const preferredValue = currentFormTarget?.value || (preferredStoredExpense ? String(preferredStoredExpense.id) : '');
+    if (preferredValue && [...$('#shared-images-expense').options].some(option => option.value === preferredValue)) {
+      $('#shared-images-expense').value = preferredValue;
+    }
+  }
   syncSharedImagesDestination();
   await Promise.all([
     waitForSharedPreviewImages(),
@@ -11472,11 +11647,13 @@ async function openSharedImagesDialog(payload) {
 }
 
 function closeSharedImagesDialog() {
+  const wasLensResult = Boolean(pendingSharedImagesPayload?.fromLens);
   const dialog = $('#shared-images-dialog');
   if (dialog?.close) dialog.close();
   else dialog?.removeAttribute('open');
   revokeSharedImagePreviewUrls();
   pendingSharedImagesPayload = null;
+  if (wasLensResult) writeLensReturnTarget(null);
 }
 
 function assignSharedFilesToInput(input, files) {
@@ -11514,11 +11691,11 @@ async function routeSharedExpenseImages(prefix, files, kind, action = 'replace')
     return;
   }
   if (action === 'translation' || action === 'secondary') {
-    pendingExpenseTicketTranslations[prefix] = await prepareSharedTicketCompanion(first, action);
+    const companion = await prepareSharedTicketCompanion(first, action);
+    pendingExpenseTicketTranslations[prefix] = companion;
     renderExpenseTicketTranslation(prefix);
-    setTicketOcrStatus(prefix, action === 'secondary'
-      ? 'Segundo ticket preparado junto al ticket principal. Revisa y guarda el gasto.'
-      : 'Traducción preparada junto al ticket principal. Revisa y guarda el gasto.');
+    if (action === 'translation') await readLensTicketTranslation(prefix, companion);
+    else setTicketOcrStatus(prefix, 'Segundo ticket preparado junto al ticket principal. Revisa y guarda el gasto.');
   } else {
     assignSharedFilesToInput($(`#${prefix}-ticket`), [first]);
     await syncExpenseTicketSelection(prefix, 'file');
@@ -11537,7 +11714,9 @@ async function continueSharedImagesImport() {
   const sharedText = sharedPayloadText(payload);
   const sharedKind = $('#shared-images-kind')?.value || 'ticket';
   const ticketAction = $('#shared-images-ticket-action')?.value || 'replace';
-  const expenseId = Number($('#shared-images-expense')?.value || 0);
+  const selectedExpenseValue = String($('#shared-images-expense')?.value || '');
+  const currentExpenseTarget = selectedExpenseValue.startsWith('current:') ? selectedSharedExpenseTarget() : null;
+  const expenseId = Number(selectedExpenseValue || 0);
   if (!files.length && !sharedText) throw new Error('No hay contenido compartido disponible.');
   if (!tripId || !state.viajes.some(trip => Number(trip.id) === tripId)) throw new Error('Elige un viaje.');
   const suggestedDescription = files.length
@@ -11570,6 +11749,17 @@ async function continueSharedImagesImport() {
     scheduleActiveBlogEntryDraftSave();
     return;
   }
+  if (destination === 'expense-existing' && currentExpenseTarget) {
+    closeSharedImagesDialog();
+    setTab('gastos');
+    await routeSharedExpenseImages(
+      currentExpenseTarget.prefix,
+      files,
+      sharedKind,
+      currentExpenseTarget.hasTicket ? ticketAction : 'replace'
+    );
+    return;
+  }
   applySelectedTrip(tripId);
   closeSharedImagesDialog();
   setTab('gastos');
@@ -11585,8 +11775,40 @@ async function continueSharedImagesImport() {
   await routeSharedExpenseImages('edit-gasto', files, sharedKind, gasto.ticketData ? ticketAction : 'replace');
 }
 
-async function consumeSharedImagesLaunch() {
-  const url = new URL(window.location.href);
+async function consumeSharedContentId(id) {
+  const sharedId = String(id || '').trim();
+  if (!sharedId || consumedSharedContentIds.has(sharedId)) return;
+  if (sharedContentConsumptionPromises.has(sharedId)) return sharedContentConsumptionPromises.get(sharedId);
+  const consumption = (async () => {
+    const metadataUrl = new URL(`./__shared/${encodeURIComponent(sharedId)}/metadata.json`, window.location.href).href;
+    const response = await fetch(metadataUrl, { cache: 'no-store' });
+    if (!response.ok) throw new Error('El contenido compartido ya no está disponible. Vuelve a compartirlo desde la aplicación de origen.');
+    const metadata = await response.json();
+    const descriptors = Array.isArray(metadata.files) ? metadata.files : [];
+    const files = await Promise.all(descriptors.map(async (descriptor, index) => {
+      const fileResponse = await fetch(descriptor.url, { cache: 'no-store' });
+      if (!fileResponse.ok) throw new Error(`No se pudo recuperar la imagen ${index + 1}.`);
+      const blob = await fileResponse.blob();
+      return new File([blob], descriptor.name || `imagen-${index + 1}.jpg`, {
+        type: descriptor.type || blob.type || 'image/jpeg',
+        lastModified: Number(descriptor.lastModified || Date.now())
+      });
+    }));
+    await deleteSharedLaunchCache(metadataUrl, descriptors);
+    if (!files.length && !sharedPayloadText(metadata)) throw new Error('No se recibió contenido compatible.');
+    consumedSharedContentIds.add(sharedId);
+    await openSharedImagesDialog({ ...metadata, files });
+  })();
+  sharedContentConsumptionPromises.set(sharedId, consumption);
+  try {
+    await consumption;
+  } finally {
+    sharedContentConsumptionPromises.delete(sharedId);
+  }
+}
+
+async function consumeSharedImagesLaunch(targetUrl = window.location.href) {
+  const url = new URL(String(targetUrl || window.location.href), window.location.href);
   const errorCode = url.searchParams.get('shared_error');
   const id = url.searchParams.get('shared');
   if (!id && !errorCode) return;
@@ -11595,23 +11817,39 @@ async function consumeSharedImagesLaunch() {
     alert('No se recibió contenido compatible desde Android.');
     return;
   }
-  const metadataUrl = new URL(`./__shared/${encodeURIComponent(id)}/metadata.json`, window.location.href).href;
-  const response = await fetch(metadataUrl, { cache: 'no-store' });
-  if (!response.ok) throw new Error('El contenido compartido ya no está disponible. Vuelve a compartirlo desde la aplicación de origen.');
-  const metadata = await response.json();
-  const descriptors = Array.isArray(metadata.files) ? metadata.files : [];
-  const files = await Promise.all(descriptors.map(async (descriptor, index) => {
-    const fileResponse = await fetch(descriptor.url, { cache: 'no-store' });
-    if (!fileResponse.ok) throw new Error(`No se pudo recuperar la imagen ${index + 1}.`);
-    const blob = await fileResponse.blob();
-    return new File([blob], descriptor.name || `imagen-${index + 1}.jpg`, {
-      type: descriptor.type || blob.type || 'image/jpeg',
-      lastModified: Number(descriptor.lastModified || Date.now())
-    });
-  }));
-  await deleteSharedLaunchCache(metadataUrl, descriptors);
-  if (!files.length && !sharedPayloadText(metadata)) throw new Error('No se recibió contenido compatible.');
-  await openSharedImagesDialog({ ...metadata, files });
+  await consumeSharedContentId(id);
+}
+
+function queueSharedLaunchTarget(targetUrl) {
+  const value = String(targetUrl || '').trim();
+  if (!value) return;
+  pendingSharedLaunchTargets.push(value);
+  if (!sharedContentAppReady) return;
+  sharedLaunchDrainPromise = sharedLaunchDrainPromise.then(async () => {
+    while (pendingSharedLaunchTargets.length) {
+      const target = pendingSharedLaunchTargets.shift();
+      try {
+        await consumeSharedImagesLaunch(target);
+      } catch (error) {
+        alert(error.message || String(error));
+      }
+    }
+  });
+}
+
+if ('launchQueue' in window && typeof window.launchQueue.setConsumer === 'function') {
+  window.launchQueue.setConsumer(params => {
+    if (params?.targetURL) queueSharedLaunchTarget(params.targetURL);
+  });
+}
+
+if (navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data?.type !== 'SHARED_CONTENT_READY' || !event.data.id) return;
+    const target = new URL('./index.html', window.location.href);
+    target.searchParams.set('shared', event.data.id);
+    queueSharedLaunchTarget(target.href);
+  });
 }
 
 async function saveBlogEntryForm() {
@@ -13804,10 +14042,21 @@ function bindEvents() {
     }
   };
   $('#blog-save-original').onclick = saveBlogCameraOriginal;
+  $('#blog-image-preview').onclick = () => openBlogGalleryImage(0);
+  $('#blog-image-preview').onkeydown = event => {
+    if (!['Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    openBlogGalleryImage(0);
+  };
   $('#blog-gallery-preview').onclick = event => {
     const removeButton = event.target.closest('[data-blog-remove-image]');
     if (removeButton) {
       removeBlogImage(removeButton.dataset.blogRemoveImage);
+      return;
+    }
+    const imageButton = event.target.closest('[data-open-blog-gallery-image]');
+    if (imageButton) {
+      openBlogGalleryImage(imageButton.dataset.openBlogGalleryImage);
       return;
     }
     const button = event.target.closest('[data-blog-primary-image]');
@@ -15342,13 +15591,12 @@ window.addEventListener('DOMContentLoaded', async () => {
       console.warn('No se pudo crear la copia local de entrada', error);
     }
     renderBackupStatus();
-    if (APP_HAS_SHARED_LAUNCH) {
-      try {
-        await consumeSharedImagesLaunch();
-      } catch (error) {
-        alert(error.message || String(error));
-      }
-    }
+    sharedContentAppReady = true;
+    const queuedSharedTargets = pendingSharedLaunchTargets.slice();
+    pendingSharedLaunchTargets = [];
+    queuedSharedTargets.forEach(queueSharedLaunchTarget);
+    if (APP_HAS_SHARED_LAUNCH) queueSharedLaunchTarget(window.location.href);
+    await sharedLaunchDrainPromise;
     finishAppLoading();
     if (!APP_HAS_SHARED_LAUNCH) window.setTimeout(() => checkCloudOnEntry(), 0);
   } finally {

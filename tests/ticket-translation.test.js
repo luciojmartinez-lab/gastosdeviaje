@@ -32,6 +32,9 @@ test('tickets, traducciones y fotos se amplían y pueden compartirse', () => {
   assert.match(app, /function openExpenseImage\(gastoId, imageIndex\)[\s\S]*?openImageViewer\(image/);
   assert.match(app, /data-open-shared-image/);
   assert.match(app, /data-open-pending-expense-image/);
+  assert.match(html, /id="blog-image-preview"[^>]*role="button"[^>]*tabindex="0"/);
+  assert.match(app, /data-open-blog-gallery-image/);
+  assert.match(app, /function openBlogGalleryImage\(index = 0\)/);
 });
 
 test('al importar se elige ticket, traducción, segundo ticket o foto asociada', () => {
@@ -56,6 +59,24 @@ test('la imagen compañera se guarda y aparece junto al ticket original', () => 
   const blogImages = app.slice(app.indexOf('async function expenseBlogImages'), app.indexOf('const numberValue', app.indexOf('async function expenseBlogImages')));
   assert.ok(blogImages.indexOf('translationImage') < blogImages.indexOf('ticketImage ='));
   assert.ok(blogImages.indexOf('images.unshift(normalizeBlogImageRecord(translationImage))') < blogImages.indexOf('images.unshift(ticketImage)'));
+});
+
+test('Lens vuelve al gasto abierto sin guardarlo ni recargar la aplicación', () => {
+  assert.match(app, /function activeSharedExpenseFormTarget/);
+  assert.match(app, /Gasto abierto sin guardar/);
+  assert.match(app, /value: `current:\$\{prefix\}`/);
+  assert.match(app, /destination === 'expense-existing' && currentExpenseTarget[\s\S]*?routeSharedExpenseImages\([\s\S]*?currentExpenseTarget\.prefix/);
+  assert.match(app, /rememberLensReturnTarget\(prefix\)/);
+  assert.match(app, /payload\.fromLens[\s\S]*?'expense-existing'/);
+});
+
+test('el resultado de Lens se clasifica como traducción y completa solo huecos', () => {
+  assert.match(app, /secondaryOption\.hidden = lensResult/);
+  assert.match(app, /if \(lensResult && actionSelect\) actionSelect\.value = 'translation'/);
+  assert.match(app, /async function readLensTicketTranslation/);
+  assert.match(app, /languages: \['spa'\]/);
+  assert.match(app, /onlyEmpty: true/);
+  assert.match(app, /await readLensTicketTranslation\(prefix, companion\)/);
 });
 
 test('la ayuda explica el flujo gratuito con Lens y el regreso a la aplicación', () => {

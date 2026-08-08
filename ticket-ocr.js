@@ -11,7 +11,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v227';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v228';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -118,7 +118,7 @@ export function extractTicketTime(text) {
 
 export function parseTicketAmount(value) {
   let raw = String(value || '')
-    .replace(/(?<=\d)[oO](?=\d|\b)/g, '0')
+    .replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0')
     .replace(/[^\d,.-]/g, '');
   if (!raw) return null;
   const comma = raw.lastIndexOf(',');
@@ -138,27 +138,35 @@ export function parseTicketAmount(value) {
 }
 
 function amountsInLine(line) {
-  const numericText = String(line || '').replace(/(?<=\d)[oO](?=\d|\b)/g, '0');
+  const numericText = String(line || '').replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0');
   const matches = numericText.match(/(?:\d{1,3}(?:[.\s]\d{3})+|\d+)(?:[,.]\d{1,2})/g) || [];
   return matches.map(parseTicketAmount).filter(value => Number.isFinite(value));
 }
 
 function integerCurrencyAmountsInLine(line) {
-  const matches = String(line || '').match(/(?:[¥₩]\s*(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)|(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)\s*(?:円|원|jpy|krw))/giu) || [];
+  const normalized = String(line || '').replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0');
+  const matches = normalized.match(/(?:[¥₩￥]\s*(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)|(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)\s*(?:円|원|jpy|krw))/giu) || [];
   return matches.map(value => Number(value.replace(/\D/g, ''))).filter(value => Number.isFinite(value));
 }
 
 function groupedIntegerAmountsInLine(line) {
-  return Array.from(String(line || '').matchAll(/(?:^|[^\d])((?:\d{1,3})(?:[,.\s]\d{3})+)(?!\d)/g))
+  const normalized = String(line || '').replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0');
+  return Array.from(normalized.matchAll(/(?:^|[^\d])((?:\d{1,3})(?:[,.\s]+\d{3})+)(?!\d)/g))
     .map(match => Number(String(match[1] || '').replace(/\D/g, '')))
     .filter(value => Number.isFinite(value));
 }
 
 function standaloneIntegerAmount(line) {
-  const value = String(line || '').trim();
-  if (!/^(?:[¥₩]\s*)?(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)(?:\s*(?:円|원|jpy|krw))?$/iu.test(value)) return [];
+  const value = String(line || '').replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0').trim();
+  if (!/^(?:[¥₩￥]\s*)?(?:\d{1,3}(?:[,.\s]+\d{3})+|\d+)(?:\s*(?:円|원|jpy|krw))?$/iu.test(value)) return [];
   const amount = Number(value.replace(/\D/g, ''));
   return Number.isFinite(amount) ? [amount] : [];
+}
+
+function eastAsianFallbackAmountsInLine(line) {
+  const normalized = String(line || '').replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0');
+  const matches = normalized.match(/(?:[¥₩￥\\]\s*)?\d{1,3}(?:\s*[, .]+\s*\d{3})+(?:\s*(?:円|원|jpy|krw))?/giu) || [];
+  return matches.map(value => Number(value.replace(/\D/g, ''))).filter(value => Number.isFinite(value) && value > 0);
 }
 
 const FOOD_CONCEPT_WORDS = new Set([
@@ -295,7 +303,32 @@ export function extractTicketTotal(text) {
       });
     }
   });
-  return candidates.filter(item => item.value > 0).sort((a, b) => b.score - a.score)[0]?.value ?? null;
+  const explicit = candidates.filter(item => item.value > 0).sort((a, b) => b.score - a.score)[0]?.value ?? null;
+  if (explicit != null) return explicit;
+  const source = String(text || '');
+  if (!/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/u.test(source)) return null;
+  const startIndex = Math.floor(lines.length * 0.35);
+  const fallback = [];
+  lines.slice(startIndex).forEach((line, offset) => {
+    const normalized = normalizeTicketConcepts(line);
+    if (ticketTotalLineExcluded(normalized)) return;
+    eastAsianFallbackAmountsInLine(line).forEach(value => fallback.push({ value, index: startIndex + offset }));
+  });
+  if (!fallback.length) return null;
+  const maximum = Math.max(...fallback.map(item => item.value));
+  const plausible = fallback.filter(item => item.value >= maximum * 0.55);
+  const grouped = new Map();
+  plausible.forEach(item => {
+    const current = grouped.get(item.value) || { value: item.value, count: 0, firstIndex: item.index, lastIndex: item.index };
+    current.count += 1;
+    current.firstIndex = Math.min(current.firstIndex, item.index);
+    current.lastIndex = Math.max(current.lastIndex, item.index);
+    grouped.set(item.value, current);
+  });
+  const best = [...grouped.values()]
+    .filter(item => item.count >= 2)
+    .sort((left, right) => right.count - left.count || right.value - left.value || left.firstIndex - right.firstIndex)[0];
+  return best?.value ?? null;
 }
 
 const MERCHANT_EXCLUSIONS = /^(ticket|receipt|kuitti|factura|invoice|lasku|simplificada|copia|cliente|customer|fecha|date|hora|time|mesa|caja|cajero|nif|cif|n\.i\.f|tel|telefono|www\.|https?|gracias|iva|vat|alv|total|subtotal|importe|import|amount|summa|yhteensa|direccion|domicilio|articulo|item|descripcion|description|unidades|venta|compra|operacion|transaction|transaccion|autorizacion|authorization|terminal|contactless|aprobada|aceptada)/i;

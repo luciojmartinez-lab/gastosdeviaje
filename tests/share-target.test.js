@@ -21,7 +21,10 @@ test('el destino Compartir acepta imagenes, texto y archivos TXT', () => {
 });
 
 test('la primera compartición reutiliza la aplicación ya abierta', () => {
-  assert.equal(manifest.launch_handler.client_mode, 'navigate-existing');
+  assert.deepEqual(manifest.launch_handler.client_mode, ['focus-existing', 'navigate-existing']);
+  assert.match(sw, /SHARED_CONTENT_READY/);
+  assert.match(app, /window\.launchQueue\.setConsumer/);
+  assert.match(app, /queueSharedLaunchTarget/);
 });
 
 test('el service worker recibe texto sin exigir una imagen', async () => {

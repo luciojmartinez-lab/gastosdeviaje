@@ -1874,6 +1874,7 @@ input[type="checkbox"] {
   border: 1px solid var(--line);
   border-radius: 8px;
   object-fit: contain;
+  cursor: zoom-in;
 }
 
 .blog-gallery-preview {
@@ -1913,6 +1914,13 @@ input[type="checkbox"] {
   padding: 6px 8px;
   border-color: #fecaca;
   color: #b91c1c;
+  font-size: 12px;
+}
+
+.blog-gallery-preview .blog-gallery-primary {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
   font-size: 12px;
 }
 

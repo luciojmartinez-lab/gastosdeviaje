@@ -98,6 +98,13 @@ test('elige Total o Importe y no confunde IVA ni base imponible', () => {
   assert.equal(extractTicketTotal('VÄLISUMMA 20,00\nALV 4,90'), null);
   assert.equal(extractTicketTotal('小計 ¥1,100\n消費税 ¥110\n合計 ¥1,210'), 1210);
   assert.equal(extractTicketTotal('内消費税10% ¥990\n合 計 10,885'), 10885);
+  assert.equal(extractTicketTotal(`領収書
+小計 本信
+\\8, 0U0
+者全休
+\\8,.000
+お預り
+\\8, 0U0`), 8000);
   assert.equal(extractTicketTotal('소계 ₩10,000\n부가세 ₩1,000\n결제금액 ₩11,000'), 11000);
 });
 
