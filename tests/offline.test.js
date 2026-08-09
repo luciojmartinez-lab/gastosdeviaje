@@ -43,8 +43,8 @@ test('el service worker separa cache critica y opcional para no romper la instal
   assert.match(sw, /\.\/vendor\/pdfjs\/pdf\.min\.mjs/);
   assert.match(sw, /\.\/vendor\/tesseract\/tesseract\.esm\.min\.js/);
   assert.match(sw, /\.\/vendor\/tesseract\/lang\/spa\.traineddata\.gz/);
-  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v232/);
-  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v232/);
+  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v233/);
+  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v233/);
   assert.match(sw, /const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4\.10\.0'/);
   assert.match(sw, /\.\/vendor\/opencv\/4\.10\.0\/opencv\.js/);
   assert.match(sw, /\.then\(\(\) => cacheOcrRuntime\(\)\)/);
@@ -75,9 +75,11 @@ test('la navegación abre primero la copia local y actualiza en segundo plano co
   const start = sw.indexOf('async function cachedNavigationResponse');
   const end = sw.indexOf("self.addEventListener('install'", start);
   const navigation = sw.slice(start, end);
-  assert.ok(navigation.indexOf('caches.match(request, { ignoreSearch: true })') < navigation.indexOf('await updateNavigationCache(request)'));
+  const normalNavigation = navigation.slice(navigation.indexOf('const cached ='));
+  assert.ok(normalNavigation.indexOf('caches.match(request, { ignoreSearch: true })') < normalNavigation.indexOf('await updateNavigationCache(request)'));
   assert.match(sw, /const timeout = setTimeout\(\(\) => controller\.abort\(\), 12000\)/);
   assert.match(sw, /fetch\(request, \{ cache: 'no-store', signal: controller\.signal \}\)/);
+  assert.match(sw, /requestUrl\.searchParams\.has\('v'\)[\s\S]*?updateNavigationCache\(request\)/);
   assert.match(navigation, /caches\.match\('\.\/index\.html'\)/);
   assert.match(navigation, /updateNavigationCache\(request\)\.catch\(\(\) => \{\}\)/);
   assert.match(navigation, /offlineStartResponse\(\)/);
@@ -88,10 +90,11 @@ test('la navegación abre primero la copia local y actualiza en segundo plano co
 test('una versión nueva provoca una sola recarga después de activar su service worker', () => {
   assert.match(html, /const hadControllerAtStart = Boolean\(navigator\.serviceWorker\.controller\)/);
   assert.match(html, /const reloadForUpdate = version =>/);
+  assert.match(html, /Date\.now\(\) - lastAttempt < 15000/);
   assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?await registration\.update\(\)/);
   assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
   assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
-  assert.match(sw, /const APP_VERSION = '700v232'/);
+  assert.match(sw, /const APP_VERSION = '700v233'/);
   assert.match(sw, /\.\/assets\/map-train-side\.webp/);
   assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
   assert.doesNotMatch(html, /window\.location\.reload\(\)/);
