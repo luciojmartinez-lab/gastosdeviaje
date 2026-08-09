@@ -34,24 +34,31 @@ test('la app muestra estado claro cuando trabaja sin conexion', () => {
 });
 
 test('el service worker separa cache critica y opcional para no romper la instalacion', () => {
+  assert.match(sw, /const APP_SHELL_CORE = \[/);
   assert.match(sw, /const APP_SHELL_REQUIRED = \[/);
   assert.match(sw, /const APP_SHELL_OPTIONAL = \[/);
-  assert.match(sw, /await cache\.addAll\(APP_SHELL_REQUIRED\)/);
+  assert.match(sw, /cacheBestEffort\(cache, APP_SHELL_CORE\)/);
+  assert.match(sw, /missingCore[\s\S]*?No se pudo preparar la actualización/);
+  assert.doesNotMatch(sw, /cache\.addAll\(APP_SHELL_REQUIRED\)/);
   assert.match(sw, /event\.waitUntil\(activateCurrentVersion\)/);
+  assert.match(sw, /activateCurrentVersion[\s\S]*?cacheBestEffort\(cache, APP_SHELL_REQUIRED\)/);
   assert.match(sw, /activateCurrentVersion[\s\S]*?\.then\(cache => cacheBestEffort\(cache, APP_SHELL_OPTIONAL\)\)/);
+  const coreStart = sw.indexOf('const APP_SHELL_CORE = [');
+  const coreEnd = sw.indexOf('];', coreStart);
+  assert.doesNotMatch(sw.slice(coreStart, coreEnd), /splash|maplibre|manifest/);
   assert.match(sw, /\.\/version\.txt/);
   assert.match(sw, /\.\/vendor\/pdfjs\/pdf\.min\.mjs/);
   assert.match(sw, /\.\/vendor\/tesseract\/tesseract\.esm\.min\.js/);
   assert.match(sw, /\.\/vendor\/tesseract\/lang\/spa\.traineddata\.gz/);
-  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v234/);
-  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v234/);
+  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v235/);
+  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v235/);
   assert.match(sw, /const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4\.10\.0'/);
   assert.match(sw, /\.\/vendor\/opencv\/4\.10\.0\/opencv\.js/);
   assert.match(sw, /\.then\(\(\) => cacheOcrRuntime\(\)\)/);
   assert.doesNotMatch(sw, /event\.waitUntil\(Promise\.all\(\[activateCurrentVersion/);
   const installStart = sw.indexOf("self.addEventListener('install'");
   const activateStart = sw.indexOf("self.addEventListener('activate'");
-  assert.doesNotMatch(sw.slice(installStart, activateStart), /cacheBestEffort|cacheOcrRuntime/);
+  assert.doesNotMatch(sw.slice(installStart, activateStart), /APP_SHELL_OPTIONAL|cacheOcrRuntime/);
 });
 
 test('el trabajador de imagen espera OpenCV sin bloquearse por su objeto thenable', () => {
@@ -94,7 +101,7 @@ test('una versión nueva provoca una sola recarga después de activar su service
   assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?await registration\.update\(\)/);
   assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
   assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
-  assert.match(sw, /const APP_VERSION = '700v234'/);
+  assert.match(sw, /const APP_VERSION = '700v235'/);
   assert.match(sw, /\.\/assets\/map-train-side\.webp/);
   assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
   assert.doesNotMatch(html, /window\.location\.reload\(\)/);
