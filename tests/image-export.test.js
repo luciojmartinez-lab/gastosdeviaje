@@ -6,7 +6,10 @@ import {
   extractImageGpsFromArrayBuffer
 } from '../image-location.js';
 
-const app = await readFile(new URL('../app.bundle.js', import.meta.url), 'utf8');
+const [app, html] = await Promise.all([
+  readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
+  readFile(new URL('../index.html', import.meta.url), 'utf8')
+]);
 
 test('el JPEG exportado conserva las coordenadas GPS de la aplicación', () => {
   const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
@@ -18,9 +21,21 @@ test('el JPEG exportado conserva las coordenadas GPS de la aplicación', () => {
 });
 
 test('la exportación propone descarga, fecha y hora', () => {
+  assert.match(html, /id="image-viewer-download"[^>]*>Descargar con GPS/);
   assert.match(app, /return `descarga-\$\{stamp\}-\$\{time\}\.\$\{extension\}`/);
   assert.match(app, /async function imageViewerExportBlob\(record\)/);
   assert.match(app, /embedGpsInJpegBlob\(blob, point\.latitude, point\.longitude\)/);
-  assert.match(app, /link\.download = imageViewerDownloadName/);
+  assert.match(app, /link\.download = file\.name \|\| imageViewerDownloadName/);
+  assert.match(app, /async function downloadActiveImageViewerFile\(\)/);
+  assert.match(app, /const file = new File\(\[exportBlob\], filename/);
+  assert.match(app, /Descarga iniciada como \$\{filename\}, con GPS incorporado/);
   assert.match(app, /saveBlogCameraOriginal[\s\S]*?embedGpsInJpegBlob/);
+});
+
+test('el nombre descargado incluye realmente la fecha y la hora', () => {
+  const start = app.indexOf('function imageViewerDownloadName');
+  const end = app.indexOf('\nasync function imageViewerExportBlob', start);
+  const source = app.slice(start, end);
+  const makeName = Function(`${source}; return imageViewerDownloadName;`)();
+  assert.equal(makeName(new Date(2026, 7, 9, 18, 57, 6), 'image/jpeg'), 'descarga-2026-08-09-18-57-06.jpg');
 });

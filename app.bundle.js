@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v239';
+const APP_VERSION = '700v240';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -126,6 +126,7 @@ let pendingLensReturnTarget = null;
 let sharedContentAppReady = false;
 let pendingSharedLaunchTargets = [];
 let sharedLaunchDrainPromise = Promise.resolve();
+let sharedContentRecoveryGeneration = 0;
 const consumedSharedContentIds = new Set();
 const sharedContentConsumptionPromises = new Map();
 let activeContextHelpTrigger = null;
@@ -2469,7 +2470,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v239');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v240');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3260,7 +3261,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v239');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v240');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3351,7 +3352,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v239');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v240');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3412,7 +3413,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v239');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v240');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -3673,7 +3674,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v239');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v240');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -3682,11 +3683,30 @@ function downloadImageViewerFile(file) {
   const url = URL.createObjectURL(file);
   const link = document.createElement('a');
   link.href = url;
-  link.download = imageViewerDownloadName(new Date(), file.type);
+  link.download = file.name || imageViewerDownloadName(new Date(), file.type);
   document.body.append(link);
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadActiveImageViewerFile() {
+  const status = $('#image-viewer-status');
+  const record = activeImageViewerRecord;
+  if (!record?.blob) throw new Error('No se encuentra la imagen que quieres descargar.');
+  const point = storedImageCoordinates(record);
+  if (status) status.textContent = point
+    ? 'Preparando la descarga con sus coordenadas GPS…'
+    : 'Preparando la descarga…';
+  const exportBlob = await imageViewerExportBlob(record);
+  const type = exportBlob?.type || record.type || 'image/jpeg';
+  const filename = imageViewerDownloadName(new Date(), type);
+  const file = new File([exportBlob], filename, { type, lastModified: Date.now() });
+  downloadImageViewerFile(file);
+  if (status) status.textContent = point
+    ? `Descarga iniciada como ${filename}, con GPS incorporado.`
+    : `Descarga iniciada como ${filename}. Esta imagen no tenía coordenadas GPS.`;
+  return file;
 }
 
 async function shareImageViewerFile() {
@@ -10551,7 +10571,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v239');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v240');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -12216,6 +12236,19 @@ async function recoverPendingSharedContent() {
   return sharedContentRecoveryPromise;
 }
 
+function scheduleSharedContentRecovery() {
+  if (!sharedContentAppReady) return;
+  const generation = ++sharedContentRecoveryGeneration;
+  [0, 150, 500, 1200, 2500].forEach(delay => {
+    window.setTimeout(() => {
+      if (generation !== sharedContentRecoveryGeneration || document.visibilityState === 'hidden') return;
+      recoverPendingSharedContent().catch(error => {
+        console.warn('No se pudo recuperar todavía el contenido compartido', error);
+      });
+    }, delay);
+  });
+}
+
 async function consumeSharedImagesLaunch(targetUrl = window.location.href) {
   const url = new URL(String(targetUrl || window.location.href), window.location.href);
   const errorCode = url.searchParams.get('shared_error');
@@ -12258,13 +12291,15 @@ if (navigator.serviceWorker) {
     const target = new URL('./index.html', window.location.href);
     target.searchParams.set('shared', event.data.id);
     queueSharedLaunchTarget(target.href);
+    scheduleSharedContentRecovery();
   });
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') recoverPendingSharedContent().catch(() => {});
+  if (document.visibilityState === 'visible') scheduleSharedContentRecovery();
 });
-window.addEventListener('pageshow', () => recoverPendingSharedContent().catch(() => {}));
+window.addEventListener('focus', scheduleSharedContentRecovery);
+window.addEventListener('pageshow', scheduleSharedContentRecovery);
 
 async function saveBlogEntryForm() {
   const trip = selectedBlogTrip();
@@ -14690,6 +14725,17 @@ function bindEvents() {
       button.disabled = false;
     }
   };
+  $('#image-viewer-download').onclick = async () => {
+    const button = $('#image-viewer-download');
+    try {
+      button.disabled = true;
+      await downloadActiveImageViewerFile();
+    } catch (error) {
+      if ($('#image-viewer-status')) $('#image-viewer-status').textContent = error?.message || 'No se ha podido descargar la imagen.';
+    } finally {
+      button.disabled = false;
+    }
+  };
   $('#form-dialog-close').onclick = closeFormDialog;
   $('#form-dialog-cancel').onclick = closeFormDialog;
   $('#form-dialog-form').onsubmit = async event => {
@@ -15937,7 +15983,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v239');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v240');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

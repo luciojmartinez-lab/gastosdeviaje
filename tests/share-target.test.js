@@ -28,7 +28,33 @@ test('la primera compartición reutiliza la aplicación ya abierta', () => {
   assert.match(sw, /await client\.focus\(\)[\s\S]*?client\.postMessage/);
   assert.match(app, /async function recoverPendingSharedContent\(\)/);
   assert.match(app, /cache\.keys\(\)/);
-  assert.match(app, /visibilitychange/);
+  assert.match(app, /function scheduleSharedContentRecovery\(\)/);
+  assert.match(app, /\[0, 150, 500, 1200, 2500\]/);
+  assert.match(app, /visibilitychange[\s\S]*?scheduleSharedContentRecovery/);
+  assert.match(app, /addEventListener\('focus', scheduleSharedContentRecovery\)/);
+});
+
+test('al volver de Lens reintenta recuperar la primera compartición', () => {
+  const start = app.indexOf('function scheduleSharedContentRecovery()');
+  const end = app.indexOf('\nasync function consumeSharedImagesLaunch', start);
+  const source = app.slice(start, end);
+  const delays = [];
+  let recoveries = 0;
+  const schedule = Function(
+    'window',
+    'document',
+    'recoverPendingSharedContent',
+    `let sharedContentAppReady = true; let sharedContentRecoveryGeneration = 0; ${source}; return scheduleSharedContentRecovery;`
+  )({
+    setTimeout(callback, delay) {
+      delays.push(delay);
+      callback();
+    }
+  }, { visibilityState: 'visible' }, async () => { recoveries += 1; });
+
+  schedule();
+  assert.deepEqual(delays, [0, 150, 500, 1200, 2500]);
+  assert.equal(recoveries, 5);
 });
 
 test('el service worker recibe texto sin exigir una imagen', async () => {
