@@ -185,6 +185,35 @@ test('editar y guardar un gasto tolera tickets o imágenes nulos sin intentar le
   assert.match(app, /function expenseTicketLocationPatch\(prefix, gasto = null\)[\s\S]*?storedImageCoordinates\(existing\)/);
 });
 
+test('el ticket sin GPS hereda las coordenadas de la primera foto del gasto que las tenga', () => {
+  const coordinateSource = app.match(/function storedImageCoordinate\([\s\S]*?\n\}/)?.[0];
+  const resolverSource = app.match(/function resolvedExpenseTicketLocation\([\s\S]*?\n\}/)?.[0];
+  assert.ok(coordinateSource);
+  assert.ok(resolverSource);
+  const resolveLocation = Function(`${coordinateSource}\n${resolverSource}\nreturn resolvedExpenseTicketLocation;`)();
+  const photos = [
+    { latitude: 40.123, longitude: -1.234, locationSource: 'exif' },
+    { latitude: 41.987, longitude: 2.345, locationSource: 'device' }
+  ];
+  assert.deepEqual(
+    resolveLocation(null, null, '', photos),
+    { latitude: 40.123, longitude: -1.234, locationSource: 'exif' }
+  );
+  assert.deepEqual(
+    resolveLocation(39.5, -3.7, 'exif', photos),
+    { latitude: 39.5, longitude: -3.7, locationSource: 'exif' }
+  );
+  assert.deepEqual(
+    resolveLocation(null, null, '', [{ name: 'sin-gps.jpg' }, photos[1]]),
+    { latitude: 41.987, longitude: 2.345, locationSource: 'device' }
+  );
+  assert.match(app, /function expenseTicketLocationForExpense\(gasto\)[\s\S]*?resolvedExpenseTicketLocation\([\s\S]*?gasto\?\.extraImages/);
+  assert.match(app, /function expenseTicketImageRecord\(gasto\)[\s\S]*?expenseTicketLocationForExpense\(gasto\)/);
+  assert.match(app, /async function expenseTicketBlogImage\(gasto\)[\s\S]*?expenseTicketLocationForExpense\(gasto\)/);
+  assert.match(app, /async function addGasto\([\s\S]*?resolvedExpenseTicketLocation\(ticketLatitude, ticketLongitude, ticketLocationSource, storedExtraImages\)/);
+  assert.match(app, /async function updateGasto\(id, patch\)[\s\S]*?resolvedExpenseTicketLocation\(next\.ticketLatitude, next\.ticketLongitude, next\.ticketLocationSource, next\.extraImages\)/);
+});
+
 test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {
   assert.match(html, /id="config-photo-types"/);
   assert.match(html, /id="g-extra-images-classifications"/);

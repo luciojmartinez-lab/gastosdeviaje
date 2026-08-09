@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v230';
+const APP_VERSION = '700v231';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -975,10 +975,44 @@ function expenseExtraImages(gasto) {
     : [];
 }
 
+function resolvedExpenseTicketLocation(latitude, longitude, locationSource = '', extraImages = []) {
+  const ticketLatitude = storedImageCoordinate(latitude, -90, 90);
+  const ticketLongitude = storedImageCoordinate(longitude, -180, 180);
+  if (ticketLatitude != null && ticketLongitude != null) {
+    return {
+      latitude: ticketLatitude,
+      longitude: ticketLongitude,
+      locationSource: String(locationSource || '')
+    };
+  }
+  for (const image of Array.isArray(extraImages) ? extraImages : []) {
+    const imageLatitude = storedImageCoordinate(image?.latitude ?? image?.lat, -90, 90);
+    const imageLongitude = storedImageCoordinate(image?.longitude ?? image?.lng ?? image?.lon, -180, 180);
+    if (imageLatitude != null && imageLongitude != null) {
+      return {
+        latitude: imageLatitude,
+        longitude: imageLongitude,
+        locationSource: String(image?.locationSource || 'expense-photo')
+      };
+    }
+  }
+  return { latitude: null, longitude: null, locationSource: '' };
+}
+
+function expenseTicketLocationForExpense(gasto) {
+  return resolvedExpenseTicketLocation(
+    gasto?.ticketLatitude,
+    gasto?.ticketLongitude,
+    gasto?.ticketLocationSource,
+    gasto?.extraImages
+  );
+}
+
 function expenseTicketImageRecord(gasto) {
   if (!gasto?.ticketData) return null;
   const data = normalizeTicketDataValue(gasto.ticketData);
   if (!/^data:image\//i.test(data) && !fileLooksLikeImage({ type: gasto.ticketType, name: gasto.ticketName })) return null;
+  const location = expenseTicketLocationForExpense(gasto);
   return normalizeStoredImageRecord({
     id: `expense-ticket-${gasto.id || ''}`,
     name: gasto.ticketName || 'ticket.jpg',
@@ -987,9 +1021,9 @@ function expenseTicketImageRecord(gasto) {
     data,
     width: gasto.ticketWidth || 0,
     height: gasto.ticketHeight || 0,
-    latitude: gasto.ticketLatitude,
-    longitude: gasto.ticketLongitude,
-    locationSource: gasto.ticketLocationSource || '',
+    latitude: location.latitude,
+    longitude: location.longitude,
+    locationSource: location.locationSource,
     photoTypeId: gasto.ticketPhotoTypeId || '',
     photoTypeName: gasto.ticketPhotoTypeName || '',
     mapEnabled: gasto.ticketMapEnabled === true,
@@ -1114,6 +1148,7 @@ function cityWithAccommodationDestination(city, tripId, targetDate = '') {
 async function expenseTicketBlogImage(gasto) {
   const ticketData = normalizeTicketDataValue(gasto && gasto.ticketData);
   if (!ticketData) return null;
+  const location = expenseTicketLocationForExpense(gasto);
   const ticketInfo = ticketDataInfo(ticketData, gasto.ticketType || 'application/octet-stream');
   const ticketType = String(gasto.ticketType || ticketInfo.blob.type || '').toLowerCase();
   const ticketName = String(gasto.ticketName || 'Ticket');
@@ -1125,9 +1160,9 @@ async function expenseTicketBlogImage(gasto) {
       type: ticketType || 'image/jpeg',
       size: ticketInfo.blob.size,
       data: ticketInfo.data,
-      latitude: gasto.ticketLatitude,
-      longitude: gasto.ticketLongitude,
-      locationSource: gasto.ticketLocationSource || '',
+      latitude: location.latitude,
+      longitude: location.longitude,
+      locationSource: location.locationSource,
       mapEnabled: gasto.ticketMapEnabled === true,
       capturedDate: gasto.ticketCapturedDate || '',
       capturedTime: gasto.ticketCapturedTime || '',
@@ -1162,6 +1197,12 @@ async function expenseTicketBlogImage(gasto) {
       data: await readBlobAsDataUrl(imageBlob),
       width: canvas.width,
       height: canvas.height,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      locationSource: location.locationSource,
+      mapEnabled: gasto.ticketMapEnabled === true,
+      capturedDate: gasto.ticketCapturedDate || '',
+      capturedTime: gasto.ticketCapturedTime || '',
       photoTypeId: String(gasto.ticketPhotoTypeId || ''),
       photoTypeName: String(gasto.ticketPhotoTypeName || ''),
       createdAt: gasto.createdAt || ''
@@ -2403,7 +2444,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v230');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v231');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3178,7 +3219,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v230');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v231');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3268,7 +3309,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v230');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v231');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -5391,6 +5432,10 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
   const amount = numberValue(importe);
   if (amount === 0) throw new Error('El importe no puede ser cero');
   const now = new Date().toISOString();
+  const storedExtraImages = Array.isArray(extraImages) ? extraImages : [];
+  const ticketLocation = ticketData
+    ? resolvedExpenseTicketLocation(ticketLatitude, ticketLongitude, ticketLocationSource, storedExtraImages)
+    : { latitude: null, longitude: null, locationSource: '' };
   const id = await addRecord('gastos', {
     fecha,
     hora: normalizeExpenseTime(hora) || currentLocalTime(),
@@ -5412,12 +5457,12 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     ticketHeight: Math.max(0, Number(ticketHeight) || 0),
     ticketPhotoTypeId: String(ticketPhotoTypeId || ''),
     ticketPhotoTypeName: String(ticketPhotoTypeName || ''),
-    ticketLatitude: storedImageCoordinate(ticketLatitude, -90, 90),
-    ticketLongitude: storedImageCoordinate(ticketLongitude, -180, 180),
-    ticketLocationSource: String(ticketLocationSource || ''),
+    ticketLatitude: ticketLocation.latitude,
+    ticketLongitude: ticketLocation.longitude,
+    ticketLocationSource: ticketLocation.locationSource,
     ticketCapturedDate: String(ticketCapturedDate || ''),
     ticketCapturedTime: String(ticketCapturedTime || ''),
-    ticketMapEnabled: ticketMapEnabled === true && storedImageCoordinate(ticketLatitude, -90, 90) != null && storedImageCoordinate(ticketLongitude, -180, 180) != null,
+    ticketMapEnabled: ticketMapEnabled === true && ticketLocation.latitude != null && ticketLocation.longitude != null,
     ticketTranslationName: String(ticketTranslationName || ''),
     ticketTranslationType: String(ticketTranslationType || ''),
     ticketTranslationData: normalizeTicketDataValue(ticketTranslationData),
@@ -5427,7 +5472,7 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     ticketTranslationText: String(ticketTranslationText || ''),
     ticketTranslationSourceLanguages: Array.isArray(ticketTranslationSourceLanguages) ? ticketTranslationSourceLanguages.map(String) : [],
     ticketTranslationKind: ticketTranslationData ? (ticketTranslationKind === 'secondary-ticket' ? 'secondary-ticket' : 'translation') : '',
-    extraImages: Array.isArray(extraImages) ? extraImages : [],
+    extraImages: storedExtraImages,
     createdAt: now,
     updatedAt: now
   });
@@ -5447,9 +5492,13 @@ async function updateGasto(id, patch) {
   next.subcatId = next.subcatId ? Number(next.subcatId) : null;
   next.ticketPhotoTypeId = String(next.ticketPhotoTypeId || '');
   next.ticketPhotoTypeName = String(next.ticketPhotoTypeName || '');
-  next.ticketLatitude = storedImageCoordinate(next.ticketLatitude, -90, 90);
-  next.ticketLongitude = storedImageCoordinate(next.ticketLongitude, -180, 180);
-  next.ticketLocationSource = String(next.ticketLocationSource || '');
+  next.extraImages = Array.isArray(next.extraImages) ? next.extraImages : [];
+  const ticketLocation = next.ticketData
+    ? resolvedExpenseTicketLocation(next.ticketLatitude, next.ticketLongitude, next.ticketLocationSource, next.extraImages)
+    : { latitude: null, longitude: null, locationSource: '' };
+  next.ticketLatitude = ticketLocation.latitude;
+  next.ticketLongitude = ticketLocation.longitude;
+  next.ticketLocationSource = ticketLocation.locationSource;
   next.ticketCapturedDate = String(next.ticketCapturedDate || '');
   next.ticketCapturedTime = String(next.ticketCapturedTime || '');
   next.ticketMapEnabled = next.ticketMapEnabled === true && next.ticketLatitude != null && next.ticketLongitude != null;
@@ -5465,7 +5514,6 @@ async function updateGasto(id, patch) {
   next.paisId = next.paisId ? Number(next.paisId) : null;
   next.ciudadId = next.ciudadId ? Number(next.ciudadId) : null;
   next.hora = normalizeExpenseTime(next.hora) || expenseTimeValue(current) || currentLocalTime();
-  next.extraImages = Array.isArray(next.extraImages) ? next.extraImages : [];
   const account = state.cuentas.find(c => c.id === next.cuentaId) || await getOne('cuentas', next.cuentaId);
   if (!account) throw new Error('La cuenta seleccionada no existe');
   if (account.viajeId && Number(next.viajeId) !== Number(account.viajeId)) throw new Error('Esa cuenta pertenece a otro viaje');
@@ -10320,7 +10368,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v230');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v231');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
