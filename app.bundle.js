@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v233';
+const APP_VERSION = '700v234';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2457,7 +2457,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v233');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v234');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3232,7 +3232,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v233');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v234');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3322,7 +3322,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v233');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v234');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -9008,7 +9008,7 @@ function renderTripMap() {
   const centerY = (minY + maxY) / 2;
   const startX = centerX - width / 2 - tripMapState.panX;
   const startY = centerY - height / 2 - tripMapState.panY;
-  const tileLevelHtml = (sourceZoom, sourceScale, opacity, allowFallback) => {
+  const tileLevelHtml = (sourceZoom, sourceScale, opacity, allowFallback, eager = false) => {
     const maxTile = (2 ** sourceZoom) - 1;
     const tileMinX = Math.max(0, Math.floor((startX / sourceScale) / 256));
     const tileMaxX = Math.min(maxTile, Math.floor(((startX + width) / sourceScale) / 256));
@@ -9026,7 +9026,7 @@ function renderTripMap() {
         const errorAction = allowFallback
           ? `this.onerror=null;this.src='${fallback}'`
           : 'this.remove()';
-        result.push(`<img class="map-tile" src="${primary}" onerror="${errorAction}" alt="" loading="lazy" decoding="async" draggable="false" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${tileW.toFixed(3)}%;height:${tileH.toFixed(3)}%;opacity:${opacity.toFixed(3)};">`);
+        result.push(`<img class="map-tile" src="${primary}" onerror="${errorAction}" alt="" loading="${eager ? 'eager' : 'lazy'}"${eager ? ' fetchpriority="high"' : ''} decoding="async" draggable="false" style="left:${left.toFixed(3)}%;top:${top.toFixed(3)}%;width:${tileW.toFixed(3)}%;height:${tileH.toFixed(3)}%;opacity:${opacity.toFixed(3)};">`);
       }
     }
     return result;
@@ -9038,7 +9038,12 @@ function renderTripMap() {
   const useVectorInteractiveMap = Boolean(mapLibreSupported && !tripVectorMapFailed && !tripMapState.printMode && state.activeTab === 'mapa');
   if (!useVectorInteractiveMap && tripVectorMap) destroyTripVectorMap();
   const zoomFraction = zoom - tileZoom;
-  const tiles = useVectorInteractiveMap ? [] : tileLevelHtml(tileZoom, tileScale, 1, true);
+  const overviewZoom = Math.max(TRIP_MAP_MIN_ZOOM, Math.min(tileZoom, 7));
+  const overviewScale = tileScale * (2 ** (tileZoom - overviewZoom));
+  const tiles = useVectorInteractiveMap ? [] : tileLevelHtml(overviewZoom, overviewScale, 1, true, true);
+  if (!useVectorInteractiveMap && overviewZoom !== tileZoom) {
+    tiles.push(...tileLevelHtml(tileZoom, tileScale, 1, true));
+  }
   if (!useVectorInteractiveMap && zoomFraction > 0.02 && tileZoom < TRIP_MAP_MAX_ZOOM) {
     tiles.push(...tileLevelHtml(tileZoom + 1, tileScale / 2, zoomFraction, false));
   }
@@ -10404,7 +10409,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v233');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v234');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }

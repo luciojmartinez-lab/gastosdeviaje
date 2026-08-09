@@ -108,3 +108,10 @@ test('el mapa cambia al fondo alternativo si fallan varias teselas vectoriales',
   assert.match(app, /tripVectorMapFailed = true;[\s\S]*?destroyTripVectorMap\(\);[\s\S]*?renderTripMap\(\)/);
   assert.match(app, /const fallback = `https:\/\/tile\.openstreetmap\.org/);
 });
+
+test('el mapa raster mantiene una capa general mientras carga el detalle', () => {
+  assert.match(app, /const overviewZoom = Math\.max\(TRIP_MAP_MIN_ZOOM, Math\.min\(tileZoom, 7\)\)/);
+  assert.match(app, /const overviewScale = tileScale \* \(2 \*\* \(tileZoom - overviewZoom\)\)/);
+  assert.match(app, /tileLevelHtml\(overviewZoom, overviewScale, 1, true, true\)/);
+  assert.match(app, /loading="\$\{eager \? 'eager' : 'lazy'\}"/);
+});
