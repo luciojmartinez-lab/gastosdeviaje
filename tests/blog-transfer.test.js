@@ -157,7 +157,7 @@ test('el ticket explica cuándo se conserva y puede añadirse al mapa si tiene G
   assert.match(html, /El ticket actual se conserva\. Usa Elegir archivo o Cámara solo para sustituirlo\./);
   assert.match(html, /id="g-ticket-map-option"[\s\S]*?id="g-ticket-map"/);
   assert.match(html, /id="edit-gasto-ticket-map-option"[\s\S]*?id="edit-gasto-ticket-map"/);
-  assert.match(app, /async function syncExpenseTicketSelection\(prefix, source\)[\s\S]*?imageGpsForFile\(selectedFile/);
+  assert.match(app, /async function syncExpenseTicketSelection\(prefix, source\)[\s\S]*?readImageMetadataForFile\(selectedFile/);
   assert.match(app, /function expenseTicketLocationPatch\(prefix, gasto = null\)/);
   assert.match(app, /ticketMapEnabled: Boolean\(point/);
   assert.match(app, /const ticketImage = expenseTicketImageRecord\(gasto\);[\s\S]*?source: 'gasto-ticket'/);

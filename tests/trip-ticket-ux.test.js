@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { access, readFile, stat } from 'node:fs/promises';
 
 const root = new URL('../', import.meta.url);
-const [app, html, styles] = await Promise.all([
+const [app, html, styles, ticketOcr] = await Promise.all([
   readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
-  readFile(new URL('../styles.css', import.meta.url), 'utf8')
+  readFile(new URL('../styles.css', import.meta.url), 'utf8'),
+  readFile(new URL('../ticket-ocr.js', import.meta.url), 'utf8')
 ]);
 
 test('los viajes se editan con doble clic desde ambas tablas', () => {
@@ -42,4 +43,22 @@ test('los idiomas de tickets son configurables y se preparan por país del viaje
     await access(file);
     assert.ok((await stat(file)).size > 100_000, `${code} no contiene un paquete OCR válido`);
   }
+});
+
+test('la foto del ticket se reduce antes del OCR y sus metadatos se leen una sola vez', () => {
+  assert.match(app, /const imageMetadataPromiseCache = new WeakMap\(\)/);
+  assert.match(app, /const buffer = await file\.arrayBuffer\(\)[\s\S]*?extractImageGpsFromArrayBuffer\(buffer\)[\s\S]*?extractImageDateTimeFromArrayBuffer\(buffer\)/);
+  assert.match(app, /const \{ point, captured \} = await readImageMetadataForFile\(selectedFile\)[\s\S]*?compressBlogImage\(selectedFile, \{ skipMetadata: true \}\)/);
+  assert.match(app, /await pendingSelection[\s\S]*?recognizeExpenseTicketSource\(prefix, source/);
+  assert.match(app, /#g-ticket-camera'\)\.onclick = \(\) => saveFormDraft\(addExpenseDraftKey\(\), ADD_EXPENSE_DRAFT_FIELDS\)/);
+});
+
+test('cambiar el idioma reinicia una lectura bloqueada y la vuelve a lanzar', () => {
+  assert.match(app, /async function handleExpenseTicketLanguageChange\(prefix\)/);
+  assert.match(app, /ocr\.resetTicketOcrWorker\?\.\(\)[\s\S]*?return readExpenseTicket\(prefix\)/);
+  assert.match(app, /#g-ticket-language'\)\.onchange = \(\) => handleExpenseTicketLanguageChange\('g'\)/);
+  assert.match(ticketOcr, /const OCR_WORKER_START_TIMEOUT_MS = 45_000/);
+  assert.match(ticketOcr, /export function resetTicketOcrWorker\(\)/);
+  assert.match(ticketOcr, /El lector local ha tardado demasiado en iniciarse/);
+  assert.doesNotMatch(ticketOcr, /const worker = await previousWorker/);
 });

@@ -1,6 +1,7 @@
 let workerPromise = null;
 let workerLanguageKey = '';
 let progressListener = () => {};
+const OCR_WORKER_START_TIMEOUT_MS = 45_000;
 const OCR_PSM_AUTO = '3';
 const OCR_PSM_SINGLE_BLOCK = '6';
 const OCR_PSM_SINGLE_LINE = '7';
@@ -11,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v229';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v230';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -799,21 +800,36 @@ function normalizeWorkerLanguages(languages) {
   return (normalized.length ? normalized : ['spa']).join('+');
 }
 
+function withTimeout(promise, timeoutMs, message) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+export function resetTicketOcrWorker() {
+  const previousWorker = workerPromise;
+  workerPromise = null;
+  workerLanguageKey = '';
+  progressListener = () => {};
+  if (previousWorker) {
+    void previousWorker
+      .then(worker => worker?.terminate?.())
+      .catch(() => {});
+  }
+}
+
 async function getWorker(onProgress, languages = ['spa']) {
   progressListener = onProgress;
   const languageKey = normalizeWorkerLanguages(languages);
   if (workerPromise && workerLanguageKey !== languageKey) {
-    const previousWorker = workerPromise;
-    workerPromise = null;
-    workerLanguageKey = '';
-    try {
-      const worker = await previousWorker;
-      await worker.terminate();
-    } catch (_) {}
+    resetTicketOcrWorker();
+    progressListener = onProgress;
   }
   if (!workerPromise) {
     workerLanguageKey = languageKey;
-    workerPromise = import('./vendor/tesseract/tesseract.esm.min.js').then(async module => {
+    const rawWorkerPromise = import('./vendor/tesseract/tesseract.esm.min.js').then(async module => {
       const Tesseract = module.default || module;
       const worker = await Tesseract.createWorker(languageKey, Tesseract.OEM.LSTM_ONLY, {
         workerPath: new URL('./vendor/tesseract/worker.min.js', import.meta.url).href,
@@ -827,11 +843,25 @@ async function getWorker(onProgress, languages = ['spa']) {
         preserve_interword_spaces: '1'
       });
       return worker;
-    }).catch(error => {
-      workerPromise = null;
-      workerLanguageKey = '';
+    });
+    const activeWorkerPromise = withTimeout(
+      rawWorkerPromise,
+      OCR_WORKER_START_TIMEOUT_MS,
+      'El lector local ha tardado demasiado en iniciarse. Pulsa «Leer ticket» para volver a intentarlo.'
+    ).catch(error => {
+      if (workerPromise === activeWorkerPromise) {
+        workerPromise = null;
+        workerLanguageKey = '';
+      }
       throw error;
     });
+    workerPromise = activeWorkerPromise;
+    void rawWorkerPromise.then(worker => {
+      if (workerPromise !== activeWorkerPromise || workerLanguageKey !== languageKey) {
+        return worker?.terminate?.();
+      }
+      return null;
+    }).catch(() => {});
   }
   return workerPromise;
 }

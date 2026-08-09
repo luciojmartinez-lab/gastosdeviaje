@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v229';
+const APP_VERSION = '700v230';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -115,6 +115,7 @@ let imageLocationModulePromise = null;
 let blogSharePdfModulePromise = null;
 const imageGpsCache = new WeakMap();
 const imageDateTimeCache = new WeakMap();
+const imageMetadataPromiseCache = new WeakMap();
 let currentImageLocationPromise = null;
 let lastCurrentImageLocation = null;
 let blogPointLocationRequestToken = 0;
@@ -2390,21 +2391,41 @@ async function currentDeviceImageLocation() {
   return currentImageLocationPromise;
 }
 
+async function readImageMetadataForFile(file) {
+  if (!file) return { point: null, captured: null };
+  if (imageMetadataPromiseCache.has(file)) return imageMetadataPromiseCache.get(file);
+  const metadataPromise = (async () => {
+    let point = imageGpsCache.has(file) ? imageGpsCache.get(file) : null;
+    let captured = imageDateTimeCache.has(file) ? imageDateTimeCache.get(file) : null;
+    const type = String(file.type || '').toLowerCase();
+    const name = String(file.name || '').toLowerCase();
+    const canContainExif = (!type || /jpe?g/.test(type) || /\.jpe?g$/.test(name))
+      && typeof file.arrayBuffer === 'function';
+    if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
+      try {
+        imageLocationModulePromise ||= import('./image-location.js?v=700v230');
+        const locationReader = await imageLocationModulePromise;
+        const buffer = await file.arrayBuffer();
+        const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
+        point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
+        captured = locationReader.extractImageDateTimeFromArrayBuffer(buffer) || null;
+      } catch (error) {
+        console.warn('No se pudieron leer los metadatos EXIF de la imagen', error);
+      }
+    }
+    captured ||= fileModifiedDateTime(file);
+    imageGpsCache.set(file, point);
+    imageDateTimeCache.set(file, captured);
+    return { point, captured };
+  })();
+  imageMetadataPromiseCache.set(file, metadataPromise);
+  return metadataPromise;
+}
+
 async function imageGpsForFile(file, options = {}) {
   if (!file) return null;
   let point = imageGpsCache.has(file) ? imageGpsCache.get(file) : undefined;
-  if (point === undefined) {
-    point = null;
-    try {
-      imageLocationModulePromise ||= import('./image-location.js?v=700v229');
-      const locationReader = await imageLocationModulePromise;
-      const exifPoint = await locationReader.extractImageGps(file);
-      point = exifPoint ? { ...exifPoint, source: 'exif' } : null;
-    } catch (error) {
-      console.warn('No se pudo leer la ubicación EXIF de la imagen', error);
-    }
-    imageGpsCache.set(file, point);
-  }
+  if (point === undefined) ({ point } = await readImageMetadataForFile(file));
   if (!point && options.useCurrentLocation) {
     point = await currentDeviceImageLocation();
     if (point) imageGpsCache.set(file, point);
@@ -2425,17 +2446,7 @@ function fileModifiedDateTime(file) {
 
 async function imageDateTimeForFile(file) {
   if (!file) return null;
-  if (imageDateTimeCache.has(file)) return imageDateTimeCache.get(file);
-  let captured = null;
-  try {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v229');
-    const locationReader = await imageLocationModulePromise;
-    captured = await locationReader.extractImageDateTime(file);
-  } catch (error) {
-    console.warn('No se pudo leer la fecha EXIF de la imagen', error);
-  }
-  captured ||= fileModifiedDateTime(file);
-  imageDateTimeCache.set(file, captured);
+  const { captured } = await readImageMetadataForFile(file);
   return captured;
 }
 
@@ -2819,11 +2830,8 @@ async function syncExpenseTicketSelection(prefix, source) {
   syncTicketOcrAvailability(prefix);
   syncExpenseTicketTypeAvailability(prefix);
   if (!fileLooksLikeImage(selectedFile)) return;
-  const [point, captured, preview] = await Promise.all([
-    imageGpsForFile(selectedFile),
-    imageDateTimeForFile(selectedFile),
-    readFileData(selected)
-  ]);
+  const { point, captured } = await readImageMetadataForFile(selectedFile);
+  const preview = await compressBlogImage(selectedFile, { skipMetadata: true });
   if (selectedFileInput(`#${prefix}-ticket`, `#${prefix}-ticket-camera`)?.files?.[0] !== selectedFile) return;
   pendingExpenseTicketPreviews[prefix] = preview;
   renderSelectedExpenseTicketPreview(prefix);
@@ -3170,13 +3178,17 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v229');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v230');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
       name: source.name,
       languages,
-      onProgress: message => setTicketOcrStatus(prefix, ticketOcrProgressLabel(message, languages))
+      onProgress: message => {
+        if (ticketOcrRunIds[prefix] === runId) {
+          setTicketOcrStatus(prefix, ticketOcrProgressLabel(message, languages));
+        }
+      }
     });
     if (ticketOcrRunIds[prefix] !== runId) return null;
     const dialog = prefix === 'g' ? $('#add-gasto-dialog') : $('#edit-gasto-dialog');
@@ -3192,27 +3204,84 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     return result;
   } catch (error) {
     console.error(error);
-    setTicketOcrStatus(prefix, error?.message || 'No se ha podido leer el ticket.', true);
+    if (ticketOcrRunIds[prefix] === runId) {
+      setTicketOcrStatus(prefix, error?.message || 'No se ha podido leer el ticket.', true);
+    }
     return null;
   } finally {
+    if (button && ticketOcrRunIds[prefix] === runId) {
+      delete button.dataset.busy;
+      button.textContent = 'Leer ticket';
+    }
+    if (ticketOcrRunIds[prefix] === runId) syncTicketOcrAvailability(prefix);
+  }
+}
+
+async function readExpenseTicket(prefix) {
+  const button = $(`#${prefix}-ticket-read`);
+  if (button?.dataset.busy) return null;
+  if (button) {
+    button.dataset.busy = '1';
+    button.disabled = true;
+    button.textContent = 'Leyendo…';
+  }
+  const pendingSelection = pendingExpenseTicketLocationChecks[prefix];
+  if (pendingSelection) {
+    setTicketOcrStatus(prefix, 'Preparando la foto para leerla sin sobrecargar el dispositivo…');
+    try {
+      await pendingSelection;
+    } catch (error) {
+      setTicketOcrStatus(prefix, error?.message || 'No se ha podido preparar la foto del ticket.', true);
+      if (button) {
+        delete button.dataset.busy;
+        button.textContent = 'Leer ticket';
+      }
+      syncTicketOcrAvailability(prefix);
+      return null;
+    }
+  }
+  const source = ticketOcrSource(prefix);
+  if (!source) {
+    setTicketOcrStatus(prefix, 'Selecciona o fotografía primero un ticket.', true);
     if (button) {
       delete button.dataset.busy;
       button.textContent = 'Leer ticket';
     }
     syncTicketOcrAvailability(prefix);
-  }
-}
-
-async function readExpenseTicket(prefix) {
-  const source = ticketOcrSource(prefix);
-  if (!source) {
-    setTicketOcrStatus(prefix, 'Selecciona o fotografía primero un ticket.', true);
     return null;
   }
   return recognizeExpenseTicketSource(prefix, source, {
-    button: $(`#${prefix}-ticket-read`),
+    button,
     languages: ticketOcrLanguagesForExpense(prefix)
   });
+}
+
+async function handleExpenseTicketLanguageChange(prefix) {
+  ticketOcrRunIds[prefix] = (ticketOcrRunIds[prefix] || 0) + 1;
+  pendingTicketOcr[prefix] = null;
+  const button = $(`#${prefix}-ticket-read`);
+  if (button) {
+    delete button.dataset.busy;
+    button.textContent = 'Leer ticket';
+  }
+  syncTicketOcrAvailability(prefix);
+  const languages = ticketOcrLanguagesForExpense(prefix);
+  setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
+  try {
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v230');
+    const ocr = await ticketOcrModulePromise;
+    ocr.resetTicketOcrWorker?.();
+    await pendingExpenseTicketLocationChecks[prefix];
+    if (!ticketOcrSource(prefix)) {
+      setTicketOcrStatus(prefix, `Lectura preparada en ${languages.map(ticketOcrLanguageName).join(', ')}.`);
+      await warmTicketOcrLanguages(languages);
+      return null;
+    }
+    return readExpenseTicket(prefix);
+  } catch (error) {
+    setTicketOcrStatus(prefix, error?.message || 'No se ha podido reiniciar la lectura.', true);
+    return null;
+  }
 }
 
 async function readLensTicketTranslation(prefix, record) {
@@ -10251,7 +10320,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v229');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v230');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -14165,26 +14234,19 @@ function bindEvents() {
     saveOpenExpenseCategoryClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
   $('#g-ticket').onchange = () => { pendingExpenseTicketLocationChecks.g = syncExpenseTicketSelection('g', 'file'); };
+  $('#g-ticket-camera').onclick = () => saveFormDraft(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#g-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks.g = syncExpenseTicketSelection('g', 'camera'); };
   $('#g-ticket-type').onchange = () => scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
   $('#g-ticket-translate').onclick = () => translateExpenseTicket('g');
-  $('#g-ticket-language').onchange = () => {
-    pendingTicketOcr.g = null;
-    setTicketOcrStatus('g', `Lectura preparada en ${ticketOcrLanguagesForExpense('g').map(ticketOcrLanguageName).join(', ')}.`);
-    warmTicketOcrLanguages(ticketOcrLanguagesForExpense('g')).catch(() => {});
-  };
+  $('#g-ticket-language').onchange = () => handleExpenseTicketLanguageChange('g');
   $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#edit-gasto-ticket').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'file'); };
   $('#edit-gasto-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'camera'); };
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
   $('#edit-gasto-ticket-translate').onclick = () => translateExpenseTicket('edit-gasto');
-  $('#edit-gasto-ticket-language').onchange = () => {
-    pendingTicketOcr['edit-gasto'] = null;
-    setTicketOcrStatus('edit-gasto', `Lectura preparada en ${ticketOcrLanguagesForExpense('edit-gasto').map(ticketOcrLanguageName).join(', ')}.`);
-    warmTicketOcrLanguages(ticketOcrLanguagesForExpense('edit-gasto')).catch(() => {});
-  };
+  $('#edit-gasto-ticket-language').onchange = () => handleExpenseTicketLanguageChange('edit-gasto');
   $('#edit-gasto-ticket-type').onchange = () => {
     saveOpenExpenseTicketClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
