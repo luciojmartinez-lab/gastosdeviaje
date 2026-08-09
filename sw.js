@@ -1,5 +1,5 @@
-const APP_VERSION = '700v235';
-const CACHE_NAME = 'gastosdeviaje-700v235-offline-start';
+const APP_VERSION = '700v236';
+const CACHE_NAME = 'gastosdeviaje-700v236-offline-start';
 const MAP_RUNTIME_CACHE = 'cuaderno-bitacora-map-runtime-v1';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4.10.0';
@@ -7,20 +7,20 @@ const OCR_RUNTIME_ASSETS = ['./vendor/opencv/4.10.0/opencv.js'];
 const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname;
 const APP_SHELL_CORE = [
   './index.html',
-  './styles.css?v=700v235',
-  './map-model.js?v=700v235',
-  './app.bundle.js?v=700v235',
+  './styles.css?v=700v236',
+  './map-model.js?v=700v236',
+  './app.bundle.js?v=700v236',
   './version.txt'
 ];
 const APP_SHELL_REQUIRED = [
   './',
   './index.html',
-  './styles.css?v=700v235',
-  './map-model.js?v=700v235',
-  './app.bundle.js?v=700v235',
+  './styles.css?v=700v236',
+  './map-model.js?v=700v236',
+  './app.bundle.js?v=700v236',
   './vendor/maplibre/maplibre-gl.css?v=5.24.0',
   './vendor/maplibre/maplibre-gl.js?v=5.24.0',
-  './manifest.webmanifest?v=700v235',
+  './manifest.webmanifest?v=700v236',
   './version.txt',
   './assets/bitacora-splash.png',
   './assets/bitacora-splash-mobile.png',
@@ -30,11 +30,11 @@ const APP_SHELL_REQUIRED = [
 const APP_SHELL_OPTIONAL = [
   './assets/app-icon-192.png',
   './assets/app-icon-512.png',
-  './ticket-ocr.js?v=700v235',
-  './ticket-image-worker.js?v=700v235',
-  './ticket-image-processing.js?v=700v235',
-  './image-location.js?v=700v235',
-  './share-pdf.js?v=700v235',
+  './ticket-ocr.js?v=700v236',
+  './ticket-image-worker.js?v=700v236',
+  './ticket-image-processing.js?v=700v236',
+  './image-location.js?v=700v236',
+  './share-pdf.js?v=700v236',
   './ayuda.html',
   './assets/help/01-viajes.png',
   './assets/help/02-configuracion.png',
@@ -171,39 +171,40 @@ async function cacheOcrRuntime() {
 }
 
 self.addEventListener('install', event => {
-  event.waitUntil((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    await cacheBestEffort(cache, APP_SHELL_CORE);
-    const missingCore = (await Promise.all(APP_SHELL_CORE.map(async url => await cache.match(url) ? '' : url))).filter(Boolean);
-    if (missingCore.length) throw new Error(`No se pudo preparar la actualización: ${missingCore.join(', ')}`);
-    await self.skipWaiting();
-  })());
+  // Activar primero y descargar después: una conexión lenta no puede dejar
+  // indefinidamente una versión nueva en estado "installing".
+  event.waitUntil(self.skipWaiting());
 });
+
+async function prepareCurrentCache() {
+  const cache = await caches.open(CACHE_NAME);
+  await cacheBestEffort(cache, APP_SHELL_CORE);
+  const coreReady = (await Promise.all(APP_SHELL_CORE.map(url => cache.match(url)))).every(Boolean);
+  if (!coreReady) return false;
+  const keys = await caches.keys();
+  await Promise.all(keys
+    .filter(key => key.startsWith('gastosdeviaje-') && key !== CACHE_NAME)
+    .map(key => caches.delete(key)));
+  return true;
+}
 
 self.addEventListener('activate', event => {
   const activateCurrentVersion =
-    caches.keys()
-      .then(keys => Promise.all(keys
-        .filter(key => key.startsWith('gastosdeviaje-') && key !== CACHE_NAME)
-        .map(key => caches.delete(key))))
-      .then(() => self.clients.claim())
+    self.clients.claim()
       .then(async () => {
         const clients = await self.clients.matchAll({ type: 'window' });
         clients.forEach(client => client.postMessage({ type: 'APP_VERSION_ACTIVE', version: APP_VERSION }));
       });
   event.waitUntil(activateCurrentVersion);
-  activateCurrentVersion
-    .then(() => caches.open(CACHE_NAME))
-    .then(cache => cacheBestEffort(cache, APP_SHELL_REQUIRED).then(() => cache))
-    .then(cache => cacheBestEffort(cache, APP_SHELL_OPTIONAL))
-    .then(() => cacheOcrRuntime())
-    .catch(() => {});
 });
 
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
   if (event.data && event.data.type === 'GET_APP_VERSION' && event.source) {
     event.source.postMessage({ type: 'APP_VERSION_ACTIVE', version: APP_VERSION });
+  }
+  if (event.data && event.data.type === 'WARM_APP_SHELL' && event.data.version === APP_VERSION) {
+    event.waitUntil(prepareCurrentCache().catch(() => false));
   }
 });
 

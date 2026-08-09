@@ -17,3 +17,8 @@
   for = "/version.txt"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/actualizar.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"

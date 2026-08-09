@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Actualizando Cuaderno de Bitácora</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: #eef5fc; color: #172033; }
+    main { max-width: 32rem; margin: 18vh auto; padding: 1.5rem; text-align: center; }
+    .box { padding: 1.5rem; background: #fff; border-radius: 1rem; box-shadow: 0 10px 30px #1b3d6a20; }
+    h1 { margin-top: 0; color: #0876c9; }
+    button { border: 0; border-radius: .7rem; padding: .85rem 1.1rem; background: #0876c9; color: #fff; font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="box">
+      <h1>Preparando la actualización</h1>
+      <p id="status">Liberando la versión anterior…</p>
+      <button id="retry" type="button" hidden>Volver a intentarlo</button>
+    </div>
+  </main>
+  <script>
+    const status = document.getElementById('status');
+    const retry = document.getElementById('retry');
+
+    async function recoverUpdate() {
+      retry.hidden = true;
+      try {
+        let targetVersion = new URL(location.href).searchParams.get('v') || '';
+        try {
+          const response = await fetch(`./version.txt?recovery=${Date.now()}`, { cache: 'no-store' });
+          if (response.ok) targetVersion = (await response.text()).trim() || targetVersion;
+        } catch (_) {}
+
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(registration => registration.unregister()));
+        }
+
+        status.textContent = 'Abriendo la versión nueva…';
+        const nextUrl = new URL('./', location.href);
+        nextUrl.searchParams.set('v', targetVersion || String(Date.now()));
+        nextUrl.searchParams.set('recovery', String(Date.now()));
+        location.replace(nextUrl.href);
+      } catch (_) {
+        status.textContent = 'No se ha podido completar. Comprueba la conexión y vuelve a intentarlo.';
+        retry.hidden = false;
+      }
+    }
+
+    retry.addEventListener('click', recoverUpdate);
+    recoverUpdate();
+  </script>
+</body>
+</html>

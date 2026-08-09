@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [html, app, styles, sw, help, ticketImageWorker] = await Promise.all([
+const [html, app, styles, sw, help, ticketImageWorker, updateRecovery] = await Promise.all([
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
   readFile(new URL('../styles.css', import.meta.url), 'utf8'),
   readFile(new URL('../sw.js', import.meta.url), 'utf8'),
   readFile(new URL('../ayuda.html', import.meta.url), 'utf8'),
-  readFile(new URL('../ticket-image-worker.js', import.meta.url), 'utf8')
+  readFile(new URL('../ticket-image-worker.js', import.meta.url), 'utf8'),
+  readFile(new URL('../actualizar.html', import.meta.url), 'utf8')
 ]);
 
 test('la app muestra estado claro cuando trabaja sin conexion', () => {
@@ -33,16 +34,15 @@ test('la app muestra estado claro cuando trabaja sin conexion', () => {
   assert.match(app, /No hay conexi.n para consultar el cambio/);
 });
 
-test('el service worker separa cache critica y opcional para no romper la instalacion', () => {
+test('el service worker se activa sin descargar archivos y prepara la cache despues', () => {
   assert.match(sw, /const APP_SHELL_CORE = \[/);
   assert.match(sw, /const APP_SHELL_REQUIRED = \[/);
   assert.match(sw, /const APP_SHELL_OPTIONAL = \[/);
-  assert.match(sw, /cacheBestEffort\(cache, APP_SHELL_CORE\)/);
-  assert.match(sw, /missingCore[\s\S]*?No se pudo preparar la actualización/);
+  assert.match(sw, /async function prepareCurrentCache\(\)[\s\S]*?cacheBestEffort\(cache, APP_SHELL_CORE\)/);
+  assert.match(sw, /coreReady[\s\S]*?if \(!coreReady\) return false;[\s\S]*?caches\.delete/);
   assert.doesNotMatch(sw, /cache\.addAll\(APP_SHELL_REQUIRED\)/);
   assert.match(sw, /event\.waitUntil\(activateCurrentVersion\)/);
-  assert.match(sw, /activateCurrentVersion[\s\S]*?cacheBestEffort\(cache, APP_SHELL_REQUIRED\)/);
-  assert.match(sw, /activateCurrentVersion[\s\S]*?\.then\(cache => cacheBestEffort\(cache, APP_SHELL_OPTIONAL\)\)/);
+  assert.match(sw, /WARM_APP_SHELL[\s\S]*?prepareCurrentCache\(\)/);
   const coreStart = sw.indexOf('const APP_SHELL_CORE = [');
   const coreEnd = sw.indexOf('];', coreStart);
   assert.doesNotMatch(sw.slice(coreStart, coreEnd), /splash|maplibre|manifest/);
@@ -50,15 +50,17 @@ test('el service worker separa cache critica y opcional para no romper la instal
   assert.match(sw, /\.\/vendor\/pdfjs\/pdf\.min\.mjs/);
   assert.match(sw, /\.\/vendor\/tesseract\/tesseract\.esm\.min\.js/);
   assert.match(sw, /\.\/vendor\/tesseract\/lang\/spa\.traineddata\.gz/);
-  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v235/);
-  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v235/);
+  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v236/);
+  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v236/);
   assert.match(sw, /const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4\.10\.0'/);
   assert.match(sw, /\.\/vendor\/opencv\/4\.10\.0\/opencv\.js/);
-  assert.match(sw, /\.then\(\(\) => cacheOcrRuntime\(\)\)/);
-  assert.doesNotMatch(sw, /event\.waitUntil\(Promise\.all\(\[activateCurrentVersion/);
   const installStart = sw.indexOf("self.addEventListener('install'");
   const activateStart = sw.indexOf("self.addEventListener('activate'");
-  assert.doesNotMatch(sw.slice(installStart, activateStart), /APP_SHELL_OPTIONAL|cacheOcrRuntime/);
+  const install = sw.slice(installStart, sw.indexOf('async function prepareCurrentCache', installStart));
+  assert.match(install, /event\.waitUntil\(self\.skipWaiting\(\)\)/);
+  assert.doesNotMatch(install, /fetch|cacheBestEffort|caches\.open/);
+  const activate = sw.slice(activateStart, sw.indexOf("self.addEventListener('message'", activateStart));
+  assert.doesNotMatch(activate, /cacheBestEffort|caches\.delete|prepareCurrentCache/);
 });
 
 test('el trabajador de imagen espera OpenCV sin bloquearse por su objeto thenable', () => {
@@ -98,11 +100,19 @@ test('una versión nueva provoca una sola recarga después de activar su service
   assert.match(html, /const hadControllerAtStart = Boolean\(navigator\.serviceWorker\.controller\)/);
   assert.match(html, /const reloadForUpdate = version =>/);
   assert.match(html, /Date\.now\(\) - lastAttempt < 15000/);
-  assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?await registration\.update\(\)/);
+  assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?registration\.update\(\)[\s\S]*?reloadForUpdate\(latestVersion\)/);
   assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
   assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
-  assert.match(sw, /const APP_VERSION = '700v235'/);
+  assert.match(sw, /const APP_VERSION = '700v236'/);
   assert.match(sw, /\.\/assets\/map-train-side\.webp/);
   assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
   assert.doesNotMatch(html, /window\.location\.reload\(\)/);
+});
+
+test('hay una ruta directa para liberar una instalacion antigua atascada', () => {
+  assert.match(updateRecovery, /navigator\.serviceWorker\.getRegistrations\(\)/);
+  assert.match(updateRecovery, /registration => registration\.unregister\(\)/);
+  assert.match(updateRecovery, /version\.txt\?recovery=\$\{Date\.now\(\)\}/);
+  assert.match(updateRecovery, /nextUrl\.searchParams\.set\('v', targetVersion/);
+  assert.match(updateRecovery, /location\.replace\(nextUrl\.href\)/);
 });
