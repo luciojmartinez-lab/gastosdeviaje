@@ -214,3 +214,87 @@ export async function extractImageDateTime(file) {
     return null;
   }
 }
+
+function coordinateRationals(value) {
+  const absolute = Math.abs(Number(value));
+  const degrees = Math.floor(absolute);
+  const minutesValue = (absolute - degrees) * 60;
+  const minutes = Math.floor(minutesValue);
+  const secondsDenominator = 10_000_000;
+  const secondsNumerator = Math.round((minutesValue - minutes) * 60 * secondsDenominator);
+  return [
+    [degrees, 1],
+    [minutes, 1],
+    [secondsNumerator, secondsDenominator]
+  ];
+}
+
+function gpsExifSegment(latitude, longitude) {
+  const tiff = new Uint8Array(140);
+  const view = new DataView(tiff.buffer);
+  const littleEndian = true;
+  view.setUint16(0, 0x4949, false);
+  view.setUint16(2, 42, littleEndian);
+  view.setUint32(4, 8, littleEndian);
+
+  view.setUint16(8, 1, littleEndian);
+  view.setUint16(10, 0x8825, littleEndian);
+  view.setUint16(12, 4, littleEndian);
+  view.setUint32(14, 1, littleEndian);
+  view.setUint32(18, 26, littleEndian);
+  view.setUint32(22, 0, littleEndian);
+
+  const gpsIfdOffset = 26;
+  view.setUint16(gpsIfdOffset, 5, littleEndian);
+  const writeEntry = (index, tag, type, count, value) => {
+    const offset = gpsIfdOffset + 2 + index * 12;
+    view.setUint16(offset, tag, littleEndian);
+    view.setUint16(offset + 2, type, littleEndian);
+    view.setUint32(offset + 4, count, littleEndian);
+    if (Array.isArray(value)) tiff.set(value, offset + 8);
+    else view.setUint32(offset + 8, value, littleEndian);
+  };
+  writeEntry(0, 0x0000, 1, 4, [2, 3, 0, 0]);
+  writeEntry(1, 0x0001, 2, 2, [latitude < 0 ? 0x53 : 0x4e, 0, 0, 0]);
+  writeEntry(2, 0x0002, 5, 3, 92);
+  writeEntry(3, 0x0003, 2, 2, [longitude < 0 ? 0x57 : 0x45, 0, 0, 0]);
+  writeEntry(4, 0x0004, 5, 3, 116);
+  view.setUint32(gpsIfdOffset + 2 + 5 * 12, 0, littleEndian);
+
+  const writeRationals = (offset, values) => values.forEach(([numerator, denominator], index) => {
+    view.setUint32(offset + index * 8, numerator, littleEndian);
+    view.setUint32(offset + index * 8 + 4, denominator, littleEndian);
+  });
+  writeRationals(92, coordinateRationals(latitude));
+  writeRationals(116, coordinateRationals(longitude));
+
+  const payload = new Uint8Array(6 + tiff.length);
+  payload.set([0x45, 0x78, 0x69, 0x66, 0, 0], 0);
+  payload.set(tiff, 6);
+  const segment = new Uint8Array(payload.length + 4);
+  segment.set([0xff, 0xe1], 0);
+  new DataView(segment.buffer).setUint16(2, payload.length + 2, false);
+  segment.set(payload, 4);
+  return segment;
+}
+
+export function embedGpsInJpegBytes(source, latitude, longitude) {
+  const bytes = source instanceof Uint8Array ? source : new Uint8Array(source || 0);
+  const validLatitude = validCoordinate(latitude, -90, 90);
+  const validLongitude = validCoordinate(longitude, -180, 180);
+  if (validLatitude == null || validLongitude == null || bytes.length < 2 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    return bytes;
+  }
+  const exif = gpsExifSegment(validLatitude, validLongitude);
+  const output = new Uint8Array(bytes.length + exif.length);
+  output.set(bytes.subarray(0, 2), 0);
+  output.set(exif, 2);
+  output.set(bytes.subarray(2), 2 + exif.length);
+  return output;
+}
+
+export async function embedGpsInJpegBlob(blob, latitude, longitude) {
+  if (!blob || typeof blob.arrayBuffer !== 'function') return blob;
+  const bytes = embedGpsInJpegBytes(await blob.arrayBuffer(), latitude, longitude);
+  return new Blob([bytes], { type: blob.type || 'image/jpeg' });
+}

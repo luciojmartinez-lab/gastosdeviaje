@@ -25,6 +25,10 @@ test('la primera compartición reutiliza la aplicación ya abierta', () => {
   assert.match(sw, /SHARED_CONTENT_READY/);
   assert.match(app, /window\.launchQueue\.setConsumer/);
   assert.match(app, /queueSharedLaunchTarget/);
+  assert.match(sw, /await client\.focus\(\)[\s\S]*?client\.postMessage/);
+  assert.match(app, /async function recoverPendingSharedContent\(\)/);
+  assert.match(app, /cache\.keys\(\)/);
+  assert.match(app, /visibilitychange/);
 });
 
 test('el service worker recibe texto sin exigir una imagen', async () => {
@@ -70,7 +74,7 @@ test('las fotos compartidas distinguen Blog, ticket y foto asociada', () => {
   assert.match(html, /id="shared-images-kind"/);
   assert.match(app, /requiresDescription = hasImages && destination === 'blog'/);
   assert.match(app, /Escribe una descripción para la foto/);
-  assert.match(app, /#g-desc'\)\) \$\('#g-desc'\)\.value = suggestedDescription/);
+  assert.match(app, /!payload\?\.fromLens && \$\('#g-desc'\)/);
   assert.doesNotMatch(app, /title \|\| firstLine \|\| 'Texto compartido'/);
 });
 

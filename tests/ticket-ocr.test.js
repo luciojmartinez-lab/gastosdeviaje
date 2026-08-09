@@ -298,7 +298,7 @@ test('la interfaz avisa cuando no encuentra un total inequívoco', () => {
 test('el OCR normal conserva datos existentes y Lens puede sustituirlos', () => {
   const app = readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
   assert.match(app, /const preserveExisting = !options\.replaceExisting/);
-  assert.match(app, /if \(preserveExisting && current\)/);
+  assert.match(app, /if \(preserveCurrent && current\)/);
   assert.match(app, /replaceExisting: true/);
   assert.match(app, /result\.classificationText \|\| result\.text \|\| ''/);
   assert.match(app, /result\.foodEvidence/);

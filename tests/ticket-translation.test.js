@@ -87,6 +87,22 @@ test('el resultado de Lens sustituye los datos reconocidos tanto en texto como e
   assert.match(app, /payload\.fromLens && sharedText && !hasImages && currentFormTarget/);
   assert.match(app, /const preserveExisting = !options\.replaceExisting/);
   assert.match(app, /await readLensTicketTranslation\(prefix, companion\)/);
+  assert.match(app, /preserveDescription: true/);
+  assert.match(app, /options\.preserveDescription && field === 'desc'/);
+  assert.match(app, /cleanLensSharedText/);
+});
+
+test('Lens en español usa los datos sin crear un segundo ticket', () => {
+  assert.match(app, /function lensTicketSourceLanguage\(prefix\)/);
+  assert.match(app, /spanishSource: sourceLanguage\.spanish/);
+  assert.match(app, /payload\.lensSpanishOnly = Boolean/);
+  assert.match(app, /options\.fromLens && options\.spanishOnly/);
+  const spanishRoute = app.slice(
+    app.indexOf('if (options.fromLens && options.spanishOnly)'),
+    app.indexOf("if (action === 'translation'", app.indexOf('if (options.fromLens && options.spanishOnly)'))
+  );
+  assert.match(spanishRoute, /readLensTicket/);
+  assert.doesNotMatch(spanishRoute, /pendingExpenseTicketTranslations/);
 });
 
 test('la ayuda explica el flujo gratuito con Lens y el regreso a la aplicación', () => {
