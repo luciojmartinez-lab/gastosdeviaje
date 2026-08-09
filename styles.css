@@ -2684,6 +2684,10 @@ table {
   border-collapse: collapse;
 }
 
+[data-editable-type][data-editable-id] {
+  cursor: pointer;
+}
+
 th,
 td {
   padding: 8px 10px;
@@ -4853,9 +4857,66 @@ footer {
     padding-left: 6px;
   }
 
-  #tabla-cuenta th:nth-child(7),
-  #tabla-cuenta td:nth-child(7) {
+  #tabla-cuenta th:nth-child(8),
+  #tabla-cuenta td:nth-child(8) {
     text-align: right;
+  }
+
+  #resumen-cuentas .table-wrap {
+    overflow-x: visible;
+  }
+
+  #tabla-cuenta {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  #tabla-cuenta thead {
+    display: none;
+  }
+
+  #tabla-cuenta tbody {
+    display: grid;
+    gap: 8px;
+  }
+
+  #tabla-cuenta tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  #tabla-cuenta td,
+  #tabla-cuenta td:nth-child(n) {
+    display: flex;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    flex-direction: column;
+    gap: 2px;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  #tabla-cuenta td:first-child {
+    grid-column: 1 / -1;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--line);
+    font-weight: 700;
+  }
+
+  #tabla-cuenta td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.1;
   }
 
   #tabla-cat {

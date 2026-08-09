@@ -197,21 +197,32 @@ test('el ticket sin GPS hereda las coordenadas de la primera foto del gasto que 
   ];
   assert.deepEqual(
     resolveLocation(null, null, '', photos),
-    { latitude: 40.123, longitude: -1.234, locationSource: 'exif' }
+    { latitude: 40.123, longitude: -1.234, locationSource: 'expense-photo', inherited: true }
   );
   assert.deepEqual(
     resolveLocation(39.5, -3.7, 'exif', photos),
-    { latitude: 39.5, longitude: -3.7, locationSource: 'exif' }
+    { latitude: 39.5, longitude: -3.7, locationSource: 'exif', inherited: false }
   );
   assert.deepEqual(
     resolveLocation(null, null, '', [{ name: 'sin-gps.jpg' }, photos[1]]),
-    { latitude: 41.987, longitude: 2.345, locationSource: 'device' }
+    { latitude: 41.987, longitude: 2.345, locationSource: 'expense-photo', inherited: true }
   );
   assert.match(app, /function expenseTicketLocationForExpense\(gasto\)[\s\S]*?resolvedExpenseTicketLocation\([\s\S]*?gasto\?\.extraImages/);
   assert.match(app, /function expenseTicketImageRecord\(gasto\)[\s\S]*?expenseTicketLocationForExpense\(gasto\)/);
   assert.match(app, /async function expenseTicketBlogImage\(gasto\)[\s\S]*?expenseTicketLocationForExpense\(gasto\)/);
   assert.match(app, /async function addGasto\([\s\S]*?resolvedExpenseTicketLocation\(ticketLatitude, ticketLongitude, ticketLocationSource, storedExtraImages\)/);
   assert.match(app, /async function updateGasto\(id, patch\)[\s\S]*?resolvedExpenseTicketLocation\(next\.ticketLatitude, next\.ticketLongitude, next\.ticketLocationSource, next\.extraImages\)/);
+  assert.match(app, /ticketMapEnabled: ticketMapEnabled === true[\s\S]*?ticketLocation\.inherited !== true/);
+  assert.match(app, /mapEnabled: gasto\.ticketMapEnabled === true && location\.inherited !== true/);
+});
+
+test('copiar un ticket fotográfico al Blog no vuelve a decodificar todo su base64', () => {
+  const start = app.indexOf('async function expenseTicketBlogImage');
+  const imageReturn = app.indexOf('if (ticketIsImage)', start);
+  const pdfInfo = app.indexOf("const ticketInfo = ticketDataInfo(ticketData, gasto.ticketType || 'application/pdf')", imageReturn);
+  assert.ok(start >= 0 && imageReturn > start && pdfInfo > imageReturn);
+  assert.doesNotMatch(app.slice(start, imageReturn), /ticketDataInfo\(/);
+  assert.match(app.slice(imageReturn, pdfInfo), /data: ticketData/);
 });
 
 test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {

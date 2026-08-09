@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v231';
+const APP_VERSION = '700v232';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -978,11 +978,22 @@ function expenseExtraImages(gasto) {
 function resolvedExpenseTicketLocation(latitude, longitude, locationSource = '', extraImages = []) {
   const ticketLatitude = storedImageCoordinate(latitude, -90, 90);
   const ticketLongitude = storedImageCoordinate(longitude, -180, 180);
+  const firstPhotoLocation = (Array.isArray(extraImages) ? extraImages : [])
+    .map(image => ({
+      latitude: storedImageCoordinate(image?.latitude ?? image?.lat, -90, 90),
+      longitude: storedImageCoordinate(image?.longitude ?? image?.lng ?? image?.lon, -180, 180)
+    }))
+    .find(point => point.latitude != null && point.longitude != null) || null;
   if (ticketLatitude != null && ticketLongitude != null) {
+    const inherited = String(locationSource || '') === 'expense-photo'
+      || Boolean(firstPhotoLocation
+        && Math.abs(firstPhotoLocation.latitude - ticketLatitude) < 0.0000001
+        && Math.abs(firstPhotoLocation.longitude - ticketLongitude) < 0.0000001);
     return {
       latitude: ticketLatitude,
       longitude: ticketLongitude,
-      locationSource: String(locationSource || '')
+      locationSource: inherited ? 'expense-photo' : String(locationSource || ''),
+      inherited
     };
   }
   for (const image of Array.isArray(extraImages) ? extraImages : []) {
@@ -992,11 +1003,12 @@ function resolvedExpenseTicketLocation(latitude, longitude, locationSource = '',
       return {
         latitude: imageLatitude,
         longitude: imageLongitude,
-        locationSource: String(image?.locationSource || 'expense-photo')
+        locationSource: 'expense-photo',
+        inherited: true
       };
     }
   }
-  return { latitude: null, longitude: null, locationSource: '' };
+  return { latitude: null, longitude: null, locationSource: '', inherited: false };
 }
 
 function expenseTicketLocationForExpense(gasto) {
@@ -1026,7 +1038,7 @@ function expenseTicketImageRecord(gasto) {
     locationSource: location.locationSource,
     photoTypeId: gasto.ticketPhotoTypeId || '',
     photoTypeName: gasto.ticketPhotoTypeName || '',
-    mapEnabled: gasto.ticketMapEnabled === true,
+    mapEnabled: gasto.ticketMapEnabled === true && location.inherited !== true,
     capturedDate: gasto.ticketCapturedDate || '',
     capturedTime: gasto.ticketCapturedTime || '',
     createdAt: gasto.createdAt || ''
@@ -1149,21 +1161,21 @@ async function expenseTicketBlogImage(gasto) {
   const ticketData = normalizeTicketDataValue(gasto && gasto.ticketData);
   if (!ticketData) return null;
   const location = expenseTicketLocationForExpense(gasto);
-  const ticketInfo = ticketDataInfo(ticketData, gasto.ticketType || 'application/octet-stream');
-  const ticketType = String(gasto.ticketType || ticketInfo.blob.type || '').toLowerCase();
+  const dataUrlType = (ticketData.match(/^data:([^;,]+)/i) || [])[1] || '';
+  const ticketType = String(gasto.ticketType || dataUrlType || '').toLowerCase();
   const ticketName = String(gasto.ticketName || 'Ticket');
-  const ticketIsImage = fileLooksLikeImage({ type: ticketType, name: ticketName }) || /^data:image\//i.test(ticketInfo.data);
+  const ticketIsImage = fileLooksLikeImage({ type: ticketType, name: ticketName }) || /^data:image\//i.test(ticketData);
   if (ticketIsImage) {
     return normalizeBlogImageRecord({
       id: `expense-ticket-${gasto.id || ''}`,
       name: ticketName,
       type: ticketType || 'image/jpeg',
-      size: ticketInfo.blob.size,
-      data: ticketInfo.data,
+      size: Math.max(0, Number(gasto.ticketSize) || 0),
+      data: ticketData,
       latitude: location.latitude,
       longitude: location.longitude,
       locationSource: location.locationSource,
-      mapEnabled: gasto.ticketMapEnabled === true,
+      mapEnabled: gasto.ticketMapEnabled === true && location.inherited !== true,
       capturedDate: gasto.ticketCapturedDate || '',
       capturedTime: gasto.ticketCapturedTime || '',
       photoTypeId: String(gasto.ticketPhotoTypeId || ''),
@@ -1173,9 +1185,10 @@ async function expenseTicketBlogImage(gasto) {
   }
   const ticketIsPdf = ticketType.includes('pdf')
     || /\.pdf$/i.test(ticketName)
-    || /^data:application\/pdf/i.test(ticketInfo.data);
+    || /^data:application\/pdf/i.test(ticketData);
   if (!ticketIsPdf) return null;
 
+  const ticketInfo = ticketDataInfo(ticketData, gasto.ticketType || 'application/pdf');
   const pdfjs = await import('./vendor/pdfjs/pdf.min.mjs');
   pdfjs.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdfjs/pdf.worker.min.mjs', window.location.href).href;
   const pdf = await pdfjs.getDocument({ data: await ticketInfo.blob.arrayBuffer() }).promise;
@@ -1200,7 +1213,7 @@ async function expenseTicketBlogImage(gasto) {
       latitude: location.latitude,
       longitude: location.longitude,
       locationSource: location.locationSource,
-      mapEnabled: gasto.ticketMapEnabled === true,
+      mapEnabled: gasto.ticketMapEnabled === true && location.inherited !== true,
       capturedDate: gasto.ticketCapturedDate || '',
       capturedTime: gasto.ticketCapturedTime || '',
       photoTypeId: String(gasto.ticketPhotoTypeId || ''),
@@ -2444,7 +2457,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v231');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v232');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3219,7 +3232,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v231');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v232');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3309,7 +3322,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v231');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v232');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -5462,7 +5475,7 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     ticketLocationSource: ticketLocation.locationSource,
     ticketCapturedDate: String(ticketCapturedDate || ''),
     ticketCapturedTime: String(ticketCapturedTime || ''),
-    ticketMapEnabled: ticketMapEnabled === true && ticketLocation.latitude != null && ticketLocation.longitude != null,
+    ticketMapEnabled: ticketMapEnabled === true && ticketLocation.latitude != null && ticketLocation.longitude != null && ticketLocation.inherited !== true,
     ticketTranslationName: String(ticketTranslationName || ''),
     ticketTranslationType: String(ticketTranslationType || ''),
     ticketTranslationData: normalizeTicketDataValue(ticketTranslationData),
@@ -5501,7 +5514,7 @@ async function updateGasto(id, patch) {
   next.ticketLocationSource = ticketLocation.locationSource;
   next.ticketCapturedDate = String(next.ticketCapturedDate || '');
   next.ticketCapturedTime = String(next.ticketCapturedTime || '');
-  next.ticketMapEnabled = next.ticketMapEnabled === true && next.ticketLatitude != null && next.ticketLongitude != null;
+  next.ticketMapEnabled = next.ticketMapEnabled === true && next.ticketLatitude != null && next.ticketLongitude != null && ticketLocation.inherited !== true;
   next.ticketTranslationName = String(next.ticketTranslationName || '');
   next.ticketTranslationType = String(next.ticketTranslationType || '');
   next.ticketTranslationData = normalizeTicketDataValue(next.ticketTranslationData);
@@ -6251,6 +6264,8 @@ function renderCuentas() {
         saldo = fromEur(tripBudget - spentEur, c.moneda);
       }
       const tr = document.createElement('tr');
+      tr.dataset.editableType = 'cuenta';
+      tr.dataset.editableId = String(c.id);
       if (budget > 0 && spentEur > toEur(budget, c.moneda)) tr.className = 'warning-row';
       const migrate = !isTripAccount && usedAccountIds.has(Number(c.id))
         ? ` <button class="ghost" data-migrate-cuenta="${c.id}" data-migrate-viaje="${selectedTripId}">Pasar a viaje</button>`
@@ -6278,6 +6293,8 @@ function renderCuentas() {
     const spent = state.gastos.filter(g => g.cuentaId === c.id).reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
     const overBudget = numberValue(c.presupuesto) > 0 && spent > numberValue(c.presupuesto);
     const tr = document.createElement('tr');
+    tr.dataset.editableType = 'cuenta';
+    tr.dataset.editableId = String(c.id);
     if (overBudget || numberValue(c.saldoActual) < 0) tr.className = 'warning-row';
     tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td><span class="badge">Global</span></td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(c.saldoActual, c.moneda)}</td><td>${fmtBudgetWithEur(c.presupuesto, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
@@ -6327,6 +6344,10 @@ function renderMonedasConfig() {
   ];
   rows.forEach(m => {
     const tr = document.createElement('tr');
+    if (!m.base) {
+      tr.dataset.editableType = 'moneda';
+      tr.dataset.editableId = String(m.codigo);
+    }
     const actions = m.base ? '-' : `<button class="ghost" data-edit-moneda="${escapeHtml(m.codigo)}">Editar</button> <button class="ghost" data-del-moneda="${escapeHtml(m.codigo)}">Eliminar</button>`;
     tr.innerHTML = `<td><span class="badge">${escapeHtml(m.codigo)}</span></td><td>${escapeHtml(m.nombre || '-')}</td><td>${numberValue(m.eurPorUnidad).toFixed(6)} EUR</td><td>${numberValue(m.unidadesPorEuro).toFixed(6)} ${escapeHtml(m.codigo)}</td><td>${actions}</td>`;
     tbody.appendChild(tr);
@@ -6408,12 +6429,12 @@ function renderCategorias() {
     const subcats = children.filter(sub => Number(sub.parentId) === Number(cat.id));
     const open = openCategoryIds.has(String(cat.id)) ? ' open' : '';
     const subHtml = subcats.length
-      ? subcats.map(sub => `<div class="place-row">
+      ? subcats.map(sub => `<div class="place-row" data-editable-type="categoria" data-editable-id="${sub.id}">
           <div class="place-name"><strong>${escapeHtml(sub.nombre)}</strong><span>Subcategoría</span></div>
           <div class="place-actions"><button class="ghost" data-edit-cat="${sub.id}">Editar</button><button class="ghost" data-del-cat="${sub.id}">Eliminar</button></div>
         </div>`).join('')
       : '<p class="small">Todavía no hay subcategorías en esta categoría.</p>';
-    return `<details class="category-node" data-category-node="${cat.id}"${open}>
+    return `<details class="category-node" data-category-node="${cat.id}" data-editable-type="categoria" data-editable-id="${cat.id}"${open}>
       <summary><span class="category-title"><strong>${escapeHtml(cat.nombre)}</strong></span><span class="category-meta">${subcats.length} subcategorías</span></summary>
       <div class="category-body">
         <div class="category-toolbar"><button class="ghost" data-edit-cat="${cat.id}">Editar categoría</button><button class="ghost" data-del-cat="${cat.id}">Eliminar categoría</button></div>
@@ -6441,12 +6462,12 @@ function renderLugares() {
     const cityList = ciudades.filter(ciudad => Number(ciudad.parentId) === Number(pais.id));
     const open = openCountryIds.has(String(pais.id)) ? ' open' : '';
     const cityHtml = cityList.length
-      ? cityList.map(ciudad => `<div class="place-row">
+      ? cityList.map(ciudad => `<div class="place-row" data-editable-type="lugar" data-editable-id="${ciudad.id}">
           <div class="place-name"><strong>${escapeHtml(ciudad.nombre)}</strong><span>${escapeHtml(lugarCoordsLabel(ciudad))}</span></div>
           <div class="place-actions"><button class="ghost" data-locate-lugar="${ciudad.id}">Localizar</button><button class="ghost" data-edit-lugar="${ciudad.id}">Editar</button><button class="ghost" data-del-lugar="${ciudad.id}">Eliminar</button></div>
         </div>`).join('')
       : '<p class="small">Todavía no hay ciudades en este país.</p>';
-    return `<details class="country-node" data-country-node="${pais.id}"${open}>
+    return `<details class="country-node" data-country-node="${pais.id}" data-editable-type="lugar" data-editable-id="${pais.id}"${open}>
       <summary><span class="country-title"><strong>${escapeHtml(pais.nombre)}</strong><span>${escapeHtml(lugarCoordsLabel(pais))}</span></span><span class="country-meta">${cityList.length} ciudades</span></summary>
       <div class="country-body">
         <div class="country-toolbar"><button class="ghost" data-locate-lugar="${pais.id}">Localizar país</button><button class="ghost" data-edit-lugar="${pais.id}">Editar país</button><button class="ghost" data-del-lugar="${pais.id}">Eliminar país</button></div>
@@ -7123,7 +7144,7 @@ function renderPhotoTypes() {
   const container = $('#photo-types-list');
   if (!container) return;
   container.innerHTML = state.photoTypes.length
-    ? `<ul>${state.photoTypes.map(type => `<li><span><strong>${escapeHtml(type.nombre)}</strong>${type.useAsDestination ? '<small>Destino de alojamiento</small>' : ''}</span><div><button type="button" class="ghost" data-edit-photo-type="${escapeHtml(type.id)}">Editar</button><button type="button" class="ghost" data-delete-photo-type="${escapeHtml(type.id)}">Eliminar</button></div></li>`).join('')}</ul>`
+    ? `<ul>${state.photoTypes.map(type => `<li data-editable-type="foto" data-editable-id="${escapeHtml(type.id)}"><span><strong>${escapeHtml(type.nombre)}</strong>${type.useAsDestination ? '<small>Destino de alojamiento</small>' : ''}</span><div><button type="button" class="ghost" data-edit-photo-type="${escapeHtml(type.id)}">Editar</button><button type="button" class="ghost" data-delete-photo-type="${escapeHtml(type.id)}">Eliminar</button></div></li>`).join('')}</ul>`
     : '<p class="small">No hay tipos de fotos configurados.</p>';
 }
 
@@ -8840,6 +8861,8 @@ function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawR
   }
 
   let loaded = false;
+  let tileErrorCount = 0;
+  let tileFallbackTimer = null;
   const startupTimer = window.setTimeout(() => {
     if (tripVectorMap !== map || loaded) return;
     tripVectorMapFailed = true;
@@ -8899,7 +8922,16 @@ function initializeTripVectorMap({ container, withCoords, dailyMode, shouldDrawR
     renderTripVectorPhotoMarkers(map, photoItems);
   });
   map.on('error', event => {
-    if (!loaded) console.warn('No se pudo iniciar el mapa vectorial', event && event.error || event);
+    console.warn(loaded ? 'No se pudo cargar una parte del mapa vectorial' : 'No se pudo iniciar el mapa vectorial', event && event.error || event);
+    if (!loaded) return;
+    tileErrorCount += 1;
+    if (tileErrorCount < 4 || tileFallbackTimer) return;
+    tileFallbackTimer = window.setTimeout(() => {
+      if (tripVectorMap !== map) return;
+      tripVectorMapFailed = true;
+      destroyTripVectorMap();
+      renderTripMap();
+    }, 1_200);
   });
   return true;
 }
@@ -9598,27 +9630,31 @@ function renderResumen() {
     let pct = budget ? spentEur * 100 / budgetEur : 0;
     return {
       label: accountLabel(c),
+      chartLabel: c.nombre,
       moneda: c.moneda,
       total: spentAccountCurrency,
       totalEur: spentEur,
+      saldo: numberValue(c.saldoActual),
+      saldoEur: toEur(c.saldoActual, c.moneda),
       presupuesto: budget,
       presupuestoEur: budgetEur,
       restanteEur: remainingEur,
       pct
     };
   }).sort((a, b) => b.totalEur - a.totalEur);
-  drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.label, value: row.totalEur })));
-  const accountHtml = accountRows.map(row => `<tr class="${row.restanteEur !== null && row.restanteEur < 0 ? 'warning-row' : ''}"><td>${escapeHtml(row.label)}</td><td>${escapeHtml(row.moneda)}</td><td>${fmtCurrency(row.total, row.moneda)}</td><td>${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td><td>${row.presupuesto ? (row.moneda === 'EUR' ? fmtCurrency(row.presupuesto, row.moneda) : `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}`) : '-'}</td><td>${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td>${row.pct.toFixed(1)}%</td></tr>`);
+  drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.chartLabel, value: row.totalEur })));
+  const accountHtml = accountRows.map(row => `<tr class="${row.restanteEur !== null && row.restanteEur < 0 ? 'warning-row' : ''}"><td data-label="Cuenta">${escapeHtml(row.label)}</td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td><td data-label="Presupuesto">${row.presupuesto ? (row.moneda === 'EUR' ? fmtCurrency(row.presupuesto, row.moneda) : `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}`) : '-'}</td><td data-label="Restante">${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td data-label="%">${row.pct.toFixed(1)}%</td></tr>`);
   const accountBudgetEur = accountRows.reduce((sum, row) => sum + numberValue(row.presupuestoEur), 0);
+  const accountBalanceEur = accountRows.reduce((sum, row) => sum + numberValue(row.saldoEur), 0);
   const accountRemainingEur = accountBudgetEur ? accountBudgetEur - totalEur : null;
   const accountPct = accountBudgetEur ? totalEur * 100 / accountBudgetEur : 0;
   if (accountBudgetEur) {
-    accountHtml.push(`<tr class="${accountRemainingEur !== null && accountRemainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td>Total / presupuesto de cuentas</td><td>EUR</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td></td><td>${fmtCurrency(accountBudgetEur, 'EUR')}</td><td>${accountRemainingEur === null ? '-' : fmtCurrency(accountRemainingEur, 'EUR')}</td><td>${accountPct.toFixed(1)}%</td></tr>`);
+    accountHtml.push(`<tr class="${accountRemainingEur !== null && accountRemainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td data-label="Cuenta">Total / presupuesto de cuentas</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Presupuesto">${fmtCurrency(accountBudgetEur, 'EUR')}</td><td data-label="Restante">${accountRemainingEur === null ? '-' : fmtCurrency(accountRemainingEur, 'EUR')}</td><td data-label="%">${accountPct.toFixed(1)}%</td></tr>`);
   }
   if (tripBudget) {
-    accountHtml.push(`<tr class="${tripBudget.remainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td>Total / presupuesto del viaje</td><td>EUR</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td></td><td>${fmtCurrency(tripBudget.budgetEur, 'EUR')}</td><td>${fmtCurrency(tripBudget.remainingEur, 'EUR')}</td><td>${tripBudget.pct.toFixed(1)}%</td></tr>`);
+    accountHtml.push(`<tr class="${tripBudget.remainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td data-label="Cuenta">Total / presupuesto del viaje</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Presupuesto">${fmtCurrency(tripBudget.budgetEur, 'EUR')}</td><td data-label="Restante">${fmtCurrency(tripBudget.remainingEur, 'EUR')}</td><td data-label="%">${tripBudget.pct.toFixed(1)}%</td></tr>`);
   } else if (!accountBudgetEur) {
-    accountHtml.push(`<tr class="subtotal-row"><td>Total gastado</td><td>EUR</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td></td><td>-</td><td>-</td><td>-</td></tr>`);
+    accountHtml.push(`<tr class="subtotal-row"><td data-label="Cuenta">Total gastado</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Presupuesto">-</td><td data-label="Restante">-</td><td data-label="%">-</td></tr>`);
   }
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
   if (state.activeTab === 'mapa' || tripMapState.printMode) renderTripMap();
@@ -10368,7 +10404,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v231');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v232');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -14970,6 +15006,26 @@ function bindEvents() {
   document.addEventListener('dblclick', event => {
     const target = event.target;
     if (!(target instanceof Element) || target.closest('button, select, input, textarea, a')) return;
+    const editable = target.closest('[data-editable-type][data-editable-id]');
+    if (editable) {
+      const type = editable.dataset.editableType;
+      const id = String(editable.dataset.editableId || '');
+      const controls = {
+        cuenta: ['[data-edit-cuenta]', 'editCuenta'],
+        moneda: ['[data-edit-moneda]', 'editMoneda'],
+        categoria: ['[data-edit-cat]', 'editCat'],
+        lugar: ['[data-edit-lugar]', 'editLugar'],
+        foto: ['[data-edit-photo-type]', 'editPhotoType']
+      }[type];
+      const editButton = controls
+        ? $$(controls[0]).find(control => String(control.dataset[controls[1]] || '') === id)
+        : null;
+      if (editButton) {
+        event.preventDefault();
+        editButton.click();
+        return;
+      }
+    }
     const tripRow = target.closest('#tabla-viajes-home .trip-row[data-trip-id], #tabla-viajes .trip-row[data-trip-id]');
     if (tripRow) {
       event.preventDefault();

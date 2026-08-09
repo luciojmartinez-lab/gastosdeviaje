@@ -100,3 +100,11 @@ test('los tipos de fotos son configurables e incluyen Selfie', () => {
   assert.match(app, /photoTypes: state\.photoTypes/);
   assert.match(help, /Alojamiento, Comida, Paisaje, Ciudad, Retrato y Selfie/);
 });
+
+test('el mapa cambia al fondo alternativo si fallan varias teselas vectoriales', () => {
+  assert.match(app, /let tileErrorCount = 0/);
+  assert.match(app, /tileErrorCount \+= 1/);
+  assert.match(app, /if \(tileErrorCount < 4 \|\| tileFallbackTimer\) return/);
+  assert.match(app, /tripVectorMapFailed = true;[\s\S]*?destroyTripVectorMap\(\);[\s\S]*?renderTripMap\(\)/);
+  assert.match(app, /const fallback = `https:\/\/tile\.openstreetmap\.org/);
+});

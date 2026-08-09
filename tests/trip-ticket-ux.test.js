@@ -16,6 +16,15 @@ test('los viajes se editan con doble clic desde ambas tablas', () => {
   assert.match(app, /handleTripConfigAction\(tripRow\.dataset\.tripId, 'edit'\)/);
 });
 
+test('los elementos editables de Configuración se abren con doble clic', () => {
+  for (const type of ['cuenta', 'moneda', 'categoria', 'lugar', 'foto']) {
+    assert.match(app, new RegExp(`data-editable-type=["']${type}["']|editableType = '${type}'`));
+  }
+  assert.match(app, /target\.closest\('\[data-editable-type\]\[data-editable-id\]'\)/);
+  assert.match(app, /editButton\.click\(\)/);
+  assert.match(styles, /\[data-editable-type\]\[data-editable-id\] \{[\s\S]*?cursor: pointer/);
+});
+
 test('una foto nueva de ticket muestra vista previa, gira y guarda esa versión', () => {
   for (const prefix of ['g', 'edit-gasto']) {
     assert.match(html, new RegExp(`id="${prefix}-ticket-new-preview"`));
