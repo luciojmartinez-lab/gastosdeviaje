@@ -11,8 +11,8 @@ const [app, html, styles, help, pkg] = await Promise.all([
 ]);
 
 test('Google Lens recibe el archivo real del ticket sin servicios de pago', async () => {
-  assert.match(html, /id="g-ticket-translate"[^>]*>Traducir con Google Lens/);
-  assert.match(html, /id="edit-gasto-ticket-translate"[^>]*>Traducir con Google Lens/);
+  assert.match(html, /id="g-ticket-translate"[^>]*>Leer con Google Lens/);
+  assert.match(html, /id="edit-gasto-ticket-translate"[^>]*>Leer con Google Lens/);
   assert.match(html, /id="image-viewer-share"[^>]*>Compartir \/ Google Lens/);
   assert.match(app, /const shareData = \{ files: \[file\] \}/);
   assert.match(app, /await navigator\.share\(shareData\)/);
@@ -40,7 +40,7 @@ test('tickets, traducciones y fotos se amplían y pueden compartirse', () => {
 test('al importar se elige ticket, traducción, segundo ticket o foto asociada', () => {
   assert.match(html, /id="shared-images-kind"[\s\S]*?value="ticket"[\s\S]*?value="photo"/);
   assert.match(html, /id="shared-images-ticket-action"[\s\S]*?value="replace"[\s\S]*?value="translation"[\s\S]*?value="secondary"/);
-  assert.match(app, /async function routeSharedExpenseImages\(prefix, files, kind, action = 'replace'\)/);
+  assert.match(app, /async function routeSharedExpenseImages\(prefix, files, kind, action = 'replace', options = \{\}\)/);
   assert.match(app, /kind: kind === 'secondary' \? 'secondary-ticket' : 'translation'/);
   assert.match(app, /assignSharedFilesToInput\(\$\(`#\$\{prefix\}-ticket`\), \[first\]\)/);
   assert.match(app, /assignSharedFilesToInput\(\$\(`#\$\{prefix\}-extra-images`\), files\)/);
@@ -66,16 +66,26 @@ test('Lens vuelve al gasto abierto sin guardarlo ni recargar la aplicación', ()
   assert.match(app, /Gasto abierto sin guardar/);
   assert.match(app, /value: `current:\$\{prefix\}`/);
   assert.match(app, /destination === 'expense-existing' && currentExpenseTarget[\s\S]*?routeSharedExpenseImages\([\s\S]*?currentExpenseTarget\.prefix/);
-  assert.match(app, /rememberLensReturnTarget\(prefix\)/);
+  assert.match(app, /await rememberLensReturnTarget\(prefix, \{ \.\.\.source, source: blob \}\)/);
+  assert.match(app, /for \(const storage of \[sessionStorage, localStorage\]\)/);
+  assert.match(app, /storage\.setItem\(LENS_RETURN_TARGET_KEY/);
+  assert.match(app, /saveFormDraft\(addExpenseDraftKey\(\), ADD_EXPENSE_DRAFT_FIELDS, \{ lensReturn: true \}\)/);
+  assert.match(app, /cache\.put\(target\.sourceUrl/);
+  assert.match(app, /restoreLensExpenseFormTarget/);
+  assert.match(app, /restoreLensTicketSource/);
   assert.match(app, /payload\.fromLens[\s\S]*?'expense-existing'/);
 });
 
-test('el resultado de Lens se clasifica como traducción y completa solo huecos', () => {
+test('el resultado de Lens sustituye los datos reconocidos tanto en texto como en imagen', () => {
   assert.match(app, /secondaryOption\.hidden = lensResult/);
   assert.match(app, /if \(lensResult && actionSelect\) actionSelect\.value = 'translation'/);
   assert.match(app, /async function readLensTicketTranslation/);
   assert.match(app, /languages: \['spa'\]/);
-  assert.match(app, /onlyEmpty: true/);
+  assert.match(app, /replaceExisting: true/);
+  assert.match(app, /async function readLensTicketText/);
+  assert.match(app, /ocr\.extractTicketFields\(sourceText\)/);
+  assert.match(app, /payload\.fromLens && sharedText && !hasImages && currentFormTarget/);
+  assert.match(app, /const preserveExisting = !options\.replaceExisting/);
   assert.match(app, /await readLensTicketTranslation\(prefix, companion\)/);
 });
 
@@ -83,5 +93,6 @@ test('la ayuda explica el flujo gratuito con Lens y el regreso a la aplicación'
   assert.match(help, /id="traducir-ticket"/);
   assert.match(help, /Google Lens/);
   assert.match(help, /gratuit/i);
-  assert.match(help, /traducci[oó]n|segundo ticket/);
+  assert.match(help, /español|otro idioma/);
+  assert.match(help, /no llama a OpenAI ni a otra API de pago/);
 });

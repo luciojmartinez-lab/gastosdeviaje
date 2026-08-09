@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v236';
+const APP_VERSION = '700v237';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -10,6 +10,7 @@ const FORM_DRAFTS_KEY = 'gastos_viaje_form_drafts_v1';
 const FORM_DRAFT_MAX_AGE_DAYS = 30;
 const OFFLINE_ENTRY_NOTICE_KEY = 'gastos_viaje_offline_notice_shown';
 const LENS_RETURN_TARGET_KEY = 'gastos_viaje_lens_return_target_v1';
+const LENS_RETURN_CACHE = 'cuaderno-bitacora-lens-return-v1';
 const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
 const SYNC_STATE_STORAGE = 'gastos_viaje_sync_state_v1';
 const BACKUP_DIRECTORY_SETTING_KEY = 'backupDirectory';
@@ -2457,7 +2458,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v236');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v237');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3107,13 +3108,11 @@ function ticketDateAlignedToTrip(prefix, value) {
   if (!trip || tripDateWithinRange(date, trip)) return { value: date, corrected: false };
   const startYear = String(trip.fechaInicio || '').slice(0, 4);
   const endYear = String(trip.fechaFin || trip.fechaInicio || '').slice(0, 4);
-  if (!/^\d{4}$/.test(startYear) || startYear !== endYear || date.slice(0, 4) === startYear) {
-    return { value: date, corrected: false };
+  if (/^\d{4}$/.test(startYear) && startYear === endYear && date.slice(0, 4) !== startYear) {
+    const corrected = `${startYear}${date.slice(4)}`;
+    if (tripDateWithinRange(corrected, trip)) return { value: corrected, corrected: true };
   }
-  const corrected = `${startYear}${date.slice(4)}`;
-  return tripDateWithinRange(corrected, trip)
-    ? { value: corrected, corrected: true }
-    : { value: date, corrected: false };
+  return { value: '', corrected: false, rejected: true };
 }
 
 function applyTicketOcrFields(prefix, result, options = {}) {
@@ -3121,13 +3120,14 @@ function applyTicketOcrFields(prefix, result, options = {}) {
   const detected = [];
   const applied = [];
   const preserved = [];
+  const preserveExisting = !options.replaceExisting && (prefix === 'edit-gasto' || options.onlyEmpty);
   const applyValue = (field, value, label) => {
     if (value === '' || value === null || value === undefined) return false;
     detected.push(label);
     const control = $(`#${prefix}-${field}`);
     if (!control) return false;
     const current = String(control.value || '').trim();
-    if ((prefix === 'edit-gasto' || options.onlyEmpty) && current) {
+    if (preserveExisting && current) {
       if (current !== String(value).trim()) preserved.push(label);
       return false;
     }
@@ -3136,7 +3136,8 @@ function applyTicketOcrFields(prefix, result, options = {}) {
     return true;
   };
   const alignedDate = ticketDateAlignedToTrip(prefix, fields.date);
-  applyValue('fecha', alignedDate.value, alignedDate.corrected ? 'fecha (año ajustado al viaje)' : 'fecha');
+  if (alignedDate.rejected) preserved.push('fecha incompatible con las fechas del viaje');
+  else applyValue('fecha', alignedDate.value, alignedDate.corrected ? 'fecha (año ajustado al viaje)' : 'fecha');
   applyValue('hora', fields.time || '', 'hora');
   applyValue('importe', Number.isFinite(fields.total) && fields.total > 0 ? fields.total.toFixed(2) : '', 'total');
   const merchantApplied = applyValue('desc', fields.merchant || '', 'establecimiento');
@@ -3150,7 +3151,7 @@ function applyTicketOcrFields(prefix, result, options = {}) {
     detected.push(`categoría${suggestion.subcategory ? ' y subcategoría' : ''}${suggestionSource}`);
     const categoryControl = $(`#${prefix}-cat`);
     const subcategoryControl = $(`#${prefix}-subcat`);
-    if (categoryControl?.value) {
+    if (categoryControl?.value && preserveExisting) {
       const categoryDiffers = Number(categoryControl.value) !== Number(suggestion.category.id);
       const subcategoryDiffers = suggestion.subcategory
         && Number(subcategoryControl?.value) !== Number(suggestion.subcategory.id);
@@ -3232,7 +3233,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v236');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v237');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3322,7 +3323,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v236');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v237');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3340,7 +3341,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
 
 async function readLensTicketTranslation(prefix, record) {
   if (!record?.data) return null;
-  const previousStatus = 'Traducción preparada junto al ticket principal.';
+  const previousStatus = 'Resultado de Lens preparado junto al ticket principal.';
   try {
     const result = await recognizeExpenseTicketSource(prefix, {
       source: record.data,
@@ -3348,9 +3349,9 @@ async function readLensTicketTranslation(prefix, record) {
       name: record.name || 'traduccion-lens.jpg'
     }, {
       languages: ['spa'],
-      onlyEmpty: true,
-      documentLabel: 'Traducción de Google Lens leída.',
-      preparingMessage: 'Leyendo localmente la traducción de Google Lens…'
+      replaceExisting: true,
+      documentLabel: 'Resultado de Google Lens analizado.',
+      preparingMessage: 'Analizando el resultado de Google Lens…'
     });
     if (result) {
       record.text = result.text || '';
@@ -3366,23 +3367,72 @@ async function readLensTicketTranslation(prefix, record) {
   }
 }
 
-function writeLensReturnTarget(target = null) {
-  pendingLensReturnTarget = target;
+function readStoredLensReturnTarget() {
+  for (const storage of [sessionStorage, localStorage]) {
+    try {
+      const target = JSON.parse(storage.getItem(LENS_RETURN_TARGET_KEY) || 'null');
+      if (target) return target;
+    } catch (_) {}
+  }
+  return null;
+}
+
+async function readLensTicketText(prefix, text) {
+  const sourceText = String(text || '').trim();
+  if (!sourceText) return null;
   try {
-    if (target) sessionStorage.setItem(LENS_RETURN_TARGET_KEY, JSON.stringify(target));
-    else sessionStorage.removeItem(LENS_RETURN_TARGET_KEY);
-  } catch (_) {}
+    setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v237');
+    const ocr = await ticketOcrModulePromise;
+    const fields = ocr.extractTicketFields(sourceText);
+    if (fields.merchant) {
+      fields.merchant = ocr.correctTicketMerchantFromKnown(
+        fields.merchant,
+        state.gastos.map(item => item.desc || item.descripcion || '')
+      );
+    }
+    const result = {
+      text: sourceText,
+      classificationText: sourceText,
+      fields,
+      foodEvidence: ocr.extractTicketFoodEvidence(sourceText, fields.total)
+    };
+    setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result, {
+      replaceExisting: true,
+      documentLabel: 'Texto de Google Lens analizado.'
+    }));
+    if (prefix === 'g') saveFormDraft(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS, { lensReturn: true });
+    return result;
+  } catch (error) {
+    console.warn('No se pudieron aplicar los datos reconocidos por Lens', error);
+    setTicketOcrStatus(prefix, error?.message || 'No se han podido analizar los datos compartidos por Google Lens.', true);
+    return null;
+  }
+}
+
+function deleteLensReturnSource(target) {
+  if (!target?.sourceUrl || !('caches' in window)) return;
+  caches.open(LENS_RETURN_CACHE)
+    .then(cache => cache.delete(target.sourceUrl))
+    .catch(() => {});
+}
+
+function writeLensReturnTarget(target = null) {
+  const previous = pendingLensReturnTarget || readStoredLensReturnTarget();
+  pendingLensReturnTarget = target;
+  for (const storage of [sessionStorage, localStorage]) {
+    try {
+      if (target) storage.setItem(LENS_RETURN_TARGET_KEY, JSON.stringify(target));
+      else storage.removeItem(LENS_RETURN_TARGET_KEY);
+    } catch (_) {}
+  }
+  if (!target || (previous?.sourceUrl && previous.sourceUrl !== target.sourceUrl)) {
+    deleteLensReturnSource(previous);
+  }
 }
 
 function currentLensReturnTarget() {
-  let target = pendingLensReturnTarget;
-  if (!target) {
-    try {
-      target = JSON.parse(sessionStorage.getItem(LENS_RETURN_TARGET_KEY) || 'null');
-    } catch (_) {
-      target = null;
-    }
-  }
+  let target = pendingLensReturnTarget || readStoredLensReturnTarget();
   const startedAt = Number(target?.startedAt || 0);
   if (!target || !['g', 'edit-gasto'].includes(target.prefix) || Date.now() - startedAt > 30 * 60 * 1000) {
     writeLensReturnTarget(null);
@@ -3392,13 +3442,35 @@ function currentLensReturnTarget() {
   return target;
 }
 
-function rememberLensReturnTarget(prefix) {
-  writeLensReturnTarget({
+async function rememberLensReturnTarget(prefix, source = null) {
+  if (prefix === 'g') saveFormDraft(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS, { lensReturn: true });
+  const target = {
     prefix,
     expenseId: prefix === 'edit-gasto' ? Number($('#edit-gasto-id')?.value || 0) : 0,
     tripId: Number($(`#${prefix}-viaje`)?.value || 0),
     startedAt: Date.now()
-  });
+  };
+  writeLensReturnTarget(target);
+  if (!source || !('caches' in window)) return target;
+  try {
+    const blob = source.source instanceof Blob
+      ? source.source
+      : dataUrlToBlob(source.source, source.type || 'image/jpeg');
+    const token = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    target.sourceUrl = new URL(`./__lens-return/${token}`, window.location.href).href;
+    target.sourceName = source.name || 'ticket.jpg';
+    target.sourceType = source.type || blob.type || 'image/jpeg';
+    const cache = await caches.open(LENS_RETURN_CACHE);
+    await cache.put(target.sourceUrl, new Response(blob, {
+      headers: { 'Content-Type': target.sourceType, 'Cache-Control': 'no-store' }
+    }));
+    writeLensReturnTarget(target);
+  } catch (error) {
+    console.warn('No se pudo conservar temporalmente el ticket para volver desde Lens', error);
+  }
+  return target;
 }
 
 async function translateExpenseTicket(prefix) {
@@ -3419,15 +3491,15 @@ async function translateExpenseTicket(prefix) {
     const blob = source.source instanceof Blob
       ? source.source
       : dataUrlToBlob(source.source, source.type || 'image/jpeg');
-    rememberLensReturnTarget(prefix);
+    await rememberLensReturnTarget(prefix, { ...source, source: blob });
     openImageViewer({
       name: source.name || 'ticket.jpg',
       type: source.type || blob.type || 'image/jpeg',
       blob,
       data: typeof source.source === 'string' ? source.source : ''
-    }, 'Traducir ticket con Google Lens');
+    }, 'Leer ticket con Google Lens');
     if ($('#image-viewer-status')) {
-      $('#image-viewer-status').textContent = 'Pulsa «Compartir / Google Lens», elige Lens y traduce. Desde el resultado, compártelo de nuevo con Cuaderno de Bitácora como traducción.';
+      $('#image-viewer-status').textContent = 'Pulsa «Compartir / Google Lens», elige Lens y lee o traduce. Después comparte el resultado de nuevo con Cuaderno de Bitácora.';
     }
     setTicketOcrStatus(prefix, 'Ticket listo para compartir con Google Lens. La aplicación no usa ningún servicio de pago.');
   } catch (error) {
@@ -3435,7 +3507,7 @@ async function translateExpenseTicket(prefix) {
     setTicketOcrStatus(prefix, error?.message || 'No se ha podido preparar el ticket para Google Lens.', true);
   } finally {
     delete button.dataset.busy;
-    button.textContent = 'Traducir con Google Lens';
+    button.textContent = 'Leer con Google Lens';
     syncTicketOcrAvailability(prefix);
   }
 }
@@ -3574,7 +3646,7 @@ async function shareImageViewerFile() {
     return;
   }
   try {
-    if (status) status.textContent = 'Elige Google Lens para traducir el ticket. Después comparte la imagen traducida de nuevo con Cuaderno de Bitácora.';
+    if (status) status.textContent = 'Elige Google Lens para leer o traducir el ticket. Después comparte el texto o la imagen resultante con Cuaderno de Bitácora.';
     await navigator.share(shareData);
   } catch (error) {
     if (error?.name !== 'AbortError') throw error;
@@ -10409,7 +10481,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v236');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v237');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11577,6 +11649,45 @@ function activeSharedExpenseFormTarget(tripId = Number($('#shared-images-trip')?
   };
 }
 
+async function restoreLensTicketSource(prefix, target) {
+  if (!prefix || ticketOcrSource(prefix) || !target?.sourceUrl || !('caches' in window)) return;
+  try {
+    const cache = await caches.open(LENS_RETURN_CACHE);
+    const response = await cache.match(target.sourceUrl);
+    if (!response) return;
+    const blob = await response.blob();
+    const file = new File([blob], target.sourceName || 'ticket.jpg', {
+      type: target.sourceType || blob.type || 'image/jpeg',
+      lastModified: Number(target.startedAt || Date.now())
+    });
+    assignSharedFilesToInput($(`#${prefix}-ticket`), [file]);
+    pendingExpenseTicketLocationChecks[prefix] = syncExpenseTicketSelection(prefix, 'file');
+    await pendingExpenseTicketLocationChecks[prefix];
+  } catch (error) {
+    console.warn('No se pudo restaurar el ticket al volver desde Lens', error);
+  }
+}
+
+async function restoreLensExpenseFormTarget(target, tripId) {
+  if (!target || !['g', 'edit-gasto'].includes(target.prefix)) return activeSharedExpenseFormTarget(tripId);
+  let current = activeSharedExpenseFormTarget(tripId);
+  if (!current || current.prefix !== target.prefix) {
+    applySelectedTrip(tripId || target.tripId);
+    if (target.prefix === 'edit-gasto') {
+      const gasto = state.gastos.find(item => Number(item.id) === Number(target.expenseId));
+      if (gasto) openEditGasto(gasto);
+    } else {
+      openAddGasto();
+    }
+    current = activeSharedExpenseFormTarget(tripId || target.tripId);
+  }
+  if (current) {
+    await restoreLensTicketSource(current.prefix, target);
+    current = activeSharedExpenseFormTarget(tripId || target.tripId);
+  }
+  return current;
+}
+
 function renderSharedExpenseOptions() {
   const select = $('#shared-images-expense');
   if (!select) return;
@@ -11737,7 +11848,7 @@ async function openSharedImagesDialog(payload) {
   if ($('#shared-content-intro')) {
     $('#shared-content-intro').textContent = hasImages
       ? payload.fromLens
-        ? 'Se ha recibido el resultado de Google Lens. La traducción se añadirá al gasto que tenías abierto y podrás revisarla antes de guardar.'
+        ? 'Se ha recibido el resultado de Google Lens. Se aplicará al gasto que tenías abierto y podrás revisar los datos antes de guardar.'
         : 'Elige dónde preparar las imágenes compartidas. No se guardará nada hasta que confirmes el formulario correspondiente.'
       : 'Elige el viaje. El texto se preparará como una nueva entrada del Blog y podrás revisarlo antes de guardarlo.';
   }
@@ -11766,7 +11877,10 @@ async function openSharedImagesDialog(payload) {
     tripSelect.value = defaultTripId ? String(defaultTripId) : '';
     tripSelect.disabled = !trips.length;
   }
-  const currentFormTarget = activeSharedExpenseFormTarget(defaultTripId);
+  let currentFormTarget = activeSharedExpenseFormTarget(defaultTripId);
+  if (payload.fromLens && lensTarget) {
+    currentFormTarget = await restoreLensExpenseFormTarget(lensTarget, defaultTripId);
+  }
   const preferredStoredExpense = lensTarget?.expenseId
     ? state.gastos.find(item => Number(item.id) === Number(lensTarget.expenseId) && Number(item.viajeId) === Number(defaultTripId))
     : null;
@@ -11790,6 +11904,13 @@ async function openSharedImagesDialog(payload) {
     if (preferredValue && [...$('#shared-images-expense').options].some(option => option.value === preferredValue)) {
       $('#shared-images-expense').value = preferredValue;
     }
+  }
+  if (payload.fromLens && sharedText && !hasImages && currentFormTarget) {
+    await readLensTicketText(currentFormTarget.prefix, sharedText);
+    pendingSharedImagesPayload = null;
+    writeLensReturnTarget(null);
+    setTab('gastos');
+    return;
   }
   syncSharedImagesDestination();
   await Promise.all([
@@ -11841,7 +11962,7 @@ async function prepareSharedTicketCompanion(file, kind) {
   };
 }
 
-async function routeSharedExpenseImages(prefix, files, kind, action = 'replace') {
+async function routeSharedExpenseImages(prefix, files, kind, action = 'replace', options = {}) {
   const [first, ...remaining] = files;
   if (kind === 'photo') {
     assignSharedFilesToInput($(`#${prefix}-extra-images`), files);
@@ -11852,11 +11973,22 @@ async function routeSharedExpenseImages(prefix, files, kind, action = 'replace')
     const companion = await prepareSharedTicketCompanion(first, action);
     pendingExpenseTicketTranslations[prefix] = companion;
     renderExpenseTicketTranslation(prefix);
-    if (action === 'translation') await readLensTicketTranslation(prefix, companion);
+    if (action === 'translation' && options.lensText) {
+      companion.text = options.lensText;
+      companion.sourceLanguages = ['spa'];
+      await readLensTicketText(prefix, options.lensText);
+    } else if (action === 'translation') await readLensTicketTranslation(prefix, companion);
     else setTicketOcrStatus(prefix, 'Segundo ticket preparado junto al ticket principal. Revisa y guarda el gasto.');
   } else {
     assignSharedFilesToInput($(`#${prefix}-ticket`), [first]);
     await syncExpenseTicketSelection(prefix, 'file');
+    if (options.fromLens) {
+      if (options.lensText) await readLensTicketText(prefix, options.lensText);
+      else {
+        const lensRecord = pendingExpenseTicketPreviews[prefix];
+        if (lensRecord?.data) await readLensTicketTranslation(prefix, lensRecord);
+      }
+    }
   }
   if (remaining.length) {
     assignSharedFilesToInput($(`#${prefix}-extra-images`), remaining);
@@ -11872,6 +12004,10 @@ async function continueSharedImagesImport() {
   const sharedText = sharedPayloadText(payload);
   const sharedKind = $('#shared-images-kind')?.value || 'ticket';
   const ticketAction = $('#shared-images-ticket-action')?.value || 'replace';
+  const lensOptions = {
+    fromLens: Boolean(payload?.fromLens),
+    lensText: payload?.fromLens ? sharedText : ''
+  };
   const selectedExpenseValue = String($('#shared-images-expense')?.value || '');
   const currentExpenseTarget = selectedExpenseValue.startsWith('current:') ? selectedSharedExpenseTarget() : null;
   const expenseId = Number(selectedExpenseValue || 0);
@@ -11914,7 +12050,8 @@ async function continueSharedImagesImport() {
       currentExpenseTarget.prefix,
       files,
       sharedKind,
-      currentExpenseTarget.hasTicket ? ticketAction : 'replace'
+      currentExpenseTarget.hasTicket ? ticketAction : 'replace',
+      lensOptions
     );
     return;
   }
@@ -11924,13 +12061,14 @@ async function continueSharedImagesImport() {
   if (destination === 'expense-new') {
     openAddGasto();
     if ($('#g-desc')) $('#g-desc').value = suggestedDescription;
-    await routeSharedExpenseImages('g', files, sharedKind);
+    const action = payload?.fromLens && ticketOcrSource('g') ? ticketAction : 'replace';
+    await routeSharedExpenseImages('g', files, sharedKind, action, lensOptions);
     return;
   }
   const gasto = state.gastos.find(item => Number(item.id) === expenseId && Number(item.viajeId) === tripId);
   if (!gasto) throw new Error('Elige un gasto existente.');
   openEditGasto(gasto);
-  await routeSharedExpenseImages('edit-gasto', files, sharedKind, gasto.ticketData ? ticketAction : 'replace');
+  await routeSharedExpenseImages('edit-gasto', files, sharedKind, gasto.ticketData ? ticketAction : 'replace', lensOptions);
 }
 
 async function consumeSharedContentId(id) {

@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v236';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v237';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -228,7 +228,7 @@ export function extractTicketFoodEvidence(text, total = null) {
   };
 }
 
-const CARD_PAYMENT_SIGNALS = /\b(copia\s+(?:cliente|comercio)|justificante|customer\s+copy|cardholder\s+copy|autorizacion|authorization|terminal|operacion|transaction|transaccion|contactless|tpv|datafono|visa|mastercard|redsys|servired|getnet|global\s+payments)\b/g;
+const CARD_PAYMENT_SIGNALS = /\b(copia\s+(?:cliente|comercio)|justificante|customer\s+copy|cardholder\s+copy|aut|autorizacion|authorization|terminal|operacion|transaction|transaccion|contactless|tpv|datafono|visa|mastercard|redsys|servired|getnet|global\s+payments)\b/g;
 const RECEIPT_SIGNALS = /\b(ticket|receipt|kuitti|factura(?:\s+simplificada)?|invoice|lasku|base\s+(?:imponible|imposable)|subtotal|article|articulo|item|tuote|unidades|cambio|change|mesa|iva|vat|alv)\b/g;
 const EAST_ASIAN_RECEIPT_SIGNALS = /(?:領収書|レシート|請求書|영수증|계산서)/gu;
 
@@ -307,6 +307,25 @@ export function extractTicketTotal(text) {
   const explicit = candidates.filter(item => item.value > 0).sort((a, b) => b.score - a.score)[0]?.value ?? null;
   if (explicit != null) return explicit;
   const source = String(text || '');
+  if (detectTicketDocumentType(source) === 'card_payment') {
+    const cardAmounts = [];
+    lines.forEach((line, index) => {
+      const normalized = normalizeTicketConcepts(line);
+      const amounts = amountsInLine(line).filter(value => value > 0);
+      if (amounts.length !== 1 || ticketTotalLineExcluded(normalized)) return;
+      const hasCurrency = /(?:eur|euro|euros|€|gbp|£|usd|\$|sek|nok|dkk)/i.test(line);
+      const maskedAmount = /\*{2,}\s*\d+[,.]\d{1,2}/.test(line);
+      const paymentNearby = lines.slice(Math.max(0, index - 2), index + 1)
+        .some(value => /\b(?:venta|compra|importe?|amount|deb(?:ito)?|cargo)\b/i.test(normalizeTicketText(value)));
+      if (!hasCurrency && !maskedAmount) return;
+      cardAmounts.push({
+        value: amounts[0],
+        score: (hasCurrency ? 45 : 0) + (maskedAmount ? 30 : 0) + (paymentNearby ? 20 : 0) + index / Math.max(lines.length, 1)
+      });
+    });
+    const cardTotal = cardAmounts.sort((left, right) => right.score - left.score)[0]?.value;
+    if (Number.isFinite(cardTotal)) return cardTotal;
+  }
   if (!/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/u.test(source)) return null;
   const startIndex = Math.floor(lines.length * 0.35);
   const fallback = [];

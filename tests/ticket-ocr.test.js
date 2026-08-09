@@ -32,6 +32,16 @@ FECHA: 19/07/26 HORA: 1020
 AUTORIZACION 123456
 IMPORTE EUR 7,10`;
 
+const unlabeledCardCopy = `UNICAJA BANCO
+TJA. VISA
+09-08-26 10:25
+ALIMENTACION MAITE
+CUENCA - ESPAÑA
+VENTA
+AUT: KTH6FJ DEB
+*****16,54EUR
+VERIFICADO EN DISPOSITIVO`;
+
 const milleniumReceiptOcr = `MILLENIUM
 MARTA RODRIGUEZ GAVIEIRO
 FRA SIMP: COMPROBANTE FECHA: 18/07/2026
@@ -81,6 +91,7 @@ test('reconoce más formatos de fecha y hora', () => {
 test('elige Total o Importe y no confunde IVA ni base imponible', () => {
   assert.equal(extractTicketTotal(shopReceipt), 7.1);
   assert.equal(extractTicketTotal(cardCopy), 7.1);
+  assert.equal(extractTicketTotal(unlabeledCardCopy), 16.54);
   assert.equal(extractTicketTotal('BASE IMPONIBLE 10,00\nIVA 21% 2,10\nTOTAL\n12,10 EUR'), 12.1);
   assert.equal(extractTicketTotal('IMPORTE IVA: 2,10\nT0TAL A PAGAR 12,10 EUR'), 12.1);
   assert.equal(extractTicketTotal('BASE IMPONIBLE 10,00\nIVA 21% 2,10\nEFECTIVO 12,10'), null);
@@ -284,14 +295,17 @@ test('la interfaz avisa cuando no encuentra un total inequívoco', () => {
   assert.match(app, /se mantiene el importe que ya figuraba/);
 });
 
-test('al editar un gasto el OCR conserva los datos existentes y su clasificación', () => {
+test('el OCR normal conserva datos existentes y Lens puede sustituirlos', () => {
   const app = readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
-  assert.match(app, /prefix === 'edit-gasto' && current/);
+  assert.match(app, /const preserveExisting = !options\.replaceExisting/);
+  assert.match(app, /if \(preserveExisting && current\)/);
+  assert.match(app, /replaceExisting: true/);
   assert.match(app, /result\.classificationText \|\| result\.text \|\| ''/);
   assert.match(app, /result\.foodEvidence/);
   assert.match(app, /Se conservaron sin cambios/);
   assert.match(app, /ticketDateAlignedToTrip/);
   assert.match(app, /fecha \(año ajustado al viaje\)/);
+  assert.match(app, /fecha incompatible con las fechas del viaje/);
 });
 
 test('los comercios de comida tienen prioridad y solo usan una subcategoría configurada', () => {
