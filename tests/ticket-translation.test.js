@@ -82,6 +82,7 @@ test('el resultado de Lens sustituye los datos reconocidos tanto en texto como e
   assert.match(app, /async function readLensTicketTranslation/);
   assert.match(app, /languages: \['spa'\]/);
   assert.match(app, /replaceExisting: true/);
+  assert.match(app, /preferLargeTitle: true/);
   assert.match(app, /async function readLensTicketText/);
   assert.match(app, /ocr\.extractTicketFields\(sourceText\)/);
   assert.match(app, /payload\.fromLens && sharedText && !hasImages && currentFormTarget/);

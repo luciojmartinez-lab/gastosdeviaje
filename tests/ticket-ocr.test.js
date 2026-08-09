@@ -109,6 +109,11 @@ test('elige Total o Importe y no confunde IVA ni base imponible', () => {
   assert.equal(extractTicketTotal('VÄLISUMMA 20,00\nALV 4,90'), null);
   assert.equal(extractTicketTotal('小計 ¥1,100\n消費税 ¥110\n合計 ¥1,210'), 1210);
   assert.equal(extractTicketTotal('内消費税10% ¥990\n合 計 10,885'), 10885);
+  assert.equal(extractTicketTotal('total 827'), 827);
+  assert.equal(extractTicketTotal('total Y827'), 827);
+  assert.equal(extractTicketTotal('total ¥8 27'), 827);
+  assert.equal(extractTicketTotal('total 2,481'), 2481);
+  assert.equal(extractTicketTotal('total (objetivo del 8%) 827'), 827);
   assert.equal(extractTicketTotal(`領収書
 小計 本信
 \\8, 0U0
@@ -268,7 +273,8 @@ test('activa lecturas de rescate separadas para cabecera y total', () => {
   assert.match(ocr, /Leyendo el título/);
   assert.match(ocr, /OCR_PSM_SINGLE_BLOCK/);
   assert.match(ocr, /OCR_PSM_SINGLE_LINE/);
-  assert.match(ocr, /titleConfidence >= 60/);
+  assert.match(ocr, /options\.preferLargeTitle/);
+  assert.match(ocr, /titleMinimumConfidence = options\.preferLargeTitle \? 35 : 60/);
   assert.match(ocr, /preparedResult\.documentDetected \|\| !fields\.total/);
   assert.match(ocr, /binaryFields\.merchant \|\| fields\.merchant/);
   assert.match(ocr, /cropCanvas\(prepared, 0, 0\.56\)/);

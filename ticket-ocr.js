@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v238';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v239';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -146,8 +146,19 @@ function amountsInLine(line) {
 
 function integerCurrencyAmountsInLine(line) {
   const normalized = String(line || '').replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0');
-  const matches = normalized.match(/(?:[¥₩￥]\s*(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)|(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)\s*(?:円|원|jpy|krw))/giu) || [];
+  const matches = normalized.match(/(?:[¥₩￥]\s*\d(?:[\d,.\s]*\d)?|(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)\s*(?:円|원|jpy|krw))/giu) || [];
   return matches.map(value => Number(value.replace(/\D/g, ''))).filter(value => Number.isFinite(value));
+}
+
+function labeledIntegerAmountsInLine(line) {
+  const normalized = normalizeTicketText(line).replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0');
+  const labelIndex = normalized.search(/\b(?:grand\s+)?total\b|\b(?:importe?|amount|summa|betrag|montant|importo|valor)\b|\b(?:a|per)\s+(?:pagar|abonar)\b/);
+  if (labelIndex < 0) return [];
+  const tail = normalized.slice(labelIndex);
+  return Array.from(tail.matchAll(/(?:^|[^\d])((?:\d{1,3}(?:[,\s.]\d{3})+)|\d+)(?![\d,.])/g))
+    .filter(match => !/^\s*%/.test(tail.slice((match.index || 0) + match[0].length)))
+    .map(match => Number(String(match[1] || '').replace(/\D/g, '')))
+    .filter(value => Number.isFinite(value) && value > 0);
 }
 
 function groupedIntegerAmountsInLine(line) {
@@ -278,9 +289,14 @@ export function extractTicketTotal(text) {
     const excluded = ticketTotalLineExcluded(normalized);
     const integerCurrencyAmounts = integerCurrencyAmountsInLine(line);
     if (integerCurrencyAmounts.length && (hasBestLabel || hasTotalLabel || hasPaymentDueLabel)) amounts = integerCurrencyAmounts;
-    else if (hasEastAsianBestLabel) {
+    else {
       const groupedIntegers = groupedIntegerAmountsInLine(line);
-      if (groupedIntegers.length) amounts = groupedIntegers;
+      if (groupedIntegers.length && (hasBestLabel || hasTotalLabel || hasPaymentDueLabel)) {
+        amounts = groupedIntegers;
+      } else if (!amounts.length && (hasBestLabel || hasTotalLabel || hasPaymentDueLabel)) {
+        const labeledIntegers = labeledIntegerAmountsInLine(line);
+        if (labeledIntegers.length) amounts = labeledIntegers;
+      }
     }
     let labelScore = hasBestLabel ? 130 : hasTotalLabel ? 115 : hasPaymentDueLabel ? 105 : hasAmountLabel ? 95 : 0;
     if (tableHeader && !hasTotalLabel) labelScore = 0;
@@ -935,7 +951,7 @@ export async function recognizeTicket(source, options = {}) {
     prepared.width,
     prepared.height
   );
-  if (!fields.merchant && titleBounds) {
+  if ((!fields.merchant || options.preferLargeTitle) && titleBounds) {
     await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SINGLE_LINE });
     try {
       onProgress({ status: 'Leyendo el título', progress: 0.82 });
@@ -943,7 +959,8 @@ export async function recognizeTicket(source, options = {}) {
       const titleText = titleResult?.data?.text || '';
       const titleConfidence = Number(titleResult?.data?.confidence || 0);
       const titleCandidate = extractTicketMerchant(titleText);
-      if (isPlausibleTicketMerchant(titleCandidate) && titleConfidence >= 60) {
+      const titleMinimumConfidence = options.preferLargeTitle ? 35 : 60;
+      if (isPlausibleTicketMerchant(titleCandidate) && titleConfidence >= titleMinimumConfidence) {
         titleMerchant = titleCandidate;
         fields.merchant = titleMerchant;
       }
