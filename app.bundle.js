@@ -1,7 +1,10 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v243';
+const APP_VERSION = '700v244';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
+const ROUTE_STOP_ROLE_DESTINATION = 'destination';
+const ROUTE_STOP_ROLE_TRANSIT = 'transit';
+const ROUTE_STOP_ROLE_ENDPOINT = 'endpoint';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -165,7 +168,7 @@ const blogPointMapGesture = {
 };
 const routeEditorState = {
   tripId: null,
-  cityIds: [],
+  stops: [],
   dragIndex: null,
   optionMode: 'expenses'
 };
@@ -1359,9 +1362,61 @@ function tripCountryIds(viaje) {
   return [];
 }
 
+function normalizedRouteStopRole(value, index = 0, cityIds = []) {
+  const role = String(value || '').trim().toLowerCase();
+  if ([ROUTE_STOP_ROLE_DESTINATION, ROUTE_STOP_ROLE_TRANSIT, ROUTE_STOP_ROLE_ENDPOINT].includes(role)) return role;
+  if (cityIds.length === 1) return ROUTE_STOP_ROLE_DESTINATION;
+  if (index === 0) return ROUTE_STOP_ROLE_ENDPOINT;
+  if (index === cityIds.length - 1 && Number(cityIds[index]) === Number(cityIds[0])) return ROUTE_STOP_ROLE_ENDPOINT;
+  return ROUTE_STOP_ROLE_DESTINATION;
+}
+
+function normalizeTripRouteStops(viaje, cityIds = []) {
+  const ids = (cityIds.length ? cityIds : (Array.isArray(viaje && viaje.ciudadIds) ? viaje.ciudadIds : []))
+    .map(Number)
+    .filter(Boolean);
+  const stored = Array.isArray(viaje && viaje.routeStops) ? viaje.routeStops : [];
+  if (!ids.length && stored.length) {
+    stored.forEach(stop => {
+      const cityId = Number(stop && stop.cityId);
+      if (cityId) ids.push(cityId);
+    });
+  }
+  return ids.map((cityId, index) => {
+    const saved = stored[index] && Number(stored[index].cityId) === Number(cityId) ? stored[index] : null;
+    return {
+      cityId,
+      role: normalizedRouteStopRole(saved && saved.role, index, ids),
+      date: tripDateWithinRange(saved && saved.date, viaje) ? String(saved.date) : ''
+    };
+  });
+}
+
+function tripRouteStops(viaje) {
+  return normalizeTripRouteStops(viaje);
+}
+
+function mergeTripRouteStops(viaje, cityIds = []) {
+  const ids = (cityIds || []).map(Number).filter(Boolean);
+  const previousByCity = new Map();
+  tripRouteStops(viaje).forEach(stop => {
+    if (!previousByCity.has(stop.cityId)) previousByCity.set(stop.cityId, []);
+    previousByCity.get(stop.cityId).push(stop);
+  });
+  return ids.map((cityId, index) => {
+    const previous = previousByCity.get(cityId)?.shift();
+    return {
+      cityId,
+      role: normalizedRouteStopRole(previous && previous.role, index, ids),
+      date: tripDateWithinRange(previous && previous.date, viaje) ? previous.date : ''
+    };
+  });
+}
+
 function tripCityIds(viaje) {
   if (!viaje) return [];
-  if (Array.isArray(viaje.ciudadIds)) return viaje.ciudadIds.map(Number).filter(Boolean);
+  if (Array.isArray(viaje.ciudadIds) && viaje.ciudadIds.length) return viaje.ciudadIds.map(Number).filter(Boolean);
+  if (Array.isArray(viaje.routeStops)) return viaje.routeStops.map(stop => Number(stop && stop.cityId)).filter(Boolean);
   return [];
 }
 
@@ -2470,7 +2525,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v243');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v244');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3261,7 +3316,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v243');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v244');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3352,7 +3407,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v243');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v244');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3414,7 +3469,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v243');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v244');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -3675,7 +3730,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v243');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v244');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -5264,13 +5319,15 @@ async function delLugar(id) {
 
 async function addViaje({ nombre, fechaInicio, fechaFin, presupuesto = 0, paisIds = [], ciudadIds = [] }) {
   const now = new Date().toISOString();
+  const normalizedCityIds = (ciudadIds || []).map(Number).filter(Boolean);
   const id = await addRecord('viajes', {
     nombre,
     fechaInicio,
     fechaFin,
     presupuesto: numberValue(presupuesto),
     paisIds: (paisIds || []).map(Number).filter(Boolean),
-    ciudadIds: (ciudadIds || []).map(Number).filter(Boolean),
+    ciudadIds: normalizedCityIds,
+    routeStops: normalizeTripRouteStops({ fechaInicio, fechaFin, ciudadIds: normalizedCityIds }, normalizedCityIds),
     createdAt: now,
     updatedAt: now
   });
@@ -6924,14 +6981,21 @@ function compareGastosRouteOrder(a, b) {
     Number(a.id || 0) - Number(b.id || 0);
 }
 
-function destinationRouteScope(routeIds = []) {
-  const completeIds = routeIds.map(Number).filter(Boolean);
-  const applied = tripMapState.destinationOnly && completeIds.length > 2;
+function destinationRouteScope(trip) {
+  const completeStops = tripRouteStops(trip).map((stop, routeIndex) => ({ ...stop, routeIndex }));
+  const completeIds = completeStops.map(stop => Number(stop.cityId)).filter(Boolean);
+  const destinationStops = completeStops.filter(stop => stop.role === ROUTE_STOP_ROLE_DESTINATION);
+  const applied = tripMapState.destinationOnly && destinationStops.length > 0;
+  const visibleStops = applied ? destinationStops : completeStops;
+  const visibleIds = visibleStops.map(stop => Number(stop.cityId)).filter(Boolean);
+  const visibleIdSet = new Set(visibleIds);
   return {
+    completeStops,
     completeIds,
+    visibleStops,
     applied,
-    visibleIds: applied ? completeIds.slice(1, -1) : completeIds,
-    omittedIds: applied ? new Set([completeIds[0], completeIds[completeIds.length - 1]]) : new Set()
+    visibleIds,
+    omittedIds: applied ? new Set(completeIds.filter(id => !visibleIdSet.has(id))) : new Set()
   };
 }
 
@@ -6972,22 +7036,27 @@ function tripRouteArrivalDates(trip, routeIds = tripCityIds(trip)) {
     if (!occurrences.has(id)) occurrences.set(id, []);
     occurrences.get(id).push(index);
   });
-  const result = ids.map(() => '');
+  const configuredStops = tripRouteStops(trip);
+  const result = ids.map((id, index) => (
+    Number(configuredStops[index] && configuredStops[index].cityId) === id
+      ? configuredStops[index].date || ''
+      : ''
+  ));
   occurrences.forEach((indexes, cityId) => {
     const source = actualDates.get(cityId) && actualDates.get(cityId).size
       ? actualDates.get(cityId)
       : fallbackDates.get(cityId);
     const dates = source ? [...source].sort() : [];
     indexes.forEach((routeIndex, occurrenceIndex) => {
-      if (!dates.length) return;
+      if (!dates.length || result[routeIndex]) return;
       const dateIndex = indexes.length === 1
         ? 0
         : Math.round((occurrenceIndex * (dates.length - 1)) / (indexes.length - 1));
       result[routeIndex] = dates[dateIndex] || '';
     });
   });
-  if (trip.fechaInicio) result[0] = trip.fechaInicio;
-  if (trip.fechaFin) result[result.length - 1] = trip.fechaFin;
+  if (trip.fechaInicio && !result[0]) result[0] = trip.fechaInicio;
+  if (trip.fechaFin && !result[result.length - 1]) result[result.length - 1] = trip.fechaFin;
   return result;
 }
 
@@ -7025,11 +7094,11 @@ function mapRouteCities(gastos, paisId) {
     });
   if (scopedTrips.length === 1) {
     const scopedTrip = scopedTrips[0];
-    const destinationScope = destinationRouteScope(tripCityIds(scopedTrip));
+    const destinationScope = destinationRouteScope(scopedTrip);
     const omittedEndpointIds = destinationScope.omittedIds;
-    const plannedIds = destinationScope.visibleIds;
+    const plannedStops = destinationScope.visibleStops;
+    const plannedIds = plannedStops.map(stop => Number(stop.cityId));
     const completeArrivalDates = tripRouteArrivalDates(scopedTrip, destinationScope.completeIds);
-    const plannedArrivalDates = destinationScope.applied ? completeArrivalDates.slice(1, -1) : completeArrivalDates;
     if (!plannedIds.length) {
       return [...byCity.values()]
         .filter(item => !omittedEndpointIds.has(Number(item.ciudad.id)))
@@ -7047,9 +7116,10 @@ function mapRouteCities(gastos, paisId) {
         });
     }
     const seenPlanned = new Set();
-    const plannedItems = plannedIds.map((id, index) => {
+    const plannedItems = plannedStops.map((stop, index) => {
+      const id = Number(stop.cityId);
       const baseCity = state.lugares.find(l => Number(l.id) === Number(id));
-      const arrivalDate = plannedArrivalDates[index] || '';
+      const arrivalDate = stop.date || completeArrivalDates[stop.routeIndex] || '';
       const ciudad = cityWithAccommodationDestination(baseCity, scopedTrip.id, arrivalDate);
       if (!ciudad || isTransitPlaceName(ciudad.nombre)) return null;
       const pais = state.lugares.find(l => Number(l.id) === Number(ciudad.parentId));
@@ -7062,11 +7132,12 @@ function mapRouteCities(gastos, paisId) {
         pais,
         firstDate: arrivalDate,
         firstOrder: expenseItem ? expenseItem.firstOrder : index,
-        routeOrder: index,
+        routeOrder: stop.routeIndex,
         count: expenseItem ? expenseItem.count : 0,
         totalEur: expenseItem ? expenseItem.totalEur : 0,
         plannedOnly: tripMapState.showPlanned && !expenseItem,
-        repeatedStop: plannedIds.indexOf(id) !== index
+        repeatedStop: plannedIds.indexOf(id) !== index,
+        stopRole: stop.role
       };
     }).filter(Boolean);
     const extraExpenseItems = [...byCity.values()]
@@ -7289,7 +7360,7 @@ async function addMapStopToTrip() {
 }
 
 function routeCityOptionsForTrip(trip) {
-  const routeIds = routeEditorState.cityIds.map(Number).filter(Boolean);
+  const routeIds = routeEditorState.stops.map(stop => Number(stop && stop.cityId)).filter(Boolean);
   const expenseIds = state.gastos
     .filter(g => Number(g.viajeId) === Number(trip.id))
     .map(g => Number(g.ciudadId))
@@ -7348,12 +7419,21 @@ function renderPhotoTypeControls() {
 
 function moveRouteStop(fromIndex, toIndex) {
   const from = Number(fromIndex);
-  const to = Math.max(0, Math.min(routeEditorState.cityIds.length - 1, Number(toIndex)));
+  const to = Math.max(0, Math.min(routeEditorState.stops.length - 1, Number(toIndex)));
   if (!Number.isInteger(from) || !Number.isInteger(to) || from === to) return;
-  const ids = routeEditorState.cityIds.slice();
-  const [item] = ids.splice(from, 1);
-  ids.splice(to, 0, item);
-  routeEditorState.cityIds = ids;
+  const stops = routeEditorState.stops.slice();
+  const [item] = stops.splice(from, 1);
+  stops.splice(to, 0, item);
+  routeEditorState.stops = stops;
+}
+
+function routeStopRoleOptionsHtml(selectedRole = ROUTE_STOP_ROLE_DESTINATION) {
+  const roles = [
+    { value: ROUTE_STOP_ROLE_DESTINATION, label: 'Destino' },
+    { value: ROUTE_STOP_ROLE_TRANSIT, label: 'En tránsito' },
+    { value: ROUTE_STOP_ROLE_ENDPOINT, label: 'Inicio / regreso' }
+  ];
+  return roles.map(role => `<option value="${role.value}"${role.value === selectedRole ? ' selected' : ''}>${role.label}</option>`).join('');
 }
 
 function renderRouteDialog() {
@@ -7362,10 +7442,12 @@ function renderRouteDialog() {
   if (!body || !trip) return;
   const options = routeCityOptionsForTrip(trip);
   const optionHtml = id => routeCityOptionsHtml(options, id);
-  const rows = routeEditorState.cityIds.map((id, index) => `
+  const rows = routeEditorState.stops.map((stop, index) => `
     <tr class="route-stop-row" draggable="true" data-route-row="${index}">
-      <td><input type="number" min="1" max="${Math.max(1, routeEditorState.cityIds.length)}" value="${index + 1}" data-route-position="${index}" aria-label="Número de parada"></td>
-      <td><select data-route-city="${index}" aria-label="Ciudad de la parada ${index + 1}">${optionHtml(id)}</select></td>
+      <td><input type="number" min="1" max="${Math.max(1, routeEditorState.stops.length)}" value="${index + 1}" data-route-position="${index}" aria-label="Número de parada"></td>
+      <td><select data-route-city="${index}" aria-label="Ciudad de la parada ${index + 1}">${optionHtml(stop.cityId)}</select></td>
+      <td><select data-route-role="${index}" aria-label="Tipo de la parada ${index + 1}">${routeStopRoleOptionsHtml(stop.role)}</select></td>
+      <td><input type="date" min="${escapeHtml(trip.fechaInicio || '')}" max="${escapeHtml(trip.fechaFin || '')}" value="${escapeHtml(stop.date || '')}" data-route-date="${index}" aria-label="Día previsto de la parada ${index + 1}"></td>
       <td class="route-stop-actions">
         <button type="button" class="ghost icon-btn" data-route-up="${index}" title="Subir parada">↑</button>
         <button type="button" class="ghost icon-btn" data-route-down="${index}" title="Bajar parada">↓</button>
@@ -7374,15 +7456,16 @@ function renderRouteDialog() {
     </tr>
   `).join('');
   body.innerHTML = `
-    <p class="small route-help">Edita el orden de la ruta. Puedes arrastrar filas en PC, cambiar el número de parada o usar subir/bajar.</p>
+    <p class="small route-help">Indica si cada parada es destino, tránsito o inicio/regreso. El día previsto es opcional; permite que el mapa de cada día muestre solamente lo que corresponde.</p>
     <div class="table-wrap route-table-wrap">
       <table class="route-stops-table">
-        <thead><tr><th>Nº</th><th>Ciudad</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>Nº</th><th>Ciudad</th><th>Tipo</th><th>Día previsto</th><th>Acciones</th></tr></thead>
         <tbody>
-          ${rows || '<tr><td colspan="3" class="small">Todavía no hay paradas planificadas.</td></tr>'}
+          ${rows || '<tr><td colspan="5" class="small">Todavía no hay paradas planificadas.</td></tr>'}
           <tr class="route-add-row">
-            <td>${routeEditorState.cityIds.length + 1}</td>
+            <td>${routeEditorState.stops.length + 1}</td>
             <td><select id="route-add-city" aria-label="Añadir ciudad">${optionHtml('')}</select></td>
+            <td colspan="2" class="small">Añade la parada y después elige su tipo y día.</td>
             <td><button type="button" class="btn ghost icon-btn" data-route-add="1" title="Añadir parada">+</button></td>
           </tr>
         </tbody>
@@ -7401,7 +7484,9 @@ function openRouteDialog(trip, options = {}) {
     .filter(Boolean);
   const configuredCityIds = tripCityIds(trip).map(Number).filter(Boolean);
   routeEditorState.tripId = Number(trip.id);
-  routeEditorState.cityIds = configuredCityIds.length ? configuredCityIds : mapCityIds;
+  routeEditorState.stops = configuredCityIds.length
+    ? tripRouteStops(trip)
+    : normalizeTripRouteStops(trip, mapCityIds);
   routeEditorState.dragIndex = null;
   routeEditorState.optionMode = options.optionMode || 'expenses';
   $('#route-dialog-title').textContent = `Añadir / modificar paradas de ${trip.nombre}`;
@@ -7414,7 +7499,7 @@ function openRouteDialog(trip, options = {}) {
 function closeRouteDialog() {
   const dialog = $('#route-dialog');
   routeEditorState.tripId = null;
-  routeEditorState.cityIds = [];
+  routeEditorState.stops = [];
   routeEditorState.dragIndex = null;
   routeEditorState.optionMode = 'expenses';
   if (!dialog) return;
@@ -7425,7 +7510,22 @@ function closeRouteDialog() {
 async function saveRouteDialog() {
   const trip = state.viajes.find(v => Number(v.id) === Number(routeEditorState.tripId));
   if (!trip) throw new Error('No se encontró el viaje');
-  const cityIds = routeEditorState.cityIds.map(Number).filter(Boolean);
+  const editorCityIds = routeEditorState.stops.map(stop => Number(stop && stop.cityId));
+  const routeStops = routeEditorState.stops
+    .map((stop, index) => ({
+      cityId: Number(stop && stop.cityId),
+      role: normalizedRouteStopRole(stop && stop.role, index, editorCityIds),
+      date: tripDateWithinRange(stop && stop.date, trip) ? String(stop.date) : ''
+    }))
+    .filter(stop => stop.cityId);
+  if (routeStops.length && !routeStops.some(stop => stop.role === ROUTE_STOP_ROLE_DESTINATION)) {
+    throw new Error('Marca al menos una parada como Destino');
+  }
+  const datedStops = routeStops.filter(stop => stop.date);
+  if (datedStops.some((stop, index) => index > 0 && stop.date < datedStops[index - 1].date)) {
+    throw new Error('Los días previstos deben seguir el orden de la ruta');
+  }
+  const cityIds = routeStops.map(stop => stop.cityId);
   const paisIds = new Set(tripCountryIds(trip).map(Number).filter(Boolean));
   cityIds.forEach(id => {
     const city = state.lugares.find(l => Number(l.id) === Number(id));
@@ -7433,6 +7533,7 @@ async function saveRouteDialog() {
   });
   await updateViaje(trip.id, {
     ciudadIds: cityIds,
+    routeStops,
     paisIds: [...paisIds],
     updatedAt: new Date().toISOString()
   });
@@ -7566,15 +7667,22 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
 
 function mapRecordMatchesDestination(record, trip) {
   if (!trip) return true;
-  const scope = destinationRouteScope(tripCityIds(trip));
+  const scope = destinationRouteScope(trip);
   if (!scope.applied) return true;
-  const visibleIds = new Set(scope.visibleIds.map(Number));
+  const recordDate = String(record && record.fecha || '');
+  const cityMatchesDestination = cityId => {
+    const allStops = scope.completeStops.filter(stop => Number(stop.cityId) === Number(cityId));
+    const destinationStops = allStops.filter(stop => stop.role === ROUTE_STOP_ROLE_DESTINATION);
+    if (!destinationStops.length) return false;
+    if (allStops.every(stop => stop.role === ROUTE_STOP_ROLE_DESTINATION)) return true;
+    return destinationStops.some(stop => !stop.date || !recordDate || stop.date === recordDate);
+  };
   const recordCityId = Number(record && record.ciudadId);
-  if (recordCityId) return visibleIds.has(recordCityId);
+  if (recordCityId) return cityMatchesDestination(recordCityId);
   const latitude = storedImageCoordinate(record && record.latitude, -90, 90);
   const longitude = storedImageCoordinate(record && record.longitude, -180, 180);
   if (latitude == null || longitude == null) return false;
-  const nearest = scope.completeIds
+  const nearest = scope.visibleIds
     .map(id => state.lugares.find(place => Number(place.id) === Number(id)))
     .filter(city => city && lugarHasCoords(city))
     .map(city => ({
@@ -7585,7 +7693,7 @@ function mapRecordMatchesDestination(record, trip) {
       )
     }))
     .sort((a, b) => a.distance - b.distance)[0];
-  return Boolean(nearest && visibleIds.has(nearest.id));
+  return Boolean(nearest && cityMatchesDestination(nearest.id));
 }
 
 function photoMapItems(records) {
@@ -7651,23 +7759,62 @@ function blogEntryMatchesMapCountry(entry, paisId) {
   return Number(entry && entry.paisId || (city && city.parentId)) === Number(paisId);
 }
 
-function dailyMapDatesForScope(scopedTripIds, paisId, destinationTrip = null) {
+function dailyMapDatesForScope(scopedTripIds, paisId) {
   const dates = new Set();
   state.gastos
     .filter(gasto => scopedTripIds.has(Number(gasto.viajeId)))
     .filter(gasto => gastoMatchesLugarFilters(gasto, paisId, ''))
-    .filter(gasto => mapRecordMatchesDestination(gasto, destinationTrip))
     .forEach(gasto => {
       if (gasto.fecha) dates.add(gasto.fecha);
     });
   state.blogEntries
     .filter(entry => scopedTripIds.has(Number(entry.viajeId)))
     .filter(entry => blogEntryMatchesMapCountry(entry, paisId))
-    .filter(entry => mapRecordMatchesDestination(entry, destinationTrip))
     .forEach(entry => {
       if (entry.fecha) dates.add(entry.fecha);
     });
+  state.viajes
+    .filter(trip => scopedTripIds.has(Number(trip.id)))
+    .flatMap(tripRouteStops)
+    .forEach(stop => {
+      if (!stop.date) return;
+      const city = state.lugares.find(place => Number(place.id) === Number(stop.cityId));
+      if (!paisId || Number(city && city.parentId) === Number(paisId)) dates.add(stop.date);
+    });
   return [...dates].sort().reverse();
+}
+
+function plannedDailyMapRecordsForScope(scopedTripIds, paisId, day, destinationOnlyApplied = false) {
+  if (!tripMapState.showPlanned || !day) return [];
+  const records = [];
+  state.viajes
+    .filter(trip => scopedTripIds.has(Number(trip.id)))
+    .forEach(trip => {
+      tripRouteStops(trip).forEach((stop, routeIndex) => {
+        if (stop.date !== day) return;
+        if (destinationOnlyApplied && stop.role !== ROUTE_STOP_ROLE_DESTINATION) return;
+        const baseCity = state.lugares.find(place => Number(place.id) === Number(stop.cityId));
+        if (!baseCity || !lugarHasCoords(baseCity) || isTransitPlaceName(baseCity.nombre)) return;
+        if (paisId && Number(baseCity.parentId) !== Number(paisId)) return;
+        const city = cityWithAccommodationDestination(baseCity, trip.id, day);
+        records.push({
+          key: `planned-${trip.id}-${routeIndex}-${day}`,
+          kind: 'city',
+          viajeId: trip.id,
+          fecha: day,
+          hora: '99:98',
+          descripcion: city.nombre,
+          ciudadId: Number(stop.cityId),
+          paisId: Number(city.parentId) || null,
+          latitude: Number(city.lat),
+          longitude: Number(city.lng),
+          accommodationDestination: city.accommodationDestination === true,
+          plannedOnly: true,
+          stopRole: stop.role
+        });
+      });
+    });
+  return records;
 }
 
 function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip = null) {
@@ -7772,7 +7919,7 @@ function dailyMapItem(record) {
     },
     firstDate: record.fecha || '',
     configuredOnly: true,
-    plannedOnly: false,
+    plannedOnly: record.plannedOnly === true,
     dailyPoint: true,
     cityFallback: record.kind === 'city' && !record.accommodationDestination,
     accommodationDestination: record.accommodationDestination === true,
@@ -7789,20 +7936,30 @@ function tripMapItemsForCurrentScope() {
   const gastos = gastosForSelectorTripScope('#map-viaje');
   const scopedTripIds = mapScopedTripIds(gastos);
   const scopedTrips = mapScopedTrips(gastos);
-  const destinationOnlyAvailable = scopedTrips.length === 1 && tripCityIds(scopedTrips[0]).length > 2;
+  const destinationOnlyAvailable = scopedTrips.length === 1
+    && tripRouteStops(scopedTrips[0]).some(stop => stop.role === ROUTE_STOP_ROLE_DESTINATION);
   const destinationOnlyApplied = tripMapState.destinationOnly && destinationOnlyAvailable;
   const destinationTrip = destinationOnlyApplied ? scopedTrips[0] : null;
   const exactDailyRecords = dailyMapRecordsForScope(scopedTripIds, paisId)
     .filter(record => mapRecordMatchesDestination(record, destinationTrip));
-  const dayOptions = dailyMapDatesForScope(scopedTripIds, paisId, destinationTrip);
+  const dayOptions = dailyMapDatesForScope(scopedTripIds, paisId);
   if (tripMapState.day && !dayOptions.includes(tripMapState.day)) tripMapState.day = '';
   const dailyMode = Boolean(tripMapState.day);
   const selectedExactDailyRecords = dailyMode
     ? exactDailyRecords.filter(record => record.fecha === tripMapState.day)
     : [];
-  const dailyCityRecords = dailyMode
+  const actualDailyCityRecords = dailyMode
     ? dailyCityMapRecordsForScope(scopedTripIds, paisId, tripMapState.day, destinationTrip)
     : [];
+  const actualDailyCityIds = new Set([
+    ...selectedExactDailyRecords.map(record => Number(record.ciudadId)),
+    ...actualDailyCityRecords.map(record => Number(record.ciudadId))
+  ].filter(Boolean));
+  const plannedDailyRecords = dailyMode
+    ? plannedDailyMapRecordsForScope(scopedTripIds, paisId, tripMapState.day, destinationOnlyApplied)
+      .filter(record => !actualDailyCityIds.has(Number(record.ciudadId)))
+    : [];
+  const dailyCityRecords = [...actualDailyCityRecords, ...plannedDailyRecords];
   const dailyRouteOrder = dailyMode && scopedTrips.length === 1
     ? tripDailyRouteOrder(scopedTrips[0], tripMapState.day)
     : new Map();
@@ -9155,8 +9312,24 @@ function renderTripMap() {
   const missing = cities.filter(item => !lugarHasCoords(item.ciudad));
   if (!cities.length) {
     destroyTripVectorMap();
-    container.innerHTML = '<div class="map-empty">Sin ciudades en este viaje.</div>';
-    info.textContent = '';
+    const emptyDayOptions = dayOptions.map(day => `<option value="${escapeHtml(day)}"${tripMapState.day === day ? ' selected' : ''}>${escapeHtml(blogDayDateLabel(day))}</option>`).join('');
+    const emptyMessage = dailyMode
+      ? (destinationOnlyApplied ? 'No hay destinos para el día elegido.' : 'No hay puntos ni ciudades para el día elegido.')
+      : 'Sin ciudades en este viaje.';
+    container.innerHTML = `<div class="trip-map-shell">
+      <div class="map-controls" aria-label="Controles del mapa">
+        <div class="map-controls-actions">
+          <button type="button" data-map-zoom="reset" disabled>Centrar</button>
+          <label class="map-day-control" title="Mostrar solamente los puntos y fotos de un día"><span>Día</span><select data-map-day="1"><option value="">Todos los días</option>${emptyDayOptions}</select></label>
+          <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
+          <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar todas las paradas' : 'Mostrar únicamente las paradas marcadas como Destino'}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destinos</button>
+          <button type="button" data-map-add-stop="1" title="Añadir, borrar, clasificar o reordenar paradas del viaje">Añadir / modificar parada</button>
+          <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
+        </div>
+      </div>
+      <div class="map-empty">${emptyMessage}</div>
+    </div>`;
+    info.textContent = dailyMode ? `Día seleccionado: ${blogDayDateLabel(tripMapState.day)}.${destinationOnlyApplied ? ' Solo se muestran paradas marcadas como Destino.' : ''}` : '';
     return;
   }
   if (!withCoords.length) {
@@ -9362,7 +9535,7 @@ function renderTripMap() {
         <button type="button" data-map-copy-blog="1" class="${canCopyMapToBlog ? 'active' : ''}" title="${copyMapTitle}"${canCopyMapToBlog ? '' : ' disabled'}>Copiar al Blog</button>
         <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
         <button type="button" data-map-photos="1" class="${tripMapState.showPhotos ? 'active' : ''}" aria-pressed="${tripMapState.showPhotos}" title="Mostrar u ocultar fotos geolocalizadas"${availablePhotoCount ? '' : ' disabled'}>Fotos${availablePhotoCount ? ` (${availablePhotoCount})` : ''}</button>
-        <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar el viaje completo' : (destinationOnlyAvailable ? 'Omitir la primera y la última parada para ampliar el destino' : 'Disponible en viajes con al menos tres paradas')}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destino</button>
+        <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar todas las paradas' : (destinationOnlyAvailable ? 'Mostrar únicamente las paradas marcadas como Destino' : 'Marca alguna parada como Destino en el editor de ruta')}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destinos</button>
         <button type="button" data-map-add-stop="1" title="Añadir, borrar o reordenar paradas del viaje">Añadir / modificar parada</button>
         <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
         <button type="button" data-map-fullscreen="1" class="${fullscreen ? 'active' : ''}" title="${fullscreen ? 'Volver al tamaño normal' : 'Ampliar el mapa a toda la pantalla'}">${fullscreen ? 'Tamaño normal' : 'Pantalla completa'}</button>
@@ -9440,7 +9613,7 @@ function renderTripMap() {
   const photoText = photoCount ? ` ${photoCount} ${photoCount === 1 ? 'foto geolocalizada' : 'fotos geolocalizadas'}.` : '';
   const accommodationText = accommodationDestinationCount ? ` ${accommodationDestinationCount} ${accommodationDestinationCount === 1 ? 'destino usa' : 'destinos usan'} la ubicación GPS del alojamiento.` : '';
   const routeLabel = shouldDrawRoute ? `Ruta: ${route || 'sin gastos con ciudad'}.` : `Ciudades: ${route || 'sin gastos con ciudad'}.`;
-  const destinationText = destinationOnlyApplied ? ' Modo solo destino: se omiten la salida y el regreso.' : '';
+  const destinationText = destinationOnlyApplied ? ' Modo solo destinos: se muestran únicamente las paradas marcadas como Destino.' : '';
   info.textContent = `${cityCount} ciudades en el mapa.${pointText}${photoText}${accommodationText} ${routeLabel}${destinationText}${configuredText}${missingText}${duplicatePhotoText}`;
 }
 
@@ -9951,6 +10124,7 @@ async function importAll(data) {
       presupuesto: numberValue(v.presupuesto),
       paisIds: tripCountryIds(v),
       ciudadIds: tripCityIds(v),
+      routeStops: tripRouteStops(v),
       createdAt: v.createdAt || new Date().toISOString(),
       updatedAt: v.updatedAt || new Date().toISOString()
     };
@@ -10090,7 +10264,10 @@ async function importTripBackup(data, targetTripId) {
   const tripPatch = { updatedAt: now };
   if (sourceTrip.presupuesto != null) tripPatch.presupuesto = numberValue(sourceTrip.presupuesto);
   if (Array.isArray(sourceTrip.paisIds) || sourceTrip.paisId) tripPatch.paisIds = tripCountryIds(sourceTrip);
-  if (Array.isArray(sourceTrip.ciudadIds)) tripPatch.ciudadIds = tripCityIds(sourceTrip);
+  if (Array.isArray(sourceTrip.ciudadIds) || Array.isArray(sourceTrip.routeStops)) {
+    tripPatch.ciudadIds = tripCityIds(sourceTrip);
+    tripPatch.routeStops = tripRouteStops(sourceTrip);
+  }
   await updateViaje(targetId, tripPatch);
   const accountMap = {};
   for (const c of (data.cuentas || []).filter(c => Number(c.viajeId) === sourceTripId)) {
@@ -10241,7 +10418,16 @@ function openEditViajeDialog(v) {
     onSubmit: async values => {
       if (values.fechaFin < values.fechaInicio) throw new Error('La fecha final no puede ser anterior al inicio');
       if (!(values.paisIds || []).length) throw new Error('Selecciona al menos un país');
-      const updated = await updateViaje(v.id, { nombre: values.nombre.trim() || v.nombre, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin, paisIds: values.paisIds || [], ciudadIds: values.ciudadIds || [], presupuesto: numberValue(values.presupuesto) });
+      const cityIds = values.ciudadIds || [];
+      const updated = await updateViaje(v.id, {
+        nombre: values.nombre.trim() || v.nombre,
+        fechaInicio: values.fechaInicio,
+        fechaFin: values.fechaFin,
+        paisIds: values.paisIds || [],
+        ciudadIds: cityIds,
+        routeStops: mergeTripRouteStops({ ...v, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin }, cityIds),
+        presupuesto: numberValue(values.presupuesto)
+      });
       warmTicketOcrLanguages([...automaticTicketOcrLanguagesForCountryIds(values.paisIds), ...state.ticketOcrLanguages]).catch(() => {});
       return updated;
     }
@@ -10599,7 +10785,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v243');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v244');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15490,12 +15676,22 @@ function bindEvents() {
     }
     if (target instanceof HTMLSelectElement && target.dataset.routeCity) {
       const index = Number(target.dataset.routeCity);
-      routeEditorState.cityIds[index] = Number(target.value);
+      if (routeEditorState.stops[index]) routeEditorState.stops[index].cityId = Number(target.value);
+      return;
+    }
+    if (target instanceof HTMLSelectElement && target.dataset.routeRole) {
+      const index = Number(target.dataset.routeRole);
+      if (routeEditorState.stops[index]) routeEditorState.stops[index].role = target.value;
+      return;
+    }
+    if (target instanceof HTMLInputElement && target.dataset.routeDate) {
+      const index = Number(target.dataset.routeDate);
+      if (routeEditorState.stops[index]) routeEditorState.stops[index].date = target.value || '';
       return;
     }
     if (target instanceof HTMLInputElement && target.dataset.routePosition) {
       const index = Number(target.dataset.routePosition);
-      const next = Math.max(1, Math.min(routeEditorState.cityIds.length, Number(target.value || 1))) - 1;
+      const next = Math.max(1, Math.min(routeEditorState.stops.length, Number(target.value || 1))) - 1;
       moveRouteStop(index, next);
       renderRouteDialog();
     }
@@ -15507,7 +15703,7 @@ function bindEvents() {
     const deleteButton = target.closest('[data-route-delete]');
     if (deleteButton) {
       const index = Number(deleteButton.dataset.routeDelete);
-      routeEditorState.cityIds.splice(index, 1);
+      routeEditorState.stops.splice(index, 1);
       renderRouteDialog();
       return;
     }
@@ -15519,7 +15715,11 @@ function bindEvents() {
         setMessage('#msg-route-dialog', 'Elige una ciudad para añadirla a la ruta', true);
         return;
       }
-      routeEditorState.cityIds.push(cityId);
+      const firstCityId = Number(routeEditorState.stops[0] && routeEditorState.stops[0].cityId);
+      const role = firstCityId && cityId === firstCityId
+        ? ROUTE_STOP_ROLE_ENDPOINT
+        : ROUTE_STOP_ROLE_DESTINATION;
+      routeEditorState.stops.push({ cityId, role, date: '' });
       setMessage('#msg-route-dialog', '');
       renderRouteDialog();
       return;
@@ -16048,7 +16248,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v243');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v244');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

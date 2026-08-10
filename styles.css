@@ -1209,10 +1209,11 @@ input[type="checkbox"] {
 
 .route-table-wrap {
   margin-top: 6px;
+  overflow-x: auto;
 }
 
 .route-stops-table {
-  min-width: 0;
+  min-width: 720px;
   table-layout: fixed;
 }
 
@@ -1221,9 +1222,21 @@ input[type="checkbox"] {
   width: 72px;
 }
 
+.route-stops-table th:nth-child(2),
+.route-stops-table td:nth-child(2) {
+  width: 220px;
+}
+
 .route-stops-table th:nth-child(3),
-.route-stops-table td:nth-child(3) {
-  width: 150px;
+.route-stops-table td:nth-child(3),
+.route-stops-table th:nth-child(4),
+.route-stops-table td:nth-child(4) {
+  width: 145px;
+}
+
+.route-stops-table th:nth-child(5),
+.route-stops-table td:nth-child(5) {
+  width: 130px;
 }
 
 .route-stop-row {
@@ -4477,9 +4490,21 @@ footer {
     width: 48px;
   }
 
+  .route-stops-table th:nth-child(2),
+  .route-stops-table td:nth-child(2) {
+    width: 190px;
+  }
+
   .route-stops-table th:nth-child(3),
-  .route-stops-table td:nth-child(3) {
-    width: 116px;
+  .route-stops-table td:nth-child(3),
+  .route-stops-table th:nth-child(4),
+  .route-stops-table td:nth-child(4) {
+    width: 135px;
+  }
+
+  .route-stops-table th:nth-child(5),
+  .route-stops-table td:nth-child(5) {
+    width: 108px;
   }
 
   .route-stops-table input,

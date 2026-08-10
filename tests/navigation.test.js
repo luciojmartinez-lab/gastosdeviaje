@@ -24,10 +24,23 @@ test('el menú móvil reparte el espacio entre los seis botones', () => {
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?nav \{[\s\S]*?gap: 2px;/);
 });
 
-test('el editor del mapa conserva la ruta planificada y las ciudades repetidas', () => {
+test('el editor del mapa conserva la ruta planificada, sus tipos y las ciudades repetidas', () => {
   assert.match(app, /openRouteDialog\(trip, \{ preferConfigured: true, optionMode: 'tripCountries' \}\)/);
-  assert.match(app, /routeEditorState\.cityIds = configuredCityIds\.length \? configuredCityIds : mapCityIds/);
+  assert.match(app, /routeEditorState\.stops = configuredCityIds\.length[\s\S]*?tripRouteStops\(trip\)[\s\S]*?normalizeTripRouteStops\(trip, mapCityIds\)/);
+  assert.match(app, /data-route-role="\$\{index\}"/);
+  assert.match(app, /data-route-date="\$\{index\}"/);
+  assert.match(app, /routeStops,/);
   assert.doesNotMatch(app, /mapCityIds\.length \? mapCityIds : configuredCityIds/);
+});
+
+test('Solo destinos usa la clasificación y no borra el día al filtrar', () => {
+  assert.match(app, /const destinationStops = completeStops\.filter\(stop => stop\.role === ROUTE_STOP_ROLE_DESTINATION\)/);
+  assert.doesNotMatch(app, /completeIds\.slice\(1, -1\)/);
+  assert.match(app, /Solo destinos<\/button>/);
+  assert.match(app, /const dayOptions = dailyMapDatesForScope\(scopedTripIds, paisId\)/);
+  assert.match(app, /plannedDailyMapRecordsForScope\(scopedTripIds, paisId, tripMapState\.day, destinationOnlyApplied\)/);
+  assert.match(app, /No hay destinos para el día elegido/);
+  assert.match(app, /Día seleccionado:[\s\S]*?Solo se muestran paradas marcadas como Destino/);
 });
 
 test('al volver al Blog se recupera el inicio horizontal de la tabla', () => {
