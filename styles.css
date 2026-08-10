@@ -3675,6 +3675,10 @@ footer {
   font-size: 12px;
 }
 
+.account-label-mobile {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .row4,
   .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -4863,60 +4867,76 @@ footer {
   }
 
   #resumen-cuentas .table-wrap {
-    overflow-x: visible;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
   }
 
   #tabla-cuenta {
-    display: block;
-    width: 100%;
-    min-width: 0;
+    display: table;
+    width: 594px;
+    min-width: 594px;
+    table-layout: fixed;
+    font-size: 10.5px;
   }
 
   #tabla-cuenta thead {
-    display: none;
+    display: table-header-group;
   }
 
   #tabla-cuenta tbody {
-    display: grid;
-    gap: 8px;
+    display: table-row-group;
   }
 
   #tabla-cuenta tr {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px 10px;
-    padding: 10px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: #fff;
+    display: table-row;
   }
 
+  #tabla-cuenta th,
   #tabla-cuenta td,
   #tabla-cuenta td:nth-child(n) {
-    display: flex;
-    min-width: 0;
-    padding: 0;
-    border: 0;
-    flex-direction: column;
-    gap: 2px;
-    text-align: left;
-    white-space: normal;
-    overflow-wrap: anywhere;
+    display: table-cell;
+    padding: 7px 3px;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
   }
 
-  #tabla-cuenta td:first-child {
-    grid-column: 1 / -1;
-    padding-bottom: 5px;
-    border-bottom: 1px solid var(--line);
-    font-weight: 700;
+  #tabla-cuenta th {
+    line-height: 1.05;
+    white-space: normal;
   }
+
+  #tabla-cuenta th:nth-child(1),
+  #tabla-cuenta td:nth-child(1) { width: 92px; text-align: left; }
+  #tabla-cuenta th:nth-child(2),
+  #tabla-cuenta td:nth-child(2) { width: 66px; text-align: center; }
+  #tabla-cuenta th:nth-child(3),
+  #tabla-cuenta td:nth-child(3) { width: 72px; }
+  #tabla-cuenta th:nth-child(4),
+  #tabla-cuenta td:nth-child(4) { width: 72px; border-right: 2px solid #cbd5e1; }
+  #tabla-cuenta th:nth-child(5),
+  #tabla-cuenta td:nth-child(5) { width: 66px; }
+  #tabla-cuenta th:nth-child(6),
+  #tabla-cuenta td:nth-child(6) { width: 105px; }
+  #tabla-cuenta th:nth-child(7),
+  #tabla-cuenta td:nth-child(7) { width: 84px; }
+  #tabla-cuenta th:nth-child(8),
+  #tabla-cuenta td:nth-child(8) { width: 42px; }
 
   #tabla-cuenta td::before {
-    content: attr(data-label);
-    color: var(--muted);
-    font-size: 10px;
-    font-weight: 600;
-    line-height: 1.1;
+    content: none;
+  }
+
+  #tabla-cuenta .account-label-full {
+    display: none;
+  }
+
+  #tabla-cuenta .account-label-mobile {
+    display: inline;
   }
 
   #tabla-cat {

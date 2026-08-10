@@ -36,11 +36,19 @@ test('la leyenda del gráfico crece para mostrar todas las subcategorías', () =
   assert.match(styles, /#chart-cat \.chart \{\s*max-height: none;/);
 });
 
-test('el resumen de cuentas muestra saldo y cabe como tarjetas en móvil', () => {
+test('el resumen de cuentas conserva una tabla y muestra hasta saldo en móvil', () => {
   assert.match(html, /<th>Gastado<\/th><th>Saldo<\/th><th>EUR<\/th>/);
   assert.match(app, /saldo: numberValue\(c\.saldoActual\)/);
   assert.match(app, /data-label="Gastado"[\s\S]*?data-label="Saldo"[\s\S]*?data-label="EUR"/);
   assert.match(app, /label: row\.chartLabel/);
-  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta tr \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(styles, /#tabla-cuenta td::before \{[\s\S]*?content: attr\(data-label\)/);
+  assert.match(app, /account-label-mobile[^>]*>\$\{escapeHtml\(row\.chartLabel\)\}/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?table-layout: fixed/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ width: 92px;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ width: 66px;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ width: 72px;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ width: 72px; border-right/);
+  assert.match(styles, /#resumen-cuentas \.table-wrap \{[\s\S]*?overflow-x: auto/);
+  const accountMobileStart = styles.indexOf('  #resumen-cuentas .table-wrap {');
+  const accountMobileEnd = styles.indexOf('  #tabla-cat {', accountMobileStart);
+  assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /grid-template-columns/);
 });
