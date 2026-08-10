@@ -42,13 +42,15 @@ test('el resumen de cuentas conserva una tabla y muestra hasta saldo en móvil',
   assert.match(app, /data-label="Gastado"[\s\S]*?data-label="Saldo"[\s\S]*?data-label="EUR"/);
   assert.match(app, /label: row\.chartLabel/);
   assert.match(app, /account-label-mobile[^>]*>\$\{escapeHtml\(row\.chartLabel\)\}/);
-  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?table-layout: fixed/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?width: 621px;[\s\S]*?table-layout: fixed/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ width: 92px;/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ width: 66px;/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ width: 72px;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ width: 72px; border-right/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ width: 72px; \}/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(8\),[\s\S]*?#tabla-cuenta td:nth-child\(8\) \{ width: 64px; \}/);
   assert.match(styles, /#resumen-cuentas \.table-wrap \{[\s\S]*?overflow-x: auto/);
   const accountMobileStart = styles.indexOf('  #resumen-cuentas .table-wrap {');
   const accountMobileEnd = styles.indexOf('  #tabla-cat {', accountMobileStart);
   assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /grid-template-columns/);
+  assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /border-right/);
 });

@@ -4873,8 +4873,8 @@ footer {
 
   #tabla-cuenta {
     display: table;
-    width: 594px;
-    min-width: 594px;
+    width: 621px;
+    min-width: 621px;
     table-layout: fixed;
     font-size: 10.5px;
   }
@@ -4917,7 +4917,7 @@ footer {
   #tabla-cuenta th:nth-child(3),
   #tabla-cuenta td:nth-child(3) { width: 72px; }
   #tabla-cuenta th:nth-child(4),
-  #tabla-cuenta td:nth-child(4) { width: 72px; border-right: 2px solid #cbd5e1; }
+  #tabla-cuenta td:nth-child(4) { width: 72px; }
   #tabla-cuenta th:nth-child(5),
   #tabla-cuenta td:nth-child(5) { width: 66px; }
   #tabla-cuenta th:nth-child(6),
@@ -4925,7 +4925,7 @@ footer {
   #tabla-cuenta th:nth-child(7),
   #tabla-cuenta td:nth-child(7) { width: 84px; }
   #tabla-cuenta th:nth-child(8),
-  #tabla-cuenta td:nth-child(8) { width: 42px; }
+  #tabla-cuenta td:nth-child(8) { width: 64px; }
 
   #tabla-cuenta td::before {
     content: none;
