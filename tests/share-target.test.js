@@ -20,12 +20,12 @@ test('el destino Compartir acepta imagenes, texto y archivos TXT', () => {
   assert.match(sw, /!files\.length && !sharedTextParts\.length/);
 });
 
-test('la primera compartición reutiliza la aplicación ya abierta', () => {
-  assert.deepEqual(manifest.launch_handler.client_mode, ['focus-existing', 'navigate-existing']);
-  assert.match(sw, /SHARED_CONTENT_READY/);
+test('la primera compartición navega la aplicación abierta hasta el contenido recibido', () => {
+  assert.equal(manifest.launch_handler.client_mode, 'navigate-existing');
   assert.match(app, /window\.launchQueue\.setConsumer/);
   assert.match(app, /queueSharedLaunchTarget/);
-  assert.match(sw, /await client\.focus\(\)[\s\S]*?client\.postMessage/);
+  assert.doesNotMatch(sw, /client\.focus\(|SHARED_CONTENT_READY/);
+  assert.match(sw, /redirectUrl\.searchParams\.set\('shared', id\)[\s\S]*?Response\.redirect\(redirectUrl\.href, 303\)/);
   assert.match(app, /async function recoverPendingSharedContent\(\)/);
   assert.match(app, /cache\.keys\(\)/);
   assert.match(app, /function scheduleSharedContentRecovery\(\)/);

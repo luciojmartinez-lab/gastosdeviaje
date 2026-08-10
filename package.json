@@ -1,7 +1,7 @@
 {
   "name": "gastosdeviaje",
   "private": true,
-  "version": "700.240.0",
+  "version": "700.241.0",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js"

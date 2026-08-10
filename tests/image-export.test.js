@@ -22,12 +22,16 @@ test('el JPEG exportado conserva las coordenadas GPS de la aplicación', () => {
 
 test('la exportación propone descarga, fecha y hora', () => {
   assert.match(html, /id="image-viewer-download"[^>]*>Descargar con GPS/);
+  assert.match(html, /id="blog-image-download"[^>]*>Descargar con GPS/);
   assert.match(app, /return `descarga-\$\{stamp\}-\$\{time\}\.\$\{extension\}`/);
   assert.match(app, /async function imageViewerExportBlob\(record\)/);
   assert.match(app, /embedGpsInJpegBlob\(blob, point\.latitude, point\.longitude\)/);
+  assert.match(app, /async function prepareImageDownloadFile\(record, date = new Date\(\)\)/);
+  assert.match(app, /imageViewerExportBlob\(\{ \.\.\.record, blob, type \}\)/);
   assert.match(app, /link\.download = file\.name \|\| imageViewerDownloadName/);
   assert.match(app, /async function downloadActiveImageViewerFile\(\)/);
-  assert.match(app, /const file = new File\(\[exportBlob\], filename/);
+  assert.match(app, /async function downloadPrimaryBlogImage\(\)/);
+  assert.match(app, /Para conservar el nombre y el GPS, pulsa «Descargar con GPS»/);
   assert.match(app, /Descarga iniciada como \$\{filename\}, con GPS incorporado/);
   assert.match(app, /saveBlogCameraOriginal[\s\S]*?embedGpsInJpegBlob/);
 });

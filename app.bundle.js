@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v240';
+const APP_VERSION = '700v241';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -2470,7 +2470,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v240');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v241');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3261,7 +3261,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v240');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v241');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3352,7 +3352,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v240');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v241');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3368,14 +3368,15 @@ async function handleExpenseTicketLanguageChange(prefix) {
   }
 }
 
-async function readLensTicketTranslation(prefix, record) {
+async function readLensTicketTranslation(prefix, record, originalSource = null) {
   if (!record?.data) return null;
   const previousStatus = 'Resultado de Lens preparado junto al ticket principal.';
   try {
+    const recognitionSource = originalSource || record.data;
     const result = await recognizeExpenseTicketSource(prefix, {
-      source: record.data,
-      type: record.type || 'image/jpeg',
-      name: record.name || 'traduccion-lens.jpg'
+      source: recognitionSource,
+      type: originalSource?.type || record.type || 'image/jpeg',
+      name: originalSource?.name || record.name || 'traduccion-lens.jpg'
     }, {
       languages: ['spa'],
       replaceExisting: true,
@@ -3413,7 +3414,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v240');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v241');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -3674,9 +3675,24 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v240');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v241');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
+}
+
+async function prepareImageDownloadFile(record, date = new Date()) {
+  const blob = imageViewerBlob(record);
+  if (!blob) throw new Error('No se encuentra la imagen que quieres descargar.');
+  const point = storedImageCoordinates(record);
+  const type = record?.type || blob.type || 'image/jpeg';
+  const exportBlob = await imageViewerExportBlob({ ...record, blob, type });
+  const exportType = exportBlob?.type || type;
+  const filename = imageViewerDownloadName(date, exportType);
+  return {
+    file: new File([exportBlob], filename, { type: exportType, lastModified: date.getTime() }),
+    filename,
+    point
+  };
 }
 
 function downloadImageViewerFile(file) {
@@ -3698,14 +3714,26 @@ async function downloadActiveImageViewerFile() {
   if (status) status.textContent = point
     ? 'Preparando la descarga con sus coordenadas GPS…'
     : 'Preparando la descarga…';
-  const exportBlob = await imageViewerExportBlob(record);
-  const type = exportBlob?.type || record.type || 'image/jpeg';
-  const filename = imageViewerDownloadName(new Date(), type);
-  const file = new File([exportBlob], filename, { type, lastModified: Date.now() });
+  const { file, filename } = await prepareImageDownloadFile(record);
   downloadImageViewerFile(file);
   if (status) status.textContent = point
     ? `Descarga iniciada como ${filename}, con GPS incorporado.`
     : `Descarga iniciada como ${filename}. Esta imagen no tenía coordenadas GPS.`;
+  return file;
+}
+
+async function downloadPrimaryBlogImage() {
+  if (!activeBlogImage) throw new Error('No hay ninguna imagen preparada para descargar.');
+  const status = $('#blog-image-download-status');
+  const point = storedImageCoordinates(activeBlogImage);
+  if (status) status.textContent = point
+    ? 'Preparando el JPEG con GPS…'
+    : 'Preparando el JPEG…';
+  const { file, filename } = await prepareImageDownloadFile(activeBlogImage);
+  downloadImageViewerFile(file);
+  if (status) status.textContent = point
+    ? `Descargado como ${filename}, con GPS incorporado.`
+    : `Descargado como ${filename}; esta imagen no tenía GPS.`;
   return file;
 }
 
@@ -10571,7 +10599,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v240');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v241');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11110,6 +11138,7 @@ function clearBlogImageSelection() {
   if ($('#blog-image-gallery')) $('#blog-image-gallery').value = '';
   if ($('#blog-image-camera')) $('#blog-image-camera').value = '';
   if ($('#blog-image-status')) $('#blog-image-status').textContent = 'Ninguna imagen seleccionada.';
+  if ($('#blog-image-download-status')) $('#blog-image-download-status').textContent = '';
   updateBlogOriginalActions();
   if ($('#blog-image-preview')) {
     $('#blog-image-preview').hidden = true;
@@ -11144,6 +11173,7 @@ function showBlogImages(images = []) {
   activeBlogGalleryImages = normalized.slice(1);
   const located = normalized.filter(storedImageCoordinates);
   const enabledCount = normalized.filter(image => image.mapEnabled && storedImageCoordinates(image)).length;
+  if ($('#blog-image-download-status')) $('#blog-image-download-status').textContent = '';
   if ($('#blog-image-status')) {
     if (!normalized.length) {
       $('#blog-image-status').textContent = 'Ninguna imagen seleccionada.';
@@ -11884,6 +11914,20 @@ function cleanLensSharedText(value) {
     .trim();
 }
 
+function lensSharedReceiptText(payload) {
+  const text = cleanLensSharedText(String(payload?.text || ''));
+  if (!text || /^https?:\/\/\S+$/i.test(text)) return '';
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const normalized = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const signals = [
+    /\b(?:total|importe|amount|subtotal|pagar|payment)\b/,
+    /(?:[€$£¥₩￥]|\b(?:eur|usd|jpy|krw)\b)/i,
+    /\b\d{1,4}[\/.\-]\d{1,2}[\/.\-]\d{1,4}\b|\b\d{1,2}:\d{2}\b/,
+    /\b(?:recibo|ticket|factura|telefono|tienda|restaurant|store)\b/
+  ].filter(pattern => pattern.test(normalized)).length;
+  return signals > 0 && (lines.length >= 2 || text.length >= 60) ? text : '';
+}
+
 function sharedPayloadLooksLikeLens(payload) {
   const hint = [payload?.title, payload?.text, payload?.sourceUrl]
     .map(value => String(value || ''))
@@ -11945,6 +11989,7 @@ async function openSharedImagesDialog(payload) {
   revokeSharedImagePreviewUrls();
   const hasImages = payload.files.length > 0;
   const sharedText = sharedPayloadText(payload);
+  const lensReceiptText = payload.fromLens ? lensSharedReceiptText(payload) : '';
   if ($('#shared-content-title')) $('#shared-content-title').textContent = hasImages ? 'Imágenes recibidas' : 'Texto recibido';
   if ($('#shared-content-intro')) {
     $('#shared-content-intro').textContent = hasImages
@@ -12007,8 +12052,8 @@ async function openSharedImagesDialog(payload) {
       $('#shared-images-expense').value = preferredValue;
     }
   }
-  if (payload.fromLens && sharedText && !hasImages && currentFormTarget) {
-    await readLensTicketText(currentFormTarget.prefix, sharedText);
+  if (payload.fromLens && lensReceiptText && !hasImages && currentFormTarget) {
+    await readLensTicketText(currentFormTarget.prefix, lensReceiptText);
     pendingSharedImagesPayload = null;
     writeLensReturnTarget(null);
     setTab('gastos');
@@ -12074,7 +12119,7 @@ async function routeSharedExpenseImages(prefix, files, kind, action = 'replace',
   if (options.fromLens && options.spanishOnly) {
     const lensRecord = await prepareSharedTicketCompanion(first, 'translation');
     if (options.lensText) await readLensTicketText(prefix, options.lensText);
-    else await readLensTicketTranslation(prefix, lensRecord);
+    else await readLensTicketTranslation(prefix, lensRecord, first);
     return;
   }
   if (action === 'translation' || action === 'secondary') {
@@ -12085,7 +12130,7 @@ async function routeSharedExpenseImages(prefix, files, kind, action = 'replace',
       companion.text = options.lensText;
       companion.sourceLanguages = ['spa'];
       await readLensTicketText(prefix, options.lensText);
-    } else if (action === 'translation') await readLensTicketTranslation(prefix, companion);
+    } else if (action === 'translation') await readLensTicketTranslation(prefix, companion, first);
     else setTicketOcrStatus(prefix, 'Segundo ticket preparado junto al ticket principal. Revisa y guarda el gasto.');
   } else {
     assignSharedFilesToInput($(`#${prefix}-ticket`), [first]);
@@ -12094,7 +12139,7 @@ async function routeSharedExpenseImages(prefix, files, kind, action = 'replace',
       if (options.lensText) await readLensTicketText(prefix, options.lensText);
       else {
         const lensRecord = pendingExpenseTicketPreviews[prefix];
-        if (lensRecord?.data) await readLensTicketTranslation(prefix, lensRecord);
+        if (lensRecord?.data) await readLensTicketTranslation(prefix, lensRecord, first);
       }
     }
   }
@@ -12115,7 +12160,7 @@ async function continueSharedImagesImport() {
   const lensOptions = {
     fromLens: Boolean(payload?.fromLens),
     spanishOnly: Boolean(payload?.lensSpanishOnly),
-    lensText: payload?.fromLens ? cleanLensSharedText(sharedText) : ''
+    lensText: payload?.fromLens ? lensSharedReceiptText(payload) : ''
   };
   const selectedExpenseValue = String($('#shared-images-expense')?.value || '');
   const currentExpenseTarget = selectedExpenseValue.startsWith('current:') ? selectedSharedExpenseTarget() : null;
@@ -14493,7 +14538,22 @@ function bindEvents() {
       setMessage('#msg-blog-entry', error.message || String(error), true);
     }
   };
+  $('#blog-image-download').onclick = async event => {
+    const button = event.currentTarget;
+    try {
+      button.disabled = true;
+      await downloadPrimaryBlogImage();
+    } catch (error) {
+      if ($('#blog-image-download-status')) $('#blog-image-download-status').textContent = error.message || String(error);
+    } finally {
+      button.disabled = false;
+    }
+  };
   $('#blog-save-original').onclick = saveBlogCameraOriginal;
+  $('#blog-image-preview').oncontextmenu = event => {
+    event.preventDefault();
+    if ($('#blog-image-download-status')) $('#blog-image-download-status').textContent = 'Para conservar el nombre y el GPS, pulsa «Descargar con GPS».';
+  };
   $('#blog-image-preview').onclick = () => openBlogGalleryImage(0);
   $('#blog-image-preview').onkeydown = event => {
     if (!['Enter', ' '].includes(event.key)) return;
@@ -14517,6 +14577,11 @@ function bindEvents() {
   $('#blog-gallery-preview').onchange = event => {
     const select = event.target.closest('[data-blog-image-type]');
     if (select) setBlogImagePhotoType(select.dataset.blogImageType, select.value);
+  };
+  $('#blog-gallery-preview').oncontextmenu = event => {
+    if (!event.target.closest('img')) return;
+    event.preventDefault();
+    if ($('#blog-image-download-status')) $('#blog-image-download-status').textContent = 'Para conservar el nombre y el GPS, pulsa «Descargar con GPS».';
   };
   $('#blog-primary-photo-type').onchange = () => setBlogImagePhotoType(0, $('#blog-primary-photo-type').value);
   $('#blog-images-map').onchange = () => {
@@ -15983,7 +16048,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v240');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v241');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
@@ -16068,10 +16133,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadAll();
     ensureLocalDataUpdatedAt();
     await refreshLocalBackupHistory();
-    try {
-      await createEntryBackup();
-    } catch (error) {
-      console.warn('No se pudo crear la copia local de entrada', error);
+    if (!APP_HAS_SHARED_LAUNCH) {
+      try {
+        await createEntryBackup();
+      } catch (error) {
+        console.warn('No se pudo crear la copia local de entrada', error);
+      }
     }
     renderBackupStatus();
     sharedContentAppReady = true;
@@ -16082,6 +16149,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     await recoverPendingSharedContent();
     await sharedLaunchDrainPromise;
     finishAppLoading();
+    if (APP_HAS_SHARED_LAUNCH) {
+      window.setTimeout(() => {
+        createEntryBackup()
+          .then(renderBackupStatus)
+          .catch(error => console.warn('No se pudo crear la copia local de entrada', error));
+      }, 0);
+    }
     if (!APP_HAS_SHARED_LAUNCH) window.setTimeout(() => checkCloudOnEntry(), 0);
   } finally {
     finishAppLoading();

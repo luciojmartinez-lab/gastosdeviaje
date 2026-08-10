@@ -30,7 +30,9 @@ test('la app muestra estado claro cuando trabaja sin conexion', () => {
   assert.match(app, /failed to fetch\|networkerror\|load failed/);
   assert.match(app, /failed to fetch\|networkerror\|load failed[\s\S]*?await refreshNetworkAvailability\(\)/);
   assert.match(app, /if \(typeof navigator !== 'undefined' && navigator\.onLine === false\) return;/);
-  assert.match(app, /finishAppLoading\(\);\s+if \(!APP_HAS_SHARED_LAUNCH\) window\.setTimeout\(\(\) => checkCloudOnEntry\(\), 0\)/);
+  const startup = app.slice(app.indexOf("window.addEventListener('DOMContentLoaded'"), app.indexOf('\nObject.assign(window'));
+  assert.match(startup, /finishAppLoading\(\);[\s\S]*?if \(!APP_HAS_SHARED_LAUNCH\) window\.setTimeout\(\(\) => checkCloudOnEntry\(\), 0\)/);
+  assert.match(startup, /if \(APP_HAS_SHARED_LAUNCH\)[\s\S]*?createEntryBackup\(\)/);
   assert.match(app, /No hay conexi.n para consultar el cambio/);
 });
 
@@ -50,8 +52,8 @@ test('el service worker se activa sin descargar archivos y prepara la cache desp
   assert.match(sw, /\.\/vendor\/pdfjs\/pdf\.min\.mjs/);
   assert.match(sw, /\.\/vendor\/tesseract\/tesseract\.esm\.min\.js/);
   assert.match(sw, /\.\/vendor\/tesseract\/lang\/spa\.traineddata\.gz/);
-  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v240/);
-  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v240/);
+  assert.match(sw, /\.\/ticket-image-worker\.js\?v=700v241/);
+  assert.match(sw, /\.\/ticket-image-processing\.js\?v=700v241/);
   assert.match(sw, /const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4\.10\.0'/);
   assert.match(sw, /\.\/vendor\/opencv\/4\.10\.0\/opencv\.js/);
   const installStart = sw.indexOf("self.addEventListener('install'");
@@ -103,7 +105,7 @@ test('una versión nueva provoca una sola recarga después de activar su service
   assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?registration\.update\(\)[\s\S]*?reloadForUpdate\(latestVersion\)/);
   assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
   assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
-  assert.match(sw, /const APP_VERSION = '700v240'/);
+  assert.match(sw, /const APP_VERSION = '700v241'/);
   assert.match(sw, /\.\/assets\/map-train-side\.webp/);
   assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
   assert.doesNotMatch(html, /window\.location\.reload\(\)/);

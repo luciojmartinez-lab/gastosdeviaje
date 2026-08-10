@@ -85,12 +85,24 @@ test('el resultado de Lens sustituye los datos reconocidos tanto en texto como e
   assert.match(app, /preferLargeTitle: true/);
   assert.match(app, /async function readLensTicketText/);
   assert.match(app, /ocr\.extractTicketFields\(sourceText\)/);
-  assert.match(app, /payload\.fromLens && sharedText && !hasImages && currentFormTarget/);
+  assert.match(app, /payload\.fromLens && lensReceiptText && !hasImages && currentFormTarget/);
   assert.match(app, /const preserveExisting = !options\.replaceExisting/);
-  assert.match(app, /await readLensTicketTranslation\(prefix, companion\)/);
+  assert.match(app, /await readLensTicketTranslation\(prefix, companion, first\)/);
+  assert.match(app, /const recognitionSource = originalSource \|\| record\.data/);
   assert.match(app, /preserveDescription: true/);
   assert.match(app, /options\.preserveDescription && field === 'desc'/);
-  assert.match(app, /cleanLensSharedText/);
+  assert.match(app, /lensText: payload\?\.fromLens \? lensSharedReceiptText\(payload\) : ''/);
+});
+
+test('Lens ignora enlaces y textos auxiliares antes de decidir si debe leer la imagen', () => {
+  const start = app.indexOf('function cleanLensSharedText');
+  const end = app.indexOf('\nfunction sharedPayloadLooksLikeLens', start);
+  const source = app.slice(start, end);
+  const receiptText = Function(`${source}; return lensSharedReceiptText;`)();
+  assert.equal(receiptText({ text: 'https://lens.google.com/example' }), '');
+  assert.equal(receiptText({ text: 'Abrir con Google Lens' }), '');
+  const ticket = 'Tienda Futtsu Hamakanaya\n23/08/2024 17:50\nTotal ¥344';
+  assert.equal(receiptText({ text: ticket }), ticket);
 });
 
 test('Lens en español usa los datos sin crear un segundo ticket', () => {

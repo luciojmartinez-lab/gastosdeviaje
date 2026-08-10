@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v240">
+  <link rel="manifest" href="manifest.webmanifest?v=700v241">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v240">
+  <link rel="stylesheet" href="styles.css?v=700v241">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v240 · 09/08/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v241 · 10/08/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v240</div>
+  <div class="app-version">700v241</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -821,10 +821,12 @@
         <div id="blog-image-rotate-actions" class="actions blog-image-rotate-actions" hidden>
           <button type="button" class="btn ghost" id="blog-image-rotate-left">Girar a la izquierda</button>
           <button type="button" class="btn ghost" id="blog-image-rotate-right">Girar a la derecha</button>
+          <button type="button" class="btn ghost" id="blog-image-download">Descargar con GPS</button>
           <span class="small">En una galería, gira la imagen que aparece como primera.</span>
+          <span class="small" id="blog-image-download-status" aria-live="polite"></span>
         </div>
         <div id="blog-gallery-preview" class="blog-gallery-preview" hidden></div>
-        <p class="small">Toca cualquier fotografía para ampliarla. En una galería, usa «Hacer primera» para cambiar el orden y «Quitar» para eliminar una imagen al guardar. Si marcas «Usar como imagen destacada», la primera será la foto destacada.</p>
+        <p class="small">Toca cualquier fotografía para ampliarla. Para descargarla con nombre, fecha, hora y GPS, usa «Descargar con GPS»; no uses «Descargar imagen» manteniendo pulsada la miniatura. En una galería, usa «Hacer primera» para cambiar el orden y «Quitar» para eliminar una imagen al guardar. Si marcas «Usar como imagen destacada», la primera será la foto destacada.</p>
         <label class="check-option photo-map-option" id="blog-images-map-option" hidden><input type="checkbox" id="blog-images-map"> Añadir las fotos al mapa</label>
         <p class="small">La foto original puede superar 6 MB. La aplicación intenta reducirla aproximadamente a 650 KB antes de guardarla.</p>
       </div>
@@ -1116,11 +1118,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v240"></script>
-<script src="app.bundle.js?v=700v240"></script>
+<script src="map-model.js?v=700v241"></script>
+<script src="app.bundle.js?v=700v241"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v240';
+    const pageVersion = '700v241';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1175,7 +1177,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v240', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v241', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;
