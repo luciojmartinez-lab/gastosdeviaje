@@ -55,3 +55,10 @@ test('el visor ajusta el ticket completo y permite cambiar su tamaño en móvil'
   assert.match(styles, /\.image-viewer-stage img\.is-fit \{[\s\S]*?width: 100%;[\s\S]*?height: 100%;/);
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?\.image-viewer-actions \{[\s\S]*?grid-template-columns:/);
 });
+
+test('un nombre de archivo muy largo no ensancha ni recorta el visor', () => {
+  assert.match(styles, /\.image-viewer-shell \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\);/);
+  assert.match(styles, /\.image-viewer-shell > \* \{[\s\S]*?min-width: 0;[\s\S]*?max-width: 100%;/);
+  assert.match(styles, /\.image-viewer-modal \.modal-head h2 \{[\s\S]*?flex: 1 1 0;[\s\S]*?text-overflow: ellipsis;/);
+  assert.match(styles, /\.image-viewer-stage \{[\s\S]*?width: 100%;[\s\S]*?min-width: 0;[\s\S]*?max-width: 100%;/);
+});

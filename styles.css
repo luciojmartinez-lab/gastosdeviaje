@@ -1807,16 +1807,30 @@ input[type="checkbox"] {
 
 .image-viewer-shell {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   height: 100%;
+  overflow: hidden;
   padding: 12px;
 }
 
+.image-viewer-shell > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .image-viewer-modal .modal-head {
+  width: 100%;
+  min-width: 0;
   color: #fff;
 }
 
 .image-viewer-modal .modal-head h2 {
+  flex: 1 1 0;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1824,6 +1838,9 @@ input[type="checkbox"] {
 
 .image-viewer-stage {
   display: grid;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 0;
   place-items: center;
   overflow: auto;
