@@ -2,6 +2,10 @@
   'use strict';
 
   const MAX_POINTS_PER_DAY = 1500;
+  const OVERNIGHT_START_MINUTE = 3 * 60;
+  const OVERNIGHT_END_MINUTE = 6 * 60;
+  const OVERNIGHT_STABLE_DISTANCE_METERS = 200;
+  const OVERNIGHT_CLUSTER_RADIUS_METERS = 300;
 
   function finiteNumber(value) {
     const number = Number(value);
@@ -40,6 +44,36 @@
   function localTime(timestamp) {
     const match = String(timestamp || '').match(/T(\d{2}:\d{2})(?::\d{2})?/);
     return match ? match[1] : '';
+  }
+
+  function addDays(date, amount) {
+    const match = String(date || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return '';
+    const value = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + Number(amount || 0)));
+    return value.toISOString().slice(0, 10);
+  }
+
+  function localKey(timestamp) {
+    const match = String(timestamp || '').match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
+    return match ? `${match[1]}T${match[2]}:${match[3]}` : '';
+  }
+
+  function localMinute(timestamp) {
+    const match = String(timestamp || '').match(/T(\d{2}):(\d{2})/);
+    return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+  }
+
+  function median(values) {
+    const sorted = values.filter(Number.isFinite).slice().sort((a, b) => a - b);
+    if (!sorted.length) return null;
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  function medianCoordinate(points) {
+    const latitude = median(points.map(point => Number(point.latitude)));
+    const longitude = median(points.map(point => Number(point.longitude)));
+    return latitude == null || longitude == null ? null : validCoordinate(latitude, longitude);
   }
 
   function dateInRange(date, startDate, endDate) {
@@ -94,6 +128,73 @@
     return sampled;
   }
 
+  function visitCovering(visits, targetKey) {
+    return visits
+      .filter(visit => visit.startKey && visit.endKey && visit.startKey <= targetKey && visit.endKey >= targetKey)
+      .sort((a, b) => (Date.parse(b.endTime) - Date.parse(b.startTime)) - (Date.parse(a.endTime) - Date.parse(a.startTime)))[0] || null;
+  }
+
+  function coordinateNearLocalTime(date, minute, sourcePoints, visits) {
+    const targetKey = `${date}T${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+    const coveringVisit = visitCovering(visits, targetKey);
+    if (coveringVisit) return { ...coveringVisit.coordinate, time: `${targetKey}:00`, source: 'visit' };
+    const candidate = sourcePoints
+      .filter(point => localDate(point.time) === date && localMinute(point.time) != null)
+      .map(point => ({ point, difference: Math.abs(localMinute(point.time) - minute) }))
+      .filter(candidatePoint => candidatePoint.difference <= 120)
+      .sort((a, b) => a.difference - b.difference)[0];
+    return candidate ? { latitude: candidate.point.latitude, longitude: candidate.point.longitude, time: candidate.point.time, source: 'point' } : null;
+  }
+
+  function overnightTransition(date, sourcePoints, visits) {
+    const startKey = `${date}T03:00`;
+    const endKey = `${date}T06:00`;
+    const stableVisit = visits.find(visit => visit.startKey <= startKey && visit.endKey >= endKey);
+    if (stableVisit) {
+      return {
+        point: stableVisit.coordinate,
+        mode: 'stable',
+        radiusMeters: 0
+      };
+    }
+    const start = coordinateNearLocalTime(date, OVERNIGHT_START_MINUTE, sourcePoints, visits);
+    const end = coordinateNearLocalTime(date, OVERNIGHT_END_MINUTE, sourcePoints, visits);
+    const windowPoints = sourcePoints.filter(point => {
+      if (localDate(point.time) !== date) return false;
+      const minute = localMinute(point.time);
+      return minute != null && minute >= OVERNIGHT_START_MINUTE && minute <= OVERNIGHT_END_MINUTE;
+    });
+    if (start) windowPoints.push(start);
+    if (end) windowPoints.push(end);
+    const center = medianCoordinate(windowPoints);
+    const radiusMeters = center && windowPoints.length
+      ? Math.max(...windowPoints.map(point => distanceMeters(center, point)))
+      : Number.POSITIVE_INFINITY;
+    if (start && end
+      && distanceMeters(start, end) <= OVERNIGHT_STABLE_DISTANCE_METERS
+      && radiusMeters <= OVERNIGHT_CLUSTER_RADIUS_METERS) {
+      return { point: center || start, mode: 'stable', radiusMeters: Math.round(radiusMeters) };
+    }
+    if (start && end) {
+      const midnight = coordinateNearLocalTime(date, 0, sourcePoints, visits);
+      if (midnight) return { point: midnight, mode: 'transit', radiusMeters: Math.round(radiusMeters) };
+    }
+    return null;
+  }
+
+  function applyAnchor(fallback, anchor, fallbackTime) {
+    if (!anchor || !anchor.point) return fallback || null;
+    return cleanPoint({
+      latitude: anchor.point.latitude,
+      longitude: anchor.point.longitude,
+      time: anchor.mode === 'transit'
+        ? anchor.point.time || fallbackTime
+        : fallback && fallback.time || fallbackTime,
+      kind: anchor.mode === 'stable' ? 'overnight' : 'overnight-transit',
+      activityType: ''
+    });
+  }
+
   function importTrip(data, options = {}) {
     if (!data || !Array.isArray(data.semanticSegments)) {
       throw new Error('El archivo no parece una exportación válida de la Cronología de Google Maps.');
@@ -103,6 +204,12 @@
     if (!startDate || !endDate || endDate < startDate) {
       throw new Error('El viaje necesita fechas de inicio y final válidas antes de importar la Cronología.');
     }
+    const extendedStartDate = addDays(startDate, -1);
+    const extendedEndDate = addDays(endDate, 1);
+    const extendedStartKey = `${extendedStartDate}T00:00`;
+    const extendedEndKey = `${extendedEndDate}T23:59`;
+    const sourcePoints = [];
+    const sourceVisits = [];
     const byDay = new Map();
     const day = date => {
       if (!byDay.has(date)) byDay.set(date, { fecha: date, points: [], visits: [], activities: [] });
@@ -110,8 +217,10 @@
     };
     const addPoint = (timestamp, coordinate, kind, activityType = '') => {
       const date = localDate(timestamp);
-      if (!coordinate || !dateInRange(date, startDate, endDate)) return;
-      day(date).points.push({ ...coordinate, time: timestamp, kind, activityType });
+      if (!coordinate || !date) return;
+      const point = { ...coordinate, time: timestamp, kind, activityType };
+      if (dateInRange(date, extendedStartDate, extendedEndDate)) sourcePoints.push(point);
+      if (dateInRange(date, startDate, endDate)) day(date).points.push(point);
     };
 
     data.semanticSegments.forEach(segment => {
@@ -127,6 +236,11 @@
         const coordinate = coordinateFrom(candidate.placeLocation);
         addPoint(startTime, coordinate, 'visit');
         addPoint(endTime, coordinate, 'visit');
+        const startKey = localKey(startTime);
+        const endKey = localKey(endTime);
+        if (coordinate && startKey && endKey && endKey >= extendedStartKey && startKey <= extendedEndKey) {
+          sourceVisits.push({ coordinate, startTime, endTime, startKey, endKey });
+        }
         const date = localDate(startTime);
         if (coordinate && dateInRange(date, startDate, endDate)) {
           day(date).visits.push({
@@ -160,20 +274,40 @@
       }
     });
 
+    for (let date = startDate; date && date <= addDays(endDate, 1); date = addDays(date, 1)) {
+      const transition = overnightTransition(date, sourcePoints, sourceVisits);
+      if (!transition) continue;
+      if (dateInRange(date, startDate, endDate)) {
+        const current = day(date);
+        current.departureAnchor = transition;
+        current.departureMode = transition.mode;
+      }
+      const previousDate = addDays(date, -1);
+      if (dateInRange(previousDate, startDate, endDate)) {
+        const previous = day(previousDate);
+        previous.arrivalAnchor = transition;
+        previous.arrivalMode = transition.mode;
+      }
+    }
+
     const days = [...byDay.values()].map(record => {
       const points = compactPoints(record.points);
       const activities = record.activities.slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
       const departureActivity = activities.find(activity => activity.start);
       const arrivalActivity = activities.slice().reverse().find(activity => activity.end);
-      const departure = departureActivity && departureActivity.start || points[0] || null;
-      const arrival = arrivalActivity && arrivalActivity.end || points[points.length - 1] || null;
+      const fallbackDeparture = departureActivity && departureActivity.start || points[0] || null;
+      const fallbackArrival = arrivalActivity && arrivalActivity.end || points[points.length - 1] || null;
+      const departure = applyAnchor(fallbackDeparture, record.departureAnchor, `${record.fecha}T03:00:00`);
+      const arrival = applyAnchor(fallbackArrival, record.arrivalAnchor, `${record.fecha}T23:59:00`);
       return {
         fecha: record.fecha,
         points,
         visits: record.visits,
         activities: record.activities,
         departure,
-        arrival
+        arrival,
+        departureMode: record.departureMode || 'activity',
+        arrivalMode: record.arrivalMode || 'activity'
       };
     }).filter(record => record.points.length || record.visits.length || record.activities.length)
       .sort((a, b) => a.fecha.localeCompare(b.fecha));

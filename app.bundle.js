@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v249';
+const APP_VERSION = '700v250';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -1984,7 +1984,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v249');
+    const worker = new Worker('./timeline-import-worker.js?v=700v250');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2691,7 +2691,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v249');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v250');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3482,7 +3482,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v249');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v250');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3573,7 +3573,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v249');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v250');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3635,7 +3635,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v249');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v250');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -3933,7 +3933,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v249');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v250');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -8074,6 +8074,9 @@ function timelinePointRecord(record, role) {
   const point = role === 'arrival' ? record.arrival : record.departure;
   if (!point || storedImageCoordinate(point.latitude, -90, 90) == null || storedImageCoordinate(point.longitude, -180, 180) == null) return null;
   const departure = role === 'departure';
+  const mode = departure ? record.departureMode : record.arrivalMode;
+  const stableOvernight = mode === 'stable';
+  const overnightTransit = mode === 'transit';
   return {
     key: `timeline-${record.viajeId}-${record.fecha}-${role}`,
     kind: 'point',
@@ -8082,8 +8085,16 @@ function timelinePointRecord(record, role) {
     viajeId: record.viajeId,
     fecha: record.fecha,
     hora: String(point.time || '').slice(11, 16),
-    descripcion: departure ? 'Salida según Cronología' : 'Llegada según Cronología',
-    notas: departure
+    descripcion: stableOvernight
+      ? (departure ? 'Salida desde la pernocta' : 'Llegada a la pernocta')
+      : overnightTransit
+      ? (departure ? 'Inicio del día en tránsito' : 'Final del día en tránsito')
+      : (departure ? 'Salida según Cronología' : 'Llegada según Cronología'),
+    notas: stableOvernight
+      ? 'Ubicación estable detectada por la Cronología entre las 03:00 y las 06:00.'
+      : overnightTransit
+      ? 'No hubo una ubicación estable durante la noche; se usa el punto más próximo al cambio de día.'
+      : departure
       ? 'Punto de salida obtenido de la Cronología de Google Maps.'
       : 'Punto final del día obtenido de la Cronología de Google Maps.',
     enRuta: false,
@@ -8237,11 +8248,7 @@ function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip
     .filter(entry => !entry.expenseId || !exactCoverage.expenseIds.has(Number(entry.expenseId)))
     .forEach(append);
   return [...byCity.values()]
-    .sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99') || String(a.descripcion || '').localeCompare(String(b.descripcion || ''), 'es'))
-    .map(record => ({
-      ...record,
-      descripcion: `${record.descripcion} · ${record.count} ${record.count === 1 ? 'registro' : 'registros'}`
-    }));
+    .sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99') || String(a.descripcion || '').localeCompare(String(b.descripcion || ''), 'es'));
 }
 
 function tripDailyRouteOrder(trip, day) {
@@ -8962,7 +8969,7 @@ async function createDailyMapBlogImage(records, day, timelinePaths = []) {
   })
     ? await loadMapMarkerImageForCanvas(TRIP_MAP_TRAIN_ICON)
     : null;
-  if (dailyRoute.length > 1) {
+  if (dailyRoute.length > 1 && !timelinePaths.length) {
     context.beginPath();
     dailyRoute.forEach((record, index) => {
       const point = mapWorldPoint(record.latitude, record.longitude, zoom);
@@ -9226,7 +9233,7 @@ async function createTripOverviewMapBlogImage(trip) {
     const point = mapWorldPoint(item.latitude, item.longitude, zoom);
     return { ...item, x: point.x - layer.startX, y: headerHeight + point.y - layer.startY };
   });
-  if (projectedStops.length > 1) {
+  if (projectedStops.length > 1 && !timelinePaths.length) {
     context.beginPath();
     projectedStops.forEach((stop, index) => index ? context.lineTo(stop.x, stop.y) : context.moveTo(stop.x, stop.y));
     context.lineWidth = 4;
@@ -9696,7 +9703,7 @@ function initializeTripVectorMap({ container, withCoords, extentItems = withCoor
     const routeCoordinates = dailyMode
       ? dailyRoute.map(record => [Number(record.longitude), Number(record.latitude)])
       : tripModel.routeStops.map(stop => [Number(stop.longitude), Number(stop.latitude)]);
-    if ((dailyMode ? dailyRoute.length > 1 : shouldDrawRoute) && routeCoordinates.length > 1) {
+    if (!timelinePaths.length && (dailyMode ? dailyRoute.length > 1 : shouldDrawRoute) && routeCoordinates.length > 1) {
       map.addSource('trip-route', {
         type: 'geojson',
         data: {
@@ -10057,7 +10064,7 @@ function renderTripMap() {
     <div class="trip-map-frame" data-map-pan="1" style="aspect-ratio:${width} / ${height}">
       <div class="map-tiles" aria-hidden="true">${tiles.join('')}</div>
       <svg class="trip-map-overlay" viewBox="0 0 ${width} ${height}" role="img" aria-label="Mapa del viaje">
-        ${(dailyMode ? dailyRoute.length > 1 : shouldDrawRoute && routeItems.length > 1) && routePoints ? `<polyline points="${routePoints}" class="map-route"></polyline>` : ''}
+        ${!timelinePaths.length && (dailyMode ? dailyRoute.length > 1 : shouldDrawRoute && routeItems.length > 1) && routePoints ? `<polyline points="${routePoints}" class="map-route"></polyline>` : ''}
         ${timelineRoutePoints.map(points => `<polyline points="${points}" class="map-timeline-route"></polyline>`).join('')}
         ${markers}
         ${photoMarkers}
@@ -10125,7 +10132,11 @@ function renderTripMap() {
   const pointText = visiblePointCount ? ` ${visiblePointCount} ${visiblePointCount === 1 ? 'punto geolocalizado' : 'puntos geolocalizados'}.` : '';
   const photoText = photoCount ? ` ${photoCount} ${photoCount === 1 ? 'foto geolocalizada' : 'fotos geolocalizadas'}.` : '';
   const accommodationText = accommodationDestinationCount ? ` ${accommodationDestinationCount} ${accommodationDestinationCount === 1 ? 'destino usa' : 'destinos usan'} la ubicación GPS del alojamiento.` : '';
-  const routeLabel = shouldDrawRoute ? `Ruta: ${route || 'sin gastos con ciudad'}.` : `Ciudades: ${route || 'sin gastos con ciudad'}.`;
+  const routeLabel = timelinePaths.length
+    ? 'La ruta calculada por la aplicación está oculta mientras se muestra la Cronología.'
+    : shouldDrawRoute
+    ? `Ruta: ${route || 'sin gastos con ciudad'}.`
+    : `Ciudades: ${route || 'sin gastos con ciudad'}.`;
   const destinationText = destinationOnlyApplied ? ' Modo solo destinos: se muestran únicamente las paradas marcadas como Destino.' : '';
   const timelineText = timelinePaths.length ? ` Cronología: ${timelinePaths.length} ${timelinePaths.length === 1 ? 'día' : 'días'} con recorrido real.` : '';
   info.textContent = `${cityCount} ciudades en el mapa.${pointText}${photoText}${accommodationText} ${routeLabel}${timelineText}${destinationText}${configuredText}${missingText}${duplicatePhotoText}`;
@@ -11327,7 +11338,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v249');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v250');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15191,7 +15202,7 @@ function bindEvents() {
     tripMapState.showTimeline = !tripMapState.showTimeline;
     resetTripMapView();
     renderTripMap();
-    renderTimelineDialog();
+    closeTimelineDialog();
   };
   $('#timeline-delete').onclick = () => {
     deleteImportedTimeline().catch(error => setTimelineMessage(error.message || String(error), true));
@@ -16864,7 +16875,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v249');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v250');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
