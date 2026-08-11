@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v250';
+const APP_VERSION = '700v251';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -1932,7 +1932,7 @@ function renderTimelineDialog() {
   const remove = $('#timeline-delete');
   const select = $('#timeline-select-file');
   if (!trip) {
-    if (status) status.innerHTML = '<strong>Selecciona un viaje</strong><span>La Cronología se importa solamente para un viaje cada vez.</span>';
+    if (status) status.innerHTML = '<strong>Selecciona un viaje</strong><span>La Cronología de Maps se importa solamente para un viaje cada vez.</span>';
     if (select) select.disabled = true;
     if (toggle) toggle.hidden = true;
     if (remove) remove.hidden = true;
@@ -1946,7 +1946,7 @@ function renderTimelineDialog() {
   if (status) {
     status.innerHTML = records.length
       ? `<strong>${escapeHtml(trip.nombre)} · ${records.length} ${records.length === 1 ? 'día importado' : 'días importados'}</strong><span>${escapeHtml(summaryDocumentDate(first.fecha, true))} – ${escapeHtml(summaryDocumentDate(last.fecha, true))} · ${pointCount} puntos del recorrido</span><span>Archivo: ${escapeHtml(first.sourceName || 'Cronología.json')} · importado ${escapeHtml(new Date(first.importedAt || Date.now()).toLocaleString('es-ES'))}</span>`
-      : `<strong>${escapeHtml(trip.nombre)}</strong><span>Viaje del ${escapeHtml(summaryDocumentDate(trip.fechaInicio, true))} al ${escapeHtml(summaryDocumentDate(trip.fechaFin, true))}. Todavía no hay una Cronología importada.</span>`;
+      : `<strong>${escapeHtml(trip.nombre)}</strong><span>Viaje del ${escapeHtml(summaryDocumentDate(trip.fechaInicio, true))} al ${escapeHtml(summaryDocumentDate(trip.fechaFin, true))}. Todavía no hay una Cronología de Maps importada.</span>`;
   }
   if (select) select.disabled = false;
   if (toggle) {
@@ -1984,20 +1984,20 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v250');
+    const worker = new Worker('./timeline-import-worker.js?v=700v251');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
-        setTimelineMessage(payload.message || 'Analizando la Cronología…');
+        setTimelineMessage(payload.message || 'Analizando la Cronología de Maps…');
         return;
       }
       worker.terminate();
       if (payload.type === 'complete') resolve(payload.result);
-      else reject(new Error(payload.message || 'No se pudo analizar la Cronología.'));
+      else reject(new Error(payload.message || 'No se pudo analizar la Cronología de Maps.'));
     });
     worker.addEventListener('error', event => {
       worker.terminate();
-      reject(new Error(event.message || 'No se pudo iniciar el lector de la Cronología.'));
+      reject(new Error(event.message || 'No se pudo iniciar el lector de la Cronología de Maps.'));
     });
     worker.postMessage({
       file,
@@ -2008,7 +2008,7 @@ function parseTimelineFileInWorker(file, trip) {
 
 async function importTimelineFile(file) {
   const trip = state.viajes.find(item => Number(item.id) === Number(activeTimelineTripId));
-  if (!trip) throw new Error('Selecciona un viaje antes de importar la Cronología.');
+  if (!trip) throw new Error('Selecciona un viaje antes de importar la Cronología de Maps.');
   if (!file || !/\.json$/i.test(file.name || '')) throw new Error('Selecciona el archivo Cronología.json exportado por Google Maps.');
   const select = $('#timeline-select-file');
   if (select) select.disabled = true;
@@ -2048,14 +2048,14 @@ async function importTimelineFile(file) {
 async function deleteImportedTimeline() {
   const trip = state.viajes.find(item => Number(item.id) === Number(activeTimelineTripId));
   if (!trip) return;
-  if (!confirm(`¿Eliminar la Cronología importada de ${trip.nombre}? Los gastos, fotos y entradas del Blog no se modificarán.`)) return;
+  if (!confirm(`¿Eliminar la Cronología de Maps importada de ${trip.nombre}? Los gastos, fotos y entradas del Blog no se modificarán.`)) return;
   for (const record of timelineRecordsForTrip(trip.id)) await deleteRecord('timelineDays', record.id);
   await loadAll();
   activeTimelineTripId = Number(trip.id);
   resetTripMapView();
   renderTripMap();
   renderTimelineDialog();
-  setTimelineMessage('Cronología eliminada de este viaje.');
+  setTimelineMessage('Cronología de Maps eliminada de este viaje.');
 }
 
 function defaultTripId() {
@@ -2691,7 +2691,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v250');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v251');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3482,7 +3482,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v250');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v251');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3573,7 +3573,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v250');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v251');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3635,7 +3635,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v250');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v251');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -3933,7 +3933,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v250');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v251');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -8070,39 +8070,6 @@ function dailyMapDatesForScope(scopedTripIds, paisId) {
   return [...dates].sort().reverse();
 }
 
-function timelinePointRecord(record, role) {
-  const point = role === 'arrival' ? record.arrival : record.departure;
-  if (!point || storedImageCoordinate(point.latitude, -90, 90) == null || storedImageCoordinate(point.longitude, -180, 180) == null) return null;
-  const departure = role === 'departure';
-  const mode = departure ? record.departureMode : record.arrivalMode;
-  const stableOvernight = mode === 'stable';
-  const overnightTransit = mode === 'transit';
-  return {
-    key: `timeline-${record.viajeId}-${record.fecha}-${role}`,
-    kind: 'point',
-    timelinePoint: true,
-    timelineRole: role,
-    viajeId: record.viajeId,
-    fecha: record.fecha,
-    hora: String(point.time || '').slice(11, 16),
-    descripcion: stableOvernight
-      ? (departure ? 'Salida desde la pernocta' : 'Llegada a la pernocta')
-      : overnightTransit
-      ? (departure ? 'Inicio del día en tránsito' : 'Final del día en tránsito')
-      : (departure ? 'Salida según Cronología' : 'Llegada según Cronología'),
-    notas: stableOvernight
-      ? 'Ubicación estable detectada por la Cronología entre las 03:00 y las 06:00.'
-      : overnightTransit
-      ? 'No hubo una ubicación estable durante la noche; se usa el punto más próximo al cambio de día.'
-      : departure
-      ? 'Punto de salida obtenido de la Cronología de Google Maps.'
-      : 'Punto final del día obtenido de la Cronología de Google Maps.',
-    enRuta: false,
-    latitude: Number(point.latitude),
-    longitude: Number(point.longitude)
-  };
-}
-
 function timelineRecordsForMap(scopedTripIds, selectedDay = '') {
   if (!tripMapState.showTimeline || scopedTripIds.size !== 1) return [];
   return state.timelineDays
@@ -8111,15 +8078,36 @@ function timelineRecordsForMap(scopedTripIds, selectedDay = '') {
     .sort((a, b) => String(a.fecha || '').localeCompare(String(b.fecha || '')));
 }
 
+function timelineHomePointRecord(record, role) {
+  const point = role === 'arrival' ? record.arrival : record.departure;
+  const mode = role === 'arrival' ? record.arrivalMode : record.departureMode;
+  if (mode !== 'precise') return null;
+  if (!point || storedImageCoordinate(point.latitude, -90, 90) == null || storedImageCoordinate(point.longitude, -180, 180) == null) return null;
+  return {
+    key: `timeline-home-${record.viajeId}-${record.fecha}-${role}`,
+    kind: 'point',
+    timelinePoint: true,
+    timelineRole: 'home',
+    viajeId: record.viajeId,
+    fecha: record.fecha,
+    hora: String(point.time || '').slice(11, 16),
+    descripcion: 'Casa',
+    notas: 'Punto de pernocta obtenido de la primera ubicación precisa posterior al periodo nocturno.',
+    enRuta: false,
+    latitude: Number(point.latitude),
+    longitude: Number(point.longitude)
+  };
+}
+
 function timelineMapMarkerItems(records, dailyMode) {
   const items = [];
   records.forEach(record => {
-    const markerRecords = [timelinePointRecord(record, 'departure')];
+    const markerRecords = [timelineHomePointRecord(record, 'departure')];
     if (dailyMode && record.arrival && record.departure) {
       const separated = window.GoogleTimelineImport
         ? window.GoogleTimelineImport.distanceMeters(record.departure, record.arrival) >= 20
         : true;
-      if (separated) markerRecords.push(timelinePointRecord(record, 'arrival'));
+      if (separated) markerRecords.push(timelineHomePointRecord(record, 'arrival'));
     }
     markerRecords.filter(Boolean).forEach(markerRecord => {
       if (dailyMode) {
@@ -8129,7 +8117,7 @@ function timelineMapMarkerItems(records, dailyMode) {
       items.push({
         ciudad: {
           id: markerRecord.key,
-          nombre: `${markerRecord.descripcion} · ${blogDayDateLabel(markerRecord.fecha)}`,
+          nombre: `Casa · ${blogDayDateLabel(markerRecord.fecha)}`,
           lat: markerRecord.latitude,
           lng: markerRecord.longitude
         },
@@ -8137,7 +8125,7 @@ function timelineMapMarkerItems(records, dailyMode) {
         configuredOnly: true,
         plannedOnly: false,
         timelinePoint: true,
-        timelineRole: markerRecord.timelineRole,
+        timelineRole: 'home',
         pointEntry: markerRecord
       });
     });
@@ -8146,11 +8134,47 @@ function timelineMapMarkerItems(records, dailyMode) {
 }
 
 function timelineMapPaths(records) {
-  return records
-    .map(record => (Array.isArray(record.points) ? record.points : [])
-      .map(point => ({ latitude: Number(point.latitude), longitude: Number(point.longitude), time: point.time || '' }))
-      .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude)))
-    .filter(points => points.length > 1);
+  const paths = [];
+  records.forEach(record => {
+    const points = Array.isArray(record.points) ? record.points : [];
+    const activities = Array.isArray(record.activities) ? record.activities : [];
+    activities.forEach((activity, activityIndex) => {
+      const startTime = String(activity.startTime || activity.start && activity.start.time || '');
+      const endTime = String(activity.endTime || activity.end && activity.end.time || '');
+      const startMs = Date.parse(startTime);
+      const endMs = Date.parse(endTime);
+      const activityPoints = points.filter(point => {
+        const pointMs = Date.parse(point && point.time || '');
+        if (!Number.isFinite(pointMs)) return false;
+        if (Number.isFinite(startMs) && pointMs < startMs) return false;
+        if (Number.isFinite(endMs) && pointMs > endMs) return false;
+        return true;
+      });
+      const departure = activityIndex === 0 && record.departureMode === 'precise'
+        ? record.departure
+        : activity.start;
+      const arrival = activityIndex === activities.length - 1 && record.arrivalMode === 'precise'
+        ? record.arrival
+        : activity.end;
+      const path = [departure, ...activityPoints, arrival]
+        .filter(Boolean)
+        .map(point => ({
+          latitude: Number(point.latitude),
+          longitude: Number(point.longitude),
+          time: point.time || ''
+        }))
+        .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude))
+        .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')))
+        .filter((point, index, candidates) => {
+          if (!index) return true;
+          const previous = candidates[index - 1];
+          return Math.abs(point.latitude - previous.latitude) > 0.000001
+            || Math.abs(point.longitude - previous.longitude) > 0.000001;
+        });
+      if (path.length > 1) paths.push(path);
+    });
+  });
+  return paths;
 }
 
 function plannedDailyMapRecordsForScope(scopedTripIds, paisId, day, destinationOnlyApplied = false) {
@@ -8430,12 +8454,22 @@ function tripMapItemsForCurrentScope() {
   }
   const photos = tripMapState.showPhotos ? photoMapItems(visiblePhotoRecords) : [];
   const dailyItems = dailyMode ? dailyRecords.map(dailyMapItem) : [];
-  const timelineItems = timelineMapMarkerItems(importedTimelineRecords, dailyMode);
-  const mapItems = dailyMode ? [...dailyItems, ...timelineItems] : [...visibleCities, ...visiblePoints, ...photos, ...timelineItems];
+  const baseMapItems = dailyMode ? dailyItems : [...visibleCities, ...visiblePoints, ...photos];
+  const timelineItems = timelineMapMarkerItems(importedTimelineRecords, dailyMode)
+    .filter(timelineItem => !baseMapItems.some(item => {
+      const name = `${item.ciudad && item.ciudad.nombre || ''} ${item.pointEntry && item.pointEntry.descripcion || ''}`;
+      if (!/(^|\s)casa(?:\s|$)/i.test(name)) return false;
+      if (!window.GoogleTimelineImport) return false;
+      return window.GoogleTimelineImport.distanceMeters(
+        { latitude: Number(item.ciudad && item.ciudad.lat), longitude: Number(item.ciudad && item.ciudad.lng) },
+        { latitude: Number(timelineItem.ciudad && timelineItem.ciudad.lat), longitude: Number(timelineItem.ciudad && timelineItem.ciudad.lng) }
+      ) < 50;
+    }));
+  const mapItems = [...baseMapItems, ...timelineItems];
   const timelineExtentItems = timelinePaths.flatMap((points, pathIndex) => points.map((point, pointIndex) => ({
     ciudad: {
       id: `timeline-extent-${pathIndex}-${pointIndex}`,
-      nombre: 'Cronología',
+      nombre: 'Cronología de Maps',
       lat: point.latitude,
       lng: point.longitude
     },
@@ -9475,7 +9509,7 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
     dot.append(image);
   } else {
     dot.textContent = item.timelinePoint
-      ? (item.timelineRole === 'arrival' ? 'L' : 'S')
+      ? 'C'
       : transportMarker
       ? transportMarker.icon
       : dailyRecord
@@ -9829,7 +9863,7 @@ function renderTripMap() {
           <label class="map-day-control" title="Mostrar solamente los puntos y fotos de un día"><span>Día</span><select data-map-day="1"><option value="">Todos los días</option>${emptyDayOptions}</select></label>
           <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
           <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar todas las paradas' : 'Mostrar únicamente las paradas marcadas como Destino'}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destinos</button>
-          <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" title="Exportar previamente la Cronología de Google Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología</button>
+          <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" title="Exportar previamente la Cronología de Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología</button>
           <button type="button" data-map-add-stop="1" title="Añadir, borrar, clasificar o reordenar paradas del viaje">Añadir / modificar parada</button>
           <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
         </div>
@@ -9965,7 +9999,7 @@ function renderTripMap() {
       ? tripMapTransportMarker(dailyRecord)
       : (pointStops.length ? tripMapTransportMarker(pointStops[0]) : null);
     const markerText = item.timelinePoint
-      ? (item.timelineRole === 'arrival' ? 'L' : 'S')
+      ? 'C'
       : dailyRecord
       ? (dailyRecord.kind === 'point' ? '•' : '+')
       : routeStops.length
@@ -10050,7 +10084,7 @@ function renderTripMap() {
         <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
         <button type="button" data-map-photos="1" class="${tripMapState.showPhotos ? 'active' : ''}" aria-pressed="${tripMapState.showPhotos}" title="Mostrar u ocultar fotos geolocalizadas"${availablePhotoCount ? '' : ' disabled'}>Fotos${availablePhotoCount ? ` (${availablePhotoCount})` : ''}</button>
         <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar todas las paradas' : (destinationOnlyAvailable ? 'Mostrar únicamente las paradas marcadas como Destino' : 'Marca alguna parada como Destino en el editor de ruta')}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destinos</button>
-        <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" aria-pressed="${timelineAvailable && tripMapState.showTimeline}" title="Exportar previamente la Cronología de Google Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología</button>
+        <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" aria-pressed="${timelineAvailable && tripMapState.showTimeline}" title="Exportar previamente la Cronología de Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología</button>
         <button type="button" data-map-add-stop="1" title="Añadir, borrar o reordenar paradas del viaje">Añadir / modificar parada</button>
         <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
         <button type="button" data-map-fullscreen="1" class="${fullscreen ? 'active' : ''}" title="${fullscreen ? 'Volver al tamaño normal' : 'Ampliar el mapa a toda la pantalla'}">${fullscreen ? 'Tamaño normal' : 'Pantalla completa'}</button>
@@ -10111,7 +10145,7 @@ function renderTripMap() {
     const fallbackText = dailyUsesCityFallback ? ' Los datos sin GPS exacto se muestran agrupados en su ciudad.' : '';
     const accommodationText = accommodationDestinationCount ? ' El alojamiento geolocalizado se usa como destino de la ciudad.' : '';
     const routeText = timelinePaths.length
-      ? `con recorrido real de Maps (${timelinePaths.reduce((sum, path) => sum + path.length, 0)} puntos)`
+      ? `con recorrido estimado de Cronología de Maps (${timelinePaths.reduce((sum, path) => sum + path.length, 0)} puntos)`
       : (dailyRoute.length > 1 ? 'con línea entre las ciudades' : 'sin líneas');
     info.textContent = `${dailyRecords.length} ${dailyRecords.length === 1 ? 'punto marcado' : 'puntos marcados'} el ${blogDayDateLabel(tripMapState.day)}, ${routeText}. La ciudad aparece junto a cada punto.${accommodationText}${fallbackText}${duplicatePhotoText}`;
     return;
@@ -10133,12 +10167,12 @@ function renderTripMap() {
   const photoText = photoCount ? ` ${photoCount} ${photoCount === 1 ? 'foto geolocalizada' : 'fotos geolocalizadas'}.` : '';
   const accommodationText = accommodationDestinationCount ? ` ${accommodationDestinationCount} ${accommodationDestinationCount === 1 ? 'destino usa' : 'destinos usan'} la ubicación GPS del alojamiento.` : '';
   const routeLabel = timelinePaths.length
-    ? 'La ruta calculada por la aplicación está oculta mientras se muestra la Cronología.'
+    ? 'La ruta calculada por la aplicación está oculta mientras se muestra la Cronología de Maps.'
     : shouldDrawRoute
     ? `Ruta: ${route || 'sin gastos con ciudad'}.`
     : `Ciudades: ${route || 'sin gastos con ciudad'}.`;
   const destinationText = destinationOnlyApplied ? ' Modo solo destinos: se muestran únicamente las paradas marcadas como Destino.' : '';
-  const timelineText = timelinePaths.length ? ` Cronología: ${timelinePaths.length} ${timelinePaths.length === 1 ? 'día' : 'días'} con recorrido real.` : '';
+  const timelineText = timelinePaths.length ? ` Cronología de Maps: ${timelinePaths.length} ${timelinePaths.length === 1 ? 'día' : 'días'} con recorrido estimado.` : '';
   info.textContent = `${cityCount} ciudades en el mapa.${pointText}${photoText}${accommodationText} ${routeLabel}${timelineText}${destinationText}${configuredText}${missingText}${duplicatePhotoText}`;
 }
 
@@ -11338,7 +11372,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v250');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v251');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16875,7 +16909,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v250');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v251');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

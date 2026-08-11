@@ -6,6 +6,7 @@
   const OVERNIGHT_END_MINUTE = 6 * 60;
   const OVERNIGHT_STABLE_DISTANCE_METERS = 200;
   const OVERNIGHT_CLUSTER_RADIUS_METERS = 300;
+  const PRECISE_LOCATION_ACCURACY_METERS = 30;
 
   function finiteNumber(value) {
     const number = Number(value);
@@ -146,7 +147,31 @@
     return candidate ? { latitude: candidate.point.latitude, longitude: candidate.point.longitude, time: candidate.point.time, source: 'point' } : null;
   }
 
-  function overnightTransition(date, sourcePoints, visits) {
+  function firstPrecisePositionAfterAmbiguousNight(date, rawPositions, firstActivityTime = '') {
+    const nightPositions = rawPositions.filter(point => {
+      if (localDate(point.time) !== date) return false;
+      const minute = localMinute(point.time);
+      return minute != null && minute >= OVERNIGHT_START_MINUTE && minute <= OVERNIGHT_END_MINUTE;
+    });
+    if (!nightPositions.length || nightPositions.some(point => point.accuracyMeters <= PRECISE_LOCATION_ACCURACY_METERS)) return null;
+    const firstActivityMs = Date.parse(firstActivityTime);
+    return rawPositions
+      .filter(point => localDate(point.time) === date)
+      .filter(point => localMinute(point.time) >= OVERNIGHT_END_MINUTE)
+      .filter(point => point.accuracyMeters <= PRECISE_LOCATION_ACCURACY_METERS)
+      .filter(point => !Number.isFinite(firstActivityMs) || Date.parse(point.time) <= firstActivityMs)
+      .sort((a, b) => String(a.time).localeCompare(String(b.time)))[0] || null;
+  }
+
+  function overnightTransition(date, sourcePoints, visits, rawPositions, firstActivityTime = '') {
+    const firstPrecise = firstPrecisePositionAfterAmbiguousNight(date, rawPositions, firstActivityTime);
+    if (firstPrecise) {
+      return {
+        point: firstPrecise,
+        mode: 'precise',
+        radiusMeters: Math.round(firstPrecise.accuracyMeters)
+      };
+    }
     const startKey = `${date}T03:00`;
     const endKey = `${date}T06:00`;
     const stableVisit = visits.find(visit => visit.startKey <= startKey && visit.endKey >= endKey);
@@ -187,22 +212,26 @@
     return cleanPoint({
       latitude: anchor.point.latitude,
       longitude: anchor.point.longitude,
-      time: anchor.mode === 'transit'
+      time: anchor.mode === 'transit' || anchor.mode === 'precise'
         ? anchor.point.time || fallbackTime
         : fallback && fallback.time || fallbackTime,
-      kind: anchor.mode === 'stable' ? 'overnight' : 'overnight-transit',
+      kind: anchor.mode === 'precise'
+        ? 'overnight-precise'
+        : anchor.mode === 'stable'
+        ? 'overnight'
+        : 'overnight-transit',
       activityType: ''
     });
   }
 
   function importTrip(data, options = {}) {
     if (!data || !Array.isArray(data.semanticSegments)) {
-      throw new Error('El archivo no parece una exportación válida de la Cronología de Google Maps.');
+      throw new Error('El archivo no parece una exportación válida de la Cronología de Maps.');
     }
     const startDate = localDate(options.startDate);
     const endDate = localDate(options.endDate) || startDate;
     if (!startDate || !endDate || endDate < startDate) {
-      throw new Error('El viaje necesita fechas de inicio y final válidas antes de importar la Cronología.');
+      throw new Error('El viaje necesita fechas de inicio y final válidas antes de importar la Cronología de Maps.');
     }
     const extendedStartDate = addDays(startDate, -1);
     const extendedEndDate = addDays(endDate, 1);
@@ -210,6 +239,7 @@
     const extendedEndKey = `${extendedEndDate}T23:59`;
     const sourcePoints = [];
     const sourceVisits = [];
+    const rawPositions = [];
     const byDay = new Map();
     const day = date => {
       if (!byDay.has(date)) byDay.set(date, { fecha: date, points: [], visits: [], activities: [] });
@@ -222,6 +252,21 @@
       if (dateInRange(date, extendedStartDate, extendedEndDate)) sourcePoints.push(point);
       if (dateInRange(date, startDate, endDate)) day(date).points.push(point);
     };
+
+    (Array.isArray(data.rawSignals) ? data.rawSignals : []).forEach(signal => {
+      const position = signal && signal.position;
+      const time = String(position && position.timestamp || '');
+      const coordinate = coordinateFrom(position);
+      const accuracyMeters = finiteNumber(position && position.accuracyMeters);
+      const date = localDate(time);
+      if (!coordinate || accuracyMeters == null || !dateInRange(date, extendedStartDate, extendedEndDate)) return;
+      rawPositions.push({
+        ...coordinate,
+        time,
+        accuracyMeters,
+        source: String(position.source || '')
+      });
+    });
 
     data.semanticSegments.forEach(segment => {
       const startTime = String(segment && segment.startTime || '');
@@ -275,7 +320,12 @@
     });
 
     for (let date = startDate; date && date <= addDays(endDate, 1); date = addDays(date, 1)) {
-      const transition = overnightTransition(date, sourcePoints, sourceVisits);
+      const currentDay = byDay.get(date);
+      const firstActivityTime = currentDay && currentDay.activities
+        .map(activity => activity.startTime)
+        .filter(Boolean)
+        .sort()[0] || '';
+      const transition = overnightTransition(date, sourcePoints, sourceVisits, rawPositions, firstActivityTime);
       if (!transition) continue;
       if (dateInRange(date, startDate, endDate)) {
         const current = day(date);

@@ -137,13 +137,73 @@ test('una noche en movimiento usa el punto más próximo al cambio de día', () 
   assert.deepEqual([current.departure.latitude, current.departure.longitude], [40.1, -3.1]);
 });
 
+test('la primera lectura precisa anterior al movimiento fija Casa para llegada y salida', () => {
+  const data = {
+    semanticSegments: [
+      {
+        startTime: '2026-08-09T20:00:00.000+02:00',
+        endTime: '2026-08-09T21:00:00.000+02:00',
+        activity: {
+          start: { latLng: '40.000000°, -3.000000°' },
+          end: { latLng: '40.100000°, -3.100000°' },
+          topCandidate: { type: 'IN_PASSENGER_VEHICLE' }
+        }
+      },
+      {
+        startTime: '2026-08-10T08:00:00.000+02:00',
+        endTime: '2026-08-10T09:00:00.000+02:00',
+        activity: {
+          start: { latLng: '40.100000°, -3.100000°' },
+          end: { latLng: '40.200000°, -3.200000°' },
+          topCandidate: { type: 'IN_PASSENGER_VEHICLE' }
+        }
+      }
+    ],
+    rawSignals: [
+      { position: { timestamp: '2026-08-10T03:10:00.000+02:00', LatLng: '40.099000°, -3.099000°', accuracyMeters: 200, source: 'CELL' } },
+      { position: { timestamp: '2026-08-10T05:50:00.000+02:00', LatLng: '40.099000°, -3.099000°', accuracyMeters: 200, source: 'CELL' } },
+      { position: { timestamp: '2026-08-10T06:30:00.000+02:00', LatLng: '40.100000°, -3.100000°', accuracyMeters: 80, source: 'GPS' } },
+      { position: { timestamp: '2026-08-10T07:46:00.000+02:00', LatLng: '40.111111°, -3.111111°', accuracyMeters: 4, source: 'GPS' } },
+      { position: { timestamp: '2026-08-10T08:10:00.000+02:00', LatLng: '40.222222°, -3.222222°', accuracyMeters: 3, source: 'GPS' } }
+    ]
+  };
+  const result = importTrip(data, { startDate: '2026-08-09', endDate: '2026-08-10' });
+  const previous = result.days.find(day => day.fecha === '2026-08-09');
+  const current = result.days.find(day => day.fecha === '2026-08-10');
+  assert.equal(previous.arrivalMode, 'precise');
+  assert.equal(current.departureMode, 'precise');
+  assert.deepEqual([previous.arrival.latitude, previous.arrival.longitude], [40.111111, -3.111111]);
+  assert.deepEqual([current.departure.latitude, current.departure.longitude], [40.111111, -3.111111]);
+});
+
+test('una lectura precisa posterior al primer movimiento no se convierte en Casa', () => {
+  const data = {
+    semanticSegments: [{
+      startTime: '2026-08-10T08:00:00.000+02:00',
+      endTime: '2026-08-10T09:00:00.000+02:00',
+      activity: {
+        start: { latLng: '40.100000°, -3.100000°' },
+        end: { latLng: '40.200000°, -3.200000°' },
+        topCandidate: { type: 'IN_PASSENGER_VEHICLE' }
+      }
+    }],
+    rawSignals: [
+      { position: { timestamp: '2026-08-10T03:10:00.000+02:00', LatLng: '40.099000°, -3.099000°', accuracyMeters: 200, source: 'CELL' } },
+      { position: { timestamp: '2026-08-10T05:50:00.000+02:00', LatLng: '40.099000°, -3.099000°', accuracyMeters: 200, source: 'CELL' } },
+      { position: { timestamp: '2026-08-10T08:10:00.000+02:00', LatLng: '40.222222°, -3.222222°', accuracyMeters: 3, source: 'GPS' } }
+    ]
+  };
+  const result = importTrip(data, { startDate: '2026-08-10', endDate: '2026-08-10' });
+  assert.notEqual(result.days[0].departureMode, 'precise');
+});
+
 test('Cronología avisa de la exportación previa y se procesa fuera de la interfaz', () => {
   assert.match(html, /id="timeline-dialog"/);
-  assert.match(html, /Debes exportar previamente la Cronología desde Google Maps/);
+  assert.match(html, /Debes exportar previamente la Cronología de Maps/);
   assert.match(html, /selecciona <em>Cronología\.json<\/em> desde el lugar donde lo hayas descargado/);
   assert.match(html, /id="timeline-file-input"[^>]*accept="\.json,application\/json"/);
   assert.match(app, /data-map-timeline="1"/);
-  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v250'\)/);
+  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v251'\)/);
   assert.match(worker, /GoogleTimelineImport\.importTrip/);
 });
 
@@ -154,7 +214,9 @@ test('el recorrido importado se guarda por viaje, se sincroniza y tiene capa pro
   assert.match(app, /source: 'google-maps-timeline'/);
   assert.match(app, /class="map-timeline-route"/);
   assert.match(app, /google-timeline-route-line/);
-  assert.match(app, /item\.timelineRole === 'arrival' \? 'L' : 'S'/);
+  assert.match(app, /descripcion: 'Casa'/);
+  assert.match(app, /\? 'C'/);
+  assert.doesNotMatch(app, /Salida desde la pernocta|Llegada según Cronología/);
   assert.match(styles, /\.map-timeline-route/);
   assert.match(styles, /\.trip-vector-marker\.timeline/);
 });
@@ -165,6 +227,7 @@ test('la Cronología se integra en los mapas copiados al Blog sin alterar el map
   assert.match(app, /timelinePaths\.flatMap\(path => path\.map/);
   assert.match(app, /timelinePaths\.forEach\(path => \{[\s\S]*?strokeStyle = '#0f766e'/);
   assert.match(app, /dailyRecords\.length > 0 \|\| timelinePaths\.length > 0/);
+  assert.match(app, /activities\.forEach\(\(activity, activityIndex\) => \{/);
 });
 
 test('mostrar Cronología cierra el cuadro y oculta solamente la línea calculada', () => {
