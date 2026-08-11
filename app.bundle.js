@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v247';
+const APP_VERSION = '700v248';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2527,7 +2527,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v247');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v248');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3318,7 +3318,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v247');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v248');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3409,7 +3409,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v247');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v248');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3471,7 +3471,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v247');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v248');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -3769,7 +3769,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v247');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v248');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -7724,6 +7724,8 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
       blogEntryImages(entry).forEach((image, index) => append({
         image,
         fallbackKey: `blog-${entry.id}-${index}`,
+        blogEntryId: entry.id,
+        expenseId: entry.expenseId || null,
         descripcion: entry.descripcion || 'Foto',
         fecha: entry.fecha || '',
         hora: entry.hora || '',
@@ -7742,6 +7744,7 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
       if (ticketImage) append({
         image: ticketImage,
         fallbackKey: `gasto-${gasto.id}-ticket`,
+        expenseId: gasto.id,
         descripcion: gasto.desc || 'Ticket del gasto',
         fecha: ticketImage.capturedDate || gasto.fecha || '',
         hora: ticketImage.capturedTime || expenseTimeValue(gasto),
@@ -7753,6 +7756,7 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
       expenseExtraImages(gasto).forEach((image, index) => append({
         image,
         fallbackKey: `gasto-${gasto.id}-${index}`,
+        expenseId: gasto.id,
         descripcion: gasto.desc || 'Foto del gasto',
         fecha: gasto.fecha || '',
         hora: expenseTimeValue(gasto),
@@ -7838,6 +7842,8 @@ function dailyMapRecordsForScope(scopedTripIds, paisId) {
         key: `point-${entry.id}`,
         kind: 'point',
         entry,
+        blogEntryId: entry.id,
+        expenseId: entry.expenseId || null,
         viajeId: entry.viajeId,
         fecha: entry.fecha || '',
         hora: entry.hora || '',
@@ -7923,13 +7929,26 @@ function plannedDailyMapRecordsForScope(scopedTripIds, paisId, day, destinationO
   return records;
 }
 
-function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip = null) {
+function dailyExactRecordCoverage(records = []) {
+  const blogEntryIds = new Set();
+  const expenseIds = new Set();
+  records.forEach(record => {
+    const blogEntryId = Number(record?.blogEntryId || record?.entry?.id || 0);
+    const expenseId = Number(record?.expenseId || record?.entry?.expenseId || 0);
+    if (blogEntryId) blogEntryIds.add(blogEntryId);
+    if (expenseId) expenseIds.add(expenseId);
+  });
+  return { blogEntryIds, expenseIds };
+}
+
+function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip = null, exactRecords = []) {
   const configuredCityIds = [...new Set(state.viajes
     .filter(trip => scopedTripIds.has(Number(trip.id)))
     .flatMap(tripCityIds)
     .map(Number)
     .filter(Boolean))];
   const defaultCityId = configuredCityIds.length === 1 ? configuredCityIds[0] : 0;
+  const exactCoverage = dailyExactRecordCoverage(exactRecords);
   const byCity = new Map();
   const append = item => {
     if (!mapRecordMatchesDestination(item, destinationTrip)) return;
@@ -7963,10 +7982,13 @@ function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip
   state.gastos
     .filter(gasto => scopedTripIds.has(Number(gasto.viajeId)) && gasto.fecha === day)
     .filter(gasto => gastoMatchesLugarFilters(gasto, paisId, ''))
+    .filter(gasto => !exactCoverage.expenseIds.has(Number(gasto.id)))
     .forEach(gasto => append({ ...gasto, hora: expenseTimeValue(gasto) }));
   state.blogEntries
     .filter(entry => scopedTripIds.has(Number(entry.viajeId)) && entry.fecha === day)
     .filter(entry => blogEntryMatchesMapCountry(entry, paisId))
+    .filter(entry => !exactCoverage.blogEntryIds.has(Number(entry.id)))
+    .filter(entry => !entry.expenseId || !exactCoverage.expenseIds.has(Number(entry.expenseId)))
     .forEach(append);
   return [...byCity.values()]
     .sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99') || String(a.descripcion || '').localeCompare(String(b.descripcion || ''), 'es'))
@@ -8055,7 +8077,7 @@ function tripMapItemsForCurrentScope() {
     ? exactDailyRecords.filter(record => record.fecha === tripMapState.day)
     : [];
   const actualDailyCityRecords = dailyMode
-    ? dailyCityMapRecordsForScope(scopedTripIds, paisId, tripMapState.day, destinationTrip)
+    ? dailyCityMapRecordsForScope(scopedTripIds, paisId, tripMapState.day, destinationTrip, selectedExactDailyRecords)
     : [];
   const actualDailyCityIds = new Set([
     ...selectedExactDailyRecords.map(record => Number(record.ciudadId)),
@@ -10891,7 +10913,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v247');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v248');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16391,7 +16413,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v247');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v248');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

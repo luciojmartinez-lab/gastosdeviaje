@@ -13,20 +13,20 @@ const [html, app, help, sw, version, pkg, ticketOcr, ticketWorker] = await Promi
   readFile(new URL('../ticket-image-worker.js', import.meta.url), 'utf8')
 ]);
 
-test('la versiÃ³n 700v247 estÃ¡ alineada en app, cache y paquete', () => {
-  assert.equal(version.trim(), '700v247');
-  assert.match(pkg, /"version": "700\.247\.0"/);
-  assert.match(html, /styles\.css\?v=700v247/);
-  assert.match(html, /app\.bundle\.js\?v=700v247/);
-  assert.match(html, /map-model\.js\?v=700v247/);
-  assert.match(html, /sw\.js\?v=700v247/);
-  assert.match(app, /const APP_VERSION = '700v247'/);
-  assert.match(app, /image-location\.js\?v=700v247/);
-  assert.match(app, /ticket-ocr\.js\?v=700v247/);
-  assert.match(app, /share-pdf\.js\?v=700v247/);
-  assert.match(ticketOcr, /DOCUMENT_PREPROCESSOR_VERSION = '700v247'/);
-  assert.match(ticketWorker, /ticket-image-processing\.js\?v=700v247/);
-  assert.match(sw, /gastosdeviaje-700v247/);
+test('la versiÃ³n 700v248 estÃ¡ alineada en app, cache y paquete', () => {
+  assert.equal(version.trim(), '700v248');
+  assert.match(pkg, /"version": "700\.248\.0"/);
+  assert.match(html, /styles\.css\?v=700v248/);
+  assert.match(html, /app\.bundle\.js\?v=700v248/);
+  assert.match(html, /map-model\.js\?v=700v248/);
+  assert.match(html, /sw\.js\?v=700v248/);
+  assert.match(app, /const APP_VERSION = '700v248'/);
+  assert.match(app, /image-location\.js\?v=700v248/);
+  assert.match(app, /ticket-ocr\.js\?v=700v248/);
+  assert.match(app, /share-pdf\.js\?v=700v248/);
+  assert.match(ticketOcr, /DOCUMENT_PREPROCESSOR_VERSION = '700v248'/);
+  assert.match(ticketWorker, /ticket-image-processing\.js\?v=700v248/);
+  assert.match(sw, /gastosdeviaje-700v248/);
   assert.doesNotMatch(html + app + sw, /700v136|700v135|700v134|700v133|700v132|700v131|700v128/);
 });
 

@@ -89,6 +89,24 @@ test('el mapa diario separa los puntos y los números de destino', () => {
   assert.match(styles, /\.map-photo-popup\.tail-top::after/);
 });
 
+test('el mapa diario no repite en la ciudad una entrada que ya tiene GPS exacto', () => {
+  const start = app.indexOf('function dailyExactRecordCoverage');
+  const end = app.indexOf('function dailyCityMapRecordsForScope', start);
+  const source = app.slice(start, end);
+  const dailyExactRecordCoverage = Function(`${source}\nreturn dailyExactRecordCoverage;`)();
+  const coverage = dailyExactRecordCoverage([
+    { kind: 'point', blogEntryId: 41, entry: { id: 41 } },
+    { kind: 'photo', blogEntryId: 52, expenseId: 17 },
+    { kind: 'photo', expenseId: 23 }
+  ]);
+  assert.deepEqual([...coverage.blogEntryIds], [41, 52]);
+  assert.deepEqual([...coverage.expenseIds], [17, 23]);
+  assert.match(app, /dailyCityMapRecordsForScope\(scopedTripIds, paisId, tripMapState\.day, destinationTrip, selectedExactDailyRecords\)/);
+  assert.match(app, /!exactCoverage\.blogEntryIds\.has\(Number\(entry\.id\)\)/);
+  assert.match(app, /!exactCoverage\.expenseIds\.has\(Number\(gasto\.id\)\)/);
+  assert.match(app, /!entry\.expenseId \|\| !exactCoverage\.expenseIds\.has\(Number\(entry\.expenseId\)\)/);
+});
+
 test('los cambios de datos no construyen el mapa mientras su pestaña está oculta', () => {
   const start = app.indexOf('function renderMapPaises()');
   const end = app.indexOf('function renderResumenCiudades()', start);
