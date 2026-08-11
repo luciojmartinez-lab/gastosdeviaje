@@ -164,7 +164,9 @@ test('la primera lectura precisa anterior al movimiento fija Casa para llegada y
       { position: { timestamp: '2026-08-10T05:50:00.000+02:00', LatLng: '40.099000°, -3.099000°', accuracyMeters: 200, source: 'CELL' } },
       { position: { timestamp: '2026-08-10T06:30:00.000+02:00', LatLng: '40.100000°, -3.100000°', accuracyMeters: 80, source: 'GPS' } },
       { position: { timestamp: '2026-08-10T07:46:00.000+02:00', LatLng: '40.111111°, -3.111111°', accuracyMeters: 4, source: 'GPS' } },
-      { position: { timestamp: '2026-08-10T08:10:00.000+02:00', LatLng: '40.222222°, -3.222222°', accuracyMeters: 3, source: 'GPS' } }
+      { activityRecord: { timestamp: '2026-08-10T07:46:10.000+02:00', probableActivities: [{ type: 'STILL', confidence: 1 }] } },
+      { position: { timestamp: '2026-08-10T08:10:00.000+02:00', LatLng: '40.222222°, -3.222222°', accuracyMeters: 3, source: 'GPS' } },
+      { activityRecord: { timestamp: '2026-08-10T08:10:00.000+02:00', probableActivities: [{ type: 'STILL', confidence: 1 }] } }
     ]
   };
   const result = importTrip(data, { startDate: '2026-08-09', endDate: '2026-08-10' });
@@ -174,6 +176,45 @@ test('la primera lectura precisa anterior al movimiento fija Casa para llegada y
   assert.equal(current.departureMode, 'precise');
   assert.deepEqual([previous.arrival.latitude, previous.arrival.longitude], [40.111111, -3.111111]);
   assert.deepEqual([current.departure.latitude, current.departure.longitude], [40.111111, -3.111111]);
+});
+
+test('una consulta nocturna precisa y en reposo puede identificar Casa', () => {
+  const data = {
+    semanticSegments: [
+      {
+        startTime: '2026-08-09T20:00:00.000+02:00',
+        endTime: '2026-08-09T21:00:00.000+02:00',
+        activity: {
+          start: { latLng: '40.000000°, -3.000000°' },
+          end: { latLng: '40.100000°, -3.100000°' },
+          topCandidate: { type: 'IN_PASSENGER_VEHICLE' }
+        }
+      },
+      {
+        startTime: '2026-08-10T09:00:00.000+02:00',
+        endTime: '2026-08-10T10:00:00.000+02:00',
+        activity: {
+          start: { latLng: '40.100000°, -3.100000°' },
+          end: { latLng: '40.200000°, -3.200000°' },
+          topCandidate: { type: 'WALKING' }
+        }
+      }
+    ],
+    rawSignals: [
+      { position: { timestamp: '2026-08-10T00:35:00.000+02:00', LatLng: '40.123456°, -3.123456°', accuracyMeters: 6, source: 'GPS' } },
+      { activityRecord: { timestamp: '2026-08-10T00:35:12.000+02:00', probableActivities: [{ type: 'STILL', confidence: 0.99 }] } },
+      { position: { timestamp: '2026-08-10T04:00:00.000+02:00', LatLng: '40.200000°, -3.200000°', accuracyMeters: 2, source: 'GPS' } },
+      { activityRecord: { timestamp: '2026-08-10T04:00:00.000+02:00', probableActivities: [{ type: 'STILL', confidence: 1 }] } },
+      { position: { timestamp: '2026-08-10T06:30:00.000+02:00', LatLng: '40.123500°, -3.123500°', accuracyMeters: 8, source: 'GPS' } },
+      { activityRecord: { timestamp: '2026-08-10T06:30:00.000+02:00', probableActivities: [{ type: 'STILL', confidence: 1 }] } }
+    ]
+  };
+  const result = importTrip(data, { startDate: '2026-08-09', endDate: '2026-08-10' });
+  const previous = result.days.find(day => day.fecha === '2026-08-09');
+  const current = result.days.find(day => day.fecha === '2026-08-10');
+  assert.equal(current.departureMode, 'precise');
+  assert.deepEqual([current.departure.latitude, current.departure.longitude], [40.123456, -3.123456]);
+  assert.deepEqual([previous.arrival.latitude, previous.arrival.longitude], [40.123456, -3.123456]);
 });
 
 test('una lectura precisa posterior al primer movimiento no se convierte en Casa', () => {
@@ -190,7 +231,8 @@ test('una lectura precisa posterior al primer movimiento no se convierte en Casa
     rawSignals: [
       { position: { timestamp: '2026-08-10T03:10:00.000+02:00', LatLng: '40.099000°, -3.099000°', accuracyMeters: 200, source: 'CELL' } },
       { position: { timestamp: '2026-08-10T05:50:00.000+02:00', LatLng: '40.099000°, -3.099000°', accuracyMeters: 200, source: 'CELL' } },
-      { position: { timestamp: '2026-08-10T08:10:00.000+02:00', LatLng: '40.222222°, -3.222222°', accuracyMeters: 3, source: 'GPS' } }
+      { position: { timestamp: '2026-08-10T08:10:00.000+02:00', LatLng: '40.222222°, -3.222222°', accuracyMeters: 3, source: 'GPS' } },
+      { activityRecord: { timestamp: '2026-08-10T08:10:00.000+02:00', probableActivities: [{ type: 'STILL', confidence: 1 }] } }
     ]
   };
   const result = importTrip(data, { startDate: '2026-08-10', endDate: '2026-08-10' });
@@ -203,7 +245,7 @@ test('Cronología avisa de la exportación previa y se procesa fuera de la inter
   assert.match(html, /selecciona <em>Cronología\.json<\/em> desde el lugar donde lo hayas descargado/);
   assert.match(html, /id="timeline-file-input"[^>]*accept="\.json,application\/json"/);
   assert.match(app, /data-map-timeline="1"/);
-  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v251'\)/);
+  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v252'\)/);
   assert.match(worker, /GoogleTimelineImport\.importTrip/);
 });
 

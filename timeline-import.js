@@ -7,6 +7,9 @@
   const OVERNIGHT_STABLE_DISTANCE_METERS = 200;
   const OVERNIGHT_CLUSTER_RADIUS_METERS = 300;
   const PRECISE_LOCATION_ACCURACY_METERS = 30;
+  const PRECISE_LOCATION_CLUSTER_METERS = 50;
+  const STILL_ACTIVITY_CONFIDENCE = 0.8;
+  const STILL_ACTIVITY_MAX_GAP_MS = 5 * 60 * 1000;
 
   function finiteNumber(value) {
     const number = Number(value);
@@ -147,24 +150,69 @@
     return candidate ? { latitude: candidate.point.latitude, longitude: candidate.point.longitude, time: candidate.point.time, source: 'point' } : null;
   }
 
-  function firstPrecisePositionAfterAmbiguousNight(date, rawPositions, firstActivityTime = '') {
-    const nightPositions = rawPositions.filter(point => {
-      if (localDate(point.time) !== date) return false;
-      const minute = localMinute(point.time);
-      return minute != null && minute >= OVERNIGHT_START_MINUTE && minute <= OVERNIGHT_END_MINUTE;
-    });
-    if (!nightPositions.length || nightPositions.some(point => point.accuracyMeters <= PRECISE_LOCATION_ACCURACY_METERS)) return null;
-    const firstActivityMs = Date.parse(firstActivityTime);
-    return rawPositions
-      .filter(point => localDate(point.time) === date)
-      .filter(point => localMinute(point.time) >= OVERNIGHT_END_MINUTE)
-      .filter(point => point.accuracyMeters <= PRECISE_LOCATION_ACCURACY_METERS)
-      .filter(point => !Number.isFinite(firstActivityMs) || Date.parse(point.time) <= firstActivityMs)
-      .sort((a, b) => String(a.time).localeCompare(String(b.time)))[0] || null;
+  function nearestStillConfidence(time, rawActivities) {
+    const timestamp = Date.parse(time);
+    if (!Number.isFinite(timestamp)) return 0;
+    let low = 0;
+    let high = rawActivities.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (rawActivities[middle].timestamp < timestamp) low = middle + 1;
+      else high = middle;
+    }
+    const nearest = [rawActivities[low - 1], rawActivities[low]]
+      .filter(Boolean)
+      .map(activity => ({ activity, gap: Math.abs(activity.timestamp - timestamp) }))
+      .sort((a, b) => a.gap - b.gap)[0];
+    return nearest && nearest.gap <= STILL_ACTIVITY_MAX_GAP_MS ? nearest.activity.stillConfidence : 0;
   }
 
-  function overnightTransition(date, sourcePoints, visits, rawPositions, firstActivityTime = '') {
-    const firstPrecise = firstPrecisePositionAfterAmbiguousNight(date, rawPositions, firstActivityTime);
+  function precisePositionCluster(points) {
+    const clusters = [];
+    points.forEach(point => {
+      const cluster = clusters.find(candidate => candidate.some(member => distanceMeters(member, point) <= PRECISE_LOCATION_CLUSTER_METERS));
+      if (cluster) cluster.push(point);
+      else clusters.push([point]);
+    });
+    const selected = clusters.sort((a, b) => {
+      if (b.length !== a.length) return b.length - a.length;
+      const accuracyA = Math.min(...a.map(point => point.accuracyMeters));
+      const accuracyB = Math.min(...b.map(point => point.accuracyMeters));
+      return accuracyA - accuracyB;
+    })[0];
+    return selected
+      ? selected.slice().sort((a, b) => a.accuracyMeters - b.accuracyMeters || String(a.time).localeCompare(String(b.time)))[0]
+      : null;
+  }
+
+  function preciseStationaryPositionDuringRest(date, rawPositions, rawActivities, sourceActivities) {
+    const previousDate = addDays(date, -1);
+    const anchorKey = `${date}T03:00`;
+    const dayEndKey = `${date}T23:59`;
+    const firstMovement = sourceActivities
+      .filter(activity => activity.startKey >= anchorKey && activity.startKey <= dayEndKey)
+      .sort((a, b) => a.startKey.localeCompare(b.startKey))[0] || null;
+    const restEndKey = firstMovement ? firstMovement.startKey : dayEndKey;
+    const lastMovement = sourceActivities
+      .filter(activity => activity.endKey >= `${previousDate}T12:00` && activity.endKey <= restEndKey)
+      .sort((a, b) => b.endKey.localeCompare(a.endKey))[0] || null;
+    const restStartKey = lastMovement ? lastMovement.endKey : `${previousDate}T18:00`;
+    const candidates = rawPositions
+      .filter(point => {
+        const key = localKey(point.time);
+        return key && key >= restStartKey && key <= restEndKey;
+      })
+      .filter(point => point.accuracyMeters <= PRECISE_LOCATION_ACCURACY_METERS)
+      .filter(point => nearestStillConfidence(point.time, rawActivities) >= STILL_ACTIVITY_CONFIDENCE)
+      .filter(point => !sourceActivities.some(activity => {
+        const key = localKey(point.time);
+        return key >= activity.startKey && key <= activity.endKey;
+      }));
+    return precisePositionCluster(candidates);
+  }
+
+  function overnightTransition(date, sourcePoints, visits, rawPositions, rawActivities, sourceActivities) {
+    const firstPrecise = preciseStationaryPositionDuringRest(date, rawPositions, rawActivities, sourceActivities);
     if (firstPrecise) {
       return {
         point: firstPrecise,
@@ -240,6 +288,8 @@
     const sourcePoints = [];
     const sourceVisits = [];
     const rawPositions = [];
+    const rawActivities = [];
+    const sourceActivities = [];
     const byDay = new Map();
     const day = date => {
       if (!byDay.has(date)) byDay.set(date, { fecha: date, points: [], visits: [], activities: [] });
@@ -267,6 +317,19 @@
         source: String(position.source || '')
       });
     });
+
+    (Array.isArray(data.rawSignals) ? data.rawSignals : []).forEach(signal => {
+      const activity = signal && signal.activityRecord;
+      const time = String(activity && activity.timestamp || '');
+      const timestamp = Date.parse(time);
+      if (!Number.isFinite(timestamp) || !dateInRange(localDate(time), extendedStartDate, extendedEndDate)) return;
+      const still = (Array.isArray(activity.probableActivities) ? activity.probableActivities : [])
+        .find(candidate => String(candidate && (candidate.type || candidate.activityType) || '').toUpperCase() === 'STILL');
+      const confidenceValue = finiteNumber(still && (still.confidence ?? still.probability));
+      const stillConfidence = confidenceValue == null ? 0 : (confidenceValue > 1 ? confidenceValue / 100 : confidenceValue);
+      rawActivities.push({ time, timestamp, stillConfidence });
+    });
+    rawActivities.sort((a, b) => a.timestamp - b.timestamp);
 
     data.semanticSegments.forEach(segment => {
       const startTime = String(segment && segment.startTime || '');
@@ -302,6 +365,11 @@
         const activityType = String(segment.activity.topCandidate && segment.activity.topCandidate.type || '');
         const start = coordinateFrom(segment.activity.start);
         const end = coordinateFrom(segment.activity.end);
+        const startKey = localKey(startTime);
+        const endKey = localKey(endTime);
+        if (startKey && endKey && endKey >= extendedStartKey && startKey <= extendedEndKey) {
+          sourceActivities.push({ startTime, endTime, startKey, endKey });
+        }
         addPoint(startTime, start, 'activity', activityType);
         addPoint(endTime, end, 'activity', activityType);
         const date = localDate(startTime);
@@ -320,12 +388,7 @@
     });
 
     for (let date = startDate; date && date <= addDays(endDate, 1); date = addDays(date, 1)) {
-      const currentDay = byDay.get(date);
-      const firstActivityTime = currentDay && currentDay.activities
-        .map(activity => activity.startTime)
-        .filter(Boolean)
-        .sort()[0] || '';
-      const transition = overnightTransition(date, sourcePoints, sourceVisits, rawPositions, firstActivityTime);
+      const transition = overnightTransition(date, sourcePoints, sourceVisits, rawPositions, rawActivities, sourceActivities);
       if (!transition) continue;
       if (dateInRange(date, startDate, endDate)) {
         const current = day(date);
