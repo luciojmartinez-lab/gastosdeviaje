@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v248</title>
+  <title>Manual de Cuaderno de Bitácora - 700v249</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     const embeddedHelpMode = helpParams.get('embedded');
@@ -193,7 +193,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 11 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v248</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 11 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v249</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -518,7 +518,7 @@
 
         <div class="subsection screen-start" id="mapa">
           <h3>3.6 Mapa</h3>
-          <p>Combina la ruta planificada con ciudades, gastos, puntos del Blog y fotografías GPS, incluidos los tickets fotográficos marcados para aparecer en el mapa. Los trayectos se representan mediante líneas rectas discontinuas. El mapa interactivo usa cartografía vectorial; los mapas copiados al Blog o incluidos en PDF se generan como imagen.</p>
+          <p>Combina la ruta planificada con ciudades, gastos, puntos del Blog y fotografías GPS, incluidos los tickets fotográficos marcados para aparecer en el mapa. También puede incorporar el recorrido real exportado desde la Cronología de Google Maps. Las rutas deducidas o planificadas se representan mediante líneas rectas discontinuas y la Cronología mediante una línea verde continua. El mapa interactivo usa cartografía vectorial; los mapas copiados al Blog o incluidos en PDF se generan como imagen.</p>
           <p>Para mantener el mapa despejado, las fechas no se escriben junto a los marcadores: se muestran al pulsar el punto o la ciudad. En un punto geolocalizado se puede marcar <strong>Caminar</strong>, <strong>Coche</strong>, <strong>Tren</strong>, <strong>Bus</strong> o <strong>Avión</strong> para sustituir el marcador por un pequeño icono, sin aumentar el espacio ocupado. El tren se representa de perfil con una locomotora inspirada en la portada. Al pulsar el icono aparecen su descripción, lugar, fecha, hora y las notas del punto cuando existan.</p>
           <figure><img src="assets/help/07-mapa.png" alt="Mapa con filtros, ruta, destinos y grupos de fotos"><figcaption>Mapa por día con tres ciudades y fotografías geolocalizadas.</figcaption></figure>
           <ol class="legend"><li><b>1</b>Centrar y filtros de día o ciudad.</li><li><b>2</b>Capas y modos de visualización.</li><li><b>3</b>Signo + de fotos y contador naranja.</li><li><b>4</b>Ciudad o destino con nombre.</li><li><b>5</b>Área interactiva del mapa.</li></ol>
@@ -534,6 +534,7 @@
             <tr><td>Solo destinos</td><td>Muestra únicamente las paradas que hayas clasificado como <em>Destino</em>. Si eliges un día, también respeta ese día. Los gastos, puntos y fotos anteriores a la llegada real al primer destino quedan fuera; una ubicación sin ciudad se compara primero con toda la ruta, de modo que una huella de tránsito o muy lejana no se atribuya al destino por error.</td></tr>
             <tr><td>Añadir / modificar parada</td><td>Edita el orden y clasifica cada aparición de una ciudad como <em>Destino</em>, <em>En tránsito</em> o <em>Inicio / regreso</em>. Puedes asignarle un día previsto para que aparezca solamente cuando corresponda.</td></tr>
             <tr><td>Localizar</td><td>Busca coordenadas que falten. Necesita conexión.</td></tr>
+            <tr><td>Cronología</td><td>Abre el importador del viaje seleccionado. Primero avisa de que debes exportar la Cronología desde Google Maps; después pulsa <em>Seleccionar e importar</em> y elige <em>Cronología.json</em> en la carpeta donde lo descargaste. La aplicación conserva únicamente los días comprendidos en ese viaje, no el archivo completo. Desde el mismo cuadro puedes ocultar, mostrar o eliminar el recorrido importado.</td></tr>
             <tr><td>Pantalla completa / Tamaño normal</td><td>Amplía el mapa en móvil y vuelve al tamaño original.</td></tr>
             <tr><td>− / +</td><td>Aleja o acerca. El gesto de pellizco también controla el zoom.</td></tr>
           </tbody></table></div>
@@ -546,10 +547,12 @@
             <tr><td>Distintivo rojo</td><td>Número de la ciudad en la ruta planificada. En visitas repetidas puede mostrar varios números unidos por guion.</td></tr>
             <tr><td>Nombre de ciudad</td><td>Aparece en negrita junto a su número o junto al + morado.</td></tr>
             <tr><td>Línea azul discontinua</td><td>Orden cronológico o planificado del recorrido.</td></tr>
+            <tr><td>Línea verde continua</td><td>Recorrido real importado desde la Cronología de Google Maps.</td></tr>
+            <tr><td>S / L verdes</td><td>Salida y llegada deducidas del recorrido de ese día.</td></tr>
           </tbody></table></div>
 
           <h4 id="mapa-dia">Mapa por día</h4>
-          <p>Incluye todas las fechas con gastos o Blog. Combina GPS exacto con la ciudad de los registros que no lo tienen; una entrada o gasto que ya aparece en sus coordenadas exactas no se repite también en el centro de la ciudad. Las fotos marcadas «En ruta» se incorporan al trayecto mediante sus coordenadas GPS exactas; las demás permanecen visibles sin desviar la línea. Los puntos del día se muestran sin números de parada.</p>
+          <p>Incluye todas las fechas con gastos, Blog o Cronología importada. Combina GPS exacto con la ciudad de los registros que no lo tienen; una entrada o gasto que ya aparece en sus coordenadas exactas no se repite también en el centro de la ciudad. Las fotos marcadas «En ruta» se incorporan al trayecto mediante sus coordenadas GPS exactas; las demás permanecen visibles sin desviar la línea. Los puntos del día se muestran sin números de parada. Si existe Cronología, su primer desplazamiento marca la salida y el último marca la llegada.</p>
           <h4>Mapa por ciudad</h4>
           <p>Reúne los puntos y fotos de esa ciudad durante todos los días, sin línea de trayecto.</p>
           <h4>Todos los días</h4>
@@ -669,10 +672,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 11 de agosto de 2026 para Cuaderno de Bitácora 700v248.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 11 de agosto de 2026 para Cuaderno de Bitácora 700v249.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v248 · 11 de agosto de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v249 · 11 de agosto de 2026</div>
 </body>
 </html>

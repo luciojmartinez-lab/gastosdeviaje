@@ -3294,6 +3294,11 @@ body.map-fullscreen-open {
   background: #7c3aed;
 }
 
+.trip-vector-marker.timeline .trip-vector-marker-dot,
+.trip-vector-marker.timeline.daily .trip-vector-marker-dot {
+  background: #0f766e;
+}
+
 .trip-vector-marker.transport .trip-vector-marker-dot {
   border: 0;
   background: transparent;
@@ -3484,6 +3489,41 @@ body.map-fullscreen-open {
   text-align: center;
 }
 
+.timeline-modal {
+  width: min(620px, calc(100vw - 24px));
+}
+
+.timeline-export-warning {
+  margin: 4px 0 16px;
+  padding: 14px 16px;
+  border: 1px solid #93c5fd;
+  border-radius: 14px;
+  background: #eff6ff;
+  color: #17365f;
+}
+
+.timeline-export-warning p {
+  margin: 7px 0 0;
+}
+
+.timeline-trip-status {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.timeline-trip-status span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.timeline-actions .danger {
+  color: #b91c1c;
+}
+
 .map-route {
   fill: none;
   stroke: #1d4ed8;
@@ -3492,6 +3532,16 @@ body.map-fullscreen-open {
   stroke-linejoin: round;
   opacity: 0.85;
   stroke-dasharray: 10 8;
+  filter: drop-shadow(0 1px 2px #ffffff);
+}
+
+.map-timeline-route {
+  fill: none;
+  stroke: #0f766e;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.9;
   filter: drop-shadow(0 1px 2px #ffffff);
 }
 
@@ -3514,6 +3564,11 @@ body.map-fullscreen-open {
 .map-marker-daily.map-marker-config circle,
 .map-marker-daily.map-marker-point circle {
   fill: #7c3aed;
+}
+
+.map-marker-timeline circle,
+.map-marker-daily.map-marker-timeline circle {
+  fill: #0f766e;
 }
 
 .map-marker-photo {
