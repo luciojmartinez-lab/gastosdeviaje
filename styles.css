@@ -3493,6 +3493,27 @@ body.map-fullscreen-open {
   width: min(620px, calc(100vw - 24px));
 }
 
+.lodging-name-modal {
+  width: min(520px, calc(100vw - 24px));
+}
+
+.lodging-name-modal form {
+  display: grid;
+  gap: 10px;
+}
+
+.lodging-name-remember {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.lodging-name-remember input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
 .timeline-export-warning {
   margin: 4px 0 16px;
   padding: 14px 16px;

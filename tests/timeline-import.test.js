@@ -54,6 +54,7 @@ test('la importación conserva solo los días del viaje y detecta salida y llega
         endTime: '2026-08-08T10:00:00.000+02:00',
         visit: {
           topCandidate: {
+            placeName: 'Restaurante de prueba',
             semanticType: 'RESTAURANT',
             probability: 0.8,
             placeLocation: { latLng: '40.250000°, -3.250000°' }
@@ -67,6 +68,7 @@ test('la importación conserva solo los días del viaje y detecta salida y llega
   assert.equal(result.summary.dayCount, 1);
   assert.equal(result.summary.activityCount, 1);
   assert.equal(result.summary.visitCount, 1);
+  assert.equal(result.days[0].visits[0].placeName, 'Restaurante de prueba');
   assert.equal(result.days[0].fecha, '2026-08-08');
   assert.equal(result.days[0].departure.latitude, 40.1);
   assert.equal(result.days[0].arrival.latitude, 40.2);
@@ -137,7 +139,7 @@ test('una noche en movimiento usa el punto más próximo al cambio de día', () 
   assert.deepEqual([current.departure.latitude, current.departure.longitude], [40.1, -3.1]);
 });
 
-test('la primera lectura precisa anterior al movimiento fija Casa para llegada y salida', () => {
+test('la primera lectura precisa anterior al movimiento fija el alojamiento para llegada y salida', () => {
   const data = {
     semanticSegments: [
       {
@@ -178,7 +180,7 @@ test('la primera lectura precisa anterior al movimiento fija Casa para llegada y
   assert.deepEqual([current.departure.latitude, current.departure.longitude], [40.111111, -3.111111]);
 });
 
-test('una consulta nocturna precisa y en reposo puede identificar Casa', () => {
+test('una consulta nocturna precisa y en reposo puede identificar el alojamiento', () => {
   const data = {
     semanticSegments: [
       {
@@ -217,7 +219,7 @@ test('una consulta nocturna precisa y en reposo puede identificar Casa', () => {
   assert.deepEqual([previous.arrival.latitude, previous.arrival.longitude], [40.123456, -3.123456]);
 });
 
-test('una lectura precisa posterior al primer movimiento no se convierte en Casa', () => {
+test('una lectura precisa posterior al primer movimiento no se convierte en alojamiento', () => {
   const data = {
     semanticSegments: [{
       startTime: '2026-08-10T08:00:00.000+02:00',
@@ -245,7 +247,7 @@ test('Cronología avisa de la exportación previa y se procesa fuera de la inter
   assert.match(html, /selecciona <em>Cronología\.json<\/em> desde el lugar donde lo hayas descargado/);
   assert.match(html, /id="timeline-file-input"[^>]*accept="\.json,application\/json"/);
   assert.match(app, /data-map-timeline="1"/);
-  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v252'\)/);
+  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v253'\)/);
   assert.match(worker, /GoogleTimelineImport\.importTrip/);
 });
 
@@ -256,11 +258,28 @@ test('el recorrido importado se guarda por viaje, se sincroniza y tiene capa pro
   assert.match(app, /source: 'google-maps-timeline'/);
   assert.match(app, /class="map-timeline-route"/);
   assert.match(app, /google-timeline-route-line/);
-  assert.match(app, /descripcion: 'Casa'/);
-  assert.match(app, /\? 'C'/);
+  assert.match(app, /descripcion: `\$\{action\} \$\{lodging\.name\}`/);
+  assert.match(app, /\? 'A'/);
+  assert.doesNotMatch(app, /descripcion: 'Casa'/);
   assert.doesNotMatch(app, /Salida desde la pernocta|Llegada según Cronología/);
   assert.match(styles, /\.map-timeline-route/);
   assert.match(styles, /\.trip-vector-marker\.timeline/);
+});
+
+test('el alojamiento toma nombres cercanos y permite corregirlos para una noche o una ubicación', () => {
+  assert.match(html, /id="lodging-name-dialog"/);
+  assert.match(html, /id="lodging-name-remember"/);
+  assert.match(app, /function nearestAccommodationExpense/);
+  assert.match(app, /isAccommodationExpense\(gasto\)/);
+  assert.match(app, /LODGING_NAME_MAX_DISTANCE_METERS = 200/);
+  assert.match(app, /function timelineLodgingNameInfo/);
+  assert.match(app, /Nombre recordado para esta ubicación/);
+  assert.match(app, /Gasto de Alojamiento geolocalizado cercano/);
+  assert.match(app, /data-edit-timeline-lodging/);
+  assert.match(app, /lodgingNames: \{ \.\.\.\(target\.record\.lodgingNames \|\| \{\}\), \[target\.role\]: name \}/);
+  assert.match(app, /lodgingLocations\.push\(\{ name, \.\.\.point/);
+  assert.match(app, /lodgingNamesByDate/);
+  assert.match(styles, /\.lodging-name-modal/);
 });
 
 test('la Cronología se integra en los mapas copiados al Blog sin alterar el mapa por ciudad', () => {

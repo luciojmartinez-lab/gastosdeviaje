@@ -342,12 +342,13 @@
       if (segment && segment.visit) {
         const candidate = segment.visit.topCandidate || {};
         const coordinate = coordinateFrom(candidate.placeLocation);
+        const placeName = String(candidate.placeName || candidate.name || candidate.displayName || candidate.title || segment.visit.placeName || '').trim();
         addPoint(startTime, coordinate, 'visit');
         addPoint(endTime, coordinate, 'visit');
         const startKey = localKey(startTime);
         const endKey = localKey(endTime);
         if (coordinate && startKey && endKey && endKey >= extendedStartKey && startKey <= extendedEndKey) {
-          sourceVisits.push({ coordinate, startTime, endTime, startKey, endKey });
+          sourceVisits.push({ coordinate, startTime, endTime, startKey, endKey, placeName });
         }
         const date = localDate(startTime);
         if (coordinate && dateInRange(date, startDate, endDate)) {
@@ -357,6 +358,7 @@
             startTime,
             endTime,
             semanticType: String(candidate.semanticType || ''),
+            placeName,
             probability: finiteNumber(candidate.probability ?? segment.visit.probability)
           });
         }
