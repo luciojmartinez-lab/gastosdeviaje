@@ -1807,7 +1807,7 @@ input[type="checkbox"] {
 
 .image-viewer-shell {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
   height: 100%;
   padding: 12px;
 }
@@ -1833,11 +1833,50 @@ input[type="checkbox"] {
 
 .image-viewer-stage img {
   display: block;
-  width: auto;
-  height: auto;
+  object-fit: contain;
+}
+
+.image-viewer-stage img.is-fit {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
-  object-fit: contain;
+}
+
+.image-viewer-stage.is-zoomed {
+  place-items: start center;
+}
+
+.image-viewer-stage img.is-zoomed {
+  width: var(--image-viewer-zoom, 100%);
+  height: auto;
+  max-width: none;
+  max-height: none;
+}
+
+.image-viewer-zoom-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 8px;
+  color: #fff;
+}
+
+.image-viewer-zoom-actions button {
+  min-width: 0;
+  padding: 7px 12px;
+}
+
+.image-viewer-zoom-actions .image-viewer-zoom-step {
+  width: 42px;
+  padding-inline: 0;
+  font-size: 1.15rem;
+}
+
+#image-viewer-zoom-label {
+  min-width: 68px;
+  text-align: center;
 }
 
 .image-viewer-modal .small {
@@ -1846,7 +1885,38 @@ input[type="checkbox"] {
 }
 
 .image-viewer-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) auto;
   margin-top: 8px;
+}
+
+.image-viewer-actions button {
+  min-width: 0;
+  white-space: normal;
+}
+
+@media (max-width: 720px) {
+  .image-viewer-modal {
+    width: calc(100vw - 8px);
+    height: calc(100dvh - 8px);
+  }
+
+  .image-viewer-shell {
+    padding: 8px;
+  }
+
+  .image-viewer-actions {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  #image-viewer-share {
+    grid-column: 1 / -1;
+  }
+
+  .image-viewer-modal .small {
+    font-size: 0.78rem;
+    line-height: 1.25;
+  }
 }
 
 .blog-entry-modal .row,

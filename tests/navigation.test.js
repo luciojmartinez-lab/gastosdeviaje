@@ -41,6 +41,10 @@ test('Solo destinos usa la clasificación y no borra el día al filtrar', () => 
   assert.match(app, /plannedDailyMapRecordsForScope\(scopedTripIds, paisId, tripMapState\.day, destinationOnlyApplied\)/);
   assert.match(app, /No hay destinos para el día elegido/);
   assert.match(app, /Día seleccionado:[\s\S]*?Solo se muestran paradas marcadas como Destino/);
+  assert.match(app, /function firstDestinationArrivalForTrip\(trip, scope = destinationRouteScope\(trip\)\)/);
+  assert.match(app, /mapRecordPrecedesFirstDestination\(record, trip, scope\)/);
+  assert.match(app, /const nearest = \[\.\.\.new Set\(scope\.completeIds\)\]/);
+  assert.match(app, /nearest\.distance <= DESTINATION_RECORD_MAX_DISTANCE_METERS/);
 });
 
 test('al volver al Blog se recupera el inicio horizontal de la tabla', () => {

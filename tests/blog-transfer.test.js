@@ -115,8 +115,17 @@ test('las imágenes del Blog se pueden girar manualmente', () => {
   assert.match(app, /width: canvas\.width,[\s\S]*height: canvas\.height/);
   assert.match(app, /isExpenseWithImages = activeBlogEntryType === 'gasto' && hasImages/);
   assert.match(app, /if \(blogEntryImages\(entry\)\.length\) showBlogImages\(blogEntryImages\(entry\)\)/);
-  assert.match(app, /if \(type === 'gasto'\)[\s\S]*galleryImages: activeBlogGalleryImages\.map\(normalizeBlogImageRecord\)/);
+  assert.match(app, /if \(type === 'gasto'\) \{[\s\S]*assignBlogEntryImages\(values, activeBlogImage, activeBlogGalleryImages\)/);
   assert.match(styles, /\.blog-image-rotate-actions/);
+});
+
+test('los puntos geolocalizados admiten fotos y heredan sus coordenadas cuando hace falta', () => {
+  assert.match(app, /const isPointEntry = activeBlogEntryType === 'punto'/);
+  assert.match(app, /Fotos del punto geolocalizado/);
+  assert.match(app, /const storesImages = \['imagen', 'punto', 'gasto'\]\.includes\(type\)/);
+  assert.match(app, /if \(activeBlogImage\) \{[\s\S]*const pointImages = \[activeBlogImage, \.\.\.activeBlogGalleryImages\]/);
+  assert.match(app, /latitude: values\.latitude,[\s\S]*longitude: values\.longitude,[\s\S]*locationSource: 'manual'/);
+  assert.match(help, /Fotos del punto geolocalizado<\/td><td>Permite adjuntar una fotografía o una galería/);
 });
 
 test('cada imagen de una entrada del Blog se puede quitar al editar', () => {
@@ -232,7 +241,7 @@ test('cada foto del Blog y de Gastos puede tener su propio tipo', () => {
   assert.match(app, /photoTypeId: String\(image\.photoTypeId \|\| ''\)/);
   assert.match(app, /data-blog-image-type="\$\{index\}"/);
   assert.match(app, /function setBlogImagePhotoType\(index, typeId\)/);
-  assert.match(app, /imagePhotoTypeId: activeBlogImage\.photoTypeId \|\| ''/);
+  assert.match(app, /imagePhotoTypeId: image \? image\.photoTypeId \|\| '' : ''/);
   assert.match(app, /photoTypeId: entry\.imagePhotoTypeId/);
   assert.match(app, /data-expense-image-type="\$\{index\}"/);
   assert.match(app, /data-new-expense-image-type="\$\{prefix\}-\$\{index\}"/);

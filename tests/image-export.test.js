@@ -11,6 +11,8 @@ const [app, html] = await Promise.all([
   readFile(new URL('../index.html', import.meta.url), 'utf8')
 ]);
 
+const styles = await readFile(new URL('../styles.css', import.meta.url), 'utf8');
+
 test('el JPEG exportado conserva las coordenadas GPS de la aplicación', () => {
   const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
   const exported = embedGpsInJpegBytes(jpeg, 40.123456, -1.987654);
@@ -42,4 +44,14 @@ test('el nombre descargado incluye realmente la fecha y la hora', () => {
   const source = app.slice(start, end);
   const makeName = Function(`${source}; return imageViewerDownloadName;`)();
   assert.equal(makeName(new Date(2026, 7, 9, 18, 57, 6), 'image/jpeg'), 'descarga-2026-08-09-18-57-06.jpg');
+});
+
+test('el visor ajusta el ticket completo y permite cambiar su tamaño en móvil', () => {
+  for (const id of ['image-viewer-fit', 'image-viewer-zoom-out', 'image-viewer-zoom-in', 'image-viewer-zoom-label']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(app, /function applyImageViewerZoom\(\)/);
+  assert.match(app, /function stepImageViewerZoom\(direction\)/);
+  assert.match(styles, /\.image-viewer-stage img\.is-fit \{[\s\S]*?width: 100%;[\s\S]*?height: 100%;/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?\.image-viewer-actions \{[\s\S]*?grid-template-columns:/);
 });

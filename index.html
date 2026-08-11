@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v244">
+  <link rel="manifest" href="manifest.webmanifest?v=700v245">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v244">
+  <link rel="stylesheet" href="styles.css?v=700v245">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v244 · 10/08/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v245 · 11/08/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v244</div>
+  <div class="app-version">700v245</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -675,7 +675,13 @@
       <h2 id="image-viewer-title">Imagen</h2>
       <button type="button" class="ghost icon-btn" id="image-viewer-close" aria-label="Cerrar">x</button>
     </div>
-    <div class="image-viewer-stage"><img id="image-viewer-image" alt=""></div>
+    <div class="image-viewer-stage" id="image-viewer-stage"><img id="image-viewer-image" class="is-fit" alt=""></div>
+    <div class="image-viewer-zoom-actions" aria-label="Tamaño de la imagen">
+      <button type="button" class="ghost" id="image-viewer-fit">Ajustar</button>
+      <button type="button" class="ghost image-viewer-zoom-step" id="image-viewer-zoom-out" aria-label="Reducir imagen">−</button>
+      <output id="image-viewer-zoom-label">Ajustada</output>
+      <button type="button" class="ghost image-viewer-zoom-step" id="image-viewer-zoom-in" aria-label="Ampliar imagen">+</button>
+    </div>
     <p id="image-viewer-note" class="small">Descargar crea un JPEG con nombre fechado y conserva el GPS disponible. Compartir permite enviarlo a Google Lens u otra aplicación.</p>
     <p id="image-viewer-status" class="small" aria-live="polite"></p>
     <div class="actions image-viewer-actions">
@@ -1118,11 +1124,11 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="map-model.js?v=700v244"></script>
-<script src="app.bundle.js?v=700v244"></script>
+<script src="map-model.js?v=700v245"></script>
+<script src="app.bundle.js?v=700v245"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v244';
+    const pageVersion = '700v245';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1177,7 +1183,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v244', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v245', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

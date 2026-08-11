@@ -1,10 +1,11 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 9;
-const APP_VERSION = '700v244';
+const APP_VERSION = '700v245';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
 const ROUTE_STOP_ROLE_ENDPOINT = 'endpoint';
+const DESTINATION_RECORD_MAX_DISTANCE_METERS = 50_000;
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -108,6 +109,7 @@ const ticketOcrRunIds = { g: 0, 'edit-gasto': 0 };
 const pendingExpenseExtraPreviewUrls = { g: [], 'edit-gasto': [] };
 let activeImageViewerRecord = null;
 let activeImageViewerUrl = '';
+let activeImageViewerZoom = 0;
 let activeBlogEntryId = null;
 let activeBlogEntryAnchor = null;
 let activeBlogEntryType = '';
@@ -2525,7 +2527,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v244');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v245');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3316,7 +3318,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v244');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v245');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3407,7 +3409,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v244');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v245');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3469,7 +3471,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v244');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v245');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -3668,6 +3670,39 @@ function imageViewerBlob(record) {
   return null;
 }
 
+function applyImageViewerZoom() {
+  const image = $('#image-viewer-image');
+  const stage = $('#image-viewer-stage');
+  if (!image || !stage) return;
+  const fitted = activeImageViewerZoom === 0;
+  image.classList.toggle('is-fit', fitted);
+  image.classList.toggle('is-zoomed', !fitted);
+  stage.classList.toggle('is-zoomed', !fitted);
+  if (fitted) image.style.removeProperty('--image-viewer-zoom');
+  else image.style.setProperty('--image-viewer-zoom', `${Math.round(activeImageViewerZoom * 100)}%`);
+  if ($('#image-viewer-zoom-label')) {
+    $('#image-viewer-zoom-label').textContent = fitted
+      ? 'Ajustada'
+      : `${Math.round(activeImageViewerZoom * 100)}%`;
+  }
+  if ($('#image-viewer-zoom-out')) $('#image-viewer-zoom-out').disabled = activeImageViewerZoom > 0 && activeImageViewerZoom <= 0.25;
+  if ($('#image-viewer-zoom-in')) $('#image-viewer-zoom-in').disabled = activeImageViewerZoom >= 3;
+  if (fitted) {
+    stage.scrollTop = 0;
+    stage.scrollLeft = 0;
+  }
+}
+
+function setImageViewerZoom(zoom) {
+  activeImageViewerZoom = zoom === 0 ? 0 : Math.min(3, Math.max(0.25, Number(zoom) || 1));
+  applyImageViewerZoom();
+}
+
+function stepImageViewerZoom(direction) {
+  const current = activeImageViewerZoom || 1;
+  setImageViewerZoom(current + (direction > 0 ? 0.25 : -0.25));
+}
+
 function closeImageViewer() {
   const dialog = $('#image-viewer-dialog');
   if (dialog?.close) dialog.close();
@@ -3675,6 +3710,7 @@ function closeImageViewer() {
   if (activeImageViewerUrl) URL.revokeObjectURL(activeImageViewerUrl);
   activeImageViewerUrl = '';
   activeImageViewerRecord = null;
+  activeImageViewerZoom = 0;
   if ($('#image-viewer-image')) {
     $('#image-viewer-image').removeAttribute('src');
     $('#image-viewer-image').alt = '';
@@ -3700,11 +3736,14 @@ function openImageViewer(record, title = '') {
     latitude: point?.latitude ?? null,
     longitude: point?.longitude ?? null
   };
+  activeImageViewerZoom = 0;
   if ($('#image-viewer-title')) $('#image-viewer-title').textContent = title || name;
   if ($('#image-viewer-image')) {
+    $('#image-viewer-image').onload = applyImageViewerZoom;
     $('#image-viewer-image').src = displayUrl;
     $('#image-viewer-image').alt = `Vista ampliada de ${name}`;
   }
+  applyImageViewerZoom();
   if ($('#image-viewer-status')) $('#image-viewer-status').textContent = '';
   const dialog = $('#image-viewer-dialog');
   if (dialog?.showModal) dialog.showModal();
@@ -3730,7 +3769,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v244');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v245');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -5450,6 +5489,8 @@ async function addBlogEntry(data) {
   if (type === 'texto' && !String(data.texto || '').trim()) throw new Error('Escribe el texto de la entrada');
   const galleryImages = Array.isArray(data.galleryImages) ? data.galleryImages.map(normalizeBlogImageRecord).filter(image => image.data) : [];
   if (type === 'imagen' && !data.imageData && !galleryImages.length) throw new Error('Selecciona una imagen, una galería o usa la cámara');
+  const storesImages = ['imagen', 'punto', 'gasto'].includes(type);
+  const hasPrimaryImage = storesImages && Boolean(data.imageData || data.imageRef);
   const enRuta = type !== 'gasto' && data.enRuta === true;
   const point = (type === 'punto' || enRuta) ? blogPointCoordinates(data) : null;
   if (type === 'punto' && !point) throw new Error('Indica un punto geolocalizado válido');
@@ -5467,19 +5508,20 @@ async function addBlogEntry(data) {
     texto: type === 'texto' ? String(data.texto || '') : '',
     notas: type === 'punto' ? String(data.notas || '') : '',
     transporte: type === 'punto' ? transport : '',
-    imageName: type === 'imagen' ? String(data.imageName || 'imagen.jpg') : '',
-    imageType: type === 'imagen' ? String(data.imageType || 'image/jpeg') : '',
-    imageSize: type === 'imagen' ? Math.max(0, Number(data.imageSize) || 0) : 0,
-    imageData: type === 'imagen' ? data.imageData : '',
-    imageWidth: type === 'imagen' ? Math.max(0, Number(data.imageWidth) || 0) : 0,
-    imageHeight: type === 'imagen' ? Math.max(0, Number(data.imageHeight) || 0) : 0,
-    imageId: type === 'imagen' ? String(data.imageId || '') : '',
-    imageLatitude: type === 'imagen' ? storedImageCoordinate(data.imageLatitude, -90, 90) : null,
-    imageLongitude: type === 'imagen' ? storedImageCoordinate(data.imageLongitude, -180, 180) : null,
-    imageLocationSource: type === 'imagen' ? String(data.imageLocationSource || '') : '',
-    imagePhotoTypeId: type === 'imagen' ? String(data.imagePhotoTypeId || '') : '',
-    imagePhotoTypeName: type === 'imagen' ? String(data.imagePhotoTypeName || '') : '',
-    imageMapEnabled: type === 'imagen' && data.imageMapEnabled === true,
+    imageName: hasPrimaryImage ? String(data.imageName || 'imagen.jpg') : '',
+    imageType: hasPrimaryImage ? String(data.imageType || 'image/jpeg') : '',
+    imageSize: hasPrimaryImage ? Math.max(0, Number(data.imageSize) || 0) : 0,
+    imageData: hasPrimaryImage ? data.imageData || '' : '',
+    imageRef: hasPrimaryImage ? data.imageRef || '' : '',
+    imageWidth: hasPrimaryImage ? Math.max(0, Number(data.imageWidth) || 0) : 0,
+    imageHeight: hasPrimaryImage ? Math.max(0, Number(data.imageHeight) || 0) : 0,
+    imageId: hasPrimaryImage ? String(data.imageId || '') : '',
+    imageLatitude: hasPrimaryImage ? storedImageCoordinate(data.imageLatitude, -90, 90) : null,
+    imageLongitude: hasPrimaryImage ? storedImageCoordinate(data.imageLongitude, -180, 180) : null,
+    imageLocationSource: hasPrimaryImage ? String(data.imageLocationSource || '') : '',
+    imagePhotoTypeId: hasPrimaryImage ? String(data.imagePhotoTypeId || '') : '',
+    imagePhotoTypeName: hasPrimaryImage ? String(data.imagePhotoTypeName || '') : '',
+    imageMapEnabled: hasPrimaryImage && data.imageMapEnabled === true,
     galleryImages,
     sourceGastoId: type === 'gasto' && data.sourceGastoId ? Number(data.sourceGastoId) : null,
     gastoImporte: type === 'gasto' ? numberValue(data.gastoImporte) : 0,
@@ -5543,12 +5585,12 @@ function normalizeImportedBlogEntry(entry = {}) {
     imageWidth: Math.max(0, Number(entry.imageWidth) || 0),
     imageHeight: Math.max(0, Number(entry.imageHeight) || 0),
     imageId: String(entry.imageId || ''),
-    imageLatitude: ['imagen', 'gasto'].includes(type) ? storedImageCoordinate(entry.imageLatitude, -90, 90) : null,
-    imageLongitude: ['imagen', 'gasto'].includes(type) ? storedImageCoordinate(entry.imageLongitude, -180, 180) : null,
-    imageLocationSource: ['imagen', 'gasto'].includes(type) ? String(entry.imageLocationSource || '') : '',
-    imagePhotoTypeId: ['imagen', 'gasto'].includes(type) ? String(entry.imagePhotoTypeId || '') : '',
-    imagePhotoTypeName: ['imagen', 'gasto'].includes(type) ? String(entry.imagePhotoTypeName || '') : '',
-    imageMapEnabled: ['imagen', 'gasto'].includes(type) && entry.imageMapEnabled === true,
+    imageLatitude: ['imagen', 'punto', 'gasto'].includes(type) ? storedImageCoordinate(entry.imageLatitude, -90, 90) : null,
+    imageLongitude: ['imagen', 'punto', 'gasto'].includes(type) ? storedImageCoordinate(entry.imageLongitude, -180, 180) : null,
+    imageLocationSource: ['imagen', 'punto', 'gasto'].includes(type) ? String(entry.imageLocationSource || '') : '',
+    imagePhotoTypeId: ['imagen', 'punto', 'gasto'].includes(type) ? String(entry.imagePhotoTypeId || '') : '',
+    imagePhotoTypeName: ['imagen', 'punto', 'gasto'].includes(type) ? String(entry.imagePhotoTypeName || '') : '',
+    imageMapEnabled: ['imagen', 'punto', 'gasto'].includes(type) && entry.imageMapEnabled === true,
     galleryImages: Array.isArray(entry.galleryImages)
       ? entry.galleryImages.map(normalizeBlogImageRecord).filter(image => image.data || image.fileRef)
       : [],
@@ -6999,6 +7041,63 @@ function destinationRouteScope(trip) {
   };
 }
 
+function firstDestinationArrivalForTrip(trip, scope = destinationRouteScope(trip)) {
+  const firstStop = scope.completeStops.find(stop => stop.role === ROUTE_STOP_ROLE_DESTINATION);
+  if (!trip || !firstStop) return null;
+  const city = state.lugares.find(place => Number(place.id) === Number(firstStop.cityId));
+  const inferredDates = tripRouteArrivalDates(trip, scope.completeIds);
+  const configuredDate = firstStop.date || inferredDates[firstStop.routeIndex] || '';
+  const eligible = record => {
+    const date = String(record && record.fecha || '');
+    return Boolean(date) && (!configuredDate || date >= configuredDate);
+  };
+  const compare = (a, b) => `${a.fecha || ''}T${normalizeExpenseTime(a.hora) || '99:99'}`
+    .localeCompare(`${b.fecha || ''}T${normalizeExpenseTime(b.hora) || '99:99'}`);
+  const routeCities = [...new Set(scope.completeIds)]
+    .map(id => state.lugares.find(place => Number(place.id) === Number(id)))
+    .filter(place => place && lugarHasCoords(place));
+  const exactCandidates = city && lugarHasCoords(city)
+    ? dailyMapRecordsForScope(new Set([Number(trip.id)]), 0)
+      .filter(eligible)
+      .filter(record => {
+        const nearest = routeCities
+          .map(place => ({
+            id: Number(place.id),
+            distance: geographicDistanceMeters(
+              { latitude: record.latitude, longitude: record.longitude },
+              { latitude: Number(place.lat), longitude: Number(place.lng) }
+            )
+          }))
+          .sort((a, b) => a.distance - b.distance)[0];
+        return nearest
+          && nearest.id === Number(firstStop.cityId)
+          && nearest.distance <= DESTINATION_RECORD_MAX_DISTANCE_METERS;
+      })
+      .sort(compare)
+    : [];
+  const cityCandidates = [...state.blogEntries, ...state.gastos]
+    .filter(record => Number(record.viajeId) === Number(trip.id))
+    .filter(record => Number(record.ciudadId) === Number(firstStop.cityId))
+    .filter(eligible)
+    .sort(compare);
+  const arrival = exactCandidates[0] || cityCandidates[0] || null;
+  return {
+    cityId: Number(firstStop.cityId),
+    fecha: String(arrival && arrival.fecha || configuredDate || ''),
+    hora: normalizeExpenseTime(arrival && arrival.hora)
+  };
+}
+
+function mapRecordPrecedesFirstDestination(record, trip, scope) {
+  const arrival = firstDestinationArrivalForTrip(trip, scope);
+  if (!arrival || !arrival.fecha) return false;
+  const recordDate = String(record && record.fecha || '');
+  if (!recordDate) return false;
+  if (recordDate !== arrival.fecha) return recordDate < arrival.fecha;
+  const recordTime = normalizeExpenseTime(record && record.hora);
+  return Boolean(arrival.hora && recordTime && recordTime < arrival.hora);
+}
+
 function tripDateWithinRange(date, trip) {
   const value = String(date || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -7065,8 +7164,10 @@ function mapRouteCities(gastos, paisId) {
   const routeOrder = mapCityOrderForScope(gastos);
   const scopedTrips = mapScopedTrips(gastos);
   const scopedTripIds = mapScopedTripIds(gastos);
+  const destinationTrip = scopedTrips.length === 1 ? scopedTrips[0] : null;
   gastos
     .filter(g => gastoMatchesLugarFilters(g, paisId, ''))
+    .filter(g => mapRecordMatchesDestination(g, destinationTrip))
     .slice()
     .sort(compareGastosRouteOrder)
     .forEach((g, index) => {
@@ -7669,6 +7770,7 @@ function mapRecordMatchesDestination(record, trip) {
   if (!trip) return true;
   const scope = destinationRouteScope(trip);
   if (!scope.applied) return true;
+  if (mapRecordPrecedesFirstDestination(record, trip, scope)) return false;
   const recordDate = String(record && record.fecha || '');
   const cityMatchesDestination = cityId => {
     const allStops = scope.completeStops.filter(stop => Number(stop.cityId) === Number(cityId));
@@ -7682,7 +7784,7 @@ function mapRecordMatchesDestination(record, trip) {
   const latitude = storedImageCoordinate(record && record.latitude, -90, 90);
   const longitude = storedImageCoordinate(record && record.longitude, -180, 180);
   if (latitude == null || longitude == null) return false;
-  const nearest = scope.visibleIds
+  const nearest = [...new Set(scope.completeIds)]
     .map(id => state.lugares.find(place => Number(place.id) === Number(id)))
     .filter(city => city && lugarHasCoords(city))
     .map(city => ({
@@ -7693,7 +7795,11 @@ function mapRecordMatchesDestination(record, trip) {
       )
     }))
     .sort((a, b) => a.distance - b.distance)[0];
-  return Boolean(nearest && cityMatchesDestination(nearest.id));
+  return Boolean(
+    nearest
+    && nearest.distance <= DESTINATION_RECORD_MAX_DISTANCE_METERS
+    && cityMatchesDestination(nearest.id)
+  );
 }
 
 function photoMapItems(records) {
@@ -10785,7 +10891,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v244');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v245');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -11201,6 +11307,9 @@ function setBlogPointCoordinates(latitude, longitude, message = '') {
   blogPointPickerState.centerLng = point.longitude;
   if (message) setMessage('#blog-point-status', message);
   renderBlogPointPicker();
+  if (activeBlogEntryType === 'punto' && activeBlogImage) {
+    showBlogImages([activeBlogImage, ...activeBlogGalleryImages]);
+  }
   syncBlogEnRouteOption();
   scheduleActiveBlogEntryDraftSave();
 }
@@ -11346,15 +11455,31 @@ function clearBlogImageSelection() {
 function syncBlogImageFieldsForType() {
   const hasImages = Boolean(activeBlogImage);
   const isImageEntry = activeBlogEntryType === 'imagen';
+  const isPointEntry = activeBlogEntryType === 'punto';
   const isExpenseWithImages = activeBlogEntryType === 'gasto' && hasImages;
-  if ($('#blog-image-fields')) $('#blog-image-fields').hidden = !isImageEntry && !isExpenseWithImages;
-  if ($('#blog-image-label')) $('#blog-image-label').textContent = isExpenseWithImages ? 'Imágenes adjuntas del gasto' : 'Imagen';
-  if ($('#blog-image-picker-actions')) $('#blog-image-picker-actions').hidden = !isImageEntry;
-  if ($('#blog-image-gps-help')) $('#blog-image-gps-help').hidden = !isImageEntry;
+  if ($('#blog-image-fields')) $('#blog-image-fields').hidden = !isImageEntry && !isPointEntry && !isExpenseWithImages;
+  if ($('#blog-image-label')) {
+    $('#blog-image-label').textContent = isExpenseWithImages
+      ? 'Imágenes adjuntas del gasto'
+      : isPointEntry ? 'Fotos del punto geolocalizado' : 'Imagen';
+  }
+  if ($('#blog-image-picker-actions')) $('#blog-image-picker-actions').hidden = !isImageEntry && !isPointEntry;
+  if ($('#blog-image-gps-help')) $('#blog-image-gps-help').hidden = !isImageEntry && !isPointEntry;
 }
 
 function showBlogImages(images = []) {
-  const normalized = images.map(normalizeBlogImageRecord).filter(image => image.data);
+  const point = activeBlogEntryType === 'punto' ? blogPointFieldCoordinates() : null;
+  const normalized = images
+    .map(normalizeBlogImageRecord)
+    .filter(image => image.data)
+    .map(image => !storedImageCoordinates(image) && point
+      ? {
+        ...image,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        locationSource: 'manual'
+      }
+      : image);
   activeBlogImage = normalized[0] || null;
   activeBlogGalleryImages = normalized.slice(1);
   const located = normalized.filter(storedImageCoordinates);
@@ -12532,6 +12657,26 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('focus', scheduleSharedContentRecovery);
 window.addEventListener('pageshow', scheduleSharedContentRecovery);
 
+function assignBlogEntryImages(values, image, galleryImages = []) {
+  Object.assign(values, {
+    imageName: image ? image.name : '',
+    imageType: image ? image.type : '',
+    imageSize: image ? image.size : 0,
+    imageData: image ? image.data : '',
+    imageRef: image ? image.fileRef || '' : '',
+    imageWidth: image ? image.width : 0,
+    imageHeight: image ? image.height : 0,
+    imageId: image ? image.id || '' : '',
+    imageLatitude: image ? image.latitude : null,
+    imageLongitude: image ? image.longitude : null,
+    imageLocationSource: image ? image.locationSource || '' : '',
+    imagePhotoTypeId: image ? image.photoTypeId || '' : '',
+    imagePhotoTypeName: image ? photoTypeLabel(image) : '',
+    imageMapEnabled: Boolean(image && image.mapEnabled === true),
+    galleryImages: galleryImages.map(normalizeBlogImageRecord)
+  });
+}
+
 async function saveBlogEntryForm() {
   const trip = selectedBlogTrip();
   if (!trip) throw new Error('El viaje seleccionado ha cambiado');
@@ -12575,22 +12720,12 @@ async function saveBlogEntryForm() {
   }
   if (type === 'imagen') {
     if (!activeBlogImage) throw new Error('Selecciona una imagen, una galería o usa la cámara');
-    Object.assign(values, {
-      imageName: activeBlogImage.name,
-      imageType: activeBlogImage.type,
-      imageSize: activeBlogImage.size,
-      imageData: activeBlogImage.data,
-      imageWidth: activeBlogImage.width,
-      imageHeight: activeBlogImage.height,
-      imageId: activeBlogImage.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`),
-      imageLatitude: activeBlogImage.latitude,
-      imageLongitude: activeBlogImage.longitude,
-      imageLocationSource: activeBlogImage.locationSource || '',
-      imagePhotoTypeId: activeBlogImage.photoTypeId || '',
-      imagePhotoTypeName: photoTypeLabel(activeBlogImage),
-      imageMapEnabled: activeBlogImage.mapEnabled === true,
-      galleryImages: activeBlogGalleryImages.map(normalizeBlogImageRecord)
-    });
+    if (!activeBlogImage.id) {
+      activeBlogImage.id = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`;
+    }
+    assignBlogEntryImages(values, activeBlogImage, activeBlogGalleryImages);
     if (enRuta) {
       const locatedImage = [activeBlogImage, ...activeBlogGalleryImages].find(image => storedImageCoordinates(image));
       const manualPoint = blogManualRouteLocationOpen ? blogPointFieldCoordinates() : null;
@@ -12618,23 +12753,7 @@ async function saveBlogEntryForm() {
     }
   }
   if (type === 'gasto') {
-    const image = activeBlogImage;
-    Object.assign(values, {
-      imageName: image ? image.name : '',
-      imageType: image ? image.type : '',
-      imageSize: image ? image.size : 0,
-      imageData: image ? image.data : '',
-      imageWidth: image ? image.width : 0,
-      imageHeight: image ? image.height : 0,
-      imageId: image ? image.id || '' : '',
-      imageLatitude: image ? image.latitude : null,
-      imageLongitude: image ? image.longitude : null,
-      imageLocationSource: image ? image.locationSource || '' : '',
-      imagePhotoTypeId: image ? image.photoTypeId || '' : '',
-      imagePhotoTypeName: image ? photoTypeLabel(image) : '',
-      imageMapEnabled: Boolean(image && image.mapEnabled === true),
-      galleryImages: activeBlogGalleryImages.map(normalizeBlogImageRecord)
-    });
+    assignBlogEntryImages(values, activeBlogImage, activeBlogGalleryImages);
   }
   if (type === 'punto') {
     const point = blogPointFieldCoordinates();
@@ -12654,6 +12773,23 @@ async function saveBlogEntryForm() {
     values.latitude = duplicatePoint ? duplicatePoint.latitude : point.latitude;
     values.longitude = duplicatePoint ? duplicatePoint.longitude : point.longitude;
     values.notas = String($('#blog-point-notes') ? $('#blog-point-notes').value : '').trim();
+    if (activeBlogImage) {
+      const pointImages = [activeBlogImage, ...activeBlogGalleryImages].map(image => (
+        storedImageCoordinates(image)
+          ? normalizeBlogImageRecord(image)
+          : normalizeBlogImageRecord({
+            ...image,
+            latitude: values.latitude,
+            longitude: values.longitude,
+            locationSource: 'manual'
+          })
+      ));
+      activeBlogImage = pointImages[0];
+      activeBlogGalleryImages = pointImages.slice(1);
+      assignBlogEntryImages(values, activeBlogImage, activeBlogGalleryImages);
+    } else {
+      assignBlogEntryImages(values, null, []);
+    }
   }
   if (current) {
     if (type === 'gasto') {
@@ -14961,6 +15097,10 @@ function bindEvents() {
   $('#expense-files-done').onclick = closeExpenseFilesDialog;
   $('#image-viewer-close').onclick = closeImageViewer;
   $('#image-viewer-done').onclick = closeImageViewer;
+  $('#image-viewer-fit').onclick = () => setImageViewerZoom(0);
+  $('#image-viewer-zoom-out').onclick = () => stepImageViewerZoom(-1);
+  $('#image-viewer-zoom-in').onclick = () => stepImageViewerZoom(1);
+  $('#image-viewer-image').ondblclick = () => setImageViewerZoom(activeImageViewerZoom ? 0 : 1);
   $('#image-viewer-dialog').oncancel = event => {
     event.preventDefault();
     closeImageViewer();
@@ -16248,7 +16388,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v244');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v245');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
