@@ -77,6 +77,15 @@ test('el conflicto de fecha y hora de una foto ofrece Mantener o Reemplazar', ()
   assert.match(help, /<em>Mantener<\/em> conserva las del gasto y <em>Reemplazar<\/em> aplica las de la foto/);
 });
 
+test('añadir una imagen al editar conserva la fecha y evita dos ventanas modales apiladas', () => {
+  assert.match(app, /g-extra-images'\)\.onchange = \(\) => syncExpenseExtraImageSelection\('g', \{ applyDateTime: true, resetClassifications: true \}\)/);
+  assert.match(app, /edit-gasto-extra-images'\)\.onchange = \(\) => syncExpenseExtraImageSelection\('edit-gasto', \{ resetClassifications: true \}\)/);
+  assert.match(app, /edit-gasto-extra-images-camera'\)\.onchange = \(\) => syncExpenseExtraImageSelection\('edit-gasto', \{ resetClassifications: true \}\)/);
+  assert.doesNotMatch(app, /syncExpenseExtraImageSelection\('edit-gasto', \{ applyDateTime: true/);
+  assert.match(styles, /#edit-gasto-dialog \{[\s\S]*?max-height: calc\(100svh - 18px\);[\s\S]*?overscroll-behavior: contain/);
+  assert.match(help, /Al añadir imágenes a un gasto ya guardado se conservan siempre su fecha y su hora, sin abrir otra ventana/);
+});
+
 test('al editar una entrada del Blog vuelve a su desplegable y conserva la posición', () => {
   assert.match(app, /function captureBlogEntryAnchor\(entryId\)/);
   assert.match(app, /viewportTop: target\.getBoundingClientRect\(\)\.top/);

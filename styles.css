@@ -4363,8 +4363,10 @@ footer {
   #add-gasto-dialog,
   #edit-gasto-dialog {
     width: min(430px, calc(100vw - 22px));
-    max-height: calc(100dvh - 18px);
+    max-height: calc(100vh - 18px);
+    max-height: calc(100svh - 18px);
     overflow: auto;
+    overscroll-behavior: contain;
   }
 
   .expense-dialog-form {
