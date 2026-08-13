@@ -55,9 +55,31 @@ test('el resumen de cuentas conserva una tabla y muestra hasta saldo en móvil',
   assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /border-right/);
 });
 
-test('el restante de una cuenta descuenta las recargas enviadas sin alterar el presupuesto global', () => {
-  assert.match(app, /function accountNetTransferEur\(account\)/);
-  assert.match(app, /budgetEur - spentEur - netTransferOutEur/);
-  assert.match(app, /Presupuesto menos gastos y transferencias netas de la cuenta/);
-  assert.match(app, /const accountRemainingEur = accountBudgetEur \? accountBudgetEur - totalEur : null/);
+test('presupuesto de viaje, límite de cuenta y saldo son conceptos separados', () => {
+  assert.match(html, /<th>Límite<\/th><th>Disponible<\/th>/);
+  assert.match(app, /return Math\.max\(0, numberValue\(viaje && viaje\.presupuesto\)\)/);
+  assert.match(app, /remainingEur = budget \? budgetEur - spentEur : null/);
+  assert.match(app, /las transferencias no son gastos/);
+  assert.doesNotMatch(app, /budgetEur - spentEur - netTransferOutEur/);
+  assert.doesNotMatch(app, /Total \/ presupuesto del viaje/);
+});
+
+test('las transferencias permiten detectar cuentas base y tarjetas recargables', () => {
+  const start = app.indexOf('const ACCOUNT_TYPE_OPTIONS');
+  const end = app.indexOf('function selectedTrips()', start);
+  const context = {
+    state: {
+      transferencias: [{ fromId: 1, toId: 2, importeFrom: 340, importeTo: 340, monedaFrom: 'EUR', monedaTo: 'EUR' }]
+    },
+    toEur: value => Number(value) || 0,
+    numberValue: value => Number(value) || 0,
+    normalizePlaceName: value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  };
+  vm.runInNewContext(`${app.slice(start, end)}; this.inferredAccountType = inferredAccountType; this.effectiveTripBudget = effectiveTripBudget;`, context);
+  assert.equal(context.inferredAccountType({ id: 1, nombre: 'Santander' }), 'base');
+  assert.equal(context.inferredAccountType({ id: 2, nombre: 'Revolut' }), 'rechargeable');
+  assert.equal(context.inferredAccountType({ id: 3, nombre: 'Efectivo' }), 'cash');
+  assert.equal(context.inferredAccountType({ id: 1, nombre: 'Santander', accountType: 'standard' }), 'standard');
+  assert.equal(context.effectiveTripBudget({ presupuesto: 1000 }), 1000);
+  assert.equal(context.effectiveTripBudget({ presupuesto: 0 }), 0);
 });

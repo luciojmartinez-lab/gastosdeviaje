@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v254';
+const APP_VERSION = '700v255';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -573,7 +573,7 @@ const INLINE_FORM_DRAFTS = [
   },
   {
     key: 'config-cuenta',
-    fields: ['#c-nombre', '#c-template', '#c-moneda', '#c-viaje', '#c-saldo', '#c-presu', '#c-nota'],
+    fields: ['#c-nombre', '#c-template', '#c-moneda', '#c-viaje', '#c-tipo', '#c-saldo', '#c-presu', '#c-nota'],
     message: '#msg-cuenta'
   },
   {
@@ -846,9 +846,9 @@ function restoreInlineFormDrafts() {
 
 const BASE_MONEDAS = ['EUR', 'USD', 'GBP', 'SEK', 'NOK', 'DKK', 'CHF', 'JPY'];
 const DEFAULT_CUENTAS = [
-  { nombre: 'Santander', moneda: 'EUR', saldoInicial: 0, presupuesto: 0 },
-  { nombre: 'Efectivo', moneda: 'EUR', saldoInicial: 0, presupuesto: 0 },
-  { nombre: 'Revolut', moneda: 'EUR', saldoInicial: 0, presupuesto: 0 }
+  { nombre: 'Santander', moneda: 'EUR', saldoInicial: 0, presupuesto: 0, accountType: '' },
+  { nombre: 'Efectivo', moneda: 'EUR', saldoInicial: 0, presupuesto: 0, accountType: 'cash' },
+  { nombre: 'Revolut', moneda: 'EUR', saldoInicial: 0, presupuesto: 0, accountType: '' }
 ];
 const CATEGORY_SEED_KEY = 'gastos_viaje_categories_seeded';
 const DEFAULT_CATEGORIAS = [
@@ -2083,7 +2083,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v254');
+    const worker = new Worker('./timeline-import-worker.js?v=700v255');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2219,46 +2219,54 @@ function accountKey(account) {
   return `${(account.nombre || '').trim().toLowerCase()}|${account.moneda || ''}`;
 }
 
-function accountNetTransferEur(account) {
-  if (!account) return 0;
-  return state.transferencias.reduce((net, transfer) => {
+const ACCOUNT_TYPE_OPTIONS = [
+  { value: '', label: 'Automático según movimientos' },
+  { value: 'base', label: 'Cuenta base' },
+  { value: 'rechargeable', label: 'Tarjeta recargable' },
+  { value: 'cash', label: 'Efectivo' },
+  { value: 'standard', label: 'Cuenta normal' }
+];
+
+function normalizeAccountType(value) {
+  const type = String(value || '').trim().toLowerCase();
+  return ACCOUNT_TYPE_OPTIONS.some(option => option.value === type) ? type : '';
+}
+
+function accountTransferProfile(account) {
+  return state.transferencias.reduce((profile, transfer) => {
     if (Number(transfer.fromId) === Number(account.id)) {
-      return net + toEur(transfer.importeFrom, transfer.monedaFrom || account.moneda);
+      profile.outgoingCount += 1;
+      profile.outgoingEur += toEur(transfer.importeFrom, transfer.monedaFrom || account.moneda);
     }
     if (Number(transfer.toId) === Number(account.id)) {
-      return net - toEur(transfer.importeTo, transfer.monedaTo || account.moneda);
+      profile.incomingCount += 1;
+      profile.incomingEur += toEur(transfer.importeTo, transfer.monedaTo || account.moneda);
     }
-    return net;
-  }, 0);
+    return profile;
+  }, { incomingCount: 0, outgoingCount: 0, incomingEur: 0, outgoingEur: 0 });
 }
 
-function accountBudgetForTrip(viajeId) {
-  const tripId = Number(viajeId);
-  const tripAccounts = state.cuentas.filter(c => Number(c.viajeId) === tripId && numberValue(c.presupuesto) > 0);
-  return tripAccounts.reduce((sum, c) => sum + toEur(c.presupuesto, c.moneda), 0);
+function inferredAccountType(account) {
+  const explicit = normalizeAccountType(account && account.accountType);
+  if (explicit) return explicit;
+  const normalizedName = normalizePlaceName(account && account.nombre);
+  if (/\b(efectivo|cash|metalico)\b/.test(normalizedName)) return 'cash';
+  const profile = accountTransferProfile(account || {});
+  if (profile.incomingCount > 0 && profile.incomingEur > profile.outgoingEur * 1.25 + 0.01) return 'rechargeable';
+  if (profile.outgoingCount > 0 && profile.outgoingEur > profile.incomingEur * 1.25 + 0.01) return 'base';
+  return 'standard';
 }
 
-function globalAccountBudget() {
-  return state.cuentas
-    .filter(c => !c.viajeId && numberValue(c.presupuesto) > 0)
-    .reduce((sum, c) => sum + toEur(c.presupuesto, c.moneda), 0);
+function accountTypeLabel(account, includeDetection = false) {
+  const explicit = normalizeAccountType(account && account.accountType);
+  const type = explicit || inferredAccountType(account);
+  const option = ACCOUNT_TYPE_OPTIONS.find(item => item.value === type);
+  const label = option ? option.label : 'Cuenta normal';
+  return includeDetection && !explicit ? `${label} (detectada)` : label;
 }
 
 function effectiveTripBudget(viaje) {
-  const explicit = numberValue(viaje && viaje.presupuesto);
-  if (explicit > 0) return explicit;
-  const accountBudget = accountBudgetForTrip(viaje && viaje.id);
-  if (accountBudget > 0) return accountBudget;
-  return globalAccountBudget();
-}
-
-function accountsForBudgetScope(gastos) {
-  const ids = selectedTripSet();
-  if (!ids.size) return state.cuentas;
-  const tripAccounts = state.cuentas.filter(c => c.viajeId && ids.has(Number(c.viajeId)));
-  if (tripAccounts.some(c => numberValue(c.presupuesto) > 0)) return tripAccounts;
-  const usedAccountIds = new Set(gastos.map(g => Number(g.cuentaId)));
-  return state.cuentas.filter(c => !c.viajeId || usedAccountIds.has(Number(c.id)));
+  return Math.max(0, numberValue(viaje && viaje.presupuesto));
 }
 
 function selectedTrips() {
@@ -2807,7 +2815,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v254');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v255');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3598,7 +3606,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v254');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v255');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3689,7 +3697,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v254');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v255');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3751,7 +3759,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v254');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v255');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4049,7 +4057,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v254');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v255');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -5537,7 +5545,7 @@ function resetPlannedCitySelector(countrySelector, citySelector) {
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-async function addCuenta({ nombre, moneda, saldoInicial = 0, presupuesto = 0, nota = '', viajeId = null }) {
+async function addCuenta({ nombre, moneda, saldoInicial = 0, presupuesto = 0, nota = '', viajeId = null, accountType = '' }) {
   const now = new Date().toISOString();
   return addRecord('cuentas', {
     nombre,
@@ -5546,6 +5554,7 @@ async function addCuenta({ nombre, moneda, saldoInicial = 0, presupuesto = 0, no
     saldoInicial: numberValue(saldoInicial),
     saldoActual: numberValue(saldoInicial),
     presupuesto: numberValue(presupuesto),
+    accountType: normalizeAccountType(accountType),
     nota,
     createdAt: now,
     updatedAt: now
@@ -5568,6 +5577,7 @@ async function cloneGlobalAccountsForTrip(viajeId) {
       moneda: account.moneda,
       saldoInicial: 0,
       presupuesto: 0,
+      accountType: normalizeAccountType(account.accountType),
       nota: 'Copiada desde plantilla global',
       viajeId: tripId
     });
@@ -5589,6 +5599,7 @@ async function migrateGlobalAccountToTrip(accountId, viajeId) {
     moneda: source.moneda,
     saldoInicial: numberValue(source.saldoActual),
     presupuesto: 0,
+    accountType: normalizeAccountType(source.accountType),
     nota: `Migrada desde cuenta global para ${trip.nombre}`,
     viajeId: tripId
   });
@@ -6607,6 +6618,7 @@ function applyAccountTemplate() {
   if (!template) return;
   $('#c-nombre').value = template.nombre || '';
   $('#c-moneda').value = template.moneda || $('#c-moneda').value;
+  if ($('#c-tipo')) $('#c-tipo').value = normalizeAccountType(template.accountType);
 }
 
 function renderTripSelectors() {
@@ -6819,47 +6831,34 @@ function renderCuentas() {
     const tripAccounts = state.cuentas.filter(c => Number(c.viajeId) === selectedTripId);
     const usedAccounts = state.cuentas.filter(c => usedAccountIds.has(Number(c.id)));
     const accounts = [...usedAccounts, ...tripAccounts.filter(c => !usedAccountIds.has(Number(c.id)))];
-    const tripAccountBudget = tripAccounts.reduce((sum, c) => sum + toEur(c.presupuesto, c.moneda), 0);
-    const tripBudget = trip ? effectiveTripBudget(trip) : 0;
-    const tripSpentEur = tripExpenses.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
+    const totalAccountLimit = accounts.reduce((sum, c) => sum + toEur(c.presupuesto, c.moneda), 0);
     const totalSaldoEur = accounts.reduce((sum, c) => sum + toEur(c.saldoActual, c.moneda), 0);
     if (!accounts.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="6">No hay cuentas ni gastos asociados a ${escapeHtml(trip ? trip.nombre : 'este viaje')}.</td>`;
+      tr.innerHTML = `<td colspan="7">No hay cuentas ni gastos asociados a ${escapeHtml(trip ? trip.nombre : 'este viaje')}.</td>`;
       tbody.appendChild(tr);
       return;
     }
     accounts.forEach(c => {
       const spentEur = tripExpenses.filter(g => Number(g.cuentaId) === Number(c.id)).reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
       const isTripAccount = Number(c.viajeId) === selectedTripId;
-      let budget = isTripAccount ? numberValue(c.presupuesto) : 0;
-      let saldo = numberValue(c.saldoActual);
-      if (!isTripAccount && accounts.length === 1 && tripBudget > 0) {
-        budget = fromEur(tripBudget, c.moneda);
-        saldo = fromEur(tripBudget - spentEur, c.moneda);
-      }
+      const limit = numberValue(c.presupuesto);
+      const saldo = numberValue(c.saldoActual);
       const tr = document.createElement('tr');
       tr.dataset.editableType = 'cuenta';
       tr.dataset.editableId = String(c.id);
-      if (budget > 0 && spentEur > toEur(budget, c.moneda)) tr.className = 'warning-row';
+      if (limit > 0 && spentEur > toEur(limit, c.moneda)) tr.className = 'warning-row';
       const migrate = !isTripAccount && usedAccountIds.has(Number(c.id))
         ? ` <button class="ghost" data-migrate-cuenta="${c.id}" data-migrate-viaje="${selectedTripId}">Pasar a viaje</button>`
         : '';
       const tripCell = isTripAccount ? escapeHtml(trip ? trip.nombre : 'Viaje') : `${escapeHtml(trip ? trip.nombre : 'Viaje')} <span class="badge">Global usada</span>`;
-      tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${tripCell}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(saldo, c.moneda)}</td><td>${fmtBudgetWithEur(budget, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button>${migrate}</td>`;
+      tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td>${tripCell}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(saldo, c.moneda)}</td><td>${fmtBudgetWithEur(limit, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button>${migrate}</td>`;
       tbody.appendChild(tr);
     });
-    if (tripAccountBudget > 0) {
+    if (totalAccountLimit > 0) {
       const tr = document.createElement('tr');
       tr.className = 'subtotal-row';
-      tr.innerHTML = `<td>Total cuentas del viaje</td><td>${escapeHtml(trip ? trip.nombre : 'Viaje')}</td><td><span class="badge">EUR</span></td><td>${fmtCurrency(totalSaldoEur, 'EUR')}</td><td>${fmtCurrency(tripAccountBudget, 'EUR')}</td><td>-</td>`;
-      tbody.appendChild(tr);
-    }
-    if (tripBudget > 0 && (tripAccountBudget <= 0 || Math.abs(tripBudget - tripAccountBudget) > 0.01)) {
-      const remaining = tripBudget - tripSpentEur;
-      const tr = document.createElement('tr');
-      tr.className = remaining < 0 ? 'warning-row' : 'subtotal-row';
-      tr.innerHTML = `<td>Presupuesto del viaje</td><td>${escapeHtml(trip ? trip.nombre : 'Viaje')}</td><td><span class="badge">EUR</span></td><td>${fmtCurrency(remaining, 'EUR')}</td><td>${fmtCurrency(tripBudget, 'EUR')}</td><td>-</td>`;
+      tr.innerHTML = `<td>Total cuentas</td><td>-</td><td>${escapeHtml(trip ? trip.nombre : 'Viaje')}</td><td><span class="badge">EUR</span></td><td>${fmtCurrency(totalSaldoEur, 'EUR')}</td><td>${fmtCurrency(totalAccountLimit, 'EUR')}</td><td>-</td>`;
       tbody.appendChild(tr);
     }
     return;
@@ -6871,7 +6870,7 @@ function renderCuentas() {
     tr.dataset.editableType = 'cuenta';
     tr.dataset.editableId = String(c.id);
     if (overBudget || numberValue(c.saldoActual) < 0) tr.className = 'warning-row';
-    tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td><span class="badge">Global</span></td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(c.saldoActual, c.moneda)}</td><td>${fmtBudgetWithEur(c.presupuesto, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
+    tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td><span class="badge">Global</span></td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(c.saldoActual, c.moneda)}</td><td>${fmtBudgetWithEur(c.presupuesto, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -10695,34 +10694,15 @@ function renderResumen() {
     $('#kpi-media').innerHTML = `<div>${fmtCurrency(0, 'EUR')}/día</div>`;
   }
   const tripBudget = tripBudgetSummary(gastos);
-  let budgetPct = '0%';
-  let remainingLines = [{ currency: 'EUR', amount: 0, always: true }];
+  let budgetPct = '-';
+  let remainingLines = [];
   if (tripBudget) {
     budgetPct = `${Math.min(100, tripBudget.pct).toFixed(0)}%`;
     remainingLines = [{ currency: 'EUR', amount: tripBudget.remainingEur, always: true }];
-  } else {
-    const remainingByCurrency = {};
-    let remainingEur = 0;
-    const budgetAccounts = accountsForBudgetScope(gastos);
-    const pcts = budgetAccounts.map(c => {
-      const spent = gastos
-        .filter(g => g.cuentaId === c.id)
-        .reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
-      if (c.presupuesto) {
-        const remaining = numberValue(c.presupuesto) - spent;
-        remainingByCurrency[c.moneda] = (remainingByCurrency[c.moneda] || 0) + remaining;
-        remainingEur += toEur(remaining, c.moneda);
-      }
-      return c.presupuesto ? Math.min(100, spent * 100 / c.presupuesto) : 0;
-    });
-    budgetPct = `${(pcts.reduce((a, b) => a + b, 0) / Math.max(1, pcts.length)).toFixed(0)}%`;
-    remainingLines = [{ currency: 'EUR', amount: remainingEur, always: true }]
-      .concat(Object.entries(remainingByCurrency)
-        .filter(([currency]) => currency !== 'EUR')
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([currency, amount]) => ({ currency, amount })));
   }
-  $('#kpi-presu').innerHTML = `<div>${budgetPct}</div><div class="kpi-note">Restante</div>${formatCurrencyLines(remainingLines)}`;
+  $('#kpi-presu').innerHTML = tripBudget
+    ? `<div>${budgetPct}</div><div class="kpi-note">Restante</div>${formatCurrencyLines(remainingLines)}`
+    : '<div>-</div><div class="kpi-note">Sin presupuesto de viaje</div>';
 
   const byCategory = {};
   gastos.forEach(g => {
@@ -10805,9 +10785,8 @@ function renderResumen() {
     const spentEur = gastos.filter(g => g.cuentaId === c.id).reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
     let budget = numberValue(c.presupuesto);
     let budgetEur = budget ? toEur(budget, c.moneda) : 0;
-    const netTransferOutEur = accountNetTransferEur(c);
-    let remainingEur = budget ? budgetEur - spentEur - netTransferOutEur : null;
-    let pct = budget ? Math.max(0, budgetEur - remainingEur) * 100 / budgetEur : 0;
+    let remainingEur = budget ? budgetEur - spentEur : null;
+    let pct = budget ? spentEur * 100 / budgetEur : 0;
     return {
       label: accountLabel(c),
       chartLabel: c.nombre,
@@ -10823,18 +10802,15 @@ function renderResumen() {
     };
   }).sort((a, b) => b.totalEur - a.totalEur);
   drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.chartLabel, value: row.totalEur })));
-  const accountHtml = accountRows.map(row => `<tr class="${row.restanteEur !== null && row.restanteEur < 0 ? 'warning-row' : ''}"><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td><td data-label="Presupuesto">${row.presupuesto ? (row.moneda === 'EUR' ? fmtCurrency(row.presupuesto, row.moneda) : `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}`) : '-'}</td><td data-label="Restante" title="Presupuesto menos gastos y transferencias netas de la cuenta">${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td data-label="%">${row.pct.toFixed(1)}%</td></tr>`);
+  const accountHtml = accountRows.map(row => `<tr class="${row.restanteEur !== null && row.restanteEur < 0 ? 'warning-row' : ''}"><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td><td data-label="Límite">${row.presupuesto ? (row.moneda === 'EUR' ? fmtCurrency(row.presupuesto, row.moneda) : `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}`) : '-'}</td><td data-label="Disponible" title="Límite menos gastos pagados con esta cuenta; las transferencias no son gastos">${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td data-label="%">${row.pct.toFixed(1)}%</td></tr>`);
   const accountBudgetEur = accountRows.reduce((sum, row) => sum + numberValue(row.presupuestoEur), 0);
   const accountBalanceEur = accountRows.reduce((sum, row) => sum + numberValue(row.saldoEur), 0);
   const accountRemainingEur = accountBudgetEur ? accountBudgetEur - totalEur : null;
   const accountPct = accountBudgetEur ? totalEur * 100 / accountBudgetEur : 0;
   if (accountBudgetEur) {
-    accountHtml.push(`<tr class="${accountRemainingEur !== null && accountRemainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td data-label="Cuenta">Total / presupuesto de cuentas</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Presupuesto">${fmtCurrency(accountBudgetEur, 'EUR')}</td><td data-label="Restante">${accountRemainingEur === null ? '-' : fmtCurrency(accountRemainingEur, 'EUR')}</td><td data-label="%">${accountPct.toFixed(1)}%</td></tr>`);
-  }
-  if (tripBudget) {
-    accountHtml.push(`<tr class="${tripBudget.remainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td data-label="Cuenta">Total / presupuesto del viaje</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Presupuesto">${fmtCurrency(tripBudget.budgetEur, 'EUR')}</td><td data-label="Restante">${fmtCurrency(tripBudget.remainingEur, 'EUR')}</td><td data-label="%">${tripBudget.pct.toFixed(1)}%</td></tr>`);
+    accountHtml.push(`<tr class="${accountRemainingEur !== null && accountRemainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td data-label="Cuenta">Total límites de cuenta</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Límite">${fmtCurrency(accountBudgetEur, 'EUR')}</td><td data-label="Disponible">${accountRemainingEur === null ? '-' : fmtCurrency(accountRemainingEur, 'EUR')}</td><td data-label="%">${accountPct.toFixed(1)}%</td></tr>`);
   } else if (!accountBudgetEur) {
-    accountHtml.push(`<tr class="subtotal-row"><td data-label="Cuenta">Total gastado</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Presupuesto">-</td><td data-label="Restante">-</td><td data-label="%">-</td></tr>`);
+    accountHtml.push(`<tr class="subtotal-row"><td data-label="Cuenta">Total cuentas</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Límite">-</td><td data-label="Disponible">-</td><td data-label="%">-</td></tr>`);
   }
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
   if (state.activeTab === 'mapa' || tripMapState.printMode) renderTripMap();
@@ -10955,6 +10931,7 @@ async function importAll(data) {
       saldoInicial: numberValue(c.saldoInicial),
       saldoActual: numberValue(c.saldoActual ?? c.saldoInicial),
       presupuesto: numberValue(c.presupuesto),
+      accountType: normalizeAccountType(c.accountType),
       nota: c.nota || '',
       createdAt: c.createdAt || new Date().toISOString(),
       updatedAt: c.updatedAt || new Date().toISOString()
@@ -11109,6 +11086,7 @@ async function importTripBackup(data, targetTripId) {
       saldoInicial: numberValue(c.saldoInicial),
       saldoActual: numberValue(c.saldoActual ?? c.saldoInicial),
       presupuesto: numberValue(c.presupuesto),
+      accountType: normalizeAccountType(c.accountType),
       nota: c.nota || '',
       createdAt: c.createdAt || now,
       updatedAt: now
@@ -11627,7 +11605,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v254');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v255');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16213,10 +16191,11 @@ function bindEvents() {
         viajeId,
         saldoInicial: $('#c-saldo').value,
         presupuesto: $('#c-presu').value,
+        accountType: $('#c-tipo') ? $('#c-tipo').value : '',
         nota: $('#c-nota').value.trim()
       });
       clearFormDraft('config-cuenta');
-      ['#c-nombre', '#c-template', '#c-saldo', '#c-presu', '#c-nota'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
+      ['#c-nombre', '#c-template', '#c-tipo', '#c-saldo', '#c-presu', '#c-nota'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
       setMessage('#msg-cuenta', 'Cuenta anadida');
       await loadAll();
     } catch (err) {
@@ -16226,10 +16205,12 @@ function bindEvents() {
 
   $('#btn-add-transfer').onclick = async () => {
     try {
+      const sourceId = Number($('#t-from').value);
+      const targetId = Number($('#t-to').value);
       await addTransferencia({
         fecha: $('#t-fecha').value || todayIso(),
-        fromId: $('#t-from').value,
-        toId: $('#t-to').value,
+        fromId: sourceId,
+        toId: targetId,
         importe: $('#t-importe').value,
         importeTo: $('#t-importe-to') ? $('#t-importe-to').value : '',
         nota: $('#t-nota').value
@@ -16237,8 +16218,14 @@ function bindEvents() {
       clearFormDraft('config-transferencia');
       ['#t-importe', '#t-importe-to', '#t-cambio', '#t-nota'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
       if (!$('#t-fecha').value) $('#t-fecha').value = todayIso();
-      setMessage('#msg-transfer', 'Transferencia anadida');
       await loadAll();
+      const source = state.cuentas.find(account => Number(account.id) === sourceId);
+      const target = state.cuentas.find(account => Number(account.id) === targetId);
+      const detected = [source, target]
+        .filter(Boolean)
+        .map(account => `${account.nombre}: ${accountTypeLabel(account)}`)
+        .join(' · ');
+      setMessage('#msg-transfer', `Transferencia añadida${detected ? ` · ${detected}` : ''}`);
     } catch (err) {
       setMessage('#msg-transfer', err.message || String(err), true);
     }
@@ -16915,11 +16902,12 @@ function bindEvents() {
           helpTarget: 'cuentas',
           fields: [
             { name: 'nombre', label: 'Nombre', value: c.nombre },
-            { name: 'presupuesto', label: 'Presupuesto', type: 'number', step: '0.01', value: c.presupuesto || 0 },
+            { name: 'accountType', label: 'Tipo de cuenta', type: 'select', value: normalizeAccountType(c.accountType), options: ACCOUNT_TYPE_OPTIONS },
+            { name: 'presupuesto', label: 'Límite de gasto (opcional)', type: 'number', step: '0.01', min: '0', value: c.presupuesto || 0 },
             { name: 'saldoActual', label: 'Saldo actual', type: 'number', step: '0.01', value: numberValue(c.saldoActual) }
           ],
           onSubmit: values => {
-            return updateCuenta(c.id, { nombre: values.nombre.trim() || c.nombre, presupuesto: numberValue(values.presupuesto), saldoActual: numberValue(values.saldoActual) });
+            return updateCuenta(c.id, { nombre: values.nombre.trim() || c.nombre, accountType: normalizeAccountType(values.accountType), presupuesto: numberValue(values.presupuesto), saldoActual: numberValue(values.saldoActual) });
           }
         });
         return;
@@ -17176,7 +17164,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v254');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v255');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

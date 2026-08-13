@@ -13,20 +13,20 @@ const [html, app, help, sw, version, pkg, ticketOcr, ticketWorker] = await Promi
   readFile(new URL('../ticket-image-worker.js', import.meta.url), 'utf8')
 ]);
 
-test('la versiÃ³n 700v254 estÃ¡ alineada en app, cache y paquete', () => {
-  assert.equal(version.trim(), '700v254');
-  assert.match(pkg, /"version": "700\.254\.0"/);
-  assert.match(html, /styles\.css\?v=700v254/);
-  assert.match(html, /app\.bundle\.js\?v=700v254/);
-  assert.match(html, /map-model\.js\?v=700v254/);
-  assert.match(html, /sw\.js\?v=700v254/);
-  assert.match(app, /const APP_VERSION = '700v254'/);
-  assert.match(app, /image-location\.js\?v=700v254/);
-  assert.match(app, /ticket-ocr\.js\?v=700v254/);
-  assert.match(app, /share-pdf\.js\?v=700v254/);
-  assert.match(ticketOcr, /DOCUMENT_PREPROCESSOR_VERSION = '700v254'/);
-  assert.match(ticketWorker, /ticket-image-processing\.js\?v=700v254/);
-  assert.match(sw, /gastosdeviaje-700v254/);
+test('la versiÃ³n 700v255 estÃ¡ alineada en app, cache y paquete', () => {
+  assert.equal(version.trim(), '700v255');
+  assert.match(pkg, /"version": "700\.255\.0"/);
+  assert.match(html, /styles\.css\?v=700v255/);
+  assert.match(html, /app\.bundle\.js\?v=700v255/);
+  assert.match(html, /map-model\.js\?v=700v255/);
+  assert.match(html, /sw\.js\?v=700v255/);
+  assert.match(app, /const APP_VERSION = '700v255'/);
+  assert.match(app, /image-location\.js\?v=700v255/);
+  assert.match(app, /ticket-ocr\.js\?v=700v255/);
+  assert.match(app, /share-pdf\.js\?v=700v255/);
+  assert.match(ticketOcr, /DOCUMENT_PREPROCESSOR_VERSION = '700v255'/);
+  assert.match(ticketWorker, /ticket-image-processing\.js\?v=700v255/);
+  assert.match(sw, /gastosdeviaje-700v255/);
   assert.doesNotMatch(html + app + sw, /700v136|700v135|700v134|700v133|700v132|700v131|700v128/);
 });
 
@@ -49,6 +49,12 @@ test('los nombres recordados de alojamientos forman parte del viaje y sus copias
   assert.match(app, /function tripLodgingLocations\(viaje\)/);
   assert.match(app, /lodgingLocations: tripLodgingLocations\(v\)/);
   assert.match(app, /tripPatch\.lodgingLocations = tripLodgingLocations\(sourceTrip\)/);
+});
+
+test('el tipo manual de cuenta se conserva en copias e importaciones', () => {
+  assert.match(app, /accountType: normalizeAccountType\(accountType\)/);
+  assert.match(app, /accountType: normalizeAccountType\(c\.accountType\)/);
+  assert.match(app, /accountType: normalizeAccountType\(source\.accountType\)/);
 });
 
 test('los tipos de fotos se normalizan siempre en orden alfabético', () => {

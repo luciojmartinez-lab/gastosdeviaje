@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v254</title>
+  <title>Manual de Cuaderno de Bitácora - 700v255</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     const embeddedHelpMode = helpParams.get('embedded');
@@ -193,7 +193,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 13 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v254</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 13 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v255</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -225,7 +225,7 @@
         <ol class="workflow">
           <li><strong>Crear los destinos.</strong> En <a href="#paises-ciudades">Países / ciudades</a>, añade los países y las ciudades que visitarás. Usa <em>Localizar</em> para guardar coordenadas cuando quieras que aparezcan correctamente en el mapa.</li>
           <li><strong>Preparar la clasificación.</strong> Revisa las <a href="#categorias">categorías y subcategorías</a> económicas y las <a href="#clasificaciones">clasificaciones de imágenes y tickets</a>. Marca como destino las clasificaciones que identifican alojamientos.</li>
-          <li><strong>Configurar dinero y formas de pago.</strong> Crea las <a href="#monedas">monedas</a> necesarias y las <a href="#cuentas">cuentas</a> o formas de pago. Introduce saldo inicial y presupuesto cuando quieras controlar lo disponible.</li>
+          <li><strong>Configurar dinero y formas de pago.</strong> Crea las <a href="#monedas">monedas</a> necesarias y las <a href="#cuentas">cuentas</a> o formas de pago con su saldo inicial. El presupuesto se indica después en el viaje.</li>
           <li><strong>Crear el viaje.</strong> En <a href="#crear-viaje">Crear viaje</a>, indica nombre, fechas, presupuesto, países y el orden previsto de ciudades. Este orden define la ruta planificada y los números de destino.</li>
           <li><strong>Añadir documentación.</strong> Desde el desplegable del viaje, abre <a href="#documentos-viaje">Documentos viaje</a> y guarda reservas, billetes, seguros u otros archivos que necesites consultar.</li>
           <li><strong>Comprobar y proteger.</strong> Ejecuta <a href="#revisar-viaje">Revisar viaje</a>, crea una <a href="#backup">copia JSON</a> y, si trabajarás con varios dispositivos, deja preparada la <a href="#sincronizacion">clave de sincronización</a>.</li>
@@ -328,7 +328,7 @@
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / acción</th><th>Uso</th></tr></thead><tbody>
             <tr><td>Nombre</td><td>Identificador principal del viaje.</td></tr>
             <tr><td>Fecha de inicio / final</td><td>Delimitan el viaje y alimentan los selectores de día, revisiones y medias diarias.</td></tr>
-            <tr><td>Presupuesto EUR</td><td>Importe global. Puede coexistir con presupuestos por cuenta.</td></tr>
+            <tr><td>Presupuesto EUR</td><td>Importe global disponible para el viaje. Los gastos lo reducen; las transferencias entre cuentas no.</td></tr>
             <tr><td>Países creados</td><td>Selección múltiple de países que forman parte del viaje.</td></tr>
             <tr><td>Ciudades planificadas</td><td>Ciudades de esos países. El orden define la ruta y los números de destino.</td></tr>
             <tr><td>Subir / Bajar</td><td>Mueve una ciudad en la secuencia.</td></tr>
@@ -349,14 +349,16 @@
             <tr><td>Desde plantilla</td><td>Parte de una cuenta global ya creada para repetir su configuración.</td></tr>
             <tr><td>Moneda</td><td>Moneda propia de la cuenta.</td></tr>
             <tr><td>Viaje</td><td>Vacío crea una cuenta global; elegir un viaje crea una cuenta específica.</td></tr>
+            <tr><td>Tipo</td><td>En Automático, las transferencias permiten sugerir Cuenta base, Tarjeta recargable, Efectivo o Cuenta normal. Puede elegirse manualmente para corregir la sugerencia.</td></tr>
             <tr><td>Saldo inicial</td><td>Dinero disponible antes de gastos y transferencias.</td></tr>
-            <tr><td>Presupuesto</td><td>Límite orientativo de esa cuenta.</td></tr>
+            <tr><td>Límite de gasto</td><td>Control opcional de lo pagado con esa cuenta. No es el presupuesto del viaje y no cambia con recargas o transferencias.</td></tr>
             <tr><td>Nota</td><td>Información libre sobre el uso de la cuenta.</td></tr>
-            <tr><td>Tabla</td><td>Muestra cuenta, viaje, moneda, saldo y presupuesto. Permite editar, eliminar y, cuando procede, migrar.</td></tr>
+            <tr><td>Tabla</td><td>Muestra cuenta, tipo detectado o elegido, viaje, moneda, saldo y límite. Permite editar, eliminar y, cuando procede, migrar.</td></tr>
           </tbody></table></div>
+          <div class="callout"><strong>Configuración recomendada:</strong> indica el presupuesto una sola vez en el viaje. En las cuentas configura el saldo y deja el límite vacío, salvo que quieras imponer deliberadamente un máximo de gasto a una forma de pago concreta.</div>
 
           <h4 id="transferencias">Transferencias entre cuentas</h4>
-          <p>Sirven para mover dinero sin considerarlo gasto: recargas, retiradas, traspasos y cambios de moneda. La tabla se muestra desde la fecha más antigua hasta la más moderna.</p>
+          <p>Sirven para mover dinero sin considerarlo gasto: recargas, retiradas, traspasos y cambios de moneda. La aplicación usa el patrón de estos movimientos para sugerir qué cuentas son base y cuáles son tarjetas recargables. La tabla se muestra desde la fecha más antigua hasta la más moderna.</p>
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / columna</th><th>Uso</th></tr></thead><tbody>
             <tr><td>Fecha</td><td>Día del movimiento.</td></tr>
             <tr><td>Cuenta origen (sale)</td><td>Cuenta cuyo saldo disminuye.</td></tr>
@@ -574,7 +576,7 @@
             <tr><td>Filtros</td><td>Moneda original, cuenta, viaje, país y ciudad.</td></tr>
             <tr><td>Desglose</td><td>Categorías, subcategorías o ciudades.</td></tr>
             <tr><td>Tabla por categoría</td><td>Categoría, subcategoría, total EUR y porcentaje del gasto.</td></tr>
-            <tr><td>Tabla por cuenta</td><td>Cuenta, moneda, gastado, saldo, equivalencia EUR, presupuesto, restante y porcentaje. El restante de cada cuenta descuenta tanto sus gastos como sus transferencias netas salientes; una recarga reduce lo disponible en la cuenta de origen y lo aumenta en la de destino. El presupuesto global del viaje solo descuenta gastos, porque una transferencia no consume dinero del viaje. En móvil se ven juntas las cuatro primeras columnas hasta Saldo; las restantes continúan a la derecha mediante desplazamiento horizontal.</td></tr>
+            <tr><td>Tabla por cuenta</td><td>Cuenta, moneda, gastado, saldo, equivalencia EUR, límite opcional, disponible del límite y porcentaje. Las transferencias cambian los saldos, pero no los límites ni el presupuesto global del viaje. El presupuesto y su restante se muestran en los indicadores superiores, sin mezclarlos con los límites de cuenta. En móvil se ven juntas las cuatro primeras columnas hasta Saldo; las restantes continúan a la derecha mediante desplazamiento horizontal.</td></tr>
             <tr><td>Imprimir PDF</td><td>Abre las opciones Resumen, Gastos o Todo.</td></tr>
           </tbody></table></div>
           <h4 id="resumen-comparacion">Comparar dos viajes</h4>
@@ -673,10 +675,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 13 de agosto de 2026 para Cuaderno de Bitácora 700v254.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 13 de agosto de 2026 para Cuaderno de Bitácora 700v255.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v254 · 13 de agosto de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v255 · 13 de agosto de 2026</div>
 </body>
 </html>
