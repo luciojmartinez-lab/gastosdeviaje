@@ -33,13 +33,13 @@ test('el editor del mapa conserva la ruta planificada, sus tipos y las ciudades 
   assert.doesNotMatch(app, /mapCityIds\.length \? mapCityIds : configuredCityIds/);
 });
 
-test('el mapa permite alternar el sombreado de relieve sin cambiar sus puntos', () => {
-  assert.match(app, /showRelief: false/);
-  assert.match(app, /data-map-relief="1"/);
-  assert.match(app, /tripMapState\.showRelief = !tripMapState\.showRelief/);
-  assert.match(app, /type: 'raster-dem'[\s\S]*?elevation-tiles-prod\/terrarium/);
-  assert.match(app, /type: 'hillshade'/);
-  assert.match(app, /\$\{tripMapState\.showRelief \? 'Mapa normal' : 'Relieve'\}/);
+test('el mapa permite alternar la vista de satélite sin cambiar sus puntos', () => {
+  assert.match(app, /showSatellite: false/);
+  assert.match(app, /data-map-satellite="1"/);
+  assert.match(app, /tripMapState\.showSatellite = !tripMapState\.showSatellite/);
+  assert.match(app, /type: 'raster'[\s\S]*?World_Imagery\/MapServer\/tile/);
+  assert.match(app, /'raster-fade-duration': 150/);
+  assert.match(app, /\$\{tripMapState\.showSatellite \? 'Mapa normal' : 'Satélite'\}/);
 });
 
 test('Solo destinos usa la clasificación y no borra el día al filtrar', () => {
