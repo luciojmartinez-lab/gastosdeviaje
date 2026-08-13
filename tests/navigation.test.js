@@ -33,6 +33,15 @@ test('el editor del mapa conserva la ruta planificada, sus tipos y las ciudades 
   assert.doesNotMatch(app, /mapCityIds\.length \? mapCityIds : configuredCityIds/);
 });
 
+test('el mapa permite alternar el sombreado de relieve sin cambiar sus puntos', () => {
+  assert.match(app, /showRelief: false/);
+  assert.match(app, /data-map-relief="1"/);
+  assert.match(app, /tripMapState\.showRelief = !tripMapState\.showRelief/);
+  assert.match(app, /type: 'raster-dem'[\s\S]*?elevation-tiles-prod\/terrarium/);
+  assert.match(app, /type: 'hillshade'/);
+  assert.match(app, /\$\{tripMapState\.showRelief \? 'Mapa normal' : 'Relieve'\}/);
+});
+
 test('Solo destinos usa la clasificación y no borra el día al filtrar', () => {
   assert.match(app, /const destinationStops = completeStops\.filter\(stop => stop\.role === ROUTE_STOP_ROLE_DESTINATION\)/);
   assert.doesNotMatch(app, /completeIds\.slice\(1, -1\)/);

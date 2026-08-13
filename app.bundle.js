@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v259';
+const APP_VERSION = '700v260';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -191,6 +191,7 @@ const tripMapState = {
   showPlanned: true,
   showPhotos: true,
   showTimeline: true,
+  showRelief: false,
   destinationOnly: false,
   day: '',
   cityId: 0,
@@ -2083,7 +2084,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v259');
+    const worker = new Worker('./timeline-import-worker.js?v=700v260');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2825,7 +2826,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v259');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v260');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3616,7 +3617,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v259');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v260');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3707,7 +3708,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v259');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v260');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3769,7 +3770,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v259');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v260');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4067,7 +4068,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v259');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v260');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -9923,6 +9924,30 @@ function updateTripVectorZoomLabel(map, baseZoom) {
   label.textContent = `Z ${roundedZoom} ${Math.abs(roundedDelta) < 0.05 ? 'auto' : `${roundedDelta > 0 ? '+' : ''}${roundedDelta}`}`;
 }
 
+function addTripMapRelief(map) {
+  if (!map || !tripMapState.showRelief || map.getSource('trip-relief-dem')) return;
+  map.addSource('trip-relief-dem', {
+    type: 'raster-dem',
+    tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+    tileSize: 256,
+    maxzoom: 15,
+    encoding: 'terrarium',
+    attribution: 'Relieve: Mapzen Terrain Tiles en AWS Open Data'
+  });
+  const reliefBeforeLayer = (map.getStyle().layers || []).find(layer => layer.type === 'line' || layer.type === 'symbol');
+  map.addLayer({
+    id: 'trip-relief-hillshade',
+    type: 'hillshade',
+    source: 'trip-relief-dem',
+    paint: {
+      'hillshade-exaggeration': 0.55,
+      'hillshade-shadow-color': 'rgba(15, 23, 42, 0.38)',
+      'hillshade-highlight-color': 'rgba(255, 255, 255, 0.24)',
+      'hillshade-accent-color': 'rgba(71, 85, 105, 0.30)'
+    }
+  }, reliefBeforeLayer ? reliefBeforeLayer.id : undefined);
+}
+
 function initializeTripVectorMap({ container, withCoords, extentItems = withCoords, dailyMode, shouldDrawRoute, baseZoom, timelinePaths = [] }) {
   if (!container || !window.maplibregl || !extentItems.length) return false;
   if (typeof window.maplibregl.supported === 'function' && !window.maplibregl.supported()) {
@@ -10029,6 +10054,7 @@ function initializeTripVectorMap({ container, withCoords, extentItems = withCoor
     window.clearTimeout(startupTimer);
     host.querySelector('.trip-vector-loading')?.remove();
     map.resize();
+    addTripMapRelief(map);
     const routeCoordinates = dailyMode
       ? dailyRoute.map(record => [Number(record.longitude), Number(record.latitude)])
       : tripModel.routeStops.map(stop => [Number(stop.longitude), Number(stop.latitude)]);
@@ -10102,6 +10128,7 @@ function initializeTripVectorMap({ container, withCoords, extentItems = withCoor
   map.on('error', event => {
     console.warn(loaded ? 'No se pudo cargar una parte del mapa vectorial' : 'No se pudo iniciar el mapa vectorial', event && event.error || event);
     if (!loaded) return;
+    if (event && event.sourceId === 'trip-relief-dem') return;
     tileErrorCount += 1;
     if (tileErrorCount < 4 || tileFallbackTimer) return;
     tileFallbackTimer = window.setTimeout(() => {
@@ -10159,6 +10186,7 @@ function renderTripMap() {
           <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
           <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar todas las paradas' : 'Mostrar únicamente las paradas marcadas como Destino'}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destinos</button>
           <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" title="Exportar previamente la Cronología de Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología</button>
+          <button type="button" data-map-relief="1" class="${tripMapState.showRelief ? 'active' : ''}" aria-pressed="${tripMapState.showRelief}" title="Mostrar u ocultar el sombreado del terreno" disabled>${tripMapState.showRelief ? 'Mapa normal' : 'Relieve'}</button>
           <button type="button" data-map-add-stop="1" title="Añadir, borrar, clasificar o reordenar paradas del viaje">Añadir / modificar parada</button>
           <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
         </div>
@@ -10380,6 +10408,7 @@ function renderTripMap() {
         <button type="button" data-map-photos="1" class="${tripMapState.showPhotos ? 'active' : ''}" aria-pressed="${tripMapState.showPhotos}" title="Mostrar u ocultar fotos geolocalizadas"${availablePhotoCount ? '' : ' disabled'}>Fotos${availablePhotoCount ? ` (${availablePhotoCount})` : ''}</button>
         <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar todas las paradas' : (destinationOnlyAvailable ? 'Mostrar únicamente las paradas marcadas como Destino' : 'Marca alguna parada como Destino en el editor de ruta')}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destinos</button>
         <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" aria-pressed="${timelineAvailable && tripMapState.showTimeline}" title="Exportar previamente la Cronología de Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología</button>
+        <button type="button" data-map-relief="1" class="${tripMapState.showRelief ? 'active' : ''}" aria-pressed="${tripMapState.showRelief}" title="${useVectorInteractiveMap ? 'Mostrar u ocultar el sombreado del terreno' : 'El relieve requiere el mapa interactivo'}"${useVectorInteractiveMap ? '' : ' disabled'}>${tripMapState.showRelief ? 'Mapa normal' : 'Relieve'}</button>
         <button type="button" data-map-add-stop="1" title="Añadir, borrar o reordenar paradas del viaje">Añadir / modificar parada</button>
         <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
         <button type="button" data-map-fullscreen="1" class="${fullscreen ? 'active' : ''}" title="${fullscreen ? 'Volver al tamaño normal' : 'Ampliar el mapa a toda la pantalla'}">${fullscreen ? 'Tamaño normal' : 'Pantalla completa'}</button>
@@ -10861,7 +10890,7 @@ function renderResumen() {
     const balancePct = percentageOfTotal(row.saldoEur, accountBalanceEur);
     return `<tr><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="% gastos">${expensePct.toFixed(1)}%</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="% saldo">${balancePct.toFixed(1)}%</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td></tr>`;
   });
-  accountHtml.push(`<tr class="subtotal-row${isOverTripBudget ? ' over-budget-row' : ''}"><td data-label="Cuenta">Total cuentas</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="% gastos">${totalEur ? '100.0%' : '0.0%'}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="% saldo">${accountBalanceEur ? '100.0%' : '0.0%'}</td><td data-label="EUR"></td></tr>`);
+  accountHtml.push(`<tr class="subtotal-row${isOverTripBudget ? ' over-budget-row' : ''}"><td data-label="Cuenta"><span class="account-label-full">Total cuentas</span><span class="account-label-mobile">Total</span></td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="% gastos">${totalEur ? '100%' : '0%'}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="% saldo">${accountBalanceEur ? '100%' : '0%'}</td><td data-label="EUR"></td></tr>`);
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
   if (state.activeTab === 'mapa' || tripMapState.printMode) renderTripMap();
   renderTripComparison();
@@ -11655,7 +11684,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v259');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v260');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16905,6 +16934,12 @@ function bindEvents() {
         renderTripMap();
         return;
       }
+      const mapReliefButton = target.closest('[data-map-relief]');
+      if (mapReliefButton) {
+        tripMapState.showRelief = !tripMapState.showRelief;
+        renderTripMap();
+        return;
+      }
       const mapDestinationButton = target.closest('[data-map-destination]');
       if (mapDestinationButton) {
         const { destinationOnlyAvailable } = tripMapItemsForCurrentScope();
@@ -17213,7 +17248,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v259');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v260');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

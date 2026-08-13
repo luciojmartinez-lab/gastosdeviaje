@@ -5076,7 +5076,7 @@ footer {
     width: 100%;
     min-width: 0;
     table-layout: fixed;
-    font-size: 9.5px;
+    font-size: 8.25px;
   }
 
   #tabla-cuenta thead {
@@ -5095,7 +5095,7 @@ footer {
   #tabla-cuenta td,
   #tabla-cuenta td:nth-child(n) {
     display: table-cell;
-    padding: 7px 3px;
+    padding: 7px 2px;
     border-bottom: 1px solid var(--line);
     border-radius: 0;
     text-align: right;
@@ -5114,21 +5114,21 @@ footer {
     word-break: normal;
     padding-left: 1px;
     padding-right: 1px;
-    font-size: 8.5px;
+    font-size: 8px;
   }
 
   #tabla-cuenta th:nth-child(1),
-  #tabla-cuenta td:nth-child(1) { width: 18%; text-align: left; }
+  #tabla-cuenta td:nth-child(1) { width: 21%; text-align: left; }
   #tabla-cuenta th:nth-child(2),
-  #tabla-cuenta td:nth-child(2) { width: 12%; text-align: center; }
+  #tabla-cuenta td:nth-child(2) { width: 10%; text-align: center; }
   #tabla-cuenta th:nth-child(3),
-  #tabla-cuenta td:nth-child(3) { width: 19%; }
+  #tabla-cuenta td:nth-child(3) { width: 18%; }
   #tabla-cuenta th:nth-child(4),
-  #tabla-cuenta td:nth-child(4) { width: 14%; }
+  #tabla-cuenta td:nth-child(4) { width: 15%; }
   #tabla-cuenta th:nth-child(5),
   #tabla-cuenta td:nth-child(5) { width: 21%; }
   #tabla-cuenta th:nth-child(6),
-  #tabla-cuenta td:nth-child(6) { width: 16%; }
+  #tabla-cuenta td:nth-child(6) { width: 15%; }
   #tabla-cuenta th:nth-child(7),
   #tabla-cuenta td:nth-child(7) { display: none; }
 

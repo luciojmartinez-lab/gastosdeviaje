@@ -43,16 +43,18 @@ test('el resumen de cuentas conserva una tabla y agrupa gastos y saldos con sus 
   assert.match(app, /label: row\.chartLabel/);
   assert.match(app, /account-label-mobile[^>]*>\$\{escapeHtml\(row\.chartLabel\)\}/);
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?width: 100%;[\s\S]*?table-layout: fixed/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ width: 18%;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ width: 12%;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ width: 19%;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ width: 14%; \}/);
+  assert.match(styles, /#tabla-cuenta \{[\s\S]*?font-size: 8\.25px/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ width: 21%;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ width: 10%;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ width: 18%;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ width: 15%; \}/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(7\),[\s\S]*?#tabla-cuenta td:nth-child\(7\) \{ display: none; \}/);
   assert.match(styles, /#resumen-cuentas \.table-wrap \{[\s\S]*?overflow-x: auto/);
   const accountMobileStart = styles.indexOf('  #resumen-cuentas .table-wrap {');
   const accountMobileEnd = styles.indexOf('  #tabla-cat {', accountMobileStart);
   assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /grid-template-columns/);
   assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /border-right/);
+  assert.match(app, /account-label-mobile">Total<\/span>/);
 });
 
 test('el presupuesto pertenece al viaje y las cuentas muestran gastos y saldos', () => {
