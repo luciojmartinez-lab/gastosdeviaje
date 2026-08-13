@@ -54,3 +54,10 @@ test('el resumen de cuentas conserva una tabla y muestra hasta saldo en móvil',
   assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /grid-template-columns/);
   assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /border-right/);
 });
+
+test('el restante de una cuenta descuenta las recargas enviadas sin alterar el presupuesto global', () => {
+  assert.match(app, /function accountNetTransferEur\(account\)/);
+  assert.match(app, /budgetEur - spentEur - netTransferOutEur/);
+  assert.match(app, /Presupuesto menos gastos y transferencias netas de la cuenta/);
+  assert.match(app, /const accountRemainingEur = accountBudgetEur \? accountBudgetEur - totalEur : null/);
+});
