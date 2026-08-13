@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v257';
+const APP_VERSION = '700v258';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -573,7 +573,7 @@ const INLINE_FORM_DRAFTS = [
   },
   {
     key: 'config-cuenta',
-    fields: ['#c-nombre', '#c-template', '#c-moneda', '#c-viaje', '#c-tipo', '#c-saldo', '#c-presu', '#c-nota'],
+    fields: ['#c-nombre', '#c-template', '#c-moneda', '#c-viaje', '#c-tipo', '#c-saldo', '#c-nota'],
     message: '#msg-cuenta'
   },
   {
@@ -846,9 +846,9 @@ function restoreInlineFormDrafts() {
 
 const BASE_MONEDAS = ['EUR', 'USD', 'GBP', 'SEK', 'NOK', 'DKK', 'CHF', 'JPY'];
 const DEFAULT_CUENTAS = [
-  { nombre: 'Santander', moneda: 'EUR', saldoInicial: 0, presupuesto: 0, accountType: '' },
-  { nombre: 'Efectivo', moneda: 'EUR', saldoInicial: 0, presupuesto: 0, accountType: 'cash' },
-  { nombre: 'Revolut', moneda: 'EUR', saldoInicial: 0, presupuesto: 0, accountType: '' }
+  { nombre: 'Santander', moneda: 'EUR', saldoInicial: 0, accountType: '' },
+  { nombre: 'Efectivo', moneda: 'EUR', saldoInicial: 0, accountType: 'cash' },
+  { nombre: 'Revolut', moneda: 'EUR', saldoInicial: 0, accountType: '' }
 ];
 const CATEGORY_SEED_KEY = 'gastos_viaje_categories_seeded';
 const DEFAULT_CATEGORIAS = [
@@ -1313,9 +1313,6 @@ const fmtCurrencyWithEur = (amount, currency = 'EUR') => {
   if (currency === 'EUR') return primary;
   return `${primary}<div class="currency-eur">≈ ${fmtCurrency(toEur(amount, currency), 'EUR')}</div>`;
 };
-const fmtBudgetWithEur = (amount, currency = 'EUR') => (
-  numberValue(amount) ? fmtCurrencyWithEur(amount, currency) : '-'
-);
 const fmtCurrencyWithEurInline = (amount, currency = 'EUR') => {
   const primary = fmtCurrency(amount, currency);
   if (currency === 'EUR') return primary;
@@ -2083,7 +2080,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v257');
+    const worker = new Worker('./timeline-import-worker.js?v=700v258');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2219,6 +2216,11 @@ function accountKey(account) {
   return `${(account.nombre || '').trim().toLowerCase()}|${account.moneda || ''}`;
 }
 
+function accountForBackup(account) {
+  const { presupuesto: _legacyAccountLimit, ...data } = account || {};
+  return data;
+}
+
 const ACCOUNT_TYPE_OPTIONS = [
   { value: '', label: 'Automático según movimientos' },
   { value: 'base', label: 'Cuenta base' },
@@ -2269,20 +2271,9 @@ function effectiveTripBudget(viaje) {
   return Math.max(0, numberValue(viaje && viaje.presupuesto));
 }
 
-function accountLimitTotals(rows = []) {
-  const limitedRows = rows.filter(row => numberValue(row.presupuestoEur) > 0);
-  if (!limitedRows.length) return null;
-  const spentEur = limitedRows.reduce((sum, row) => sum + numberValue(row.totalEur), 0);
-  const balanceEur = limitedRows.reduce((sum, row) => sum + numberValue(row.saldoEur), 0);
-  const budgetEur = limitedRows.reduce((sum, row) => sum + numberValue(row.presupuestoEur), 0);
-  const remainingEur = budgetEur - spentEur;
-  return {
-    spentEur,
-    balanceEur,
-    budgetEur,
-    remainingEur,
-    pct: budgetEur ? spentEur * 100 / budgetEur : 0
-  };
+function percentageOfTotal(value, total) {
+  const denominator = numberValue(total);
+  return denominator ? numberValue(value) * 100 / denominator : 0;
 }
 
 function selectedTrips() {
@@ -2831,7 +2822,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v257');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v258');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3622,7 +3613,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v257');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v258');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3713,7 +3704,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v257');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v258');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3775,7 +3766,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v257');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v258');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4073,7 +4064,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v257');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v258');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -5561,7 +5552,7 @@ function resetPlannedCitySelector(countrySelector, citySelector) {
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-async function addCuenta({ nombre, moneda, saldoInicial = 0, presupuesto = 0, nota = '', viajeId = null, accountType = '' }) {
+async function addCuenta({ nombre, moneda, saldoInicial = 0, nota = '', viajeId = null, accountType = '' }) {
   const now = new Date().toISOString();
   return addRecord('cuentas', {
     nombre,
@@ -5569,7 +5560,6 @@ async function addCuenta({ nombre, moneda, saldoInicial = 0, presupuesto = 0, no
     viajeId: viajeId ? Number(viajeId) : null,
     saldoInicial: numberValue(saldoInicial),
     saldoActual: numberValue(saldoInicial),
-    presupuesto: numberValue(presupuesto),
     accountType: normalizeAccountType(accountType),
     nota,
     createdAt: now,
@@ -5592,7 +5582,6 @@ async function cloneGlobalAccountsForTrip(viajeId) {
       nombre: account.nombre,
       moneda: account.moneda,
       saldoInicial: 0,
-      presupuesto: 0,
       accountType: normalizeAccountType(account.accountType),
       nota: 'Copiada desde plantilla global',
       viajeId: tripId
@@ -5614,7 +5603,6 @@ async function migrateGlobalAccountToTrip(accountId, viajeId) {
     nombre: source.nombre,
     moneda: source.moneda,
     saldoInicial: numberValue(source.saldoActual),
-    presupuesto: 0,
     accountType: normalizeAccountType(source.accountType),
     nota: `Migrada desde cuenta global para ${trip.nombre}`,
     viajeId: tripId
@@ -6847,46 +6835,39 @@ function renderCuentas() {
     const tripAccounts = state.cuentas.filter(c => Number(c.viajeId) === selectedTripId);
     const usedAccounts = state.cuentas.filter(c => usedAccountIds.has(Number(c.id)));
     const accounts = [...usedAccounts, ...tripAccounts.filter(c => !usedAccountIds.has(Number(c.id)))];
-    const totalAccountLimit = accounts.reduce((sum, c) => sum + toEur(c.presupuesto, c.moneda), 0);
     const totalSaldoEur = accounts.reduce((sum, c) => sum + toEur(c.saldoActual, c.moneda), 0);
     if (!accounts.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="7">No hay cuentas ni gastos asociados a ${escapeHtml(trip ? trip.nombre : 'este viaje')}.</td>`;
+      tr.innerHTML = `<td colspan="6">No hay cuentas ni gastos asociados a ${escapeHtml(trip ? trip.nombre : 'este viaje')}.</td>`;
       tbody.appendChild(tr);
       return;
     }
     accounts.forEach(c => {
-      const spentEur = tripExpenses.filter(g => Number(g.cuentaId) === Number(c.id)).reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
       const isTripAccount = Number(c.viajeId) === selectedTripId;
-      const limit = numberValue(c.presupuesto);
       const saldo = numberValue(c.saldoActual);
       const tr = document.createElement('tr');
       tr.dataset.editableType = 'cuenta';
       tr.dataset.editableId = String(c.id);
-      if (limit > 0 && spentEur > toEur(limit, c.moneda)) tr.className = 'warning-row';
+      if (saldo < 0) tr.className = 'warning-row';
       const migrate = !isTripAccount && usedAccountIds.has(Number(c.id))
         ? ` <button class="ghost" data-migrate-cuenta="${c.id}" data-migrate-viaje="${selectedTripId}">Pasar a viaje</button>`
         : '';
       const tripCell = isTripAccount ? escapeHtml(trip ? trip.nombre : 'Viaje') : `${escapeHtml(trip ? trip.nombre : 'Viaje')} <span class="badge">Global usada</span>`;
-      tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td>${tripCell}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(saldo, c.moneda)}</td><td>${fmtBudgetWithEur(limit, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button>${migrate}</td>`;
+      tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td>${tripCell}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(saldo, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button>${migrate}</td>`;
       tbody.appendChild(tr);
     });
-    if (totalAccountLimit > 0) {
-      const tr = document.createElement('tr');
-      tr.className = 'subtotal-row';
-      tr.innerHTML = `<td>Total cuentas</td><td>-</td><td>${escapeHtml(trip ? trip.nombre : 'Viaje')}</td><td><span class="badge">EUR</span></td><td>${fmtCurrency(totalSaldoEur, 'EUR')}</td><td>${fmtCurrency(totalAccountLimit, 'EUR')}</td><td>-</td>`;
-      tbody.appendChild(tr);
-    }
+    const tr = document.createElement('tr');
+    tr.className = 'subtotal-row';
+    tr.innerHTML = `<td>Total cuentas</td><td>-</td><td>${escapeHtml(trip ? trip.nombre : 'Viaje')}</td><td><span class="badge">EUR</span></td><td>${fmtCurrency(totalSaldoEur, 'EUR')}</td><td>-</td>`;
+    tbody.appendChild(tr);
     return;
   }
   state.cuentas.filter(c => !c.viajeId).forEach(c => {
-    const spent = state.gastos.filter(g => g.cuentaId === c.id).reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
-    const overBudget = numberValue(c.presupuesto) > 0 && spent > numberValue(c.presupuesto);
     const tr = document.createElement('tr');
     tr.dataset.editableType = 'cuenta';
     tr.dataset.editableId = String(c.id);
-    if (overBudget || numberValue(c.saldoActual) < 0) tr.className = 'warning-row';
-    tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td><span class="badge">Global</span></td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(c.saldoActual, c.moneda)}</td><td>${fmtBudgetWithEur(c.presupuesto, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
+    if (numberValue(c.saldoActual) < 0) tr.className = 'warning-row';
+    tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td><span class="badge">Global</span></td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(c.saldoActual, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -10710,6 +10691,8 @@ function renderResumen() {
     $('#kpi-media').innerHTML = `<div>${fmtCurrency(0, 'EUR')}/día</div>`;
   }
   const tripBudget = tripBudgetSummary(gastos);
+  const isOverTripBudget = Boolean(tripBudget && totalEur > tripBudget.budgetEur + 0.005);
+  $('#kpi-total').classList.toggle('over-budget-value', isOverTripBudget);
   let budgetPct = '-';
   let remainingLines = [];
   if (tripBudget) {
@@ -10734,7 +10717,7 @@ function renderResumen() {
   const breakdownRow = (firstLabel, secondLabel, value, className = '') =>
     `<tr${className ? ` class="${className}"` : ''}><td>${escapeHtml(firstLabel)}</td><td>${escapeHtml(secondLabel)}</td><td>${fmtCurrency(value, 'EUR')}</td><td>${totalShare(value)}</td></tr>`;
   const summaryTotalRow = (firstLabel = 'Total', secondLabel = '-') =>
-    `<tr class="subtotal-row summary-total-row"><td>${escapeHtml(firstLabel)}</td><td>${escapeHtml(secondLabel)}</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>${totalEur ? '100.0%' : '0.0%'}</td></tr>`;
+    `<tr class="subtotal-row summary-total-row${isOverTripBudget ? ' over-budget-row' : ''}"><td>${escapeHtml(firstLabel)}</td><td>${escapeHtml(secondLabel)}</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>${totalEur ? '100.0%' : '0.0%'}</td></tr>`;
   $('#tabla-cat tbody').innerHTML = categoryRows.map(row => breakdownRow(row.cat, row.sub, row.total)).join('') + summaryTotalRow('Total', '-');
   drawPieChart($('#chart-cat'), categoryRows.slice(0, 6).map(row => ({ label: row.sub === '(sin subcat)' ? row.cat : `${row.cat} · ${row.sub}`, value: row.total })));
 
@@ -10790,19 +10773,22 @@ function renderResumen() {
     drawPieChart($('#chart-cat'), cityRows.slice(0, 6).map(row => ({ label: row.ciudad, value: row.total })));
   }
 
-  const usedAccountIds = new Set(gastos.map(g => Number(g.cuentaId)));
+  const usedAccountIds = new Set(gastos.map(g => Number(g.cuentaId)).filter(Boolean));
+  const selectedAccountTripIds = selectedTripSet();
+  const availableAccountIds = new Set([
+    ...usedAccountIds,
+    ...state.cuentas
+      .filter(c => c.viajeId && (!selectedAccountTripIds.size || selectedAccountTripIds.has(Number(c.viajeId))))
+      .map(c => Number(c.id))
+  ]);
   const accounts = cta
     ? state.cuentas.filter(c => c.id === Number(cta))
-    : state.cuentas.filter(c => usedAccountIds.has(Number(c.id)));
+    : state.cuentas.filter(c => availableAccountIds.has(Number(c.id)));
   let accountRows = accounts.map(c => {
     const spentAccountCurrency = gastos
       .filter(g => g.cuentaId === c.id)
       .reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
     const spentEur = gastos.filter(g => g.cuentaId === c.id).reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
-    let budget = numberValue(c.presupuesto);
-    let budgetEur = budget ? toEur(budget, c.moneda) : 0;
-    let remainingEur = budget ? budgetEur - spentEur : null;
-    let pct = budget ? spentEur * 100 / budgetEur : 0;
     return {
       label: accountLabel(c),
       chartLabel: c.nombre,
@@ -10810,21 +10796,17 @@ function renderResumen() {
       total: spentAccountCurrency,
       totalEur: spentEur,
       saldo: numberValue(c.saldoActual),
-      saldoEur: toEur(c.saldoActual, c.moneda),
-      presupuesto: budget,
-      presupuestoEur: budgetEur,
-      restanteEur: remainingEur,
-      pct
+      saldoEur: toEur(c.saldoActual, c.moneda)
     };
   }).sort((a, b) => b.totalEur - a.totalEur);
   drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.chartLabel, value: row.totalEur })));
-  const accountHtml = accountRows.map(row => `<tr class="${row.restanteEur !== null && row.restanteEur < 0 ? 'warning-row' : ''}"><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td><td data-label="Límite">${row.presupuesto ? (row.moneda === 'EUR' ? fmtCurrency(row.presupuesto, row.moneda) : `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}`) : '-'}</td><td data-label="Margen límite" title="Límite menos gastos pagados con esta cuenta; no representa dinero disponible">${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td data-label="%">${row.pct.toFixed(1)}%</td></tr>`);
   const accountBalanceEur = accountRows.reduce((sum, row) => sum + numberValue(row.saldoEur), 0);
-  const limitTotals = accountLimitTotals(accountRows);
-  accountHtml.push(`<tr class="subtotal-row"><td data-label="Cuenta">Total cuentas</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Límite">-</td><td data-label="Margen límite">-</td><td data-label="%">-</td></tr>`);
-  if (limitTotals) {
-    accountHtml.push(`<tr class="${limitTotals.remainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td data-label="Cuenta">Total límites</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(limitTotals.spentEur, 'EUR')}</td><td data-label="Saldo">-</td><td data-label="EUR"></td><td data-label="Límite">${fmtCurrency(limitTotals.budgetEur, 'EUR')}</td><td data-label="Margen límite">${fmtCurrency(limitTotals.remainingEur, 'EUR')}</td><td data-label="%">${limitTotals.pct.toFixed(1)}%</td></tr>`);
-  }
+  const accountHtml = accountRows.map(row => {
+    const expensePct = percentageOfTotal(row.totalEur, totalEur);
+    const balancePct = percentageOfTotal(row.saldoEur, accountBalanceEur);
+    return `<tr><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td><td data-label="% gasto">${expensePct.toFixed(1)}%</td><td data-label="% saldo">${balancePct.toFixed(1)}%</td></tr>`;
+  });
+  accountHtml.push(`<tr class="subtotal-row${isOverTripBudget ? ' over-budget-row' : ''}"><td data-label="Cuenta">Total cuentas</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="% gasto">${totalEur ? '100.0%' : '0.0%'}</td><td data-label="% saldo">${accountBalanceEur ? '100.0%' : '0.0%'}</td></tr>`);
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
   if (state.activeTab === 'mapa' || tripMapState.printMode) renderTripMap();
   renderTripComparison();
@@ -10842,7 +10824,7 @@ function buildBackupData(scope = 'all', tripId = null) {
     generatedAt: new Date().toISOString(),
     dataUpdatedAt: ensureLocalDataUpdatedAt(),
     backupScope: 'all',
-    cuentas: state.cuentas,
+    cuentas: state.cuentas.map(accountForBackup),
     categorias: state.categorias,
     photoTypes: state.photoTypes,
     ticketOcrLanguages: state.ticketOcrLanguages,
@@ -10870,7 +10852,9 @@ function buildTripBackupData(tripId) {
   const blogEntries = state.blogEntries.filter(entry => Number(entry.viajeId) === id);
   const timelineDays = state.timelineDays.filter(record => Number(record.viajeId) === id);
   const usedAccountIds = new Set(gastos.map(g => Number(g.cuentaId)).filter(Boolean));
-  const cuentas = state.cuentas.filter(c => Number(c.viajeId) === id || usedAccountIds.has(Number(c.id)));
+  const cuentas = state.cuentas
+    .filter(c => Number(c.viajeId) === id || usedAccountIds.has(Number(c.id)))
+    .map(accountForBackup);
   const accountIds = new Set(cuentas.map(c => Number(c.id)));
   const transferencias = state.transferencias.filter(t => accountIds.has(Number(t.fromId)) || accountIds.has(Number(t.toId)));
   return {
@@ -10943,7 +10927,6 @@ async function importAll(data) {
       viajeId: c.viajeId ? Number(c.viajeId) : null,
       saldoInicial: numberValue(c.saldoInicial),
       saldoActual: numberValue(c.saldoActual ?? c.saldoInicial),
-      presupuesto: numberValue(c.presupuesto),
       accountType: normalizeAccountType(c.accountType),
       nota: c.nota || '',
       createdAt: c.createdAt || new Date().toISOString(),
@@ -11098,7 +11081,6 @@ async function importTripBackup(data, targetTripId) {
       viajeId: targetId,
       saldoInicial: numberValue(c.saldoInicial),
       saldoActual: numberValue(c.saldoActual ?? c.saldoInicial),
-      presupuesto: numberValue(c.presupuesto),
       accountType: normalizeAccountType(c.accountType),
       nota: c.nota || '',
       createdAt: c.createdAt || now,
@@ -11618,7 +11600,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v257');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v258');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16203,12 +16185,11 @@ function bindEvents() {
         moneda,
         viajeId,
         saldoInicial: $('#c-saldo').value,
-        presupuesto: $('#c-presu').value,
         accountType: $('#c-tipo') ? $('#c-tipo').value : '',
         nota: $('#c-nota').value.trim()
       });
       clearFormDraft('config-cuenta');
-      ['#c-nombre', '#c-template', '#c-tipo', '#c-saldo', '#c-presu', '#c-nota'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
+      ['#c-nombre', '#c-template', '#c-tipo', '#c-saldo', '#c-nota'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
       setMessage('#msg-cuenta', 'Cuenta anadida');
       await loadAll();
     } catch (err) {
@@ -16917,13 +16898,10 @@ function bindEvents() {
           fields: [
             { name: 'nombre', label: 'Nombre', value: c.nombre },
             { name: 'accountType', label: 'Tipo de cuenta', type: 'select', value: normalizeAccountType(c.accountType), options: ACCOUNT_TYPE_OPTIONS },
-            { name: 'presupuesto', label: 'Límite de gasto (opcional)', type: 'number', step: '0.01', min: '0', value: c.presupuesto || 0 },
             { name: 'saldoActual', label: 'Saldo actual', type: 'number', step: '0.01', value: numberValue(c.saldoActual) }
           ],
           onSubmit: async values => {
-            const limit = numberValue(values.presupuesto);
-            const updated = await updateCuenta(c.id, { nombre: values.nombre.trim() || c.nombre, accountType: normalizeAccountType(values.accountType), presupuesto: limit, saldoActual: numberValue(values.saldoActual) });
-            if (numberValue(updated.presupuesto) !== limit) throw new Error('No se ha podido guardar el límite de la cuenta');
+            await updateCuenta(c.id, { nombre: values.nombre.trim() || c.nombre, accountType: normalizeAccountType(values.accountType), saldoActual: numberValue(values.saldoActual) });
           }
         });
         return;
@@ -17180,7 +17158,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v257');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v258');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

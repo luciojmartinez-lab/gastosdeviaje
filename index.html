@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v257">
+  <link rel="manifest" href="manifest.webmanifest?v=700v258">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v257">
+  <link rel="stylesheet" href="styles.css?v=700v258">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v257 · 13/08/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v258 · 13/08/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v257</div>
+  <div class="app-version">700v258</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -239,7 +239,7 @@
       <h2>Desglose por cuenta / forma de pago</h2>
       <div id="chart-cuenta"></div>
       <div class="table-wrap">
-        <table id="tabla-cuenta"><thead><tr><th>Cuenta</th><th>Moneda</th><th>Gastado</th><th>Saldo</th><th>EUR</th><th>Límite</th><th>Margen límite</th><th>%</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-cuenta"><thead><tr><th>Cuenta</th><th>Moneda</th><th>Gastado</th><th>Saldo</th><th>EUR</th><th>% gasto</th><th>% saldo</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
     <div class="card summary-documents" id="resumen-documentos">
@@ -374,14 +374,11 @@
         <div><label>Tipo</label><select id="c-tipo"><option value="">Automático según movimientos</option><option value="base">Cuenta base</option><option value="rechargeable">Tarjeta recargable</option><option value="cash">Efectivo</option><option value="standard">Cuenta normal</option></select></div>
         <div><label>Saldo inicial</label><input type="number" step="0.01" id="c-saldo"></div>
       </div>
-      <div class="row">
-        <div><label>Límite de gasto (opcional)</label><input type="number" step="0.01" min="0" id="c-presu"></div>
-        <div><label>Nota</label><input id="c-nota"></div>
-      </div>
-      <p class="small">El presupuesto se configura en el viaje. El límite de una cuenta es opcional y solo controla los gastos pagados con ella; las recargas y transferencias afectan al saldo, no al límite ni al presupuesto.</p>
+      <div class="row"><div><label>Nota</label><input id="c-nota"></div></div>
+      <p class="small">El presupuesto se configura una sola vez en el viaje. El saldo de cada cuenta refleja gastos, recargas y transferencias.</p>
       <div class="actions"><button class="btn" id="btn-add-cuenta">Añadir cuenta</button><span id="msg-cuenta" class="small"></span></div>
       <div class="table-wrap">
-        <table id="tabla-cuentas"><thead><tr><th>Cuenta</th><th>Tipo</th><th>Viaje</th><th>Moneda</th><th>Saldo</th><th>Límite</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+        <table id="tabla-cuentas"><thead><tr><th>Cuenta</th><th>Tipo</th><th>Viaje</th><th>Moneda</th><th>Saldo</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
 
@@ -1171,12 +1168,12 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=700v257"></script>
-<script src="map-model.js?v=700v257"></script>
-<script src="app.bundle.js?v=700v257"></script>
+<script src="timeline-import.js?v=700v258"></script>
+<script src="map-model.js?v=700v258"></script>
+<script src="app.bundle.js?v=700v258"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v257';
+    const pageVersion = '700v258';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1231,7 +1228,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v257', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v258', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

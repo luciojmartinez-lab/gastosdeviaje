@@ -42,12 +42,12 @@ test('el resumen de cuentas conserva una tabla y muestra hasta saldo en móvil',
   assert.match(app, /data-label="Gastado"[\s\S]*?data-label="Saldo"[\s\S]*?data-label="EUR"/);
   assert.match(app, /label: row\.chartLabel/);
   assert.match(app, /account-label-mobile[^>]*>\$\{escapeHtml\(row\.chartLabel\)\}/);
-  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?width: 621px;[\s\S]*?table-layout: fixed/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?width: 522px;[\s\S]*?table-layout: fixed/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ width: 92px;/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ width: 66px;/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ width: 72px;/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ width: 72px; \}/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(8\),[\s\S]*?#tabla-cuenta td:nth-child\(8\) \{ width: 64px; \}/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(7\),[\s\S]*?#tabla-cuenta td:nth-child\(7\) \{ width: 77px; \}/);
   assert.match(styles, /#resumen-cuentas \.table-wrap \{[\s\S]*?overflow-x: auto/);
   const accountMobileStart = styles.indexOf('  #resumen-cuentas .table-wrap {');
   const accountMobileEnd = styles.indexOf('  #tabla-cat {', accountMobileStart);
@@ -55,35 +55,35 @@ test('el resumen de cuentas conserva una tabla y muestra hasta saldo en móvil',
   assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /border-right/);
 });
 
-test('presupuesto de viaje, límite de cuenta y saldo son conceptos separados', () => {
-  assert.match(html, /<th>Límite<\/th><th>Margen límite<\/th>/);
+test('el presupuesto pertenece al viaje y las cuentas muestran gastos y saldos', () => {
+  assert.match(html, /<th>% gasto<\/th><th>% saldo<\/th>/);
   assert.match(app, /return Math\.max\(0, numberValue\(viaje && viaje\.presupuesto\)\)/);
-  assert.match(app, /remainingEur = budget \? budgetEur - spentEur : null/);
-  assert.match(app, /no representa dinero disponible/);
-  assert.doesNotMatch(app, /budgetEur - spentEur - netTransferOutEur/);
-  assert.doesNotMatch(app, /Total \/ presupuesto del viaje/);
+  assert.match(app, /expensePct = percentageOfTotal\(row\.totalEur, totalEur\)/);
+  assert.match(app, /balancePct = percentageOfTotal\(row\.saldoEur, accountBalanceEur\)/);
+  assert.doesNotMatch(html, /Límite de gasto|Margen límite/);
+  assert.doesNotMatch(app, /accountLimitTotals|Total límites|data-label="Límite"/);
 });
 
-test('el total de límites solo agrega cuentas que tienen límite', () => {
-  const start = app.indexOf('function accountLimitTotals');
+test('los porcentajes por cuenta se calculan contra sus totales reales', () => {
+  const start = app.indexOf('function percentageOfTotal');
   const end = app.indexOf('function selectedTrips()', start);
   const context = { numberValue: value => Number(value) || 0 };
-  vm.runInNewContext(`${app.slice(start, end)}; this.accountLimitTotals = accountLimitTotals;`, context);
+  vm.runInNewContext(`${app.slice(start, end)}; this.percentageOfTotal = percentageOfTotal;`, context);
 
-  const totals = context.accountLimitTotals([
-    { totalEur: 184.97, saldoEur: 120.12, presupuestoEur: 0 },
-    { totalEur: 114.18, saldoEur: 545.82, presupuestoEur: 1000 },
-    { totalEur: 50.39, saldoEur: 32.13, presupuestoEur: 0 }
-  ]);
+  const expenseShares = [184.97, 114.18, 50.39].map(value => context.percentageOfTotal(value, 349.54));
+  const balanceShares = [120.12, 545.82, 32.13].map(value => context.percentageOfTotal(value, 698.07));
+  assert.ok(Math.abs(expenseShares.reduce((sum, value) => sum + value, 0) - 100) < 0.000001);
+  assert.ok(Math.abs(balanceShares.reduce((sum, value) => sum + value, 0) - 100) < 0.000001);
+  assert.equal(context.percentageOfTotal(10, 0), 0);
+});
 
-  assert.equal(totals.spentEur, 114.18);
-  assert.equal(totals.balanceEur, 545.82);
-  assert.equal(totals.budgetEur, 1000);
-  assert.ok(Math.abs(totals.remainingEur - 885.82) < 0.000001);
-  assert.equal(totals.pct, 11.418);
-  assert.doesNotMatch(app, /accountBudgetEur \? accountBudgetEur - totalEur/);
-  assert.match(app, /Total cuentas[\s\S]*?fmtCurrency\(accountBalanceEur, 'EUR'\)[\s\S]*?Total límites/);
-  assert.match(app, /Total límites[\s\S]*?data-label="Saldo">-<[\s\S]*?fmtCurrency\(limitTotals\.remainingEur, 'EUR'\)/);
+test('el total de gastos se marca en rojo cuando supera el presupuesto del viaje', () => {
+  assert.match(app, /isOverTripBudget = Boolean\(tripBudget && totalEur > tripBudget\.budgetEur \+ 0\.005\)/);
+  assert.match(app, /classList\.toggle\('over-budget-value', isOverTripBudget\)/);
+  assert.match(app, /subtotal-row\$\{isOverTripBudget \? ' over-budget-row' : ''\}/);
+  assert.match(app, /summary-total-row\$\{isOverTripBudget \? ' over-budget-row' : ''\}/);
+  assert.match(styles, /\.over-budget-row td \{[\s\S]*?color: #b91c1c/);
+  assert.match(styles, /\.kpi \.big\.over-budget-value > div:not\(:first-child\) \{[\s\S]*?color: #b91c1c/);
 });
 
 test('las transferencias permiten detectar cuentas base y tarjetas recargables', () => {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v257</title>
+  <title>Manual de Cuaderno de Bitácora - 700v258</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     const embeddedHelpMode = helpParams.get('embedded');
@@ -193,7 +193,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 13 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v257</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 13 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v258</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -351,11 +351,10 @@
             <tr><td>Viaje</td><td>Vacío crea una cuenta global; elegir un viaje crea una cuenta específica.</td></tr>
             <tr><td>Tipo</td><td>En Automático, las transferencias permiten sugerir Cuenta base, Tarjeta recargable, Efectivo o Cuenta normal. Puede elegirse manualmente para corregir la sugerencia.</td></tr>
             <tr><td>Saldo inicial</td><td>Dinero disponible antes de gastos y transferencias.</td></tr>
-            <tr><td>Límite de gasto</td><td>Control opcional de lo pagado con esa cuenta. No es el presupuesto del viaje y no cambia con recargas o transferencias.</td></tr>
             <tr><td>Nota</td><td>Información libre sobre el uso de la cuenta.</td></tr>
-            <tr><td>Tabla</td><td>Muestra cuenta, tipo detectado o elegido, viaje, moneda, saldo y límite. Permite editar, eliminar y, cuando procede, migrar.</td></tr>
+            <tr><td>Tabla</td><td>Muestra cuenta, tipo detectado o elegido, viaje, moneda y saldo. Permite editar, eliminar y, cuando procede, migrar.</td></tr>
           </tbody></table></div>
-          <div class="callout"><strong>Configuración recomendada:</strong> indica el presupuesto una sola vez en el viaje. En las cuentas configura el saldo y deja el límite vacío, salvo que quieras imponer deliberadamente un máximo de gasto a una forma de pago concreta.</div>
+          <div class="callout"><strong>Configuración recomendada:</strong> indica el presupuesto una sola vez en el viaje. Las cuentas controlan dónde está el dinero; sus saldos cambian con los gastos, las recargas y las transferencias.</div>
 
           <h4 id="transferencias">Transferencias entre cuentas</h4>
           <p>Sirven para mover dinero sin considerarlo gasto: recargas, retiradas, traspasos y cambios de moneda. La aplicación usa el patrón de estos movimientos para sugerir qué cuentas son base y cuáles son tarjetas recargables. La tabla se muestra desde la fecha más antigua hasta la más moderna.</p>
@@ -576,7 +575,7 @@
             <tr><td>Filtros</td><td>Moneda original, cuenta, viaje, país y ciudad.</td></tr>
             <tr><td>Desglose</td><td>Categorías, subcategorías o ciudades.</td></tr>
             <tr><td>Tabla por categoría</td><td>Categoría, subcategoría, total EUR y porcentaje del gasto.</td></tr>
-            <tr><td>Tabla por cuenta</td><td>Cuenta, moneda, gastado, saldo, equivalencia EUR, límite opcional, margen del límite y porcentaje. El saldo es el dinero realmente disponible en cada cuenta y cambia con gastos y transferencias. El margen del límite es solo el máximo de gasto todavía no consumido; no representa dinero disponible. El total de cuentas suma todos los saldos y el total de límites se presenta en una fila separada, exclusivamente con las cuentas que tengan límite. El presupuesto y su restante se muestran en los indicadores superiores. En móvil se ven juntas las cuatro primeras columnas hasta Saldo; las restantes continúan a la derecha mediante desplazamiento horizontal.</td></tr>
+            <tr><td>Tabla por cuenta</td><td>Cuenta, moneda, gastado, saldo, equivalencia EUR, porcentaje del gasto total y porcentaje del saldo total. El saldo es el dinero realmente disponible en cada cuenta y cambia con gastos, recargas y transferencias. El presupuesto y su restante pertenecen al viaje y se muestran en los indicadores superiores. Si el gasto total supera ese presupuesto, el total se muestra en rojo. En móvil se ven juntas las cuatro primeras columnas hasta Saldo; las restantes continúan a la derecha mediante desplazamiento horizontal.</td></tr>
             <tr><td>Imprimir PDF</td><td>Abre las opciones Resumen, Gastos o Todo.</td></tr>
           </tbody></table></div>
           <h4 id="resumen-comparacion">Comparar dos viajes</h4>
@@ -675,10 +674,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 13 de agosto de 2026 para Cuaderno de Bitácora 700v257.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 13 de agosto de 2026 para Cuaderno de Bitácora 700v258.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v257 · 13 de agosto de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v258 · 13 de agosto de 2026</div>
 </body>
 </html>
