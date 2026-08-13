@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 
 await import('../timeline-import.js');
 
@@ -247,7 +248,7 @@ test('Cronología avisa de la exportación previa y se procesa fuera de la inter
   assert.match(html, /selecciona <em>Cronología\.json<\/em> desde el lugar donde lo hayas descargado/);
   assert.match(html, /id="timeline-file-input"[^>]*accept="\.json,application\/json"/);
   assert.match(app, /data-map-timeline="1"/);
-  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v258'\)/);
+  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v259'\)/);
   assert.match(worker, /GoogleTimelineImport\.importTrip/);
 });
 
@@ -258,9 +259,9 @@ test('el recorrido importado se guarda por viaje, se sincroniza y tiene capa pro
   assert.match(app, /source: 'google-maps-timeline'/);
   assert.match(app, /class="map-timeline-route"/);
   assert.match(app, /google-timeline-route-line/);
-  assert.match(app, /descripcion: `\$\{action\} \$\{lodging\.name\}`/);
+  assert.match(app, /descripcion: lodging\.name/);
   assert.match(app, /\? 'A'/);
-  assert.doesNotMatch(app, /descripcion: 'Casa'/);
+  assert.doesNotMatch(app, /descripcion: `(?:Llegada a|Salida desde)/);
   assert.doesNotMatch(app, /Salida desde la pernocta|Llegada según Cronología/);
   assert.match(styles, /\.map-timeline-route/);
   assert.match(styles, /\.trip-vector-marker\.timeline/);
@@ -275,6 +276,9 @@ test('el alojamiento toma nombres cercanos y permite corregirlos para una noche 
   assert.match(app, /function timelineLodgingNameInfo/);
   assert.match(app, /Nombre recordado para esta ubicación/);
   assert.match(app, /Gasto de Alojamiento geolocalizado cercano/);
+  assert.match(app, /Gasto de Alojamiento sin GPS situado mediante la ubicación nocturna/);
+  assert.match(app, /const blogPoint = nearestLodgingBlogPoint[\s\S]*?const timelineVisit = nearestTimelineVisitName/);
+  assert.match(app, /LODGING_FUZZY_NAME_MAX_DISTANCE_METERS = 1_500/);
   assert.match(app, /data-edit-timeline-lodging/);
   assert.match(app, /lodgingNames: \{ \.\.\.\(target\.record\.lodgingNames \|\| \{\}\), \[target\.role\]: name \}/);
   assert.match(app, /lodgingLocations\.push\(\{ name, \.\.\.point/);
@@ -287,8 +291,36 @@ test('la Cronología se integra en los mapas copiados al Blog sin alterar el map
   assert.match(app, /createDailyMapBlogImage\(scope\.dailyRecords, day, scope\.timelinePaths\)/);
   assert.match(app, /timelinePaths\.flatMap\(path => path\.map/);
   assert.match(app, /timelinePaths\.forEach\(path => \{[\s\S]*?strokeStyle = '#0f766e'/);
+  assert.match(app, /timelineMapPathsWithDailyRecords\([\s\S]*?dailyMode \? selectedExactDailyRecords : exactDailyRecords/);
+  assert.match(app, /TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS = 80/);
   assert.match(app, /dailyRecords\.length > 0 \|\| timelinePaths\.length > 0/);
   assert.match(app, /activities\.forEach\(\(activity, activityIndex\) => \{/);
+});
+
+test('Cronología enlaza una foto GPS que Google dejó fuera del recorrido', () => {
+  const start = app.indexOf('function timelineMapPathsWithDailyRecords');
+  const end = app.indexOf('function plannedDailyMapRecordsForScope', start);
+  const context = {
+    TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS: 80,
+    TIMELINE_SUPPLEMENT_GROUP_DISTANCE_METERS: 50,
+    lodgingDistanceMeters: (first, second) => Math.hypot(
+      Number(first.latitude) - Number(second.latitude),
+      Number(first.longitude) - Number(second.longitude)
+    ) * 111_000
+  };
+  vm.runInNewContext(`${app.slice(start, end)}; this.timelineMapPathsWithDailyRecords = timelineMapPathsWithDailyRecords;`, context);
+  const paths = [[
+    { latitude: 40, longitude: -3, time: '2026-08-12T18:00:00+02:00' },
+    { latitude: 40, longitude: -3, time: '2026-08-12T21:00:00+02:00' }
+  ]];
+  const result = context.timelineMapPathsWithDailyRecords(paths, [
+    { kind: 'photo', fecha: '2026-08-12', hora: '18:30', latitude: 40.0001, longitude: -3 },
+    { kind: 'photo', fecha: '2026-08-12', hora: '19:38', latitude: 40.01, longitude: -3 }
+  ]);
+
+  assert.equal(result.length, 2);
+  assert.equal(result[1].length, 3);
+  assert.equal(result[1][1].latitude, 40.01);
 });
 
 test('mostrar Cronología cierra el cuadro y oculta solamente la línea calculada', () => {

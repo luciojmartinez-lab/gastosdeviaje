@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v258</title>
+  <title>Manual de Cuaderno de Bitácora - 700v259</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     const embeddedHelpMode = helpParams.get('embedded');
@@ -193,7 +193,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 13 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v258</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 13 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v259</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -519,7 +519,7 @@
 
         <div class="subsection screen-start" id="mapa">
           <h3>3.6 Mapa</h3>
-          <p>Combina la ruta planificada con ciudades, gastos, puntos del Blog y fotografías GPS, incluidos los tickets fotográficos marcados para aparecer en el mapa. También puede incorporar el recorrido estimado exportado desde la Cronología de Maps. Las rutas deducidas o planificadas se representan mediante líneas rectas discontinuas y la Cronología de Maps mediante líneas verdes continuas. Cada actividad detectada se dibuja como un tramo separado para no unir paradas ni periodos de ubicación ambigua. Son recorridos alternativos: al mostrar la Cronología de Maps se oculta solamente la línea calculada por la aplicación, y al ocultarla reaparece; las ciudades, gastos, fotos y puntos permanecen. El mapa interactivo usa cartografía vectorial; los mapas copiados al Blog o incluidos en PDF se generan como imagen.</p>
+          <p>Combina la ruta planificada con ciudades, gastos, puntos del Blog y fotografías GPS, incluidos los tickets fotográficos marcados para aparecer en el mapa. También puede incorporar el recorrido estimado exportado desde la Cronología de Maps. Las rutas deducidas o planificadas se representan mediante líneas rectas discontinuas y la Cronología de Maps mediante líneas verdes continuas. Cada actividad detectada se dibuja como un tramo separado; si una foto o un punto GPS del día queda fuera del recorrido exportado, la aplicación añade en verde el enlace cronológico necesario para no dejar esa visita aislada. Son recorridos alternativos: al mostrar la Cronología de Maps se oculta solamente la línea calculada por la aplicación, y al ocultarla reaparece; las ciudades, gastos, fotos y puntos permanecen. El mapa interactivo usa cartografía vectorial; los mapas copiados al Blog o incluidos en PDF se generan como imagen.</p>
           <p>Para mantener el mapa despejado, las fechas no se escriben junto a los marcadores: se muestran al pulsar el punto o la ciudad. En un punto geolocalizado se puede marcar <strong>Caminar</strong>, <strong>Coche</strong>, <strong>Tren</strong>, <strong>Bus</strong> o <strong>Avión</strong> para sustituir el marcador por un pequeño icono, sin aumentar el espacio ocupado. El tren se representa de perfil con una locomotora inspirada en la portada. Al pulsar el icono aparecen su descripción, lugar, fecha, hora y las notas del punto cuando existan.</p>
           <figure><img src="assets/help/07-mapa.png" alt="Mapa con filtros, ruta, destinos y grupos de fotos"><figcaption>Mapa por día con tres ciudades y fotografías geolocalizadas.</figcaption></figure>
           <ol class="legend"><li><b>1</b>Centrar y filtros de día o ciudad.</li><li><b>2</b>Capas y modos de visualización.</li><li><b>3</b>Signo + de fotos y contador naranja.</li><li><b>4</b>Ciudad o destino con nombre.</li><li><b>5</b>Área interactiva del mapa.</li></ol>
@@ -549,11 +549,11 @@
             <tr><td>Nombre de ciudad</td><td>Aparece en negrita junto a su número o junto al + morado.</td></tr>
             <tr><td>Línea azul discontinua</td><td>Orden cronológico o planificado del recorrido.</td></tr>
             <tr><td>Línea verde continua</td><td>Tramo de recorrido estimado importado desde la Cronología de Maps.</td></tr>
-            <tr><td>A verde</td><td>Alojamiento deducido durante el descanso. Se examina el periodo comprendido entre el último desplazamiento y el primero siguiente, sin depender de una hora concreta. Solo se aceptan ubicaciones de 30 m de precisión o mejor cuando el teléfono figura como quieto; las lecturas próximas se agrupan y se elige la más precisa del grupo principal. Ese punto sirve como llegada del día anterior y salida del día actual. El nombre procede primero de una corrección guardada, después de un gasto geolocalizado de la categoría Alojamiento situado a menos de 200 m y, si está disponible, del lugar indicado por la Cronología de Maps o por un punto cercano del Blog. Si no se conoce, se muestra «Alojamiento».</td></tr>
+            <tr><td>A verde</td><td>Alojamiento deducido durante el descanso, sin mostrar los conceptos llegada o salida. Se examina el periodo comprendido entre el último desplazamiento y el primero siguiente, sin depender de una hora concreta. Solo se aceptan ubicaciones de 30 m de precisión o mejor cuando el teléfono figura como quieto; las lecturas próximas se agrupan y se elige la más precisa del grupo principal. El nombre procede primero de una corrección guardada; después, de la descripción de un gasto de la categoría Alojamiento, aunque el ticket no tenga GPS, porque la posición la aporta la lectura nocturna de Cronología de Maps. También puede usar un punto cercano del Blog, por ejemplo «Casa», o el nombre de lugar indicado por Maps. Si no se conoce el establecimiento, se muestra «Alojamiento».</td></tr>
           </tbody></table></div>
 
           <h4 id="mapa-dia">Mapa por día</h4>
-          <p>Incluye todas las fechas con gastos, Blog o Cronología de Maps importada. Combina GPS exacto con la ciudad de los registros que no lo tienen; una entrada o gasto que ya aparece en sus coordenadas exactas no se repite también en el centro de la ciudad. Las fotos marcadas «En ruta» se incorporan al trayecto mediante sus coordenadas GPS exactas; las demás permanecen visibles sin desviar la línea. Los puntos del día se muestran sin números de parada. La Cronología de Maps aporta únicamente tramos de movimiento estimados y el alojamiento cuando puede deducirse con precisión durante el descanso.</p>
+          <p>Incluye todas las fechas con gastos, Blog o Cronología de Maps importada. Combina GPS exacto con la ciudad de los registros que no lo tienen; una entrada o gasto que ya aparece en sus coordenadas exactas no se repite también en el centro de la ciudad. Sin Cronología, las fotos marcadas «En ruta» se incorporan al trayecto mediante sus coordenadas GPS exactas. Con Cronología visible, cualquier foto o punto GPS del día que quede separado de los puntos exportados se enlaza por su hora para completar la visita omitida por Maps. Los puntos del día se muestran sin números de parada.</p>
           <p>Al pulsar el alojamiento puedes editar su nombre. El cambio puede aplicarse solo a esa noche o recordarse para la misma ubicación en noches futuras; también se abre directamente con doble clic en ordenador. Los nombres guardados se conservan al volver a importar la cronología y en las copias de seguridad.</p>
           <h4>Mapa por ciudad</h4>
           <p>Reúne los puntos y fotos de esa ciudad durante todos los días, sin línea de trayecto.</p>
@@ -575,7 +575,7 @@
             <tr><td>Filtros</td><td>Moneda original, cuenta, viaje, país y ciudad.</td></tr>
             <tr><td>Desglose</td><td>Categorías, subcategorías o ciudades.</td></tr>
             <tr><td>Tabla por categoría</td><td>Categoría, subcategoría, total EUR y porcentaje del gasto.</td></tr>
-            <tr><td>Tabla por cuenta</td><td>Cuenta, moneda, gastado, saldo, equivalencia EUR, porcentaje del gasto total y porcentaje del saldo total. El saldo es el dinero realmente disponible en cada cuenta y cambia con gastos, recargas y transferencias. El presupuesto y su restante pertenecen al viaje y se muestran en los indicadores superiores. Si el gasto total supera ese presupuesto, el total se muestra en rojo. En móvil se ven juntas las cuatro primeras columnas hasta Saldo; las restantes continúan a la derecha mediante desplazamiento horizontal.</td></tr>
+            <tr><td>Tabla por cuenta</td><td>Cuenta, moneda, gastado, porcentaje del gasto total, saldo, porcentaje del saldo total y equivalencia EUR. El saldo es el dinero realmente disponible en cada cuenta y cambia con gastos, recargas y transferencias. El presupuesto y su restante pertenecen al viaje y se muestran en los indicadores superiores. Si el gasto total supera ese presupuesto, el total se muestra en rojo. En móvil las columnas se compactan para mantener visibles a la vez Gastado, % gastos, Saldo y % saldo; la equivalencia EUR se conserva en la vista amplia.</td></tr>
             <tr><td>Imprimir PDF</td><td>Abre las opciones Resumen, Gastos o Todo.</td></tr>
           </tbody></table></div>
           <h4 id="resumen-comparacion">Comparar dos viajes</h4>
@@ -674,10 +674,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 13 de agosto de 2026 para Cuaderno de Bitácora 700v258.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 13 de agosto de 2026 para Cuaderno de Bitácora 700v259.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v258 · 13 de agosto de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v259 · 13 de agosto de 2026</div>
 </body>
 </html>

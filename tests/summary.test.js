@@ -36,18 +36,18 @@ test('la leyenda del gráfico crece para mostrar todas las subcategorías', () =
   assert.match(styles, /#chart-cat \.chart \{\s*max-height: none;/);
 });
 
-test('el resumen de cuentas conserva una tabla y muestra hasta saldo en móvil', () => {
-  assert.match(html, /<th>Gastado<\/th><th>Saldo<\/th><th>EUR<\/th>/);
+test('el resumen de cuentas conserva una tabla y agrupa gastos y saldos con sus porcentajes', () => {
+  assert.match(html, /<th>Gastado<\/th><th>% gastos<\/th><th>Saldo<\/th><th>% saldo<\/th><th>EUR<\/th>/);
   assert.match(app, /saldo: numberValue\(c\.saldoActual\)/);
-  assert.match(app, /data-label="Gastado"[\s\S]*?data-label="Saldo"[\s\S]*?data-label="EUR"/);
+  assert.match(app, /data-label="Gastado"[\s\S]*?data-label="% gastos"[\s\S]*?data-label="Saldo"[\s\S]*?data-label="% saldo"[\s\S]*?data-label="EUR"/);
   assert.match(app, /label: row\.chartLabel/);
   assert.match(app, /account-label-mobile[^>]*>\$\{escapeHtml\(row\.chartLabel\)\}/);
-  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?width: 522px;[\s\S]*?table-layout: fixed/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ width: 92px;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ width: 66px;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ width: 72px;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ width: 72px; \}/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(7\),[\s\S]*?#tabla-cuenta td:nth-child\(7\) \{ width: 77px; \}/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?width: 100%;[\s\S]*?table-layout: fixed/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ width: 18%;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ width: 12%;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ width: 19%;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ width: 14%; \}/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(7\),[\s\S]*?#tabla-cuenta td:nth-child\(7\) \{ display: none; \}/);
   assert.match(styles, /#resumen-cuentas \.table-wrap \{[\s\S]*?overflow-x: auto/);
   const accountMobileStart = styles.indexOf('  #resumen-cuentas .table-wrap {');
   const accountMobileEnd = styles.indexOf('  #tabla-cat {', accountMobileStart);
@@ -56,7 +56,7 @@ test('el resumen de cuentas conserva una tabla y muestra hasta saldo en móvil',
 });
 
 test('el presupuesto pertenece al viaje y las cuentas muestran gastos y saldos', () => {
-  assert.match(html, /<th>% gasto<\/th><th>% saldo<\/th>/);
+  assert.match(html, /<th>% gastos<\/th><th>Saldo<\/th><th>% saldo<\/th>/);
   assert.match(app, /return Math\.max\(0, numberValue\(viaje && viaje\.presupuesto\)\)/);
   assert.match(app, /expensePct = percentageOfTotal\(row\.totalEur, totalEur\)/);
   assert.match(app, /balancePct = percentageOfTotal\(row\.saldoEur, accountBalanceEur\)/);

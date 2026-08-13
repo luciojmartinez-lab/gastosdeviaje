@@ -1,12 +1,15 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v258';
+const APP_VERSION = '700v259';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
 const ROUTE_STOP_ROLE_ENDPOINT = 'endpoint';
 const DESTINATION_RECORD_MAX_DISTANCE_METERS = 50_000;
 const LODGING_NAME_MAX_DISTANCE_METERS = 200;
+const LODGING_FUZZY_NAME_MAX_DISTANCE_METERS = 1_500;
+const TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS = 80;
+const TIMELINE_SUPPLEMENT_GROUP_DISTANCE_METERS = 50;
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -2080,7 +2083,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v258');
+    const worker = new Worker('./timeline-import-worker.js?v=700v259');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2822,7 +2825,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v258');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v259');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3613,7 +3616,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v258');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v259');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3704,7 +3707,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v258');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v259');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3766,7 +3769,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v258');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v259');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4064,7 +4067,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v258');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v259');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -8195,7 +8198,9 @@ function lodgingCandidateName(value) {
   const name = String(value || '').replace(/\s+/g, ' ').trim();
   if (!name) return '';
   const generic = normalizePlaceName(name);
-  if (['alojamiento', 'gasto', 'hotel', 'hostal', 'reserva', 'pernocta'].includes(generic)) return '';
+  if (['alojamiento', 'gasto', 'hotel', 'hostal', 'reserva', 'pernocta'].includes(generic)
+    || generic.startsWith('en ')
+    || /^(?:traducido|translated)\b/.test(generic)) return '';
   return name.slice(0, 120);
 }
 
@@ -8219,17 +8224,26 @@ function nearestAccommodationExpense(record, role, point) {
     .filter(gasto => Number(gasto.viajeId) === Number(record.viajeId) && isAccommodationExpense(gasto))
     .map(gasto => {
       const location = expenseTicketLocationForExpense(gasto);
-      const name = lodgingCandidateName(gasto.desc);
-      if (!name || location.latitude == null || location.longitude == null) return null;
+      const specificName = lodgingCandidateName(gasto.desc);
+      const located = location.latitude != null && location.longitude != null;
       return {
-        name,
+        name: specificName || 'Alojamiento',
+        generic: !specificName,
+        located,
         expenseId: gasto.id,
-        distance: lodgingDistanceMeters(location, point),
-        dateDistance: dateDistanceDays(gasto.fecha, targetDate)
+        distance: located ? lodgingDistanceMeters(location, point) : Number.POSITIVE_INFINITY,
+        dateDistance: dateDistanceDays(gasto.fecha, targetDate),
+        future: String(gasto.fecha || '') > targetDate
       };
     })
-    .filter(candidate => candidate && candidate.distance <= LODGING_NAME_MAX_DISTANCE_METERS)
-    .sort((a, b) => a.distance - b.distance || a.dateDistance - b.dateDistance || Number(a.expenseId) - Number(b.expenseId))[0] || null;
+    .filter(candidate => candidate.located
+      ? candidate.distance <= LODGING_NAME_MAX_DISTANCE_METERS
+      : Number.isFinite(candidate.dateDistance))
+    .sort((a, b) => Number(b.located) - Number(a.located)
+      || a.distance - b.distance
+      || Number(a.future) - Number(b.future)
+      || a.dateDistance - b.dateDistance
+      || Number(a.expenseId) - Number(b.expenseId))[0] || null;
 }
 
 function nearestTimelineVisitName(record, point) {
@@ -8238,7 +8252,9 @@ function nearestTimelineVisitName(record, point) {
       name: lodgingCandidateName(visit.placeName || visit.name),
       distance: lodgingDistanceMeters(visit, point)
     }))
-    .filter(candidate => candidate.name && candidate.distance <= LODGING_NAME_MAX_DISTANCE_METERS)
+    .filter(candidate => candidate.name
+      && !/^en\s+/i.test(normalizePlaceName(candidate.name))
+      && candidate.distance <= LODGING_NAME_MAX_DISTANCE_METERS)
     .sort((a, b) => a.distance - b.distance)[0] || null;
 }
 
@@ -8249,16 +8265,18 @@ function nearestLodgingBlogPoint(record, point) {
     .forEach(entry => {
       const name = lodgingCandidateName(entry.descripcion);
       if (!name) return;
+      const lodgingLabel = /(^|\s)(?:casa|alojamiento|hotel|hostal|pension|apartamento|camping)(\s|$)/i.test(normalizePlaceName(name));
       const directPoint = blogPointCoordinates(entry);
-      if (directPoint) candidates.push({ name, distance: lodgingDistanceMeters(directPoint, point) });
+      if (directPoint) candidates.push({ name, lodgingLabel, distance: lodgingDistanceMeters(directPoint, point) });
       blogEntryImages(entry).filter(imageUsesAsDestination).forEach(image => {
         const imagePoint = storedImageCoordinates(image);
-        if (imagePoint) candidates.push({ name, distance: lodgingDistanceMeters(imagePoint, point) });
+        if (imagePoint) candidates.push({ name, lodgingLabel, distance: lodgingDistanceMeters(imagePoint, point) });
       });
     });
   return candidates
-    .filter(candidate => candidate.distance <= LODGING_NAME_MAX_DISTANCE_METERS)
-    .sort((a, b) => a.distance - b.distance)[0] || null;
+    .filter(candidate => candidate.distance <= LODGING_NAME_MAX_DISTANCE_METERS
+      || (candidate.lodgingLabel && candidate.distance <= LODGING_FUZZY_NAME_MAX_DISTANCE_METERS))
+    .sort((a, b) => Number(b.lodgingLabel) - Number(a.lodgingLabel) || a.distance - b.distance)[0] || null;
 }
 
 function timelineLodgingNameInfo(record, role) {
@@ -8269,11 +8287,24 @@ function timelineLodgingNameInfo(record, role) {
   const remembered = nearestRememberedLodging(trip, point);
   if (remembered) return { name: remembered.name, source: 'remembered', sourceLabel: 'Nombre recordado para esta ubicación' };
   const expense = nearestAccommodationExpense(record, role, point);
-  if (expense) return { name: expense.name, source: 'expense', sourceLabel: 'Gasto de Alojamiento geolocalizado cercano' };
-  const timelineVisit = nearestTimelineVisitName(record, point);
-  if (timelineVisit) return { name: timelineVisit.name, source: 'timeline', sourceLabel: 'Lugar indicado por la Cronología de Maps' };
+  if (expense && !expense.generic) return {
+    name: expense.name,
+    source: 'expense',
+    sourceLabel: expense.located
+      ? 'Gasto de Alojamiento geolocalizado cercano'
+      : 'Nombre del gasto de Alojamiento aplicado a la ubicación nocturna de Cronología de Maps'
+  };
   const blogPoint = nearestLodgingBlogPoint(record, point);
   if (blogPoint) return { name: blogPoint.name, source: 'blog', sourceLabel: 'Punto cercano del Blog' };
+  const timelineVisit = nearestTimelineVisitName(record, point);
+  if (timelineVisit) return { name: timelineVisit.name, source: 'timeline', sourceLabel: 'Lugar indicado por la Cronología de Maps' };
+  if (expense) return {
+    name: 'Alojamiento',
+    source: 'expense',
+    sourceLabel: expense.located
+      ? 'Gasto de Alojamiento geolocalizado cercano sin nombre de establecimiento'
+      : 'Gasto de Alojamiento sin GPS situado mediante la ubicación nocturna de Cronología de Maps'
+  };
   return { name: 'Alojamiento', source: 'fallback', sourceLabel: 'Nombre genérico' };
 }
 
@@ -8283,7 +8314,6 @@ function timelineLodgingPointRecord(record, role) {
   if (mode !== 'precise') return null;
   if (!point || storedImageCoordinate(point.latitude, -90, 90) == null || storedImageCoordinate(point.longitude, -180, 180) == null) return null;
   const lodging = timelineLodgingNameInfo(record, role);
-  const action = role === 'arrival' ? 'Llegada a' : 'Salida desde';
   return {
     key: `timeline-lodging-${record.viajeId}-${record.fecha}-${role}`,
     kind: 'point',
@@ -8297,7 +8327,7 @@ function timelineLodgingPointRecord(record, role) {
     viajeId: record.viajeId,
     fecha: record.fecha,
     hora: String(point.time || '').slice(11, 16),
-    descripcion: `${action} ${lodging.name}`,
+    descripcion: lodging.name,
     notas: `Alojamiento deducido de una ubicación precisa mientras el teléfono permanecía quieto durante el descanso. ${lodging.sourceLabel}.`,
     enRuta: false,
     latitude: Number(point.latitude),
@@ -8308,13 +8338,19 @@ function timelineLodgingPointRecord(record, role) {
 function timelineMapMarkerItems(records, dailyMode) {
   const items = [];
   records.forEach(record => {
-    const markerRecords = [timelineLodgingPointRecord(record, 'departure')];
+    const departureRecord = timelineLodgingPointRecord(record, 'departure');
+    const arrivalRecord = timelineLodgingPointRecord(record, 'arrival');
+    const markerRecords = [departureRecord];
     if (dailyMode && record.arrival && record.departure) {
       const separated = window.GoogleTimelineImport
         ? window.GoogleTimelineImport.distanceMeters(record.departure, record.arrival) >= 20
         : true;
-      if (separated) markerRecords.push(timelineLodgingPointRecord(record, 'arrival'));
+      const sameLodging = departureRecord && arrivalRecord
+        && normalizePlaceName(departureRecord.lodgingName) === normalizePlaceName(arrivalRecord.lodgingName)
+        && lodgingDistanceMeters(departureRecord, arrivalRecord) <= LODGING_FUZZY_NAME_MAX_DISTANCE_METERS;
+      if (separated && !sameLodging && departureRecord) markerRecords.push(arrivalRecord);
     }
+    if (!departureRecord && arrivalRecord) markerRecords.push(arrivalRecord);
     markerRecords.filter(Boolean).forEach(markerRecord => {
       if (dailyMode) {
         items.push(dailyMapItem(markerRecord));
@@ -8381,6 +8417,46 @@ function timelineMapPaths(records) {
     });
   });
   return paths;
+}
+
+function timelineMapPathsWithDailyRecords(paths = [], records = []) {
+  const timelinePoints = paths
+    .flat()
+    .map(point => ({ ...point, timeKey: String(point && point.time || '').slice(0, 16) }))
+    .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(point.timeKey))
+    .sort((a, b) => a.timeKey.localeCompare(b.timeKey));
+  if (!timelinePoints.length) return paths;
+
+  const supplemental = records
+    .filter(record => record && (record.kind === 'point' || record.kind === 'photo') && record.timelinePoint !== true)
+    .map(record => ({
+      latitude: Number(record.latitude),
+      longitude: Number(record.longitude),
+      time: `${record.fecha || ''}T${record.hora || ''}`,
+      timeKey: `${record.fecha || ''}T${record.hora || ''}`.slice(0, 16)
+    }))
+    .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(point.timeKey))
+    .sort((a, b) => a.timeKey.localeCompare(b.timeKey));
+  const connectors = [];
+  const accepted = [];
+
+  supplemental.forEach(point => {
+    const alreadyCovered = timelinePoints.some(candidate => lodgingDistanceMeters(candidate, point) <= TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS);
+    const grouped = accepted.some(candidate => lodgingDistanceMeters(candidate, point) <= TIMELINE_SUPPLEMENT_GROUP_DISTANCE_METERS);
+    if (alreadyCovered || grouped) return;
+    const beforeCandidates = timelinePoints.filter(candidate => candidate.timeKey <= point.timeKey);
+    const before = beforeCandidates[beforeCandidates.length - 1] || null;
+    const after = timelinePoints.find(candidate => candidate.timeKey >= point.timeKey) || null;
+    const connector = [before, point, after]
+      .filter(Boolean)
+      .filter((candidate, index, candidates) => !index || lodgingDistanceMeters(candidates[index - 1], candidate) > 1);
+    if (connector.length > 1) {
+      connectors.push(connector.map(({ latitude, longitude, time }) => ({ latitude, longitude, time })));
+      accepted.push(point);
+    }
+  });
+
+  return [...paths, ...connectors];
 }
 
 function plannedDailyMapRecordsForScope(scopedTripIds, paisId, day, destinationOnlyApplied = false) {
@@ -8630,7 +8706,11 @@ function tripMapItemsForCurrentScope() {
   const cityMode = Boolean(tripMapState.cityId);
   if (!cityMode) {
     importedTimelineRecords = timelineRecordsForMap(scopedTripIds, dailyMode ? tripMapState.day : '');
-    timelinePaths = timelineMapPaths(importedTimelineRecords);
+    const importedPaths = timelineMapPaths(importedTimelineRecords);
+    timelinePaths = timelineMapPathsWithDailyRecords(
+      importedPaths,
+      dailyMode ? selectedExactDailyRecords : exactDailyRecords
+    );
   }
   const selectedCity = cityMode ? cityOptionsById.get(Number(tripMapState.cityId)) || null : null;
   const visibleCities = cityMode
@@ -9260,31 +9340,6 @@ async function createDailyMapBlogImage(records, day, timelinePaths = []) {
     context.lineCap = 'round';
     context.strokeStyle = '#0f766e';
     context.stroke();
-  });
-
-  timelinePaths.forEach(path => {
-    if (!path.length) return;
-    const markers = [{ point: path[0], label: 'S' }];
-    if (path.length > 1 && (!window.GoogleTimelineImport || window.GoogleTimelineImport.distanceMeters(path[0], path[path.length - 1]) >= 20)) {
-      markers.push({ point: path[path.length - 1], label: 'L' });
-    }
-    markers.forEach(marker => {
-      const worldPoint = mapWorldPoint(marker.point.latitude, marker.point.longitude, zoom);
-      const x = worldPoint.x - layer.startX;
-      const y = headerHeight + worldPoint.y - layer.startY;
-      context.fillStyle = '#0f766e';
-      context.beginPath();
-      context.arc(x, y, 9, 0, Math.PI * 2);
-      context.fill();
-      context.lineWidth = 2;
-      context.strokeStyle = '#ffffff';
-      context.stroke();
-      context.fillStyle = '#ffffff';
-      context.font = '800 10px system-ui, sans-serif';
-      context.textAlign = 'center';
-      context.fillText(marker.label, x, y + 3.5);
-      context.textAlign = 'left';
-    });
   });
 
   exactPoints.filter(record => !tripMapTransportMarker(record)).forEach(record => {
@@ -10804,9 +10859,9 @@ function renderResumen() {
   const accountHtml = accountRows.map(row => {
     const expensePct = percentageOfTotal(row.totalEur, totalEur);
     const balancePct = percentageOfTotal(row.saldoEur, accountBalanceEur);
-    return `<tr><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td><td data-label="% gasto">${expensePct.toFixed(1)}%</td><td data-label="% saldo">${balancePct.toFixed(1)}%</td></tr>`;
+    return `<tr><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="% gastos">${expensePct.toFixed(1)}%</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="% saldo">${balancePct.toFixed(1)}%</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td></tr>`;
   });
-  accountHtml.push(`<tr class="subtotal-row${isOverTripBudget ? ' over-budget-row' : ''}"><td data-label="Cuenta">Total cuentas</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="% gasto">${totalEur ? '100.0%' : '0.0%'}</td><td data-label="% saldo">${accountBalanceEur ? '100.0%' : '0.0%'}</td></tr>`);
+  accountHtml.push(`<tr class="subtotal-row${isOverTripBudget ? ' over-budget-row' : ''}"><td data-label="Cuenta">Total cuentas</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="% gastos">${totalEur ? '100.0%' : '0.0%'}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="% saldo">${accountBalanceEur ? '100.0%' : '0.0%'}</td><td data-label="EUR"></td></tr>`);
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
   if (state.activeTab === 'mapa' || tripMapState.printMode) renderTripMap();
   renderTripComparison();
@@ -11600,7 +11655,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v258');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v259');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -17158,7 +17213,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v258');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v259');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
