@@ -56,10 +56,10 @@ test('el resumen de cuentas conserva una tabla y muestra hasta saldo en móvil',
 });
 
 test('presupuesto de viaje, límite de cuenta y saldo son conceptos separados', () => {
-  assert.match(html, /<th>Límite<\/th><th>Disponible<\/th>/);
+  assert.match(html, /<th>Límite<\/th><th>Margen límite<\/th>/);
   assert.match(app, /return Math\.max\(0, numberValue\(viaje && viaje\.presupuesto\)\)/);
   assert.match(app, /remainingEur = budget \? budgetEur - spentEur : null/);
-  assert.match(app, /las transferencias no son gastos/);
+  assert.match(app, /no representa dinero disponible/);
   assert.doesNotMatch(app, /budgetEur - spentEur - netTransferOutEur/);
   assert.doesNotMatch(app, /Total \/ presupuesto del viaje/);
 });
@@ -82,6 +82,8 @@ test('el total de límites solo agrega cuentas que tienen límite', () => {
   assert.ok(Math.abs(totals.remainingEur - 885.82) < 0.000001);
   assert.equal(totals.pct, 11.418);
   assert.doesNotMatch(app, /accountBudgetEur \? accountBudgetEur - totalEur/);
+  assert.match(app, /Total cuentas[\s\S]*?fmtCurrency\(accountBalanceEur, 'EUR'\)[\s\S]*?Total límites/);
+  assert.match(app, /Total límites[\s\S]*?data-label="Saldo">-<[\s\S]*?fmtCurrency\(limitTotals\.remainingEur, 'EUR'\)/);
 });
 
 test('las transferencias permiten detectar cuentas base y tarjetas recargables', () => {

@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v256';
+const APP_VERSION = '700v257';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2083,7 +2083,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v256');
+    const worker = new Worker('./timeline-import-worker.js?v=700v257');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2831,7 +2831,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v256');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v257');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3622,7 +3622,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v256');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v257');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3713,7 +3713,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v256');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v257');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3775,7 +3775,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v256');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v257');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4073,7 +4073,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v256');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v257');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -10818,13 +10818,12 @@ function renderResumen() {
     };
   }).sort((a, b) => b.totalEur - a.totalEur);
   drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.chartLabel, value: row.totalEur })));
-  const accountHtml = accountRows.map(row => `<tr class="${row.restanteEur !== null && row.restanteEur < 0 ? 'warning-row' : ''}"><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td><td data-label="Límite">${row.presupuesto ? (row.moneda === 'EUR' ? fmtCurrency(row.presupuesto, row.moneda) : `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}`) : '-'}</td><td data-label="Disponible" title="Límite menos gastos pagados con esta cuenta; las transferencias no son gastos">${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td data-label="%">${row.pct.toFixed(1)}%</td></tr>`);
+  const accountHtml = accountRows.map(row => `<tr class="${row.restanteEur !== null && row.restanteEur < 0 ? 'warning-row' : ''}"><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td><td data-label="Límite">${row.presupuesto ? (row.moneda === 'EUR' ? fmtCurrency(row.presupuesto, row.moneda) : `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}`) : '-'}</td><td data-label="Margen límite" title="Límite menos gastos pagados con esta cuenta; no representa dinero disponible">${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td data-label="%">${row.pct.toFixed(1)}%</td></tr>`);
   const accountBalanceEur = accountRows.reduce((sum, row) => sum + numberValue(row.saldoEur), 0);
   const limitTotals = accountLimitTotals(accountRows);
+  accountHtml.push(`<tr class="subtotal-row"><td data-label="Cuenta">Total cuentas</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Límite">-</td><td data-label="Margen límite">-</td><td data-label="%">-</td></tr>`);
   if (limitTotals) {
-    accountHtml.push(`<tr class="${limitTotals.remainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td data-label="Cuenta">Total cuentas con límite</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(limitTotals.spentEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(limitTotals.balanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Límite">${fmtCurrency(limitTotals.budgetEur, 'EUR')}</td><td data-label="Disponible">${fmtCurrency(limitTotals.remainingEur, 'EUR')}</td><td data-label="%">${limitTotals.pct.toFixed(1)}%</td></tr>`);
-  } else {
-    accountHtml.push(`<tr class="subtotal-row"><td data-label="Cuenta">Total cuentas</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Límite">-</td><td data-label="Disponible">-</td><td data-label="%">-</td></tr>`);
+    accountHtml.push(`<tr class="${limitTotals.remainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td data-label="Cuenta">Total límites</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(limitTotals.spentEur, 'EUR')}</td><td data-label="Saldo">-</td><td data-label="EUR"></td><td data-label="Límite">${fmtCurrency(limitTotals.budgetEur, 'EUR')}</td><td data-label="Margen límite">${fmtCurrency(limitTotals.remainingEur, 'EUR')}</td><td data-label="%">${limitTotals.pct.toFixed(1)}%</td></tr>`);
   }
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
   if (state.activeTab === 'mapa' || tripMapState.printMode) renderTripMap();
@@ -11619,7 +11618,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v256');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v257');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -17181,7 +17180,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v256');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v257');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
