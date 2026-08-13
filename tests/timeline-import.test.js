@@ -247,7 +247,7 @@ test('Cronología avisa de la exportación previa y se procesa fuera de la inter
   assert.match(html, /selecciona <em>Cronología\.json<\/em> desde el lugar donde lo hayas descargado/);
   assert.match(html, /id="timeline-file-input"[^>]*accept="\.json,application\/json"/);
   assert.match(app, /data-map-timeline="1"/);
-  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v255'\)/);
+  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v256'\)/);
   assert.match(worker, /GoogleTimelineImport\.importTrip/);
 });
 

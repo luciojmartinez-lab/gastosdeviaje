@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v255';
+const APP_VERSION = '700v256';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2083,7 +2083,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v255');
+    const worker = new Worker('./timeline-import-worker.js?v=700v256');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2267,6 +2267,22 @@ function accountTypeLabel(account, includeDetection = false) {
 
 function effectiveTripBudget(viaje) {
   return Math.max(0, numberValue(viaje && viaje.presupuesto));
+}
+
+function accountLimitTotals(rows = []) {
+  const limitedRows = rows.filter(row => numberValue(row.presupuestoEur) > 0);
+  if (!limitedRows.length) return null;
+  const spentEur = limitedRows.reduce((sum, row) => sum + numberValue(row.totalEur), 0);
+  const balanceEur = limitedRows.reduce((sum, row) => sum + numberValue(row.saldoEur), 0);
+  const budgetEur = limitedRows.reduce((sum, row) => sum + numberValue(row.presupuestoEur), 0);
+  const remainingEur = budgetEur - spentEur;
+  return {
+    spentEur,
+    balanceEur,
+    budgetEur,
+    remainingEur,
+    pct: budgetEur ? spentEur * 100 / budgetEur : 0
+  };
 }
 
 function selectedTrips() {
@@ -2815,7 +2831,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v255');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v256');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3606,7 +3622,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v255');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v256');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3697,7 +3713,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v255');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v256');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3759,7 +3775,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v255');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v256');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4057,7 +4073,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v255');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v256');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -10803,13 +10819,11 @@ function renderResumen() {
   }).sort((a, b) => b.totalEur - a.totalEur);
   drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.chartLabel, value: row.totalEur })));
   const accountHtml = accountRows.map(row => `<tr class="${row.restanteEur !== null && row.restanteEur < 0 ? 'warning-row' : ''}"><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td><td data-label="Límite">${row.presupuesto ? (row.moneda === 'EUR' ? fmtCurrency(row.presupuesto, row.moneda) : `${fmtCurrency(row.presupuesto, row.moneda)} / ${fmtCurrency(row.presupuestoEur, 'EUR')}`) : '-'}</td><td data-label="Disponible" title="Límite menos gastos pagados con esta cuenta; las transferencias no son gastos">${row.restanteEur === null ? '-' : fmtCurrency(row.restanteEur, 'EUR')}</td><td data-label="%">${row.pct.toFixed(1)}%</td></tr>`);
-  const accountBudgetEur = accountRows.reduce((sum, row) => sum + numberValue(row.presupuestoEur), 0);
   const accountBalanceEur = accountRows.reduce((sum, row) => sum + numberValue(row.saldoEur), 0);
-  const accountRemainingEur = accountBudgetEur ? accountBudgetEur - totalEur : null;
-  const accountPct = accountBudgetEur ? totalEur * 100 / accountBudgetEur : 0;
-  if (accountBudgetEur) {
-    accountHtml.push(`<tr class="${accountRemainingEur !== null && accountRemainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td data-label="Cuenta">Total límites de cuenta</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Límite">${fmtCurrency(accountBudgetEur, 'EUR')}</td><td data-label="Disponible">${accountRemainingEur === null ? '-' : fmtCurrency(accountRemainingEur, 'EUR')}</td><td data-label="%">${accountPct.toFixed(1)}%</td></tr>`);
-  } else if (!accountBudgetEur) {
+  const limitTotals = accountLimitTotals(accountRows);
+  if (limitTotals) {
+    accountHtml.push(`<tr class="${limitTotals.remainingEur < 0 ? 'warning-row' : 'subtotal-row'}"><td data-label="Cuenta">Total cuentas con límite</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(limitTotals.spentEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(limitTotals.balanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Límite">${fmtCurrency(limitTotals.budgetEur, 'EUR')}</td><td data-label="Disponible">${fmtCurrency(limitTotals.remainingEur, 'EUR')}</td><td data-label="%">${limitTotals.pct.toFixed(1)}%</td></tr>`);
+  } else {
     accountHtml.push(`<tr class="subtotal-row"><td data-label="Cuenta">Total cuentas</td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="EUR"></td><td data-label="Límite">-</td><td data-label="Disponible">-</td><td data-label="%">-</td></tr>`);
   }
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
@@ -11605,7 +11619,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v255');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v256');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16897,8 +16911,9 @@ function bindEvents() {
       } else if (target.dataset.editCuenta) {
         const c = state.cuentas.find(item => item.id === Number(target.dataset.editCuenta));
         if (!c) return;
+        const accountScope = c.viajeId ? (tripName(c.viajeId) || 'viaje') : 'plantilla global';
         openFormDialog({
-          title: 'Editar cuenta',
+          title: `Editar ${c.nombre} · ${accountScope}`,
           helpTarget: 'cuentas',
           fields: [
             { name: 'nombre', label: 'Nombre', value: c.nombre },
@@ -16906,8 +16921,10 @@ function bindEvents() {
             { name: 'presupuesto', label: 'Límite de gasto (opcional)', type: 'number', step: '0.01', min: '0', value: c.presupuesto || 0 },
             { name: 'saldoActual', label: 'Saldo actual', type: 'number', step: '0.01', value: numberValue(c.saldoActual) }
           ],
-          onSubmit: values => {
-            return updateCuenta(c.id, { nombre: values.nombre.trim() || c.nombre, accountType: normalizeAccountType(values.accountType), presupuesto: numberValue(values.presupuesto), saldoActual: numberValue(values.saldoActual) });
+          onSubmit: async values => {
+            const limit = numberValue(values.presupuesto);
+            const updated = await updateCuenta(c.id, { nombre: values.nombre.trim() || c.nombre, accountType: normalizeAccountType(values.accountType), presupuesto: limit, saldoActual: numberValue(values.saldoActual) });
+            if (numberValue(updated.presupuesto) !== limit) throw new Error('No se ha podido guardar el límite de la cuenta');
           }
         });
         return;
@@ -17164,7 +17181,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v255');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v256');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

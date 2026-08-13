@@ -64,6 +64,26 @@ test('presupuesto de viaje, límite de cuenta y saldo son conceptos separados', 
   assert.doesNotMatch(app, /Total \/ presupuesto del viaje/);
 });
 
+test('el total de límites solo agrega cuentas que tienen límite', () => {
+  const start = app.indexOf('function accountLimitTotals');
+  const end = app.indexOf('function selectedTrips()', start);
+  const context = { numberValue: value => Number(value) || 0 };
+  vm.runInNewContext(`${app.slice(start, end)}; this.accountLimitTotals = accountLimitTotals;`, context);
+
+  const totals = context.accountLimitTotals([
+    { totalEur: 184.97, saldoEur: 120.12, presupuestoEur: 0 },
+    { totalEur: 114.18, saldoEur: 545.82, presupuestoEur: 1000 },
+    { totalEur: 50.39, saldoEur: 32.13, presupuestoEur: 0 }
+  ]);
+
+  assert.equal(totals.spentEur, 114.18);
+  assert.equal(totals.balanceEur, 545.82);
+  assert.equal(totals.budgetEur, 1000);
+  assert.ok(Math.abs(totals.remainingEur - 885.82) < 0.000001);
+  assert.equal(totals.pct, 11.418);
+  assert.doesNotMatch(app, /accountBudgetEur \? accountBudgetEur - totalEur/);
+});
+
 test('las transferencias permiten detectar cuentas base y tarjetas recargables', () => {
   const start = app.indexOf('const ACCOUNT_TYPE_OPTIONS');
   const end = app.indexOf('function selectedTrips()', start);
