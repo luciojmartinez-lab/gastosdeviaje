@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v261">
+  <link rel="manifest" href="manifest.webmanifest?v=700v262">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v261">
+  <link rel="stylesheet" href="styles.css?v=700v262">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v261 · 13/08/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v262 · 14/08/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v261</div>
+  <div class="app-version">700v262</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -751,6 +751,27 @@
   </form>
 </dialog>
 
+<dialog id="map-point-dialog" class="modal map-point-modal">
+  <form method="dialog" id="map-point-form">
+    <div class="modal-head">
+      <h2 id="map-point-title">¿Añadir este punto?</h2>
+      <button type="button" class="ghost icon-btn" id="map-point-close" aria-label="Cerrar">x</button>
+    </div>
+    <p id="map-point-location" class="small"></p>
+    <label for="map-point-name">Nombre del punto</label>
+    <input id="map-point-name" maxlength="160" placeholder="Casa, mirador, restaurante…" autocomplete="off" required>
+    <div id="map-point-date-fields" class="row">
+      <div><label for="map-point-date">Fecha</label><input id="map-point-date" type="date" required></div>
+      <div><label for="map-point-time">Hora</label><input id="map-point-time" type="time" required></div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn" id="map-point-save">Añadir punto</button>
+      <button type="button" class="ghost" id="map-point-cancel">Cancelar</button>
+      <span id="msg-map-point" class="small"></span>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="route-dialog" class="modal">
   <form method="dialog" id="route-dialog-form">
     <div class="modal-head">
@@ -1168,12 +1189,12 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=700v261"></script>
-<script src="map-model.js?v=700v261"></script>
-<script src="app.bundle.js?v=700v261"></script>
+<script src="timeline-import.js?v=700v262"></script>
+<script src="map-model.js?v=700v262"></script>
+<script src="app.bundle.js?v=700v262"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v261';
+    const pageVersion = '700v262';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1228,7 +1249,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v261', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v262', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

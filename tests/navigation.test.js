@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 
 const [html, app, styles] = await Promise.all([
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
@@ -42,6 +43,39 @@ test('el mapa permite alternar la vista de satélite sin cambiar sus puntos', ()
   assert.match(app, /\$\{tripMapState\.showSatellite \? 'Mapa normal' : 'Satélite'\}/);
 });
 
+test('el alojamiento conserva su coordenada y coloca la ciudad justo encima', () => {
+  const start = app.indexOf('function stackMapCitiesWithLodgings');
+  const end = app.indexOf('function tripMapItemsForCurrentScope', start);
+  const context = {
+    lugarHasCoords: item => Number.isFinite(Number(item && item.lat)) && Number.isFinite(Number(item && item.lng)),
+    geographicDistanceMeters: () => 120
+  };
+  vm.runInNewContext(`${app.slice(start, end)}; this.stackMapCitiesWithLodgings = stackMapCitiesWithLodgings;`, context);
+  const result = context.stackMapCitiesWithLodgings([
+    { ciudad: { id: 7, nombre: 'Barcelona', lat: 41.38, lng: 2.17 }, firstDate: '2026-08-08' }
+  ], [
+    { ciudad: { id: 'lodging', nombre: 'Alojamiento', lat: 41.39, lng: 2.18 }, firstDate: '2026-08-08', timelinePoint: true, timelineRole: 'lodging', pointEntry: { key: 'night-1' } }
+  ], false);
+
+  assert.equal(result.baseItems[0].ciudad.lat, 41.39);
+  assert.equal(result.baseItems[0].ciudad.lng, 2.18);
+  assert.equal(result.baseItems[0].stackedOverLodging, true);
+  assert.equal(result.lodgingItems[0].stackedUnderCity, true);
+  assert.match(app, /offset: item\.stackedOverLodging \? \[0, -30\]/);
+  assert.match(styles, /\.trip-vector-marker\.stacked-city \.trip-vector-marker-label[\s\S]*?bottom: 24px/);
+  assert.match(styles, /\.trip-vector-marker\.stacked-lodging \.trip-vector-marker-label[\s\S]*?top: 24px/);
+});
+
+test('una pulsación mantenida permite crear y nombrar un punto en el mapa', () => {
+  assert.match(html, /id="map-point-dialog"[\s\S]*?id="map-point-name"[\s\S]*?id="map-point-date"[\s\S]*?id="map-point-time"/);
+  assert.match(app, /const TRIP_MAP_LONG_PRESS_MS = 1800/);
+  assert.match(app, /function installTripMapLongPress\(target, coordinatesForEvent\)/);
+  assert.match(app, /openMapPointDialog\(\{ latitude: point\.latitude, longitude: point\.longitude \}\)/);
+  assert.match(app, /tipo: 'punto',[\s\S]*?descripcion: name,[\s\S]*?latitude: context\.latitude,[\s\S]*?longitude: context\.longitude/);
+  assert.match(app, /data-edit-map-point-name="1"/);
+  assert.match(app, /updateBlogEntry\(entry\.id, \{ descripcion: name \}\)/);
+});
+
 test('Solo destinos usa la clasificación y no borra el día al filtrar', () => {
   assert.match(app, /const destinationStops = completeStops\.filter\(stop => stop\.role === ROUTE_STOP_ROLE_DESTINATION\)/);
   assert.doesNotMatch(app, /completeIds\.slice\(1, -1\)/);
@@ -71,7 +105,7 @@ test('el mapa diario separa los puntos y los números de destino', () => {
   assert.match(app, /dailyRecord\.kind === 'point' \? '•' : '\+'/);
   assert.match(app, /function tripVectorDestinationElement/);
   assert.match(app, /dailyModel\.destinationMarkers\.forEach/);
-  assert.match(app, /offset: \[labelOnLeft \? -18 : 18, 0\]/);
+  assert.match(app, /offset: stackedOverLodging \? \[0, -30\] : \[labelOnLeft \? -18 : 18, 0\]/);
   assert.match(app, /element\.classList\.add\('has-photo'\)/);
   assert.match(app, /openTripMapPhotoPopup\(encodedKeys, element\)/);
   assert.match(app, /function positionTripMapPhotoPopup\(popup, anchorElement\)/);

@@ -44,6 +44,8 @@ test('el resumen de cuentas conserva una tabla y agrupa gastos y saldos con sus 
   assert.match(app, /account-label-mobile[^>]*>\$\{escapeHtml\(row\.chartLabel\)\}/);
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?width: 100%;[\s\S]*?table-layout: fixed/);
   assert.match(styles, /#tabla-cuenta \{[\s\S]*?font-size: 8\.25px/);
+  assert.match(styles, /#tabla-cuenta th \{[\s\S]*?font-size: 9px;[\s\S]*?text-align: center;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(n\) \{ text-align: center; \}/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ width: 21%;/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ width: 10%;/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ width: 18%;/);

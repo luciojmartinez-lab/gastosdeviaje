@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v261';
+const APP_VERSION = '700v262';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -77,6 +77,7 @@ const DIALOG_HELP_TARGETS = {
   'form-dialog': 'referencia',
   'timeline-dialog': 'mapa-controles',
   'lodging-name-dialog': 'mapa-controles',
+  'map-point-dialog': 'mapa-controles',
   'route-dialog': 'ruta-paradas',
   'trip-documents-dialog': 'documentos-viaje',
   'trip-review-dialog': 'revisar-viaje',
@@ -94,6 +95,7 @@ const DIALOG_HELP_TARGETS = {
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const TRIP_MAP_WIDTH = 920;
 const TRIP_MAP_HEIGHT = 460;
+const TRIP_MAP_LONG_PRESS_MS = 1800;
 const TRIP_MAP_MIN_ZOOM = 2;
 const TRIP_MAP_MAX_ZOOM = 20;
 let dbPromise = null;
@@ -149,6 +151,8 @@ let tripVectorPhotoMarkers = [];
 let tripVectorMapFailed = false;
 let activeTimelineTripId = null;
 let activeLodgingEditContext = null;
+let activeMapPointContext = null;
+let tripMapLongPressCleanup = null;
 let openBlogDays = new Set();
 let openBlogDaysScope = '';
 let pendingBlogPdfDay = '';
@@ -2074,6 +2078,120 @@ async function saveLodgingName() {
   renderTripMap();
 }
 
+function closeMapPointDialog() {
+  const dialog = $('#map-point-dialog');
+  if (dialog && dialog.open && dialog.close) dialog.close();
+  else if (dialog) dialog.removeAttribute('open');
+  activeMapPointContext = null;
+}
+
+function currentMapPointTrip() {
+  const trips = mapScopedTrips(gastosForSelectorTripScope('#map-viaje'));
+  return trips.length === 1 ? trips[0] : null;
+}
+
+function mapPointDefaultDate(trip) {
+  if (tripMapState.day) return tripMapState.day;
+  const today = currentLocalDate();
+  if ((!trip.fechaInicio || today >= trip.fechaInicio) && (!trip.fechaFin || today <= trip.fechaFin)) return today;
+  return trip.fechaInicio || today;
+}
+
+function nearestTripCityForPoint(trip, point) {
+  if (!trip || !point) return null;
+  return [...new Set(tripCityIds(trip).map(Number).filter(Boolean))]
+    .map(id => state.lugares.find(place => Number(place.id) === id))
+    .filter(city => city && lugarHasCoords(city) && !isTransitPlaceName(city.nombre))
+    .map(city => ({
+      city,
+      distance: geographicDistanceMeters(
+        point,
+        { latitude: Number(city.lat), longitude: Number(city.lng) }
+      )
+    }))
+    .sort((a, b) => a.distance - b.distance)[0]?.city || null;
+}
+
+function openMapPointDialog(context = {}) {
+  const dialog = $('#map-point-dialog');
+  const input = $('#map-point-name');
+  if (!dialog || !input) return;
+  const editing = Number(context.entryId) > 0;
+  const trip = editing
+    ? state.viajes.find(item => Number(item.id) === Number(context.tripId))
+    : currentMapPointTrip();
+  if (!trip) {
+    alert('Selecciona un solo viaje antes de añadir un punto al mapa.');
+    return;
+  }
+  const latitude = blogPointCoordinate(context.latitude, -90, 90);
+  const longitude = blogPointCoordinate(context.longitude, -180, 180);
+  if (latitude == null || longitude == null) return;
+  const city = context.cityId
+    ? state.lugares.find(item => Number(item.id) === Number(context.cityId))
+    : nearestTripCityForPoint(trip, { latitude, longitude });
+  activeMapPointContext = {
+    mode: editing ? 'edit' : 'add',
+    entryId: editing ? Number(context.entryId) : null,
+    tripId: Number(trip.id),
+    cityId: city ? Number(city.id) : null,
+    countryId: city ? Number(city.parentId) || null : null,
+    latitude,
+    longitude
+  };
+  $('#map-point-title').textContent = editing ? 'Editar nombre del punto' : '¿Añadir este punto?';
+  $('#map-point-save').textContent = editing ? 'Guardar nombre' : 'Añadir punto';
+  $('#map-point-date-fields').hidden = editing;
+  $('#map-point-location').textContent = editing
+    ? `Punto de ${trip.nombre}${city ? ` · ${city.nombre}` : ''}.`
+    : `${trip.nombre}${city ? ` · cerca de ${city.nombre}` : ''} · ${latitude.toFixed(6)}, ${longitude.toFixed(6)}.`;
+  input.value = String(context.name || '');
+  $('#map-point-date').value = String(context.date || mapPointDefaultDate(trip));
+  $('#map-point-time').value = String(context.time || currentLocalTime()).slice(0, 5);
+  setMessage('#msg-map-point', '');
+  if (!dialog.open) {
+    if (dialog.showModal) dialog.showModal();
+    else dialog.setAttribute('open', 'open');
+  }
+  setTimeout(() => input.focus(), 0);
+}
+
+async function saveMapPoint() {
+  const context = activeMapPointContext;
+  if (!context) return;
+  const name = String($('#map-point-name') && $('#map-point-name').value || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  if (!name) throw new Error('Escribe un nombre para el punto');
+  if (context.mode === 'edit') {
+    const entry = state.blogEntries.find(item => Number(item.id) === Number(context.entryId) && item.tipo === 'punto');
+    if (!entry) throw new Error('No se encuentra el punto que quieres editar');
+    await updateBlogEntry(entry.id, { descripcion: name });
+  } else {
+    const trip = state.viajes.find(item => Number(item.id) === Number(context.tripId));
+    if (!trip) throw new Error('El viaje seleccionado ya no existe');
+    const date = String($('#map-point-date') && $('#map-point-date').value || '');
+    const time = String($('#map-point-time') && $('#map-point-time').value || '').slice(0, 5);
+    if (!date) throw new Error('Indica la fecha del punto');
+    if ((trip.fechaInicio && date < trip.fechaInicio) || (trip.fechaFin && date > trip.fechaFin)) {
+      throw new Error('La fecha debe estar dentro del viaje');
+    }
+    await addBlogEntry({
+      viajeId: trip.id,
+      fecha: date,
+      hora: time || currentLocalTime(),
+      tipo: 'punto',
+      descripcion: name,
+      paisId: context.countryId,
+      ciudadId: context.cityId,
+      latitude: context.latitude,
+      longitude: context.longitude,
+      wordpressIncluded: true
+    });
+  }
+  closeMapPointDialog();
+  await loadAll();
+  setTab('mapa');
+}
+
 function parseTimelineFileInWorker(file, trip) {
   if (typeof Worker !== 'function') {
     return file.text()
@@ -2084,7 +2202,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v261');
+    const worker = new Worker('./timeline-import-worker.js?v=700v262');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2826,7 +2944,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v261');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v262');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3617,7 +3735,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v261');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v262');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3708,7 +3826,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v261');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v262');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3770,7 +3888,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v261');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v262');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4068,7 +4186,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v261');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v262');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -8621,6 +8739,69 @@ function dailyMapItem(record) {
   };
 }
 
+function stackMapCitiesWithLodgings(baseItems = [], lodgingItems = [], dailyMode = false) {
+  const stackedBaseItems = baseItems.slice();
+  const stackedLodgingKeys = new Set();
+  const usedCityIndexes = new Set();
+  lodgingItems
+    .filter(item => item.timelinePoint && item.timelineRole === 'lodging' && lugarHasCoords(item.ciudad))
+    .forEach(lodgingItem => {
+      const lodgingDate = String(lodgingItem.firstDate || lodgingItem.pointEntry && lodgingItem.pointEntry.fecha || '');
+      if (!lodgingDate) return;
+      const candidates = stackedBaseItems
+        .map((item, index) => ({ item, index }))
+        .filter(({ item, index }) => !usedCityIndexes.has(index)
+          && !item.blogPoint && !item.photoPoint && !item.timelinePoint
+          && String(item.firstDate || item.dailyRecord && item.dailyRecord.fecha || '') === lodgingDate
+          && (!dailyMode || item.dailyRecord && item.dailyRecord.kind === 'city')
+          && lugarHasCoords(item.ciudad))
+        .map(candidate => ({
+          ...candidate,
+          distance: geographicDistanceMeters(
+            { latitude: Number(candidate.item.ciudad.lat), longitude: Number(candidate.item.ciudad.lng) },
+            { latitude: Number(lodgingItem.ciudad.lat), longitude: Number(lodgingItem.ciudad.lng) }
+          )
+        }))
+        .filter(candidate => candidate.distance <= 60_000)
+        .sort((a, b) => a.distance - b.distance || a.index - b.index);
+      const match = candidates[0];
+      if (!match) return;
+      const latitude = Number(lodgingItem.ciudad.lat);
+      const longitude = Number(lodgingItem.ciudad.lng);
+      const dailyRecord = match.item.dailyRecord
+        ? {
+          ...match.item.dailyRecord,
+          latitude,
+          longitude,
+          accommodationDestination: true,
+          stackedOverLodging: true
+        }
+        : null;
+      stackedBaseItems[match.index] = {
+        ...match.item,
+        ciudad: {
+          ...match.item.ciudad,
+          lat: latitude,
+          lng: longitude,
+          accommodationDestination: true
+        },
+        accommodationDestination: true,
+        stackedOverLodging: true,
+        stackedLodgingKey: lodgingItem.pointEntry && lodgingItem.pointEntry.key || lodgingItem.ciudad.id,
+        ...(dailyRecord ? { dailyRecord } : {})
+      };
+      usedCityIndexes.add(match.index);
+      stackedLodgingKeys.add(String(lodgingItem.pointEntry && lodgingItem.pointEntry.key || lodgingItem.ciudad.id));
+    });
+  return {
+    baseItems: stackedBaseItems,
+    lodgingItems: lodgingItems.map(item => ({
+      ...item,
+      stackedUnderCity: stackedLodgingKeys.has(String(item.pointEntry && item.pointEntry.key || item.ciudad.id))
+    }))
+  };
+}
+
 function tripMapItemsForCurrentScope() {
   const paisId = Number($('#map-pais') ? $('#map-pais').value : 0);
   const gastos = gastosForSelectorTripScope('#map-viaje');
@@ -8741,9 +8922,9 @@ function tripMapItemsForCurrentScope() {
   }
   const photos = tripMapState.showPhotos ? photoMapItems(visiblePhotoRecords) : [];
   const dailyItems = dailyMode ? dailyRecords.map(dailyMapItem) : [];
-  const baseMapItems = dailyMode ? dailyItems : [...visibleCities, ...visiblePoints, ...photos];
-  const timelineItems = timelineMapMarkerItems(importedTimelineRecords, dailyMode)
-    .filter(timelineItem => !baseMapItems.some(item => {
+  const rawBaseMapItems = dailyMode ? dailyItems : [...visibleCities, ...visiblePoints, ...photos];
+  const rawTimelineItems = timelineMapMarkerItems(importedTimelineRecords, dailyMode)
+    .filter(timelineItem => !rawBaseMapItems.some(item => {
       const name = `${item.ciudad && item.ciudad.nombre || ''} ${item.pointEntry && item.pointEntry.descripcion || ''}`;
       const lodgingName = normalizePlaceName(timelineItem.pointEntry && timelineItem.pointEntry.lodgingName);
       const sameLodgingName = lodgingName && normalizePlaceName(name).includes(lodgingName);
@@ -8754,7 +8935,11 @@ function tripMapItemsForCurrentScope() {
         { latitude: Number(timelineItem.ciudad && timelineItem.ciudad.lat), longitude: Number(timelineItem.ciudad && timelineItem.ciudad.lng) }
       ) < 50;
     }));
-  const mapItems = [...baseMapItems, ...timelineItems];
+  const stackedItems = stackMapCitiesWithLodgings(rawBaseMapItems, rawTimelineItems, dailyMode);
+  const mapItems = [...stackedItems.baseItems, ...stackedItems.lodgingItems];
+  const visibleDailyRecords = dailyMode
+    ? stackedItems.baseItems.map(item => item.dailyRecord).filter(Boolean)
+    : dailyRecords;
   const timelineExtentItems = timelinePaths.flatMap((points, pathIndex) => points.map((point, pointIndex) => ({
     ciudad: {
       id: `timeline-extent-${pathIndex}-${pointIndex}`,
@@ -8786,7 +8971,7 @@ function tripMapItemsForCurrentScope() {
     duplicatePhotoCount,
     availablePhotoCount: visiblePhotoRecords.length,
     dailyMode,
-    dailyRecords,
+    dailyRecords: visibleDailyRecords,
     dailyUsesCityFallback: dailyMode && combinedDailyRecords.usesCityFallback,
     dayOptions,
     cityMode,
@@ -8944,11 +9129,15 @@ function openTripMapMarkerPopup(detail, anchorElement = null) {
   if (!popup || !detail) return;
   const meta = [detail.place, ...(detail.dateLines || [])].filter(Boolean);
   const notes = (detail.noteLines || []).filter(Boolean);
-  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${escapeHtml(detail.title || 'Punto')}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-marker-popup-detail">${meta.length ? meta.map(line => `<span>${escapeHtml(line)}</span>`).join('') : '<span>Sin fecha indicada</span>'}${notes.map(note => `<p class="map-marker-popup-notes"><strong>Notas:</strong> ${escapeHtml(note)}</p>`).join('')}${detail.lodgingEdit ? '<button type="button" class="ghost" data-edit-timeline-lodging="1">Editar nombre del alojamiento</button>' : ''}</div>`;
+  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${escapeHtml(detail.title || 'Punto')}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-marker-popup-detail">${meta.length ? meta.map(line => `<span>${escapeHtml(line)}</span>`).join('') : '<span>Sin fecha indicada</span>'}${notes.map(note => `<p class="map-marker-popup-notes"><strong>Notas:</strong> ${escapeHtml(note)}</p>`).join('')}${detail.lodgingEdit ? '<button type="button" class="ghost" data-edit-timeline-lodging="1">Editar nombre del alojamiento</button>' : ''}${detail.pointEdit ? '<button type="button" class="ghost" data-edit-map-point-name="1">Editar nombre del punto</button>' : ''}</div>`;
   popup.hidden = false;
   if (detail.lodgingEdit) {
     const editButton = popup.querySelector('[data-edit-timeline-lodging]');
     if (editButton) editButton.onclick = () => openLodgingNameDialog(detail.lodgingEdit);
+  }
+  if (detail.pointEdit) {
+    const editButton = popup.querySelector('[data-edit-map-point-name]');
+    if (editButton) editButton.onclick = () => openMapPointDialog(detail.pointEdit);
   }
   positionTripMapPhotoPopup(popup, anchorElement);
 }
@@ -9112,13 +9301,35 @@ function tripMapMarkerDetail(items = [], dailyRecord = null) {
       sourceLabel: String(source.lodgingNameSourceLabel || '')
     }
     : null;
+  const editablePoint = source && source.entry && source.entry.tipo === 'punto'
+    ? source.entry
+    : (source && source.tipo === 'punto' ? source : (first.pointEntry && first.pointEntry.tipo === 'punto' ? first.pointEntry : null));
+  const editablePointCoordinates = editablePoint ? blogPointCoordinates(editablePoint) : null;
+  const pointEdit = editablePoint && editablePointCoordinates
+    ? {
+      entryId: Number(editablePoint.id),
+      tripId: Number(editablePoint.viajeId),
+      cityId: Number(editablePoint.ciudadId) || null,
+      latitude: editablePointCoordinates.latitude,
+      longitude: editablePointCoordinates.longitude,
+      name: String(editablePoint.descripcion || ''),
+      date: String(editablePoint.fecha || ''),
+      time: String(editablePoint.hora || '')
+    }
+    : null;
   return {
     title,
     place: place && place !== title ? place : '',
     dateLines,
     noteLines,
-    lodgingEdit
+    lodgingEdit,
+    pointEdit
   };
+}
+
+function openTripMapMarkerNameEditor(detail) {
+  if (detail && detail.lodgingEdit) openLodgingNameDialog(detail.lodgingEdit);
+  else if (detail && detail.pointEdit) openMapPointDialog(detail.pointEdit);
 }
 
 async function loadMapTileForCanvas(descriptor) {
@@ -9757,6 +9968,10 @@ async function copyCurrentMapToBlog() {
 }
 
 function destroyTripVectorMap() {
+  if (tripMapLongPressCleanup) {
+    tripMapLongPressCleanup();
+    tripMapLongPressCleanup = null;
+  }
   tripVectorPhotoMarkers.forEach(marker => {
     try { marker.remove(); } catch {}
   });
@@ -9778,7 +9993,7 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
   const routePoint = groupedRouteItems.length > 0 || !item.configuredOnly;
   const pointMarker = Boolean(item.blogPoint);
   const transportMarker = pointMarker ? tripMapTransportMarker(dailyRecord || item) : null;
-  element.className = `trip-vector-marker${item.configuredOnly ? ' configured' : ''}${pointMarker ? ' point' : ''}${item.timelinePoint ? ' timeline' : ''}${dailyRecord ? ' daily' : ''}${routeGroup.length > 1 ? ' repeated' : ''}${transportMarker ? ` transport ${transportMarker.type}` : ''}`;
+  element.className = `trip-vector-marker${item.configuredOnly ? ' configured' : ''}${pointMarker ? ' point' : ''}${item.timelinePoint ? ' timeline' : ''}${dailyRecord ? ' daily' : ''}${routeGroup.length > 1 ? ' repeated' : ''}${item.stackedOverLodging ? ' stacked-city' : ''}${item.stackedUnderCity ? ' stacked-lodging' : ''}${transportMarker ? ` transport ${transportMarker.type}` : ''}`;
   const dot = document.createElement('span');
   dot.className = 'trip-vector-marker-dot';
   const routeNumberText = presentation && presentation.numberText
@@ -9831,11 +10046,11 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
     element.addEventListener('keydown', event => {
       if (event.key === 'Enter' || event.key === ' ') open(event);
     });
-    if (markerDetail.lodgingEdit) {
+    if (markerDetail.lodgingEdit || markerDetail.pointEdit) {
       element.addEventListener('dblclick', event => {
         event.preventDefault();
         event.stopPropagation();
-        openLodgingNameDialog(markerDetail.lodgingEdit);
+        openTripMapMarkerNameEditor(markerDetail);
       });
     }
   } else {
@@ -9852,11 +10067,11 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
     element.addEventListener('keydown', event => {
       if (event.key === 'Enter' || event.key === ' ') open(event);
     });
-    if (markerDetail.lodgingEdit) {
+    if (markerDetail.lodgingEdit || markerDetail.pointEdit) {
       element.addEventListener('dblclick', event => {
         event.preventDefault();
         event.stopPropagation();
-        openLodgingNameDialog(markerDetail.lodgingEdit);
+        openTripMapMarkerNameEditor(markerDetail);
       });
     }
   }
@@ -9865,7 +10080,7 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
 
 function tripVectorDestinationElement(markerModel, labelOnLeft) {
   const element = document.createElement('span');
-  element.className = `trip-vector-destination-marker ${labelOnLeft ? 'label-left' : 'label-right'}`;
+  element.className = `trip-vector-destination-marker ${labelOnLeft ? 'label-left' : 'label-right'}${markerModel.record.stackedOverLodging ? ' stacked-city' : ''}`;
   const number = document.createElement('span');
   number.textContent = markerModel.numberText;
   const label = document.createElement('span');
@@ -9922,6 +10137,57 @@ function updateTripVectorZoomLabel(map, baseZoom) {
   const roundedZoom = Math.round(zoom * 10) / 10;
   const roundedDelta = Math.round(delta * 10) / 10;
   label.textContent = `Z ${roundedZoom} ${Math.abs(roundedDelta) < 0.05 ? 'auto' : `${roundedDelta > 0 ? '+' : ''}${roundedDelta}`}`;
+}
+
+function installTripMapLongPress(target, coordinatesForEvent) {
+  if (!target || typeof coordinatesForEvent !== 'function') return;
+  if (tripMapLongPressCleanup) tripMapLongPressCleanup();
+  let timer = null;
+  let start = null;
+  let activePointerId = null;
+  const clear = () => {
+    if (timer) window.clearTimeout(timer);
+    timer = null;
+    start = null;
+    activePointerId = null;
+  };
+  const pointerDown = event => {
+    if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+    if (event.target instanceof Element && event.target.closest('.trip-vector-marker, .trip-vector-photo-marker, .map-photo-popup, .maplibregl-ctrl')) return;
+    clear();
+    activePointerId = event.pointerId;
+    start = { x: event.clientX, y: event.clientY };
+    timer = window.setTimeout(() => {
+      const point = coordinatesForEvent({ clientX: start.x, clientY: start.y });
+      clear();
+      if (!point) return;
+      if (navigator.vibrate) navigator.vibrate(35);
+      openMapPointDialog({ latitude: point.latitude, longitude: point.longitude });
+    }, TRIP_MAP_LONG_PRESS_MS);
+  };
+  const pointerMove = event => {
+    if (event.pointerId !== activePointerId || !start) return;
+    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 9) clear();
+  };
+  const pointerEnd = event => {
+    if (event.pointerId === activePointerId) clear();
+  };
+  const contextMenu = event => event.preventDefault();
+  target.addEventListener('pointerdown', pointerDown, true);
+  target.addEventListener('pointermove', pointerMove, true);
+  target.addEventListener('pointerup', pointerEnd, true);
+  target.addEventListener('pointercancel', pointerEnd, true);
+  target.addEventListener('pointerleave', pointerEnd, true);
+  target.addEventListener('contextmenu', contextMenu, true);
+  tripMapLongPressCleanup = () => {
+    clear();
+    target.removeEventListener('pointerdown', pointerDown, true);
+    target.removeEventListener('pointermove', pointerMove, true);
+    target.removeEventListener('pointerup', pointerEnd, true);
+    target.removeEventListener('pointercancel', pointerEnd, true);
+    target.removeEventListener('pointerleave', pointerEnd, true);
+    target.removeEventListener('contextmenu', contextMenu, true);
+  };
 }
 
 function addTripMapSatellite(map) {
@@ -9995,6 +10261,15 @@ function initializeTripVectorMap({ container, withCoords, extentItems = withCoor
     return false;
   }
   tripVectorMap = map;
+  installTripMapLongPress(host, pointer => {
+    const canvas = map.getCanvas();
+    const rect = canvas.getBoundingClientRect();
+    const x = pointer.clientX - rect.left;
+    const y = pointer.clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
+    const point = map.unproject([x, y]);
+    return { latitude: Number(point.lat), longitude: Number(point.lng) };
+  });
   if (map.touchZoomRotate && typeof map.touchZoomRotate.disableRotation === 'function') {
     map.touchZoomRotate.disableRotation();
   }
@@ -10004,7 +10279,8 @@ function initializeTripVectorMap({ container, withCoords, extentItems = withCoor
     : null;
   const dailyRoute = dailyModel ? dailyModel.route : [];
   const dailyHasRoute = Boolean(dailyModel && dailyModel.hasRoute);
-  const standardItems = withCoords.filter(item => !item.photoPoint);
+  const standardItems = withCoords.filter(item => !item.photoPoint
+    && !(dailyMode && item.stackedOverLodging && item.dailyRecord && item.dailyRecord.kind === 'city'));
   const photoItems = withCoords.filter(item => item.photoPoint);
   const tripModel = dailyMode ? null : tripRoutePresentation(orderTripItemsWithRouteWaypoints([...standardItems, ...photoItems.filter(item => item.routeWaypoint)]));
   const markerGroups = dailyMode
@@ -10021,17 +10297,19 @@ function initializeTripVectorMap({ container, withCoords, extentItems = withCoor
     const routeGroup = !dailyMode && !item.configuredOnly ? group : [];
     const marker = new window.maplibregl.Marker({
       element: tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute, routeGroup, presentation),
-      anchor: 'center'
+      anchor: 'center',
+      offset: item.stackedOverLodging ? [0, -30] : [0, 0]
     }).setLngLat([Number(item.ciudad.lng), Number(item.ciudad.lat)]).addTo(map);
     tripVectorMarkers.push(marker);
   });
   if (dailyMode) {
     dailyModel.destinationMarkers.forEach(markerModel => {
       const labelOnLeft = Number(markerModel.record.longitude) >= Number(center[0]);
+      const stackedOverLodging = markerModel.record.stackedOverLodging === true;
       const marker = new window.maplibregl.Marker({
         element: tripVectorDestinationElement(markerModel, labelOnLeft),
         anchor: 'center',
-        offset: [labelOnLeft ? -18 : 18, 0]
+        offset: stackedOverLodging ? [0, -30] : [labelOnLeft ? -18 : 18, 0]
       }).setLngLat([Number(markerModel.record.longitude), Number(markerModel.record.latitude)]).addTo(map);
       tripVectorMarkers.push(marker);
     });
@@ -10281,7 +10559,9 @@ function renderTripMap() {
   };
   const projectedItems = withCoords.map((item, index) => ({ ...item, index, point: project(item) }));
   const standardItems = dailyMode
-    ? projectedItems.slice().sort((a, b) => Number(b.photoPoint) - Number(a.photoPoint))
+    ? projectedItems
+      .filter(item => !(item.stackedOverLodging && item.dailyRecord && item.dailyRecord.kind === 'city'))
+      .sort((a, b) => Number(b.photoPoint) - Number(a.photoPoint))
     : projectedItems.filter(item => !item.photoPoint);
   const photoItems = dailyMode ? [] : projectedItems.filter(item => item.photoPoint);
   const dailyModel = dailyMode ? dailyMapPresentation(dailyRecords) : null;
@@ -10308,6 +10588,7 @@ function renderTripMap() {
   const markers = pointGroups.map(({ items: group, presentation }, markerIndex) => {
     const item = group[0];
     const p = item.point;
+    const markerY = p.y - (item.stackedOverLodging ? 22 : 0);
     const labelX = p.x + 12 > width - 120 ? p.x - 12 : p.x + 12;
     const anchor = p.x + 12 > width - 120 ? 'end' : 'start';
     const routeStops = group.filter(stop => !stop.configuredOnly);
@@ -10331,8 +10612,11 @@ function renderTripMap() {
       : [cityNames.join(' / ')];
     const visibleMarkerLabelLines = transportMarker ? [] : markerLabelLines.slice(0, 1);
     const markerLabelText = visibleMarkerLabelLines.map((line, lineIndex) => `<tspan x="${labelX.toFixed(1)}" dy="${lineIndex ? 13 : 0}">${escapeHtml(line)}</tspan>`).join('');
+    const markerLabelY = item.stackedUnderCity
+      ? p.y + 25
+      : markerY - 12 - (visibleMarkerLabelLines.length - 1) * 6.5;
     const markerLabel = visibleMarkerLabelLines.length
-      ? `<text x="${labelX.toFixed(1)}" y="${(p.y - 12 - (visibleMarkerLabelLines.length - 1) * 6.5).toFixed(1)}" text-anchor="${anchor}">${markerLabelText}</text>`
+      ? `<text x="${labelX.toFixed(1)}" y="${markerLabelY.toFixed(1)}" text-anchor="${anchor}">${markerLabelText}</text>`
       : '';
     const markerDetail = tripMapMarkerDetail(group, dailyRecord);
     const title = `${markerDetail.title} · pulsa para ver los detalles`;
@@ -10348,9 +10632,9 @@ function renderTripMap() {
       : '';
     const markerVisual = transportMarker
       ? (transportMarker.image
-        ? `<image href="${escapeHtml(transportMarker.image)}" x="${(p.x - 15).toFixed(1)}" y="${(p.y - 10).toFixed(1)}" width="30" height="20" class="map-marker-transport-image" preserveAspectRatio="xMidYMid meet"></image>`
-        : `<text x="${p.x.toFixed(1)}" y="${(p.y + 6).toFixed(1)}" class="map-marker-transport-symbol">${transportMarker.icon}</text>`)
-      : `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${dailyPhoto ? 10 : 8}"></circle><text x="${p.x.toFixed(1)}" y="${(p.y + 4).toFixed(1)}" class="map-marker-number">${markerText}</text>`;
+        ? `<image href="${escapeHtml(transportMarker.image)}" x="${(p.x - 15).toFixed(1)}" y="${(markerY - 10).toFixed(1)}" width="30" height="20" class="map-marker-transport-image" preserveAspectRatio="xMidYMid meet"></image>`
+        : `<text x="${p.x.toFixed(1)}" y="${(markerY + 6).toFixed(1)}" class="map-marker-transport-symbol">${transportMarker.icon}</text>`)
+      : `<circle cx="${p.x.toFixed(1)}" cy="${markerY.toFixed(1)}" r="${dailyPhoto ? 10 : 8}"></circle><text x="${p.x.toFixed(1)}" y="${(markerY + 4).toFixed(1)}" class="map-marker-number">${markerText}</text>`;
     return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${item.timelinePoint ? ' map-marker-timeline' : ''}${transportMarker ? ` map-marker-transport ${transportMarker.type}` : ''}${markerPhotoRecord || detailKey ? ' map-marker-clickable' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction || detailAction}>${markerVisual}${markerLabel}<title>${escapeHtml(title)}</title></g>`;
   }).join('');
   tripMapPhotoLookup.clear();
@@ -10375,9 +10659,10 @@ function renderTripMap() {
   }).join('');
   const destinationMarkers = dailyMode ? dailyModel.destinationMarkers.map(markerModel => {
     const p = project({ ciudad: { lat: markerModel.record.latitude, lng: markerModel.record.longitude } });
+    const stackedOverLodging = markerModel.record.stackedOverLodging === true;
     const labelOnLeft = p.x >= width / 2;
-    const x = p.x + (labelOnLeft ? -18 : 18);
-    const y = p.y;
+    const x = stackedOverLodging ? p.x : p.x + (labelOnLeft ? -18 : 18);
+    const y = p.y - (stackedOverLodging ? 22 : 0);
     const cityName = markerModel.labelLines[0] || dailyMapCityName(markerModel.record);
     const labelX = x + (labelOnLeft ? -12 : 12);
     return `<g class="map-destination-number"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="8"></circle><text class="number" x="${x.toFixed(1)}" y="${(y + 3).toFixed(1)}">${escapeHtml(markerModel.numberText)}</text><text class="map-destination-label" x="${labelX.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="${labelOnLeft ? 'end' : 'start'}">${escapeHtml(cityName)}</text><title>Destino ${escapeHtml(markerModel.numberText)} · ${escapeHtml(cityName)}</title></g>`;
@@ -10439,6 +10724,17 @@ function renderTripMap() {
       baseZoom,
       timelinePaths
     });
+  } else {
+    const frame = container.querySelector('.trip-map-frame');
+    installTripMapLongPress(frame, pointer => {
+      if (!frame) return null;
+      const rect = frame.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      const x = ((pointer.clientX - rect.left) / rect.width) * width;
+      const y = ((pointer.clientY - rect.top) / rect.height) * height;
+      if (x < 0 || y < 0 || x > width || y > height) return null;
+      return mapLatLngFromWorldPoint(startX + x, startY + y, zoom);
+    });
   }
   container.querySelectorAll('[data-map-photo-keys]').forEach(marker => {
     const open = event => {
@@ -10462,11 +10758,11 @@ function renderTripMap() {
     marker.addEventListener('keydown', event => {
       if (event.key === 'Enter' || event.key === ' ') open(event);
     });
-    if (detail && detail.lodgingEdit) {
+    if (detail && (detail.lodgingEdit || detail.pointEdit)) {
       marker.addEventListener('dblclick', event => {
         event.preventDefault();
         event.stopPropagation();
-        openLodgingNameDialog(detail.lodgingEdit);
+        openTripMapMarkerNameEditor(detail);
       });
     }
   });
@@ -11681,7 +11977,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v261');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v262');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15537,6 +15833,18 @@ function bindEvents() {
     saveLodgingName()
       .catch(error => setMessage('#msg-lodging-name', error.message || String(error)));
   };
+  $('#map-point-close').onclick = closeMapPointDialog;
+  $('#map-point-cancel').onclick = closeMapPointDialog;
+  $('#map-point-dialog').oncancel = event => {
+    event.preventDefault();
+    closeMapPointDialog();
+  };
+  $('#map-point-form').onsubmit = event => {
+    event.preventDefault();
+    setMessage('#msg-map-point', 'Guardando…');
+    saveMapPoint()
+      .catch(error => setMessage('#msg-map-point', error.message || String(error)));
+  };
   $('#timeline-select-file').onclick = () => {
     const input = $('#timeline-file-input');
     if (!input) return;
@@ -17245,7 +17553,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v261');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v262');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
