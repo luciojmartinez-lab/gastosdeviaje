@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v266';
+const APP_VERSION = '700v267';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -10,6 +10,7 @@ const LODGING_NAME_MAX_DISTANCE_METERS = 200;
 const LODGING_FUZZY_NAME_MAX_DISTANCE_METERS = 1_500;
 const TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS = 80;
 const TIMELINE_SUPPLEMENT_GROUP_DISTANCE_METERS = 50;
+const TIMELINE_CITY_VISIT_MAX_DISTANCE_METERS = 3_000;
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
 const BACKUP_HISTORY_KEY = 'gastos_viaje_backup_history';
@@ -2377,7 +2378,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v266');
+    const worker = new Worker('./timeline-import-worker.js?v=700v267');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3119,7 +3120,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v266');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v267');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3910,7 +3911,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v266');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v267');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4001,7 +4002,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v266');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v267');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4063,7 +4064,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v266');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v267');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4361,7 +4362,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v266');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v267');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -8856,6 +8857,58 @@ function dailyCityMapRecordsForScope(scopedTripIds, paisId, day, destinationTrip
     .sort((a, b) => (a.hora || '99:99').localeCompare(b.hora || '99:99') || String(a.descripcion || '').localeCompare(String(b.descripcion || ''), 'es'));
 }
 
+function timelineVisitedDailyCityRecordsForScope(scopedTrips, paisId, day, destinationOnlyApplied = false, existingCityIds = new Set()) {
+  if (!day || !scopedTrips.length) return [];
+  const timelineRecords = scopedTrips
+    .flatMap(trip => timelineRecordsForTrip(trip.id))
+    .filter(record => record.fecha === day);
+  const timelinePoints = timelineMapPaths(timelineRecords)
+    .flat()
+    .filter(point => Number.isFinite(Number(point && point.latitude)) && Number.isFinite(Number(point && point.longitude)));
+  if (!timelinePoints.length) return [];
+  const seenCityIds = new Set([...existingCityIds].map(Number).filter(Boolean));
+  const records = [];
+  scopedTrips.forEach(trip => {
+    tripRouteStops(trip).forEach((stop, routeIndex) => {
+      const cityId = Number(stop.cityId);
+      if (!cityId || seenCityIds.has(cityId)) return;
+      if (destinationOnlyApplied && stop.role !== ROUTE_STOP_ROLE_DESTINATION) return;
+      const baseCity = state.lugares.find(place => Number(place.id) === cityId);
+      if (!baseCity || !lugarHasCoords(baseCity) || isTransitPlaceName(baseCity.nombre)) return;
+      if (paisId && Number(baseCity.parentId) !== Number(paisId)) return;
+      const city = cityWithAccommodationDestination(baseCity, trip.id, day);
+      const nearest = timelinePoints
+        .map(point => ({
+          point,
+          distance: geographicDistanceMeters(
+            { latitude: Number(city.lat), longitude: Number(city.lng) },
+            { latitude: Number(point.latitude), longitude: Number(point.longitude) }
+          )
+        }))
+        .sort((a, b) => a.distance - b.distance)[0];
+      if (!nearest || nearest.distance > TIMELINE_CITY_VISIT_MAX_DISTANCE_METERS) return;
+      seenCityIds.add(cityId);
+      records.push({
+        key: `timeline-city-${trip.id}-${cityId}-${day}`,
+        kind: 'city',
+        viajeId: Number(trip.id),
+        fecha: day,
+        hora: String(nearest.point.time || '').slice(11, 16),
+        descripcion: city.nombre,
+        ciudadId: cityId,
+        paisId: Number(city.parentId) || null,
+        latitude: Number(city.lat),
+        longitude: Number(city.lng),
+        accommodationDestination: city.accommodationDestination === true,
+        timelineVisited: true,
+        plannedOnly: false,
+        routeIndex
+      });
+    });
+  });
+  return records;
+}
+
 function tripDailyRouteOrder(trip, day) {
   const routeIds = tripCityIds(trip).map(Number).filter(Boolean);
   const arrivalDates = tripRouteArrivalDates(trip, routeIds);
@@ -9020,11 +9073,27 @@ function tripMapItemsForCurrentScope() {
     ...selectedExactDailyRecords.map(record => Number(record.ciudadId)),
     ...actualDailyCityRecords.map(record => Number(record.ciudadId))
   ].filter(Boolean));
+  const actualDailyCityMarkerIds = new Set(
+    actualDailyCityRecords.map(record => Number(record.ciudadId)).filter(Boolean)
+  );
+  const timelineVisitedDailyRecords = dailyMode
+    ? timelineVisitedDailyCityRecordsForScope(
+      scopedTrips,
+      paisId,
+      tripMapState.day,
+      destinationOnlyApplied,
+      actualDailyCityMarkerIds
+    )
+    : [];
+  const representedDailyCityIds = new Set([
+    ...actualDailyCityIds,
+    ...timelineVisitedDailyRecords.map(record => Number(record.ciudadId))
+  ].filter(Boolean));
   const plannedDailyRecords = dailyMode
     ? plannedDailyMapRecordsForScope(scopedTripIds, paisId, tripMapState.day, destinationOnlyApplied)
-      .filter(record => !actualDailyCityIds.has(Number(record.ciudadId)))
+      .filter(record => !representedDailyCityIds.has(Number(record.ciudadId)))
     : [];
-  const dailyCityRecords = [...actualDailyCityRecords, ...plannedDailyRecords];
+  const dailyCityRecords = [...actualDailyCityRecords, ...timelineVisitedDailyRecords, ...plannedDailyRecords];
   const dailyRouteOrder = dailyMode && scopedTrips.length === 1
     ? tripDailyRouteOrder(scopedTrips[0], tripMapState.day)
     : new Map();
@@ -12267,7 +12336,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v266');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v267');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -17869,7 +17938,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v266');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v267');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

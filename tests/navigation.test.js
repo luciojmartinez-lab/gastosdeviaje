@@ -145,6 +145,46 @@ test('el GPS exacto corrige una localidad claramente distinta sin mover ciudades
   assert.match(app, /const entry = resolvedMapPointEntry\(originalEntry\)/);
 });
 
+test('la Cronología completa las ciudades numeradas visitadas aunque no tengan gastos ese día', () => {
+  const start = app.indexOf('function timelineVisitedDailyCityRecordsForScope');
+  const end = app.indexOf('function tripDailyRouteOrder', start);
+  const context = {
+    TIMELINE_CITY_VISIT_MAX_DISTANCE_METERS: 3000,
+    ROUTE_STOP_ROLE_DESTINATION: 'destination',
+    state: {
+      lugares: [
+        { id: 3, nombre: 'Salinas del Manzano', parentId: 1, lat: 40.09, lng: -1.55 },
+        { id: 4, nombre: 'Cañete', parentId: 1, lat: 40.04, lng: -1.65 }
+      ]
+    },
+    timelineRecordsForTrip: () => [{ id: 'day-12', fecha: '2026-08-12' }],
+    timelineMapPaths: () => [[
+      { latitude: 40.091, longitude: -1.551, time: '2026-08-12T09:00:00+02:00' },
+      { latitude: 40.041, longitude: -1.651, time: '2026-08-12T12:00:00+02:00' }
+    ]],
+    tripRouteStops: () => [
+      { cityId: 3, role: 'destination' },
+      { cityId: 4, role: 'destination' }
+    ],
+    lugarHasCoords: city => Number.isFinite(Number(city.lat)) && Number.isFinite(Number(city.lng)),
+    isTransitPlaceName: () => false,
+    cityWithAccommodationDestination: city => city,
+    geographicDistanceMeters: (first, second) => Math.hypot(
+      Number(first.latitude) - Number(second.latitude),
+      Number(first.longitude) - Number(second.longitude)
+    ) * 111000
+  };
+  vm.runInNewContext(`${app.slice(start, end)}; this.timelineVisitedDailyCityRecordsForScope = timelineVisitedDailyCityRecordsForScope;`, context);
+  const records = context.timelineVisitedDailyCityRecordsForScope([{ id: 8 }], 1, '2026-08-12', false, new Set());
+
+  assert.deepEqual(Array.from(records, record => Number(record.ciudadId)), [3, 4]);
+  assert.equal(records[0].timelineVisited, true);
+  const onlyMissing = context.timelineVisitedDailyCityRecordsForScope([{ id: 8 }], 1, '2026-08-12', false, new Set([3]));
+  assert.deepEqual(Array.from(onlyMissing, record => Number(record.ciudadId)), [4]);
+  assert.match(app, /const dailyCityRecords = \[\.\.\.actualDailyCityRecords, \.\.\.timelineVisitedDailyRecords, \.\.\.plannedDailyRecords\]/);
+  assert.match(app, /timelineVisitedDailyCityRecordsForScope\([\s\S]*?actualDailyCityMarkerIds\s*\)/);
+});
+
 test('Solo destinos usa la clasificación y no borra el día al filtrar', () => {
   assert.match(app, /const destinationStops = completeStops\.filter\(stop => stop\.role === ROUTE_STOP_ROLE_DESTINATION\)/);
   assert.doesNotMatch(app, /completeIds\.slice\(1, -1\)/);
