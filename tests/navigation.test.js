@@ -86,6 +86,53 @@ test('una pulsación mantenida permite crear y nombrar un punto en el mapa', () 
   assert.match(app, /function installFallbackManualPointDrag\(frame, options = \{\}\)/);
 });
 
+test('el GPS exacto corrige una localidad claramente distinta sin mover ciudades por alojamientos ajenos', () => {
+  const start = app.indexOf('function resolvedMapCoordinateCity');
+  const end = app.indexOf('function resolvedManualMapPointEntry', start);
+  const source = app.slice(start, end);
+  const state = {
+    viajes: [{ id: 1 }],
+    lugares: [
+      { id: 10, nombre: 'Cañete', parentId: 5, lat: 40.04, lng: -1.65 },
+      { id: 20, nombre: 'Salinas del Manzano', parentId: 5, lat: 40.09, lng: -1.55 }
+    ]
+  };
+  const distance = (first, second) => Math.hypot(
+    Number(first.latitude) - Number(second.latitude),
+    Number(first.longitude) - Number(second.longitude)
+  ) * 111000;
+  const resolvedMapCoordinateCity = Function(
+    'state',
+    'storedImageCoordinate',
+    'nearestTripCityForPoint',
+    'lugarHasCoords',
+    'geographicDistanceMeters',
+    'TRIP_MAP_POINT_CITY_REASSIGN_GAIN_METERS',
+    `${source}\nreturn resolvedMapCoordinateCity;`
+  )(
+    state,
+    value => Number.isFinite(Number(value)) ? Number(value) : null,
+    () => state.lugares[1],
+    city => Number.isFinite(Number(city.lat)) && Number.isFinite(Number(city.lng)),
+    distance,
+    3000
+  );
+  const result = resolvedMapCoordinateCity({
+    viajeId: 1,
+    ciudadId: 10,
+    paisId: 5,
+    latitude: 40.091,
+    longitude: -1.551,
+    fecha: '2026-08-13'
+  });
+
+  assert.equal(result.ciudadId, 20);
+  assert.equal(result.mapCityResolvedFromGps, true);
+  assert.match(app, /filter\(candidate => accommodationCandidateMatchesCity\(tripId, cityId, candidate\)\)/);
+  assert.match(app, /records\.push\(resolvedMapCoordinateCity\(\{/);
+  assert.match(app, /const entry = resolvedMapPointEntry\(originalEntry\)/);
+});
+
 test('Solo destinos usa la clasificación y no borra el día al filtrar', () => {
   assert.match(app, /const destinationStops = completeStops\.filter\(stop => stop\.role === ROUTE_STOP_ROLE_DESTINATION\)/);
   assert.doesNotMatch(app, /completeIds\.slice\(1, -1\)/);

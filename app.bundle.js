@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v264';
+const APP_VERSION = '700v265';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -1150,7 +1150,9 @@ function accommodationDestinationForTripCity(tripId, cityId, targetDate = '') {
         });
       });
     });
-  return candidates.sort((a, b) =>
+  return candidates
+    .filter(candidate => accommodationCandidateMatchesCity(tripId, cityId, candidate))
+    .sort((a, b) =>
     a.priority - b.priority
     || a.distance - b.distance
     || String(a.date || '').localeCompare(String(b.date || ''))
@@ -2161,25 +2163,57 @@ function nearestTripCityForPoint(trip, point, options = {}) {
   return candidates[0]?.city || null;
 }
 
-function resolvedManualMapPointEntry(entry) {
-  if (!entry || entry.tipo !== 'punto' || entry.mapCityManual === true) return entry;
-  const trip = state.viajes.find(item => Number(item.id) === Number(entry.viajeId));
-  const point = blogPointCoordinates(entry);
+function accommodationCandidateMatchesCity(tripId, cityId, point) {
+  const trip = state.viajes.find(item => Number(item.id) === Number(tripId));
+  const assignedCity = state.lugares.find(item => Number(item.id) === Number(cityId));
+  if (!trip || !assignedCity || !lugarHasCoords(assignedCity) || !point) return true;
+  const nearestCity = nearestTripCityForPoint(trip, point);
+  if (!nearestCity || Number(nearestCity.id) === Number(cityId) || !lugarHasCoords(nearestCity)) return true;
+  const assignedDistance = geographicDistanceMeters(point, {
+    latitude: Number(assignedCity.lat),
+    longitude: Number(assignedCity.lng)
+  });
+  const nearestDistance = geographicDistanceMeters(point, {
+    latitude: Number(nearestCity.lat),
+    longitude: Number(nearestCity.lng)
+  });
+  return assignedDistance - nearestDistance < TRIP_MAP_POINT_CITY_REASSIGN_GAIN_METERS;
+}
+
+function resolvedMapCoordinateCity(record, options = {}) {
+  if (!record || record.mapCityManual === true && options.respectManual !== false) return record;
+  const trip = state.viajes.find(item => Number(item.id) === Number(record.viajeId));
+  const latitude = storedImageCoordinate(record.latitude, -90, 90);
+  const longitude = storedImageCoordinate(record.longitude, -180, 180);
+  const point = latitude == null || longitude == null ? null : { latitude, longitude };
   const city = trip && point
-    ? nearestTripCityForPoint(trip, point, { date: entry.fecha, ignoreEntryId: entry.id })
+    ? nearestTripCityForPoint(trip, point, { date: record.fecha, ignoreEntryId: record.id || record.blogEntryId })
     : null;
-  if (!city || Number(city.id) === Number(entry.ciudadId)) return entry;
-  const storedCity = state.lugares.find(item => Number(item.id) === Number(entry.ciudadId));
+  if (!city || Number(city.id) === Number(record.ciudadId)) return record;
+  const storedCity = state.lugares.find(item => Number(item.id) === Number(record.ciudadId));
   if (storedCity && lugarHasCoords(storedCity)) {
     const storedDistance = geographicDistanceMeters(point, { latitude: Number(storedCity.lat), longitude: Number(storedCity.lng) });
     const suggestedDistance = geographicDistanceMeters(point, { latitude: Number(city.lat), longitude: Number(city.lng) });
-    if (storedDistance - suggestedDistance < TRIP_MAP_POINT_CITY_REASSIGN_GAIN_METERS) return entry;
+    if (storedDistance - suggestedDistance < TRIP_MAP_POINT_CITY_REASSIGN_GAIN_METERS) return record;
   }
   return {
-    ...entry,
+    ...record,
     ciudadId: Number(city.id),
-    paisId: Number(city.parentId) || null
+    paisId: Number(city.parentId) || null,
+    mapCityResolvedFromGps: true
   };
+}
+
+function resolvedManualMapPointEntry(entry) {
+  if (!entry || entry.tipo !== 'punto' || entry.mapCityManual === true) return entry;
+  return resolvedMapCoordinateCity(entry);
+}
+
+function resolvedMapPointEntry(entry) {
+  if (!entry || !blogPointCoordinates(entry)) return entry;
+  return entry.tipo === 'punto'
+    ? resolvedManualMapPointEntry(entry)
+    : resolvedMapCoordinateCity(entry);
 }
 
 function renderMapPointCityOptions(trip, cityId = null) {
@@ -2343,7 +2377,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v264');
+    const worker = new Worker('./timeline-import-worker.js?v=700v265');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3085,7 +3119,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v264');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v265');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3876,7 +3910,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v264');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v265');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3967,7 +4001,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v264');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v265');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4029,7 +4063,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v264');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v265');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4327,7 +4361,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v264');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v265');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -8259,12 +8293,12 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
     }
     signatures.forEach(signature => seen.add(signature));
     seen.add(keySignature);
-    records.push({
+    records.push(resolvedMapCoordinateCity({
       ...record,
       key,
       latitude: point.latitude,
       longitude: point.longitude
-    });
+    }));
   };
 
   state.blogEntries
@@ -8386,7 +8420,7 @@ function dailyMapRecordsForScope(scopedTripIds, paisId) {
       return Number(entry.paisId || (city && city.parentId)) === Number(paisId);
     })
     .map(originalEntry => {
-      const entry = resolvedManualMapPointEntry(originalEntry);
+      const entry = resolvedMapPointEntry(originalEntry);
       const point = blogPointCoordinates(entry);
       return {
         key: `point-${entry.id}`,
@@ -8994,7 +9028,7 @@ function tripMapItemsForCurrentScope() {
       return Number(entry.paisId || (city && city.parentId)) === paisId;
     })
     .map(originalEntry => {
-      const entry = resolvedManualMapPointEntry(originalEntry);
+      const entry = resolvedMapPointEntry(originalEntry);
       const point = blogPointCoordinates(entry);
       return {
         ciudad: {
@@ -12221,7 +12255,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v264');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v265');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -17823,7 +17857,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v264');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v265');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
