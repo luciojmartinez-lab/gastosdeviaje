@@ -47,8 +47,10 @@ test('el alojamiento conserva su coordenada y coloca la ciudad justo encima', ()
   const start = app.indexOf('function stackMapCitiesWithLodgings');
   const end = app.indexOf('function tripMapItemsForCurrentScope', start);
   const context = {
+    state: { viajes: [{ id: 1 }] },
     lugarHasCoords: item => Number.isFinite(Number(item && item.lat)) && Number.isFinite(Number(item && item.lng)),
-    geographicDistanceMeters: () => 120
+    geographicDistanceMeters: () => 120,
+    nearestTripCityForPoint: () => ({ id: 20 })
   };
   vm.runInNewContext(`${app.slice(start, end)}; this.stackMapCitiesWithLodgings = stackMapCitiesWithLodgings;`, context);
   const result = context.stackMapCitiesWithLodgings([
@@ -61,6 +63,16 @@ test('el alojamiento conserva su coordenada y coloca la ciudad justo encima', ()
   assert.equal(result.baseItems[0].ciudad.lng, 2.18);
   assert.equal(result.baseItems[0].stackedOverLodging, true);
   assert.equal(result.lodgingItems[0].stackedUnderCity, true);
+  const dailyResult = context.stackMapCitiesWithLodgings([
+    { ciudad: { id: 'daily-canete', nombre: 'Cañete', lat: 40.04, lng: -1.65 }, firstDate: '2026-08-12', dailyRecord: { kind: 'city', ciudadId: 10, fecha: '2026-08-12' } },
+    { ciudad: { id: 'daily-salinas', nombre: 'Salinas del Manzano', lat: 40.09, lng: -1.55 }, firstDate: '2026-08-12', dailyRecord: { kind: 'city', ciudadId: 20, fecha: '2026-08-12' } }
+  ], [
+    { ciudad: { id: 'lodging-day', nombre: 'Casa', lat: 40.091, lng: -1.551 }, firstDate: '2026-08-12', timelinePoint: true, timelineRole: 'lodging', pointEntry: { key: 'night-day', viajeId: 1 } }
+  ], true);
+  assert.equal(dailyResult.baseItems[0].stackedOverLodging, undefined);
+  assert.equal(dailyResult.baseItems[0].ciudad.nombre, 'Cañete');
+  assert.equal(dailyResult.baseItems[1].stackedOverLodging, true);
+  assert.equal(dailyResult.baseItems[1].ciudad.lat, 40.091);
   assert.match(app, /offset: item\.stackedOverLodging \? \[0, -30\]/);
   assert.match(styles, /\.trip-vector-marker\.stacked-city \.trip-vector-marker-label[\s\S]*?bottom: 24px/);
   assert.match(styles, /\.trip-vector-marker\.stacked-lodging \.trip-vector-marker-label[\s\S]*?top: 24px/);
