@@ -74,6 +74,10 @@ test('una pulsación mantenida permite crear y nombrar un punto en el mapa', () 
   assert.match(app, /tipo: 'punto',[\s\S]*?descripcion: name,[\s\S]*?latitude: context\.latitude,[\s\S]*?longitude: context\.longitude/);
   assert.match(app, /data-edit-map-point-name="1"/);
   assert.match(app, /updateBlogEntry\(entry\.id, \{ descripcion: name \}\)/);
+  assert.match(html, /id="map-point-delete"[^>]*hidden/);
+  assert.match(app, /data-delete-map-point="1"/);
+  assert.match(app, /function deleteMapPoint\(context = activeMapPointContext\)[\s\S]*?delBlogEntry\(entry\.id\)/);
+  assert.match(app, /¿Eliminar «\$\{name\}» del mapa y del Blog\?/);
 });
 
 test('Solo destinos usa la clasificación y no borra el día al filtrar', () => {

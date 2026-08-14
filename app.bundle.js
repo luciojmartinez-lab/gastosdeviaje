@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v262';
+const APP_VERSION = '700v263';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2141,6 +2141,7 @@ function openMapPointDialog(context = {}) {
   };
   $('#map-point-title').textContent = editing ? 'Editar nombre del punto' : '¿Añadir este punto?';
   $('#map-point-save').textContent = editing ? 'Guardar nombre' : 'Añadir punto';
+  $('#map-point-delete').hidden = !editing;
   $('#map-point-date-fields').hidden = editing;
   $('#map-point-location').textContent = editing
     ? `Punto de ${trip.nombre}${city ? ` · ${city.nombre}` : ''}.`
@@ -2192,6 +2193,20 @@ async function saveMapPoint() {
   setTab('mapa');
 }
 
+async function deleteMapPoint(context = activeMapPointContext) {
+  if (!context || Number(context.entryId) <= 0) return;
+  const entry = state.blogEntries.find(item => Number(item.id) === Number(context.entryId) && item.tipo === 'punto');
+  if (!entry) throw new Error('No se encuentra el punto que quieres eliminar');
+  const name = String(entry.descripcion || context.name || 'este punto');
+  if (!confirm(`¿Eliminar «${name}» del mapa y del Blog?`)) return;
+  await delBlogEntry(entry.id);
+  const popup = $('#trip-map-photo-popup');
+  if (popup) popup.hidden = true;
+  closeMapPointDialog();
+  await loadAll();
+  setTab('mapa');
+}
+
 function parseTimelineFileInWorker(file, trip) {
   if (typeof Worker !== 'function') {
     return file.text()
@@ -2202,7 +2217,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v262');
+    const worker = new Worker('./timeline-import-worker.js?v=700v263');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2944,7 +2959,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v262');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v263');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3735,7 +3750,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v262');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v263');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3826,7 +3841,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v262');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v263');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3888,7 +3903,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v262');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v263');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4186,7 +4201,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v262');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v263');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -9129,7 +9144,7 @@ function openTripMapMarkerPopup(detail, anchorElement = null) {
   if (!popup || !detail) return;
   const meta = [detail.place, ...(detail.dateLines || [])].filter(Boolean);
   const notes = (detail.noteLines || []).filter(Boolean);
-  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${escapeHtml(detail.title || 'Punto')}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-marker-popup-detail">${meta.length ? meta.map(line => `<span>${escapeHtml(line)}</span>`).join('') : '<span>Sin fecha indicada</span>'}${notes.map(note => `<p class="map-marker-popup-notes"><strong>Notas:</strong> ${escapeHtml(note)}</p>`).join('')}${detail.lodgingEdit ? '<button type="button" class="ghost" data-edit-timeline-lodging="1">Editar nombre del alojamiento</button>' : ''}${detail.pointEdit ? '<button type="button" class="ghost" data-edit-map-point-name="1">Editar nombre del punto</button>' : ''}</div>`;
+  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${escapeHtml(detail.title || 'Punto')}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-marker-popup-detail">${meta.length ? meta.map(line => `<span>${escapeHtml(line)}</span>`).join('') : '<span>Sin fecha indicada</span>'}${notes.map(note => `<p class="map-marker-popup-notes"><strong>Notas:</strong> ${escapeHtml(note)}</p>`).join('')}${detail.lodgingEdit ? '<button type="button" class="ghost" data-edit-timeline-lodging="1">Editar nombre del alojamiento</button>' : ''}${detail.pointEdit ? '<button type="button" class="ghost" data-edit-map-point-name="1">Editar nombre del punto</button><button type="button" class="ghost danger" data-delete-map-point="1">Eliminar punto</button>' : ''}</div>`;
   popup.hidden = false;
   if (detail.lodgingEdit) {
     const editButton = popup.querySelector('[data-edit-timeline-lodging]');
@@ -9138,6 +9153,8 @@ function openTripMapMarkerPopup(detail, anchorElement = null) {
   if (detail.pointEdit) {
     const editButton = popup.querySelector('[data-edit-map-point-name]');
     if (editButton) editButton.onclick = () => openMapPointDialog(detail.pointEdit);
+    const deleteButton = popup.querySelector('[data-delete-map-point]');
+    if (deleteButton) deleteButton.onclick = () => deleteMapPoint(detail.pointEdit).catch(error => alert(error.message || String(error)));
   }
   positionTripMapPhotoPopup(popup, anchorElement);
 }
@@ -11977,7 +11994,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v262');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v263');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15835,6 +15852,11 @@ function bindEvents() {
   };
   $('#map-point-close').onclick = closeMapPointDialog;
   $('#map-point-cancel').onclick = closeMapPointDialog;
+  $('#map-point-delete').onclick = () => {
+    setMessage('#msg-map-point', 'Eliminando…');
+    deleteMapPoint()
+      .catch(error => setMessage('#msg-map-point', error.message || String(error)));
+  };
   $('#map-point-dialog').oncancel = event => {
     event.preventDefault();
     closeMapPointDialog();
@@ -17553,7 +17575,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v262');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v263');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

@@ -3556,6 +3556,11 @@ body.map-fullscreen-open {
   display: none;
 }
 
+.map-point-modal .danger,
+.map-marker-popup-detail .danger {
+  color: #b91c1c;
+}
+
 .lodging-name-remember {
   display: flex;
   align-items: flex-start;
