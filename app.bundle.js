@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v263';
+const APP_VERSION = '700v264';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -95,7 +95,8 @@ const DIALOG_HELP_TARGETS = {
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const TRIP_MAP_WIDTH = 920;
 const TRIP_MAP_HEIGHT = 460;
-const TRIP_MAP_LONG_PRESS_MS = 1800;
+const TRIP_MAP_LONG_PRESS_MS = 1400;
+const TRIP_MAP_POINT_CITY_REASSIGN_GAIN_METERS = 3000;
 const TRIP_MAP_MIN_ZOOM = 2;
 const TRIP_MAP_MAX_ZOOM = 20;
 let dbPromise = null;
@@ -201,7 +202,8 @@ const tripMapState = {
   cityId: 0,
   printMode: false,
   vectorCenter: null,
-  vectorZoom: null
+  vectorZoom: null,
+  preserveViewportOnNextRender: false
 };
 const tripMapDrag = {
   active: false,
@@ -228,6 +230,7 @@ function resetTripMapView() {
   tripMapState.panY = 0;
   tripMapState.vectorCenter = null;
   tripMapState.vectorZoom = null;
+  tripMapState.preserveViewportOnNextRender = false;
 }
 
 function tripMapSize() {
@@ -1915,14 +1918,16 @@ function syncTripSelectsFromSelection() {
   state.selectedViajeId = ids.length === 1 ? ids[0] : null;
 }
 
-function setSelectedTrips(ids) {
+function setSelectedTrips(ids, options = {}) {
   state.selectedViajeIds = [...new Set((ids || []).map(Number).filter(Boolean))];
-  tripMapState.showPlanned = true;
-  tripMapState.showPhotos = true;
-  tripMapState.showTimeline = true;
-  tripMapState.destinationOnly = false;
-  tripMapState.day = '';
-  resetTripMapView();
+  if (options.preserveMapState !== true) {
+    tripMapState.showPlanned = true;
+    tripMapState.showPhotos = true;
+    tripMapState.showTimeline = true;
+    tripMapState.destinationOnly = false;
+    tripMapState.day = '';
+    resetTripMapView();
+  }
   syncTripSelectsFromSelection();
   syncBlogAvailability();
   if (state.activeTab === 'blog') renderBlog();
@@ -2097,19 +2102,95 @@ function mapPointDefaultDate(trip) {
   return trip.fechaInicio || today;
 }
 
-function nearestTripCityForPoint(trip, point) {
-  if (!trip || !point) return null;
-  return [...new Set(tripCityIds(trip).map(Number).filter(Boolean))]
+function mapPointTripCityIds(trip, date = '', ignoreEntryId = 0) {
+  if (!trip) return [];
+  const tripId = Number(trip.id);
+  const ids = new Set(date ? [] : tripCityIds(trip).map(Number).filter(Boolean));
+  state.gastos
+    .filter(item => Number(item.viajeId) === tripId && (!date || item.fecha === date))
+    .forEach(item => {
+      if (Number(item.ciudadId)) ids.add(Number(item.ciudadId));
+    });
+  state.blogEntries
+    .filter(item => Number(item.viajeId) === tripId
+      && Number(item.id) !== Number(ignoreEntryId)
+      && (!date || item.fecha === date))
+    .forEach(item => {
+      if (Number(item.ciudadId)) ids.add(Number(item.ciudadId));
+    });
+  tripRouteStops(trip)
+    .filter(stop => !date || stop.date === date)
+    .forEach(stop => {
+      if (Number(stop.cityId)) ids.add(Number(stop.cityId));
+    });
+  return [...ids];
+}
+
+function mapPointTripCities(trip) {
+  const ids = new Set(mapPointTripCityIds(trip));
+  state.gastos
+    .filter(item => Number(item.viajeId) === Number(trip && trip.id))
+    .forEach(item => {
+      if (Number(item.ciudadId)) ids.add(Number(item.ciudadId));
+    });
+  state.blogEntries
+    .filter(item => Number(item.viajeId) === Number(trip && trip.id))
+    .forEach(item => {
+      if (Number(item.ciudadId)) ids.add(Number(item.ciudadId));
+    });
+  return [...ids]
     .map(id => state.lugares.find(place => Number(place.id) === id))
-    .filter(city => city && lugarHasCoords(city) && !isTransitPlaceName(city.nombre))
+    .filter(city => city && !isTransitPlaceName(city.nombre))
+    .sort(byName);
+}
+
+function nearestTripCityForPoint(trip, point, options = {}) {
+  if (!trip || !point) return null;
+  const datedIds = new Set(mapPointTripCityIds(trip, String(options.date || ''), options.ignoreEntryId));
+  const candidates = mapPointTripCities(trip)
+    .filter(city => lugarHasCoords(city))
     .map(city => ({
       city,
+      dated: datedIds.has(Number(city.id)),
       distance: geographicDistanceMeters(
         point,
         { latitude: Number(city.lat), longitude: Number(city.lng) }
       )
     }))
-    .sort((a, b) => a.distance - b.distance)[0]?.city || null;
+    .sort((a, b) => a.distance - b.distance || Number(b.dated) - Number(a.dated));
+  return candidates[0]?.city || null;
+}
+
+function resolvedManualMapPointEntry(entry) {
+  if (!entry || entry.tipo !== 'punto' || entry.mapCityManual === true) return entry;
+  const trip = state.viajes.find(item => Number(item.id) === Number(entry.viajeId));
+  const point = blogPointCoordinates(entry);
+  const city = trip && point
+    ? nearestTripCityForPoint(trip, point, { date: entry.fecha, ignoreEntryId: entry.id })
+    : null;
+  if (!city || Number(city.id) === Number(entry.ciudadId)) return entry;
+  const storedCity = state.lugares.find(item => Number(item.id) === Number(entry.ciudadId));
+  if (storedCity && lugarHasCoords(storedCity)) {
+    const storedDistance = geographicDistanceMeters(point, { latitude: Number(storedCity.lat), longitude: Number(storedCity.lng) });
+    const suggestedDistance = geographicDistanceMeters(point, { latitude: Number(city.lat), longitude: Number(city.lng) });
+    if (storedDistance - suggestedDistance < TRIP_MAP_POINT_CITY_REASSIGN_GAIN_METERS) return entry;
+  }
+  return {
+    ...entry,
+    ciudadId: Number(city.id),
+    paisId: Number(city.parentId) || null
+  };
+}
+
+function renderMapPointCityOptions(trip, cityId = null) {
+  const select = $('#map-point-city');
+  if (!select) return;
+  const cities = mapPointTripCities(trip);
+  const selected = Number(cityId) || 0;
+  const selectedCity = selected ? state.lugares.find(item => Number(item.id) === selected) : null;
+  if (selectedCity && !cities.some(item => Number(item.id) === selected)) cities.push(selectedCity);
+  cities.sort(byName);
+  select.innerHTML = `<option value="">Sin localidad</option>${cities.map(city => `<option value="${Number(city.id)}"${Number(city.id) === selected ? ' selected' : ''}>${escapeHtml(city.nombre)}</option>`).join('')}`;
 }
 
 function openMapPointDialog(context = {}) {
@@ -2127,27 +2208,37 @@ function openMapPointDialog(context = {}) {
   const latitude = blogPointCoordinate(context.latitude, -90, 90);
   const longitude = blogPointCoordinate(context.longitude, -180, 180);
   if (latitude == null || longitude == null) return;
-  const city = context.cityId
+  const pointDate = String(context.date || mapPointDefaultDate(trip));
+  const storedCity = context.cityId
     ? state.lugares.find(item => Number(item.id) === Number(context.cityId))
-    : nearestTripCityForPoint(trip, { latitude, longitude });
+    : null;
+  const suggestedCity = nearestTripCityForPoint(trip, { latitude, longitude }, {
+    date: pointDate,
+    ignoreEntryId: context.entryId
+  });
+  const city = context.cityManual === true ? storedCity : (suggestedCity || storedCity);
   activeMapPointContext = {
     mode: editing ? 'edit' : 'add',
     entryId: editing ? Number(context.entryId) : null,
     tripId: Number(trip.id),
     cityId: city ? Number(city.id) : null,
     countryId: city ? Number(city.parentId) || null : null,
+    cityManual: context.cityManual === true,
+    date: pointDate,
     latitude,
     longitude
   };
-  $('#map-point-title').textContent = editing ? 'Editar nombre del punto' : '¿Añadir este punto?';
-  $('#map-point-save').textContent = editing ? 'Guardar nombre' : 'Añadir punto';
+  $('#map-point-title').textContent = editing ? 'Editar punto' : '¿Añadir este punto?';
+  $('#map-point-save').textContent = editing ? 'Guardar cambios' : 'Añadir punto';
   $('#map-point-delete').hidden = !editing;
+  $('#map-point-save').disabled = false;
   $('#map-point-date-fields').hidden = editing;
   $('#map-point-location').textContent = editing
     ? `Punto de ${trip.nombre}${city ? ` · ${city.nombre}` : ''}.`
     : `${trip.nombre}${city ? ` · cerca de ${city.nombre}` : ''} · ${latitude.toFixed(6)}, ${longitude.toFixed(6)}.`;
   input.value = String(context.name || '');
-  $('#map-point-date').value = String(context.date || mapPointDefaultDate(trip));
+  renderMapPointCityOptions(trip, city && city.id);
+  $('#map-point-date').value = pointDate;
   $('#map-point-time').value = String(context.time || currentLocalTime()).slice(0, 5);
   setMessage('#msg-map-point', '');
   if (!dialog.open) {
@@ -2162,10 +2253,19 @@ async function saveMapPoint() {
   if (!context) return;
   const name = String($('#map-point-name') && $('#map-point-name').value || '').replace(/\s+/g, ' ').trim().slice(0, 160);
   if (!name) throw new Error('Escribe un nombre para el punto');
+  const selectedCityId = Number($('#map-point-city') && $('#map-point-city').value) || null;
+  const selectedCity = selectedCityId
+    ? state.lugares.find(item => Number(item.id) === selectedCityId)
+    : null;
+  const locationPatch = {
+    ciudadId: selectedCity ? Number(selectedCity.id) : null,
+    paisId: selectedCity ? Number(selectedCity.parentId) || null : null,
+    mapCityManual: context.cityManual === true
+  };
   if (context.mode === 'edit') {
     const entry = state.blogEntries.find(item => Number(item.id) === Number(context.entryId) && item.tipo === 'punto');
     if (!entry) throw new Error('No se encuentra el punto que quieres editar');
-    await updateBlogEntry(entry.id, { descripcion: name });
+    await updateBlogEntry(entry.id, { descripcion: name, ...locationPatch });
   } else {
     const trip = state.viajes.find(item => Number(item.id) === Number(context.tripId));
     if (!trip) throw new Error('El viaje seleccionado ya no existe');
@@ -2181,13 +2281,13 @@ async function saveMapPoint() {
       hora: time || currentLocalTime(),
       tipo: 'punto',
       descripcion: name,
-      paisId: context.countryId,
-      ciudadId: context.cityId,
+      ...locationPatch,
       latitude: context.latitude,
       longitude: context.longitude,
       wordpressIncluded: true
     });
   }
+  tripMapState.preserveViewportOnNextRender = true;
   closeMapPointDialog();
   await loadAll();
   setTab('mapa');
@@ -2200,9 +2300,35 @@ async function deleteMapPoint(context = activeMapPointContext) {
   const name = String(entry.descripcion || context.name || 'este punto');
   if (!confirm(`¿Eliminar «${name}» del mapa y del Blog?`)) return;
   await delBlogEntry(entry.id);
+  tripMapState.preserveViewportOnNextRender = true;
   const popup = $('#trip-map-photo-popup');
   if (popup) popup.hidden = true;
   closeMapPointDialog();
+  await loadAll();
+  setTab('mapa');
+}
+
+async function moveMapPoint(context, latitude, longitude) {
+  if (!context || Number(context.entryId) <= 0) return;
+  const entry = state.blogEntries.find(item => Number(item.id) === Number(context.entryId) && item.tipo === 'punto');
+  if (!entry) throw new Error('No se encuentra el punto que quieres mover');
+  const point = {
+    latitude: blogPointCoordinate(latitude, -90, 90),
+    longitude: blogPointCoordinate(longitude, -180, 180)
+  };
+  if (point.latitude == null || point.longitude == null) throw new Error('La nueva posición no es válida');
+  const trip = state.viajes.find(item => Number(item.id) === Number(entry.viajeId));
+  const city = entry.mapCityManual === true
+    ? state.lugares.find(item => Number(item.id) === Number(entry.ciudadId))
+    : nearestTripCityForPoint(trip, point, { date: entry.fecha, ignoreEntryId: entry.id });
+  tripMapState.preserveViewportOnNextRender = true;
+  await updateBlogEntry(entry.id, {
+    latitude: point.latitude,
+    longitude: point.longitude,
+    ciudadId: city ? Number(city.id) : null,
+    paisId: city ? Number(city.parentId) || null : null
+  });
+  closeTripMapPhotoPopup();
   await loadAll();
   setTab('mapa');
 }
@@ -2217,7 +2343,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v263');
+    const worker = new Worker('./timeline-import-worker.js?v=700v264');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2959,7 +3085,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v263');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v264');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3750,7 +3876,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v263');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v264');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -3841,7 +3967,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v263');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v264');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -3903,7 +4029,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v263');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v264');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4201,7 +4327,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v263');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v264');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -5944,6 +6070,7 @@ async function addBlogEntry(data) {
     texto: type === 'texto' ? String(data.texto || '') : '',
     notas: type === 'punto' ? String(data.notas || '') : '',
     transporte: type === 'punto' ? transport : '',
+    mapCityManual: type === 'punto' && data.mapCityManual === true,
     imageName: hasPrimaryImage ? String(data.imageName || 'imagen.jpg') : '',
     imageType: hasPrimaryImage ? String(data.imageType || 'image/jpeg') : '',
     imageSize: hasPrimaryImage ? Math.max(0, Number(data.imageSize) || 0) : 0,
@@ -6513,13 +6640,16 @@ async function loadAll() {
   state.viajeDocumentos = viajeDocumentos.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   state.blogEntries = blogEntries.sort(compareBlogEntries);
   state.timelineDays = timelineDays.sort((a, b) => String(a.fecha || '').localeCompare(String(b.fecha || '')));
-  const validSelectedTripIds = selectedTripIds().filter(id => state.viajes.some(v => v.id === id));
+  const previousSelectedTripIds = selectedTripIds();
+  const validSelectedTripIds = previousSelectedTripIds.filter(id => state.viajes.some(v => v.id === id));
   if (!validSelectedTripIds.length && !hasAppliedDefaultTripSelection && state.viajes.length) {
     const defaultTripIdValue = defaultTripId();
     setSelectedTrips(defaultTripIdValue ? [defaultTripIdValue] : []);
     hasAppliedDefaultTripSelection = true;
   } else {
-    setSelectedTrips(validSelectedTripIds);
+    setSelectedTrips(validSelectedTripIds, {
+      preserveMapState: validSelectedTripIds.length === previousSelectedTripIds.length
+    });
   }
   state.monedas = monedas.sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
   state.transferencias = transferencias.sort(compareTransferenciasChronologically);
@@ -8255,7 +8385,8 @@ function dailyMapRecordsForScope(scopedTripIds, paisId) {
       const city = state.lugares.find(item => Number(item.id) === Number(entry.ciudadId));
       return Number(entry.paisId || (city && city.parentId)) === Number(paisId);
     })
-    .map(entry => {
+    .map(originalEntry => {
+      const entry = resolvedManualMapPointEntry(originalEntry);
       const point = blogPointCoordinates(entry);
       return {
         key: `point-${entry.id}`,
@@ -8862,7 +8993,8 @@ function tripMapItemsForCurrentScope() {
       const city = state.lugares.find(item => Number(item.id) === Number(entry.ciudadId));
       return Number(entry.paisId || (city && city.parentId)) === paisId;
     })
-    .map(entry => {
+    .map(originalEntry => {
+      const entry = resolvedManualMapPointEntry(originalEntry);
       const point = blogPointCoordinates(entry);
       return {
         ciudad: {
@@ -9144,7 +9276,7 @@ function openTripMapMarkerPopup(detail, anchorElement = null) {
   if (!popup || !detail) return;
   const meta = [detail.place, ...(detail.dateLines || [])].filter(Boolean);
   const notes = (detail.noteLines || []).filter(Boolean);
-  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${escapeHtml(detail.title || 'Punto')}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-marker-popup-detail">${meta.length ? meta.map(line => `<span>${escapeHtml(line)}</span>`).join('') : '<span>Sin fecha indicada</span>'}${notes.map(note => `<p class="map-marker-popup-notes"><strong>Notas:</strong> ${escapeHtml(note)}</p>`).join('')}${detail.lodgingEdit ? '<button type="button" class="ghost" data-edit-timeline-lodging="1">Editar nombre del alojamiento</button>' : ''}${detail.pointEdit ? '<button type="button" class="ghost" data-edit-map-point-name="1">Editar nombre del punto</button><button type="button" class="ghost danger" data-delete-map-point="1">Eliminar punto</button>' : ''}</div>`;
+  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${escapeHtml(detail.title || 'Punto')}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-marker-popup-detail">${meta.length ? meta.map(line => `<span>${escapeHtml(line)}</span>`).join('') : '<span>Sin fecha indicada</span>'}${notes.map(note => `<p class="map-marker-popup-notes"><strong>Notas:</strong> ${escapeHtml(note)}</p>`).join('')}${detail.lodgingEdit ? '<button type="button" class="ghost" data-edit-timeline-lodging="1">Editar nombre del alojamiento</button>' : ''}${detail.pointEdit ? '<span class="map-point-drag-hint">Mantén pulsado el punto y arrástralo para ajustar su posición.</span><button type="button" class="ghost" data-edit-map-point-name="1">Editar punto</button><button type="button" class="ghost danger" data-delete-map-point="1">Eliminar punto</button>' : ''}</div>`;
   popup.hidden = false;
   if (detail.lodgingEdit) {
     const editButton = popup.querySelector('[data-edit-timeline-lodging]');
@@ -9318,15 +9450,19 @@ function tripMapMarkerDetail(items = [], dailyRecord = null) {
       sourceLabel: String(source.lodgingNameSourceLabel || '')
     }
     : null;
+  const groupedEditablePoint = itemList
+    .map(item => item && item.dailyRecord && item.dailyRecord.entry || item && item.pointEntry || item && item.entry || item)
+    .find(record => record && record.tipo === 'punto') || null;
   const editablePoint = source && source.entry && source.entry.tipo === 'punto'
     ? source.entry
-    : (source && source.tipo === 'punto' ? source : (first.pointEntry && first.pointEntry.tipo === 'punto' ? first.pointEntry : null));
+    : (source && source.tipo === 'punto' ? source : groupedEditablePoint);
   const editablePointCoordinates = editablePoint ? blogPointCoordinates(editablePoint) : null;
   const pointEdit = editablePoint && editablePointCoordinates
     ? {
       entryId: Number(editablePoint.id),
       tripId: Number(editablePoint.viajeId),
       cityId: Number(editablePoint.ciudadId) || null,
+      cityManual: editablePoint.mapCityManual === true,
       latitude: editablePointCoordinates.latitude,
       longitude: editablePointCoordinates.longitude,
       name: String(editablePoint.descripcion || ''),
@@ -10045,6 +10181,8 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
   if (visibleLabelLines.length) element.append(label);
   const detailItems = dailyRecord ? [item] : (groupedRouteItems.length ? groupedRouteItems : [item]);
   const markerDetail = tripMapMarkerDetail(detailItems, dailyRecord);
+  element.mapPointDragContext = markerDetail.pointEdit || null;
+  if (markerDetail.pointEdit) element.classList.add('manual-point-draggable');
   element.title = `${markerDetail.title} · pulsa para ver los detalles`;
   const accommodationPhoto = dailyRecord && dailyRecord.accommodationPhotoRecord;
   if (accommodationPhoto) {
@@ -10057,6 +10195,7 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
     const open = event => {
       event.preventDefault();
       event.stopPropagation();
+      if (element.dataset.ignoreMapPointClick === '1') return;
       openTripMapPhotoPopup(encodedKeys, element);
     };
     element.addEventListener('click', open);
@@ -10078,6 +10217,7 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
     const open = event => {
       event.preventDefault();
       event.stopPropagation();
+      if (element.dataset.ignoreMapPointClick === '1') return;
       openTripMapMarkerPopup(markerDetail, element);
     };
     element.addEventListener('click', open);
@@ -10170,7 +10310,7 @@ function installTripMapLongPress(target, coordinatesForEvent) {
   };
   const pointerDown = event => {
     if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
-    if (event.target instanceof Element && event.target.closest('.trip-vector-marker, .trip-vector-photo-marker, .map-photo-popup, .maplibregl-ctrl')) return;
+    if (event.target instanceof Element && event.target.closest('.trip-vector-marker, .trip-vector-photo-marker, .map-marker, .map-photo-popup, .maplibregl-ctrl')) return;
     clear();
     activePointerId = event.pointerId;
     start = { x: event.clientX, y: event.clientY };
@@ -10184,7 +10324,7 @@ function installTripMapLongPress(target, coordinatesForEvent) {
   };
   const pointerMove = event => {
     if (event.pointerId !== activePointerId || !start) return;
-    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 9) clear();
+    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 16) clear();
   };
   const pointerEnd = event => {
     if (event.pointerId === activePointerId) clear();
@@ -10205,6 +10345,65 @@ function installTripMapLongPress(target, coordinatesForEvent) {
     target.removeEventListener('pointerleave', pointerEnd, true);
     target.removeEventListener('contextmenu', contextMenu, true);
   };
+}
+
+function installFallbackManualPointDrag(frame, options = {}) {
+  if (!frame) return;
+  const { startX, startY, zoom, width, height } = options;
+  frame.querySelectorAll('[data-map-point-drag]').forEach(marker => {
+    const detail = tripMapMarkerDetailLookup.get(marker.getAttribute('data-map-point-drag'));
+    const context = detail && detail.pointEdit;
+    if (!context) return;
+    marker.classList.add('manual-point-draggable');
+    let pointerId = null;
+    let start = null;
+    let dragging = false;
+    const reset = () => {
+      marker.removeAttribute('transform');
+      marker.classList.remove('dragging');
+      pointerId = null;
+      start = null;
+      dragging = false;
+    };
+    marker.addEventListener('pointerdown', event => {
+      if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+      event.stopPropagation();
+      pointerId = event.pointerId;
+      start = { x: event.clientX, y: event.clientY };
+      try { marker.setPointerCapture(pointerId); } catch {}
+    });
+    marker.addEventListener('pointermove', event => {
+      if (event.pointerId !== pointerId || !start) return;
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      if (!dragging && Math.hypot(dx, dy) < 5) return;
+      dragging = true;
+      event.preventDefault();
+      event.stopPropagation();
+      marker.classList.add('dragging');
+      const rect = frame.getBoundingClientRect();
+      marker.setAttribute('transform', `translate(${dx * width / rect.width} ${dy * height / rect.height})`);
+    });
+    marker.addEventListener('pointerup', event => {
+      if (event.pointerId !== pointerId || !start) return;
+      event.stopPropagation();
+      if (!dragging) {
+        reset();
+        return;
+      }
+      event.preventDefault();
+      const rect = frame.getBoundingClientRect();
+      const x = Math.max(0, Math.min(width, ((event.clientX - rect.left) / rect.width) * width));
+      const y = Math.max(0, Math.min(height, ((event.clientY - rect.top) / rect.height) * height));
+      const point = mapLatLngFromWorldPoint(startX + x, startY + y, zoom);
+      marker.dataset.ignoreMapPointClick = '1';
+      window.setTimeout(() => delete marker.dataset.ignoreMapPointClick, 400);
+      reset();
+      moveMapPoint(context, point.latitude, point.longitude)
+        .catch(error => alert(error.message || String(error)));
+    });
+    marker.addEventListener('pointercancel', reset);
+  });
 }
 
 function addTripMapSatellite(map) {
@@ -10312,11 +10511,28 @@ function initializeTripVectorMap({ container, withCoords, extentItems = withCoor
   markerGroups.forEach(({ group, presentation }) => {
     const { item, index } = group[0];
     const routeGroup = !dailyMode && !item.configuredOnly ? group : [];
+    const markerElement = tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute, routeGroup, presentation);
+    const manualPointContext = markerElement.mapPointDragContext || null;
     const marker = new window.maplibregl.Marker({
-      element: tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute, routeGroup, presentation),
+      element: markerElement,
       anchor: 'center',
-      offset: item.stackedOverLodging ? [0, -30] : [0, 0]
+      offset: item.stackedOverLodging ? [0, -30] : [0, 0],
+      draggable: Boolean(manualPointContext)
     }).setLngLat([Number(item.ciudad.lng), Number(item.ciudad.lat)]).addTo(map);
+    if (manualPointContext) {
+      marker.on('dragstart', () => {
+        closeTripMapPhotoPopup();
+        markerElement.classList.add('dragging');
+        markerElement.dataset.ignoreMapPointClick = '1';
+      });
+      marker.on('dragend', () => {
+        markerElement.classList.remove('dragging');
+        window.setTimeout(() => delete markerElement.dataset.ignoreMapPointClick, 400);
+        const position = marker.getLngLat();
+        moveMapPoint(manualPointContext, position.lat, position.lng)
+          .catch(error => alert(error.message || String(error)));
+      });
+    }
     tripVectorMarkers.push(marker);
   });
   if (dailyMode) {
@@ -10509,11 +10725,17 @@ function renderTripMap() {
   ].join('|');
   if (tripMapState.key !== routeKey) {
     tripMapState.key = routeKey;
-    tripMapState.zoomDelta = 0;
-    tripMapState.panX = 0;
-    tripMapState.panY = 0;
-    tripMapState.vectorCenter = null;
-    tripMapState.vectorZoom = null;
+    if (tripMapState.preserveViewportOnNextRender) {
+      tripMapState.preserveViewportOnNextRender = false;
+    } else {
+      tripMapState.zoomDelta = 0;
+      tripMapState.panX = 0;
+      tripMapState.panY = 0;
+      tripMapState.vectorCenter = null;
+      tripMapState.vectorZoom = null;
+    }
+  } else if (tripMapState.preserveViewportOnNextRender) {
+    tripMapState.preserveViewportOnNextRender = false;
   }
   const baseZoom = chooseMapZoom(extentItems, width, height);
   const zoom = Math.max(TRIP_MAP_MIN_ZOOM, Math.min(TRIP_MAP_MAX_ZOOM, baseZoom + tripMapState.zoomDelta));
@@ -10647,12 +10869,15 @@ function renderTripMap() {
     const detailAction = detailKey
       ? ` role="button" tabindex="0" data-map-marker-detail="${detailKey}" aria-label="${escapeHtml(`${transportMarker ? `${transportMarker.label}: ` : ''}${markerDetail.title}. Ver detalles`)}"`
       : '';
+    const pointDragAction = markerDetail.pointEdit && detailKey
+      ? ` data-map-point-drag="${detailKey}"`
+      : '';
     const markerVisual = transportMarker
       ? (transportMarker.image
         ? `<image href="${escapeHtml(transportMarker.image)}" x="${(p.x - 15).toFixed(1)}" y="${(markerY - 10).toFixed(1)}" width="30" height="20" class="map-marker-transport-image" preserveAspectRatio="xMidYMid meet"></image>`
         : `<text x="${p.x.toFixed(1)}" y="${(markerY + 6).toFixed(1)}" class="map-marker-transport-symbol">${transportMarker.icon}</text>`)
       : `<circle cx="${p.x.toFixed(1)}" cy="${markerY.toFixed(1)}" r="${dailyPhoto ? 10 : 8}"></circle><text x="${p.x.toFixed(1)}" y="${(markerY + 4).toFixed(1)}" class="map-marker-number">${markerText}</text>`;
-    return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${item.timelinePoint ? ' map-marker-timeline' : ''}${transportMarker ? ` map-marker-transport ${transportMarker.type}` : ''}${markerPhotoRecord || detailKey ? ' map-marker-clickable' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction || detailAction}>${markerVisual}${markerLabel}<title>${escapeHtml(title)}</title></g>`;
+    return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${item.timelinePoint ? ' map-marker-timeline' : ''}${transportMarker ? ` map-marker-transport ${transportMarker.type}` : ''}${markerPhotoRecord || detailKey ? ' map-marker-clickable' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction || detailAction}${pointDragAction}>${markerVisual}${markerLabel}<title>${escapeHtml(title)}</title></g>`;
   }).join('');
   tripMapPhotoLookup.clear();
   const interactivePhotoItems = dailyMode ? projectedItems.filter(item => item.photoPoint) : photoItems;
@@ -10752,6 +10977,7 @@ function renderTripMap() {
       if (x < 0 || y < 0 || x > width || y > height) return null;
       return mapLatLngFromWorldPoint(startX + x, startY + y, zoom);
     });
+    installFallbackManualPointDrag(frame, { startX, startY, zoom, width, height });
   }
   container.querySelectorAll('[data-map-photo-keys]').forEach(marker => {
     const open = event => {
@@ -10769,6 +10995,7 @@ function renderTripMap() {
     const open = event => {
       event.preventDefault();
       event.stopPropagation();
+      if (marker.dataset.ignoreMapPointClick === '1') return;
       openTripMapMarkerPopup(detail, marker);
     };
     marker.addEventListener('click', open);
@@ -11994,7 +12221,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v263');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v264');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15852,6 +16079,23 @@ function bindEvents() {
   };
   $('#map-point-close').onclick = closeMapPointDialog;
   $('#map-point-cancel').onclick = closeMapPointDialog;
+  $('#map-point-city').onchange = event => {
+    if (!activeMapPointContext) return;
+    const cityId = Number(event.target.value) || null;
+    const city = cityId ? state.lugares.find(item => Number(item.id) === cityId) : null;
+    activeMapPointContext.cityId = city ? Number(city.id) : null;
+    activeMapPointContext.countryId = city ? Number(city.parentId) || null : null;
+    activeMapPointContext.cityManual = true;
+  };
+  $('#map-point-date').onchange = event => {
+    if (!activeMapPointContext || activeMapPointContext.mode !== 'add' || activeMapPointContext.cityManual) return;
+    const trip = state.viajes.find(item => Number(item.id) === Number(activeMapPointContext.tripId));
+    const city = nearestTripCityForPoint(trip, activeMapPointContext, { date: event.target.value });
+    activeMapPointContext.date = event.target.value;
+    activeMapPointContext.cityId = city ? Number(city.id) : null;
+    activeMapPointContext.countryId = city ? Number(city.parentId) || null : null;
+    renderMapPointCityOptions(trip, city && city.id);
+  };
   $('#map-point-delete').onclick = () => {
     setMessage('#msg-map-point', 'Eliminando…');
     deleteMapPoint()
@@ -15863,9 +16107,13 @@ function bindEvents() {
   };
   $('#map-point-form').onsubmit = event => {
     event.preventDefault();
+    $('#map-point-save').disabled = true;
     setMessage('#msg-map-point', 'Guardando…');
     saveMapPoint()
-      .catch(error => setMessage('#msg-map-point', error.message || String(error)));
+      .catch(error => {
+        $('#map-point-save').disabled = false;
+        setMessage('#msg-map-point', error.message || String(error));
+      });
   };
   $('#timeline-select-file').onclick = () => {
     const input = $('#timeline-file-input');
@@ -17575,7 +17823,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v263');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v264');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

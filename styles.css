@@ -3227,6 +3227,17 @@ body.map-fullscreen-open {
   pointer-events: auto !important;
 }
 
+.trip-vector-marker.manual-point-draggable,
+.map-marker.manual-point-draggable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.trip-vector-marker.manual-point-draggable.dragging,
+.map-marker.manual-point-draggable.dragging {
+  cursor: grabbing;
+}
+
 .trip-vector-marker-dot,
 .trip-vector-photo-marker {
   display: grid;
@@ -3547,7 +3558,8 @@ body.map-fullscreen-open {
 }
 
 .map-point-modal .row > div,
-.map-point-modal input {
+.map-point-modal input,
+.map-point-modal select {
   min-width: 0;
   width: 100%;
 }
@@ -3908,6 +3920,12 @@ footer {
   text-align: center;
   color: var(--muted);
   font-size: 12px;
+}
+
+.map-point-drag-hint {
+  margin: 4px 0;
+  color: #334155;
+  line-height: 1.35;
 }
 
 .account-label-mobile {

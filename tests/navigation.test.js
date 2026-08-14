@@ -68,16 +68,22 @@ test('el alojamiento conserva su coordenada y coloca la ciudad justo encima', ()
 
 test('una pulsación mantenida permite crear y nombrar un punto en el mapa', () => {
   assert.match(html, /id="map-point-dialog"[\s\S]*?id="map-point-name"[\s\S]*?id="map-point-date"[\s\S]*?id="map-point-time"/);
-  assert.match(app, /const TRIP_MAP_LONG_PRESS_MS = 1800/);
+  assert.match(app, /const TRIP_MAP_LONG_PRESS_MS = 1400/);
   assert.match(app, /function installTripMapLongPress\(target, coordinatesForEvent\)/);
   assert.match(app, /openMapPointDialog\(\{ latitude: point\.latitude, longitude: point\.longitude \}\)/);
   assert.match(app, /tipo: 'punto',[\s\S]*?descripcion: name,[\s\S]*?latitude: context\.latitude,[\s\S]*?longitude: context\.longitude/);
   assert.match(app, /data-edit-map-point-name="1"/);
-  assert.match(app, /updateBlogEntry\(entry\.id, \{ descripcion: name \}\)/);
+  assert.match(app, /updateBlogEntry\(entry\.id, \{ descripcion: name, \.\.\.locationPatch \}\)/);
   assert.match(html, /id="map-point-delete"[^>]*hidden/);
   assert.match(app, /data-delete-map-point="1"/);
   assert.match(app, /function deleteMapPoint\(context = activeMapPointContext\)[\s\S]*?delBlogEntry\(entry\.id\)/);
   assert.match(app, /¿Eliminar «\$\{name\}» del mapa y del Blog\?/);
+  assert.match(html, /id="map-point-city"/);
+  assert.match(app, /function resolvedManualMapPointEntry\(entry\)/);
+  assert.match(app, /setSelectedTrips\(validSelectedTripIds, \{[\s\S]*?preserveMapState: validSelectedTripIds\.length === previousSelectedTripIds\.length/);
+  assert.match(app, /draggable: Boolean\(manualPointContext\)/);
+  assert.match(app, /marker\.on\('dragend',[\s\S]*?moveMapPoint\(manualPointContext, position\.lat, position\.lng\)/);
+  assert.match(app, /function installFallbackManualPointDrag\(frame, options = \{\}\)/);
 });
 
 test('Solo destinos usa la clasificación y no borra el día al filtrar', () => {
