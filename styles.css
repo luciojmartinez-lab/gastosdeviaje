@@ -3228,14 +3228,25 @@ body.map-fullscreen-open {
 }
 
 .trip-vector-marker.manual-point-draggable,
-.map-marker.manual-point-draggable {
+.map-marker.manual-point-draggable,
+.trip-vector-photo-marker.photo-position-draggable,
+.map-marker-photo.photo-position-draggable {
   cursor: grab;
   touch-action: none;
 }
 
 .trip-vector-marker.manual-point-draggable.dragging,
-.map-marker.manual-point-draggable.dragging {
+.map-marker.manual-point-draggable.dragging,
+.trip-vector-photo-marker.photo-position-draggable.dragging,
+.map-marker-photo.photo-position-draggable.dragging {
   cursor: grabbing;
+}
+
+.trip-vector-photo-marker.editing-position,
+.map-marker-photo.editing-position > circle:first-of-type {
+  filter: drop-shadow(0 0 5px #f59e0b);
+  outline: 3px solid #f59e0b;
+  outline-offset: 2px;
 }
 
 .trip-vector-marker-dot,
@@ -3850,6 +3861,19 @@ body.map-fullscreen-open {
 
 .map-photo-popup-item span {
   margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.map-photo-position-button {
+  margin-top: 7px;
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.map-photo-position-hint {
+  display: block;
+  margin-top: 9px;
   color: var(--muted);
   font-size: 12px;
 }

@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v267';
+const APP_VERSION = '700v268';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -204,6 +204,7 @@ const tripMapState = {
   printMode: false,
   vectorCenter: null,
   vectorZoom: null,
+  photoEditKey: '',
   preserveViewportOnNextRender: false
 };
 const tripMapDrag = {
@@ -2378,7 +2379,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v267');
+    const worker = new Worker('./timeline-import-worker.js?v=700v268');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3120,7 +3121,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v267');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v268');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3911,7 +3912,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v267');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v268');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4002,7 +4003,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v267');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v268');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4064,7 +4065,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v267');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v268');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4362,7 +4363,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v267');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v268');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -8253,6 +8254,7 @@ function photoMapImageSignatures(image) {
   const point = storedImageCoordinates(normalized);
   const signatures = [];
   if (normalized.id) signatures.push(`id:${normalized.id}`);
+  if (normalized.fileRef) signatures.push(`ref:${normalized.fileRef}`);
   const dataFingerprint = photoMapDataFingerprint(normalized.data);
   if (dataFingerprint) signatures.push(`data:${dataFingerprint}`);
   const usefulMetadata = Boolean(normalized.capturedDate || normalized.capturedTime || point);
@@ -8305,10 +8307,13 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
   state.blogEntries
     .filter(entry => scopedTripIds.has(Number(entry.viajeId)))
     .forEach(entry => {
+      const hasPrimaryImage = Boolean(entry.imageData || entry.imageRef);
       blogEntryImages(entry).forEach((image, index) => append({
         image,
         fallbackKey: `blog-${entry.id}-${index}`,
         blogEntryId: entry.id,
+        imageSlot: hasPrimaryImage && index === 0 ? 'primary' : 'gallery',
+        imageIndex: hasPrimaryImage ? index - 1 : index,
         expenseId: entry.expenseId || null,
         descripcion: entry.descripcion || 'Foto',
         fecha: entry.fecha || '',
@@ -8329,6 +8334,8 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
         image: ticketImage,
         fallbackKey: `gasto-${gasto.id}-ticket`,
         expenseId: gasto.id,
+        imageSlot: 'ticket',
+        imageIndex: -1,
         descripcion: gasto.desc || 'Ticket del gasto',
         fecha: ticketImage.capturedDate || gasto.fecha || '',
         hora: ticketImage.capturedTime || expenseTimeValue(gasto),
@@ -8341,6 +8348,8 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
         image,
         fallbackKey: `gasto-${gasto.id}-${index}`,
         expenseId: gasto.id,
+        imageSlot: 'extra',
+        imageIndex: index,
         descripcion: gasto.desc || 'Foto del gasto',
         fecha: gasto.fecha || '',
         hora: expenseTimeValue(gasto),
@@ -8352,6 +8361,145 @@ function photoMapRecordsForScope(scopedTripIds, paisId) {
     });
   records.duplicateCount = duplicateCount;
   return records;
+}
+
+function photoMapImageMatchesSignatures(image, targetSignatures) {
+  if (!targetSignatures || !targetSignatures.size) return false;
+  return photoMapImageSignatures(image).some(signature => targetSignatures.has(signature));
+}
+
+function correctedMapPhotoImage(image, latitude, longitude) {
+  return {
+    ...(image && typeof image === 'object' ? image : {}),
+    latitude,
+    longitude,
+    locationSource: 'manual',
+    mapEnabled: true
+  };
+}
+
+async function moveMapPhoto(context, latitude, longitude) {
+  const record = typeof context === 'string' ? tripMapPhotoLookup.get(context) : context;
+  if (!record || !record.image) throw new Error('No se encuentra la foto que quieres mover');
+  const point = {
+    latitude: storedImageCoordinate(latitude, -90, 90),
+    longitude: storedImageCoordinate(longitude, -180, 180)
+  };
+  if (point.latitude == null || point.longitude == null) throw new Error('La nueva posición no es válida');
+  const targetSignatures = new Set(photoMapImageSignatures(record.image));
+  let changed = 0;
+  const now = new Date().toISOString();
+
+  for (const entry of state.blogEntries) {
+    let next = entry;
+    let entryChanged = false;
+    const primaryImage = entry.imageData || entry.imageRef
+      ? normalizeBlogImageRecord({
+        id: entry.imageId || `primary-${entry.id || ''}`,
+        name: entry.imageName,
+        type: entry.imageType,
+        size: entry.imageSize,
+        data: entry.imageData,
+        fileRef: entry.imageRef,
+        width: entry.imageWidth,
+        height: entry.imageHeight,
+        latitude: entry.imageLatitude,
+        longitude: entry.imageLongitude,
+        locationSource: entry.imageLocationSource,
+        photoTypeId: entry.imagePhotoTypeId,
+        photoTypeName: entry.imagePhotoTypeName,
+        mapEnabled: entry.imageMapEnabled,
+        createdAt: entry.createdAt
+      })
+      : null;
+    const directPrimary = record.source === 'blog'
+      && Number(record.blogEntryId) === Number(entry.id)
+      && record.imageSlot === 'primary';
+    if (primaryImage && (directPrimary || photoMapImageMatchesSignatures(primaryImage, targetSignatures))) {
+      next = {
+        ...next,
+        imageLatitude: point.latitude,
+        imageLongitude: point.longitude,
+        imageLocationSource: 'manual',
+        imageMapEnabled: true
+      };
+      entryChanged = true;
+      changed += 1;
+    }
+    if (Array.isArray(entry.galleryImages) && entry.galleryImages.length) {
+      const galleryImages = entry.galleryImages.map((image, index) => {
+        const directGallery = record.source === 'blog'
+          && Number(record.blogEntryId) === Number(entry.id)
+          && record.imageSlot === 'gallery'
+          && Number(record.imageIndex) === index;
+        if (!directGallery && !photoMapImageMatchesSignatures(image, targetSignatures)) return image;
+        entryChanged = true;
+        changed += 1;
+        return correctedMapPhotoImage(image, point.latitude, point.longitude);
+      });
+      if (entryChanged) next = { ...next, galleryImages };
+    }
+    if (entryChanged) await putRecord('blogEntries', { ...next, updatedAt: now });
+  }
+
+  for (const gasto of state.gastos) {
+    let next = gasto;
+    let expenseChanged = false;
+    const ticketImage = expenseTicketImageRecord(gasto);
+    const directTicket = record.source === 'gasto-ticket'
+      && Number(record.expenseId) === Number(gasto.id);
+    if (ticketImage && (directTicket || photoMapImageMatchesSignatures(ticketImage, targetSignatures))) {
+      next = {
+        ...next,
+        ticketLatitude: point.latitude,
+        ticketLongitude: point.longitude,
+        ticketLocationSource: 'manual',
+        ticketMapEnabled: true
+      };
+      expenseChanged = true;
+      changed += 1;
+    }
+    if (Array.isArray(gasto.extraImages) && gasto.extraImages.length) {
+      const previousFirstPoint = storedImageCoordinates(gasto.extraImages[0]);
+      let firstPhotoMoved = false;
+      const extraImages = gasto.extraImages.map((image, index) => {
+        const directExtra = record.source === 'gasto'
+          && Number(record.expenseId) === Number(gasto.id)
+          && record.imageSlot === 'extra'
+          && Number(record.imageIndex) === index;
+        if (!directExtra && !photoMapImageMatchesSignatures(image, targetSignatures)) return image;
+        if (index === 0) firstPhotoMoved = true;
+        expenseChanged = true;
+        changed += 1;
+        return correctedMapPhotoImage(image, point.latitude, point.longitude);
+      });
+      if (expenseChanged) next = { ...next, extraImages };
+      const ticketInheritedFromFirstPhoto = firstPhotoMoved && (
+        String(gasto.ticketLocationSource || '') === 'expense-photo'
+        || (previousFirstPoint
+          && Math.abs(Number(gasto.ticketLatitude) - previousFirstPoint.latitude) < 0.0000001
+          && Math.abs(Number(gasto.ticketLongitude) - previousFirstPoint.longitude) < 0.0000001)
+      );
+      if (ticketInheritedFromFirstPhoto) {
+        next = {
+          ...next,
+          ticketLatitude: point.latitude,
+          ticketLongitude: point.longitude,
+          ticketLocationSource: 'expense-photo'
+        };
+      }
+    }
+    if (expenseChanged) await putRecord('gastos', { ...next, updatedAt: now });
+  }
+
+  if (!changed) throw new Error('No se pudo localizar el registro original de la foto');
+  tripMapState.photoEditKey = '';
+  tripMapState.preserveViewportOnNextRender = true;
+  closeTripMapPhotoPopup();
+  await loadAll();
+  setTab('mapa');
+  const info = $('#trip-map-info');
+  if (info) info.textContent = 'Posición de la foto corregida. Las futuras descargas con GPS usarán estas coordenadas.';
 }
 
 function mapRecordMatchesDestination(record, trip) {
@@ -9331,9 +9479,14 @@ function zoomTripMapAt(event) {
 function groupNearbyPhotoMapItems(items, maximumDistance = 30, maximumScreenDistance = 18) {
   const groups = [];
   items.forEach(item => {
+    const selectedForEditing = tripMapState.photoEditKey
+      && item.photoRecord
+      && item.photoRecord.key === tripMapState.photoEditKey;
     const group = groups.find(existing =>
-      geographicDistanceMeters(existing[0].photoRecord, item.photoRecord) < maximumDistance
-      || Math.hypot(existing[0].point.x - item.point.x, existing[0].point.y - item.point.y) < maximumScreenDistance
+      !selectedForEditing
+      && !existing.some(groupItem => groupItem.photoRecord && groupItem.photoRecord.key === tripMapState.photoEditKey)
+      && (geographicDistanceMeters(existing[0].photoRecord, item.photoRecord) < maximumDistance
+        || Math.hypot(existing[0].point.x - item.point.x, existing[0].point.y - item.point.y) < maximumScreenDistance)
     );
     if (group) group.push(item);
     else groups.push([item]);
@@ -9381,7 +9534,7 @@ function openTripMapPhotoPopup(encodedKeys, anchorElement = null) {
   const keys = decodeURIComponent(String(encodedKeys || '')).split('|').filter(Boolean);
   const records = keys.map(key => tripMapPhotoLookup.get(key)).filter(Boolean);
   if (!records.length) return;
-  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${records.length === 1 ? 'Foto' : `${records.length} fotos`}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-photo-popup-list">${records.map(record => `<article class="map-photo-popup-item"><button type="button" class="map-photo-thumbnail" data-open-map-photo="${escapeHtml(record.key)}" aria-label="Abrir foto"><img src="${escapeHtml(record.image.data || '')}" alt="${escapeHtml(record.descripcion || 'Foto')}"></button><div><strong>${escapeHtml(record.descripcion || 'Foto')}</strong><span>${escapeHtml(summaryDocumentDate(record.fecha, true))}${record.hora ? ` · ${escapeHtml(record.hora)}` : ''}</span></div></article>`).join('')}</div>`;
+  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${records.length === 1 ? 'Foto' : `${records.length} fotos`}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-photo-popup-list">${records.map(record => `<article class="map-photo-popup-item"><button type="button" class="map-photo-thumbnail" data-open-map-photo="${escapeHtml(record.key)}" aria-label="Abrir foto"><img src="${escapeHtml(record.image.data || '')}" alt="${escapeHtml(record.descripcion || 'Foto')}"></button><div><strong>${escapeHtml(record.descripcion || 'Foto')}</strong><span>${escapeHtml(summaryDocumentDate(record.fecha, true))}${record.hora ? ` · ${escapeHtml(record.hora)}` : ''}</span><button type="button" class="ghost map-photo-position-button" data-adjust-map-photo="${escapeHtml(record.key)}">Ajustar posición</button></div></article>`).join('')}</div><span class="map-photo-position-hint">También puedes mantener pulsado y arrastrar un punto de una sola foto.</span>`;
   popup.hidden = false;
   positionTripMapPhotoPopup(popup, anchorElement);
 }
@@ -10366,15 +10519,19 @@ function tripVectorDestinationElement(markerModel, labelOnLeft) {
 function tripVectorPhotoElement(records) {
   const element = document.createElement('button');
   element.type = 'button';
-  element.className = 'trip-vector-photo-marker';
+  element.className = `trip-vector-photo-marker${records.length === 1 ? ' photo-position-draggable' : ''}${records[0] && records[0].key === tripMapState.photoEditKey ? ' editing-position' : ''}`;
   element.setAttribute('aria-label', records.length === 1 ? records[0].descripcion || 'Foto' : `${records.length} fotos`);
   element.innerHTML = `<span>+</span>${records.length > 1 ? `<b>${records.length}</b>` : ''}`;
   const encodedKeys = encodeURIComponent(records.map(record => record.key).join('|'));
   element.addEventListener('click', event => {
     event.preventDefault();
     event.stopPropagation();
+    if (element.dataset.ignoreMapPointClick === '1') return;
     openTripMapPhotoPopup(encodedKeys, element);
   });
+  element.title = records.length === 1
+    ? 'Foto · mantén pulsado y arrastra para corregir su posición'
+    : `${records.length} fotos · abre el grupo para elegir cuál quieres ajustar`;
   return element;
 }
 
@@ -10393,10 +10550,27 @@ function renderTripVectorPhotoMarkers(map, photoItems) {
     if (!records.length) return;
     const longitude = group.reduce((sum, item) => sum + Number(item.ciudad.lng), 0) / group.length;
     const latitude = group.reduce((sum, item) => sum + Number(item.ciudad.lat), 0) / group.length;
+    const markerElement = tripVectorPhotoElement(records);
+    const editableRecord = records.length === 1 ? records[0] : null;
     const marker = new window.maplibregl.Marker({
-      element: tripVectorPhotoElement(records),
-      anchor: 'center'
+      element: markerElement,
+      anchor: 'center',
+      draggable: Boolean(editableRecord)
     }).setLngLat([longitude, latitude]).addTo(map);
+    if (editableRecord) {
+      marker.on('dragstart', () => {
+        closeTripMapPhotoPopup();
+        markerElement.classList.add('dragging');
+        markerElement.dataset.ignoreMapPointClick = '1';
+      });
+      marker.on('dragend', () => {
+        markerElement.classList.remove('dragging');
+        window.setTimeout(() => delete markerElement.dataset.ignoreMapPointClick, 400);
+        const position = marker.getLngLat();
+        moveMapPhoto(editableRecord, position.lat, position.lng)
+          .catch(error => alert(error.message || String(error)));
+      });
+    }
     tripVectorPhotoMarkers.push(marker);
   });
 }
@@ -10515,6 +10689,59 @@ function installFallbackManualPointDrag(frame, options = {}) {
       window.setTimeout(() => delete marker.dataset.ignoreMapPointClick, 400);
       reset();
       moveMapPoint(context, point.latitude, point.longitude)
+        .catch(error => alert(error.message || String(error)));
+    });
+    marker.addEventListener('pointercancel', reset);
+  });
+  frame.querySelectorAll('[data-map-photo-drag]').forEach(marker => {
+    const record = tripMapPhotoLookup.get(marker.getAttribute('data-map-photo-drag'));
+    if (!record) return;
+    marker.classList.add('photo-position-draggable');
+    let pointerId = null;
+    let start = null;
+    let dragging = false;
+    const reset = () => {
+      marker.removeAttribute('transform');
+      marker.classList.remove('dragging');
+      pointerId = null;
+      start = null;
+      dragging = false;
+    };
+    marker.addEventListener('pointerdown', event => {
+      if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+      event.stopPropagation();
+      pointerId = event.pointerId;
+      start = { x: event.clientX, y: event.clientY };
+      try { marker.setPointerCapture(pointerId); } catch {}
+    });
+    marker.addEventListener('pointermove', event => {
+      if (event.pointerId !== pointerId || !start) return;
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      if (!dragging && Math.hypot(dx, dy) < 5) return;
+      dragging = true;
+      event.preventDefault();
+      event.stopPropagation();
+      marker.classList.add('dragging');
+      const rect = frame.getBoundingClientRect();
+      marker.setAttribute('transform', `translate(${dx * width / rect.width} ${dy * height / rect.height})`);
+    });
+    marker.addEventListener('pointerup', event => {
+      if (event.pointerId !== pointerId || !start) return;
+      event.stopPropagation();
+      if (!dragging) {
+        reset();
+        return;
+      }
+      event.preventDefault();
+      const rect = frame.getBoundingClientRect();
+      const x = Math.max(0, Math.min(width, ((event.clientX - rect.left) / rect.width) * width));
+      const y = Math.max(0, Math.min(height, ((event.clientY - rect.top) / rect.height) * height));
+      const point = mapLatLngFromWorldPoint(startX + x, startY + y, zoom);
+      marker.dataset.ignoreMapPointClick = '1';
+      window.setTimeout(() => delete marker.dataset.ignoreMapPointClick, 400);
+      reset();
+      moveMapPhoto(record, point.latitude, point.longitude)
         .catch(error => alert(error.message || String(error)));
     });
     marker.addEventListener('pointercancel', reset);
@@ -11012,7 +11239,9 @@ function renderTripMap() {
     const badge = records.length > 1
       ? `<circle class="map-marker-photo-badge" cx="${(x + 9).toFixed(1)}" cy="${(y - 9).toFixed(1)}" r="7"></circle><text class="map-marker-photo-count" x="${(x + 9).toFixed(1)}" y="${(y - 6.5).toFixed(1)}">${records.length}</text>`
       : '';
-    return `<g class="map-marker map-marker-photo" role="button" tabindex="0" data-map-photo-keys="${keys}" aria-label="${escapeHtml(records.length === 1 ? records[0].descripcion || 'Foto' : `${records.length} fotos`)}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="9"></circle><text class="map-marker-photo-plus" x="${x.toFixed(1)}" y="${(y + 4.4).toFixed(1)}">+</text>${badge}<title>${escapeHtml(title)}</title></g>`;
+    const photoDragAction = records.length === 1 ? ` data-map-photo-drag="${escapeHtml(records[0].key)}"` : '';
+    const editingClass = records.length === 1 && records[0].key === tripMapState.photoEditKey ? ' editing-position' : '';
+    return `<g class="map-marker map-marker-photo${records.length === 1 ? ' photo-position-draggable' : ''}${editingClass}" role="button" tabindex="0" data-map-photo-keys="${keys}"${photoDragAction} aria-label="${escapeHtml(records.length === 1 ? records[0].descripcion || 'Foto' : `${records.length} fotos`)}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="9"></circle><text class="map-marker-photo-plus" x="${x.toFixed(1)}" y="${(y + 4.4).toFixed(1)}">+</text>${badge}<title>${escapeHtml(title)}</title></g>`;
   }).join('');
   const destinationMarkers = dailyMode ? dailyModel.destinationMarkers.map(markerModel => {
     const p = project({ ciudad: { lat: markerModel.record.latitude, lng: markerModel.record.longitude } });
@@ -11098,6 +11327,7 @@ function renderTripMap() {
     const open = event => {
       event.preventDefault();
       event.stopPropagation();
+      if (marker.dataset.ignoreMapPointClick === '1') return;
       openTripMapPhotoPopup(marker.getAttribute('data-map-photo-keys'), marker);
     };
     marker.addEventListener('click', open);
@@ -12336,7 +12566,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v267');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v268');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -17546,6 +17776,7 @@ function bindEvents() {
       }
       const mapPhotoMarker = target.closest('[data-map-photo-keys]');
       if (mapPhotoMarker) {
+        if (mapPhotoMarker.dataset.ignoreMapPointClick === '1') return;
         openTripMapPhotoPopup(mapPhotoMarker.getAttribute('data-map-photo-keys'), mapPhotoMarker);
         return;
       }
@@ -17557,6 +17788,18 @@ function bindEvents() {
       const mapPhotoOpen = target.closest('[data-open-map-photo]');
       if (mapPhotoOpen) {
         openTripMapPhoto(mapPhotoOpen.dataset.openMapPhoto);
+        return;
+      }
+      const adjustMapPhoto = target.closest('[data-adjust-map-photo]');
+      if (adjustMapPhoto) {
+        const key = adjustMapPhoto.dataset.adjustMapPhoto;
+        if (!tripMapPhotoLookup.has(key)) throw new Error('No se encuentra la foto que quieres ajustar');
+        tripMapState.photoEditKey = key;
+        tripMapState.preserveViewportOnNextRender = true;
+        closeTripMapPhotoPopup();
+        renderTripMap();
+        const info = $('#trip-map-info');
+        if (info) info.textContent = 'La foto seleccionada aparece separada. Mantén pulsado su punto + y arrástralo hasta la posición exacta.';
         return;
       }
       const mapFullscreenButton = target.closest('[data-map-fullscreen]');
@@ -17938,7 +18181,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v267');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v268');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

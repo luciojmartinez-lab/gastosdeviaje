@@ -259,6 +259,18 @@ test('el mapa diario no repite en la ciudad una entrada que ya tiene GPS exacto'
   assert.match(app, /!entry\.expenseId \|\| !exactCoverage\.expenseIds\.has\(Number\(entry\.expenseId\)\)/);
 });
 
+test('las fotos con GPS se pueden mover y guardan la posición corregida', () => {
+  assert.match(app, /async function moveMapPhoto\(context, latitude, longitude\)/);
+  assert.match(app, /function correctedMapPhotoImage\(image, latitude, longitude\)[\s\S]*?locationSource: 'manual',[\s\S]*?mapEnabled: true/);
+  assert.match(app, /imageLatitude: point\.latitude,[\s\S]*?imageLongitude: point\.longitude,[\s\S]*?imageLocationSource: 'manual'/);
+  assert.match(app, /ticketLatitude: point\.latitude,[\s\S]*?ticketLongitude: point\.longitude,[\s\S]*?ticketLocationSource: 'manual'/);
+  assert.match(app, /new window\.maplibregl\.Marker\(\{[\s\S]*?draggable: Boolean\(editableRecord\)[\s\S]*?moveMapPhoto\(editableRecord, position\.lat, position\.lng\)/);
+  assert.match(app, /data-map-photo-drag="\$\{escapeHtml\(records\[0\]\.key\)\}"/);
+  assert.match(app, /data-adjust-map-photo="\$\{escapeHtml\(record\.key\)\}"/);
+  assert.match(app, /tripMapState\.photoEditKey = key;[\s\S]*?Mantén pulsado su punto \+ y arrástralo/);
+  assert.match(styles, /\.trip-vector-photo-marker\.photo-position-draggable,[\s\S]*?\.map-marker-photo\.photo-position-draggable/);
+});
+
 test('los cambios de datos no construyen el mapa mientras su pestaña está oculta', () => {
   const start = app.indexOf('function renderMapPaises()');
   const end = app.indexOf('function renderResumenCiudades()', start);
