@@ -248,7 +248,7 @@ test('Cronología avisa de la exportación previa y se procesa fuera de la inter
   assert.match(html, /selecciona <em>Cronología\.json<\/em> desde el lugar donde lo hayas descargado/);
   assert.match(html, /id="timeline-file-input"[^>]*accept="\.json,application\/json"/);
   assert.match(app, /data-map-timeline="1"/);
-  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v268'\)/);
+  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v269'\)/);
   assert.match(worker, /GoogleTimelineImport\.importTrip/);
 });
 
@@ -321,6 +321,31 @@ test('Cronología enlaza una foto GPS que Google dejó fuera del recorrido', () 
   assert.equal(result.length, 2);
   assert.equal(result[1].length, 3);
   assert.equal(result[1][1].latitude, 40.01);
+});
+
+test('Cronología dibuja los puntos horarios aunque Google no reconozca una actividad', () => {
+  const start = app.indexOf('function timelineMapPaths(records)');
+  const end = app.indexOf('function timelineMapPathsWithDailyRecords', start);
+  const context = {
+    lodgingDistanceMeters: (first, second) => Math.hypot(
+      Number(first.latitude) - Number(second.latitude),
+      Number(first.longitude) - Number(second.longitude)
+    ) * 111_000
+  };
+  vm.runInNewContext(`${app.slice(start, end)}; this.timelineMapPaths = timelineMapPaths;`, context);
+  const paths = context.timelineMapPaths([{
+    fecha: '2026-08-15',
+    activities: [],
+    points: [
+      { latitude: 40, longitude: -3, time: '2026-08-15T10:00:00+02:00', kind: 'path' },
+      { latitude: 40.003, longitude: -3.002, time: '2026-08-15T12:00:00+02:00', kind: 'path' },
+      { latitude: 40.006, longitude: -3.004, time: '2026-08-15T18:00:00+02:00', kind: 'path' }
+    ]
+  }]);
+
+  assert.equal(paths.length, 1);
+  assert.equal(paths[0].length, 3);
+  assert.equal(paths[0][1].time, '2026-08-15T12:00:00+02:00');
 });
 
 test('mostrar Cronología cierra el cuadro y oculta solamente la línea calculada', () => {
