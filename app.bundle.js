@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v269';
+const APP_VERSION = '700v270';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2379,7 +2379,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v269');
+    const worker = new Worker('./timeline-import-worker.js?v=700v270');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3121,7 +3121,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v269');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v270');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3912,7 +3912,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v269');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v270');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4003,7 +4003,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v269');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v270');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4065,7 +4065,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v269');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v270');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4363,7 +4363,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v269');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v270');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6103,7 +6103,7 @@ async function addBlogEntry(data) {
     paisId: data.paisId ? Number(data.paisId) : null,
     ciudadId: data.ciudadId ? Number(data.ciudadId) : null,
     enTransito: data.enTransito === true,
-    texto: type === 'texto' ? String(data.texto || '') : '',
+    texto: ['texto', 'imagen'].includes(type) ? String(data.texto || '') : '',
     notas: type === 'punto' ? String(data.notas || '') : '',
     transporte: type === 'punto' ? transport : '',
     mapCityManual: type === 'punto' && data.mapCityManual === true,
@@ -12152,7 +12152,7 @@ function syncBlogAvailability() {
 }
 
 function blogTypeLabel(type) {
-  return ({ gasto: 'Gasto', imagen: 'Imagen', texto: 'Texto', punto: 'Punto' })[type] || type || '-';
+  return ({ gasto: 'Gasto', imagen: 'Imagen y Texto', texto: 'Solo Texto', punto: 'Punto' })[type] || type || '-';
 }
 
 function blogPlaceName(id) {
@@ -12352,7 +12352,7 @@ function blogEntryShareText(entry) {
     entry.descripcion || blogTypeLabel(entry.tipo),
     [summaryDocumentDate(entry.fecha, true), entry.hora || '', place].filter(Boolean).join(' · ')
   ];
-  if (entry.tipo === 'texto' && entry.texto) lines.push(String(entry.texto).trim());
+  if (['texto', 'imagen'].includes(entry.tipo) && entry.texto) lines.push(String(entry.texto).trim());
   if (entry.tipo === 'punto' && entry.notas) lines.push(String(entry.notas).trim());
   if (entry.tipo === 'gasto') lines.push(fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR'));
   const pointUrl = blogPointMapUrl(entry);
@@ -12442,7 +12442,7 @@ async function createBlogEntryShareCanvas(entry) {
     typeDetail
   ].filter(Boolean).join('     ');
   const description = entry.descripcion || blogTypeLabel(entry.tipo);
-  const bodyText = entry.tipo === 'texto' ? entry.texto : entry.tipo === 'punto' ? entry.notas : '';
+  const bodyText = ['texto', 'imagen'].includes(entry.tipo) ? entry.texto : entry.tipo === 'punto' ? entry.notas : '';
 
   context.font = '700 48px Arial, sans-serif';
   const headingLines = blogShareWrappedLines(context, heading, contentWidth);
@@ -12585,7 +12585,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v269');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v270');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -13414,7 +13414,8 @@ function setBlogEntryType(type) {
   if ($('#blog-tipo')) $('#blog-tipo').value = blogTypeLabel(type);
   if ($('#blog-expense-fields')) $('#blog-expense-fields').hidden = type !== 'gasto';
   syncBlogImageFieldsForType();
-  if ($('#blog-text-fields')) $('#blog-text-fields').hidden = type !== 'texto';
+  if ($('#blog-text-fields')) $('#blog-text-fields').hidden = !['texto', 'imagen'].includes(type);
+  if ($('#blog-text-label')) $('#blog-text-label').textContent = type === 'imagen' ? 'Texto (opcional)' : 'Texto';
   syncBlogPointFieldsVisibility();
   if ($('#blog-featured-option')) $('#blog-featured-option').hidden = type !== 'imagen';
   if (type === 'punto') {
@@ -14402,8 +14403,10 @@ async function saveBlogEntryForm() {
     wordpressIncluded: Boolean($('#blog-wordpress') && $('#blog-wordpress').checked),
     featuredImage: type === 'imagen' && Boolean($('#blog-featured') && $('#blog-featured').checked)
   };
-  if (type === 'texto') {
+  if (['texto', 'imagen'].includes(type)) {
     values.texto = $('#blog-texto').value;
+  }
+  if (type === 'texto') {
     if (!String(values.texto).trim()) throw new Error('Escribe el texto de la entrada');
     if (enRuta) {
       const point = blogPointFieldCoordinates();
@@ -14623,7 +14626,7 @@ function blogPrintImagesHtml(images, description) {
 function blogPrintEntryHtml(entry, options = {}) {
   const place = [blogPlaceName(entry.paisId), blogEntryCityName(entry)].filter(value => value && value !== '-').join(' · ');
   const price = entry.tipo === 'gasto' ? fmtCurrency(entry.gastoImporte, entry.gastoMoneda || 'EUR') : '';
-  const text = entry.tipo === 'texto' && entry.texto
+  const text = ['texto', 'imagen'].includes(entry.tipo) && entry.texto
     ? `<div class="blog-print-text">${escapeHtml(entry.texto).replace(/\r?\n/g, '<br>')}</div>`
     : '';
   const images = blogEntryImages(entry).slice(options.skipFirstImage ? 1 : 0);
@@ -18200,7 +18203,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v269');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v270');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

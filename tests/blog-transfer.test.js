@@ -2,12 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [html, app, styles, help] = await Promise.all([
+const [html, app, styles, help, wordpressImporter] = await Promise.all([
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
   readFile(new URL('../styles.css', import.meta.url), 'utf8'),
-  readFile(new URL('../ayuda.html', import.meta.url), 'utf8')
+  readFile(new URL('../ayuda.html', import.meta.url), 'utf8'),
+  readFile(new URL('../wordpress-importer/gastos-viaje-importer/gastos-viaje-importer.php', import.meta.url), 'utf8')
 ]);
+
+test('las entradas de imagen admiten texto y mantienen separados los tres tipos visibles', () => {
+  assert.match(html, /data-blog-type="texto">Solo Texto<\/button>/);
+  assert.match(html, /data-blog-type="imagen">Imagen y Texto<\/button>/);
+  assert.match(html, /data-blog-type="punto">Punto geolocalizado<\/button>/);
+  assert.match(app, /imagen: 'Imagen y Texto', texto: 'Solo Texto'/);
+  assert.match(app, /texto: \['texto', 'imagen'\]\.includes\(type\) \? String\(data\.texto \|\| ''\) : ''/);
+  assert.match(app, /\['texto', 'imagen'\]\.includes\(type\)[\s\S]*?values\.texto = \$\('#blog-texto'\)\.value/);
+  assert.match(app, /\$\('#blog-text-fields'\)\.hidden = !\['texto', 'imagen'\]\.includes\(type\)/);
+  assert.match(app, /const text = \['texto', 'imagen'\]\.includes\(entry\.tipo\) && entry\.texto/);
+  assert.match(help, /El texto es opcional y se conserva al editar/);
+  assert.match(wordpressImporter, /\$type === 'imagen'[\s\S]*?\$entry\['texto'\][\s\S]*?gastos-viaje-image-text/);
+});
 
 test('al reemplazar un gasto existente en el blog permite conservar o reemplazar fecha y hora', () => {
   assert.match(html, /id="expense-blog-replace-dialog"/);

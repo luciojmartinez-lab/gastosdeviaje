@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v269</title>
+  <title>Manual de Cuaderno de Bitácora - 700v270</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     const embeddedHelpMode = helpParams.get('embedded');
@@ -193,7 +193,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 16 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v269</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 17 de agosto de 2026</span><span><strong>Versión documentada:</strong> 700v270</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -448,7 +448,7 @@
           <ol class="legend"><li><b>1</b>Alta, última entrada, PDF y WordPress.</li><li><b>2</b>Filtros por día, país y ciudad.</li><li><b>3</b>Cabecera plegable de cada día.</li><li><b>4</b>Acciones de la entrada.</li><li><b>5</b>Conservación de posición tras editar.</li></ol>
           <p>Las columnas son <strong>Hora, Ciudad, Descripción, Tipo, País, Precio, WordPress y Acciones</strong>. El último día queda abierto inicialmente; los anteriores pueden abrirse con + y cerrarse con −.</p>
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Control / opción</th><th>Uso</th></tr></thead><tbody>
-            <tr><td>Añadir entrada</td><td>Abre el selector Texto, Imagen o Punto geolocalizado.</td></tr>
+            <tr><td>Añadir entrada</td><td>Abre el selector Solo Texto, Imagen y Texto o Punto geolocalizado.</td></tr>
             <tr><td>Última entrada</td><td>Abre el día necesario y lleva a la última entrada visible con los filtros actuales.</td></tr>
             <tr><td id="blog-pdf">Vista / PDF</td><td>Genera una vista HTML adaptable con las entradas que cumplen los filtros activos y abre el guardado en PDF. Cada día comienza en una hoja nueva. En los días largos, el PDF reduce automáticamente un poco más las imágenes y las separaciones para aprovechar mejor cada hoja; los días cortos conservan el tamaño normal. El mapa diario, cuando existe, se coloca siempre al principio como imagen destacada a todo el ancho. Las galerías de cuatro fotos usan una separación mínima para mostrarlas mayores; las de dos o tres ocupan el 80 % del ancho y reparten ese espacio entre sus imágenes. Verticales y horizontales comparten la altura de la fila, sin recortes ni deformaciones. Los tickets ordinarios se muestran aproximadamente un tercio más pequeños y con tono neutro; los billetes de tren o avión y los documentos de alojamiento conservan el tamaño grande y el color original. Al pulsar cualquier foto en la vista HTML se abre una lightbox para verla grande. La guía previa recuerda que, en Android, hay que dejar seleccionado <strong>Guardar como PDF</strong>, pulsar el botón redondo con el icono PDF, elegir carpeta y confirmar con <strong>Guardar</strong>; seleccionar solamente la opción superior no crea aún el archivo. Al cerrar el cuadro de impresión, la vista HTML permanece y ofrece <strong>Compartir HTML</strong>, <strong>Descargar HTML</strong> e <strong>Imprimir / PDF</strong>. Para enviar la vista se usa Compartir HTML, no el menú de Chrome, que solo compartiría la dirección temporal <code>about:blank</code>. Sin filtros, incluye el relato completo.</td></tr>
             <tr><td>PDF del día</td><td>El botón inferior toma el día que está desplegado y genera únicamente sus entradas, sin obligar a volver arriba ni a cambiar el filtro. Si hay varios días abiertos, utiliza el último que se desplegó. Este PDF diario no añade la portada general ni otros días.</td></tr>
@@ -460,7 +460,7 @@
           <p>Una doble pulsación equivale a Editar. Tras guardar, la misma entrada vuelve a quedar seleccionada en su posición anterior.</p>
 
           <h4 id="blog-formulario">Formulario Añadir entrada</h4>
-          <p>Al abrir el formulario se elige <a href="#blog-formulario-texto">Texto</a>, <a href="#blog-formulario-imagen">Imagen</a> o <a href="#blog-formulario-punto">Punto geolocalizado</a>. Después de elegir, el cuadro cambia y el botón <strong>i</strong> abre directamente la explicación de ese tipo.</p>
+          <p>Al abrir el formulario se elige <a href="#blog-formulario-texto">Solo Texto</a>, <a href="#blog-formulario-imagen">Imagen y Texto</a> o <a href="#blog-formulario-punto">Punto geolocalizado</a>. Después de elegir, el cuadro cambia y el botón <strong>i</strong> abre directamente la explicación de ese tipo.</p>
           <p>Los tres tipos comparten Fecha, Hora, País, Ciudad, Descripción, inclusión en WordPress y los botones Guardar entrada y Cancelar. Fecha y hora ordenan el relato; país y ciudad alimentan los filtros y el mapa; la descripción es un título breve de hasta 240 caracteres.</p>
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Acción común</th><th>Uso</th></tr></thead><tbody>
             <tr><td>Ciudad</td><td>Permite elegir una ciudad del viaje, dejar <em>(sin ciudad)</em> o marcar <em>En tránsito</em> cuando la entrada sucede durante un desplazamiento. En tránsito se conserva como tal en la tabla, los encabezados, filtros, PDF, compartir y WordPress.</td></tr>
@@ -470,15 +470,16 @@
             <tr><td>Cancelar / X</td><td>Cancelar descarta el borrador; X cierra conservando el texto del borrador, pero no los archivos elegidos.</td></tr>
           </tbody></table></div>
 
-          <h4 id="blog-formulario-texto">Entrada de Texto</h4>
+          <h4 id="blog-formulario-texto">Entrada de Solo Texto</h4>
           <p>Añade una narración sin imagen obligatoria. El campo <em>Texto</em> admite el contenido extenso y <em>Descripción</em> actúa como título en la tabla, PDF y WordPress.</p>
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / acción</th><th>Uso</th></tr></thead><tbody>
             <tr><td>Texto</td><td>Relato completo de lo ocurrido. Es obligatorio en este tipo de entrada.</td></tr>
             <tr><td>En ruta</td><td>Permite usar el texto para ajustar la ruta. Pulsa <em>Añadir ubicación manualmente</em> e introduce latitud y longitud; la aplicación no toma automáticamente la posición del teléfono.</td></tr>
           </tbody></table></div>
 
-          <h4 id="blog-formulario-imagen">Entrada de Imagen o galería</h4>
-          <figure><img src="assets/help/06-alta-blog.png" alt="Formulario de imagen del Blog con galería, clasificación, giro y eliminación"><figcaption>Entrada de Imagen. Cada miniatura dispone de clasificación y de la acción Quitar.</figcaption></figure>
+          <h4 id="blog-formulario-imagen">Entrada de Imagen y Texto o galería</h4>
+          <figure><img src="assets/help/06-alta-blog.png" alt="Formulario de imagen y texto del Blog con galería, clasificación, giro y eliminación"><figcaption>Entrada de Imagen y Texto. Cada miniatura dispone de clasificación y de la acción Quitar.</figcaption></figure>
+          <p>Permite acompañar la imagen o la galería con un texto extenso. El texto es opcional y se conserva al editar; cuando existe, aparece junto a las imágenes en el Blog, la vista HTML/PDF y la exportación a WordPress.</p>
           <ol class="legend"><li><b>1</b>Tipo Imagen y datos comunes.</li><li><b>2</b>Archivo, varios archivos o cámara.</li><li><b>3</b>Primera imagen y vista previa.</li><li><b>4</b>Clasificación, giro, mapa y Quitar.</li><li><b>5</b>Guardar o cancelar.</li></ol>
           <div class="table-wrap"><table class="control-table"><thead><tr><th>Campo / acción</th><th>Uso</th></tr></thead><tbody>
             <tr><td>Archivo (con GPS)</td><td>Elige una fotografía desde Archivos. En Android es la vía más fiable para conservar el GPS original.</td></tr>
@@ -676,10 +677,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 16 de agosto de 2026 para Cuaderno de Bitácora 700v269.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 17 de agosto de 2026 para Cuaderno de Bitácora 700v270.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v269 · 16 de agosto de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v270 · 17 de agosto de 2026</div>
 </body>
 </html>
