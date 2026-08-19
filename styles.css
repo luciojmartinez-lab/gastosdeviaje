@@ -3631,6 +3631,51 @@ body.map-fullscreen-open {
   color: #b91c1c;
 }
 
+.timeline-routing-controls {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+
+.timeline-routing-controls > strong,
+.timeline-routing-controls > p {
+  display: block;
+  margin: 0 0 8px;
+}
+
+.timeline-routing-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.timeline-routing-fields label {
+  display: grid;
+  gap: 5px;
+}
+
+.timeline-routing-fields label > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.timeline-routing-fields select {
+  width: 100%;
+}
+
+.timeline-routing-actions {
+  margin-top: 10px;
+}
+
+@media (max-width: 430px) {
+  .timeline-routing-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
 .map-route {
   fill: none;
   stroke: #1d4ed8;

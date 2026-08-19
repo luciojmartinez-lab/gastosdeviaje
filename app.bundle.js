@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v271';
+const APP_VERSION = '700v272';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -197,6 +197,8 @@ const tripMapState = {
   showPlanned: true,
   showPhotos: true,
   showTimeline: true,
+  timelineRouteView: 'original',
+  timelineRoutingMode: 'automatic',
   showSatellite: false,
   destinationOnly: false,
   day: '',
@@ -1928,6 +1930,8 @@ function setSelectedTrips(ids, options = {}) {
     tripMapState.showPlanned = true;
     tripMapState.showPhotos = true;
     tripMapState.showTimeline = true;
+    tripMapState.timelineRouteView = 'original';
+    tripMapState.timelineRoutingMode = 'automatic';
     tripMapState.destinationOnly = false;
     tripMapState.day = '';
     resetTripMapView();
@@ -1942,6 +1946,21 @@ function timelineRecordsForTrip(tripId) {
     .filter(record => Number(record.viajeId) === Number(tripId))
     .slice()
     .sort((a, b) => String(a.fecha || '').localeCompare(String(b.fecha || '')));
+}
+
+function timelineRoutingModeKey(value = tripMapState.timelineRoutingMode) {
+  return window.TimelineRouting ? window.TimelineRouting.normalizeMode(value) : 'automatic';
+}
+
+function timelineAdjustedRouteCache(record, mode = timelineRoutingModeKey()) {
+  const routes = record && record.adjustedTimelineRoutes;
+  const cached = routes && routes[timelineRoutingModeKey(mode)];
+  return cached && Array.isArray(cached.paths) && cached.paths.length ? cached : null;
+}
+
+function selectedTimelineDayRecord(trip = selectedMapTimelineTrip()) {
+  if (!trip || !tripMapState.day) return null;
+  return timelineRecordsForTrip(trip.id).find(record => record.fecha === tripMapState.day) || null;
 }
 
 function selectedMapTimelineTrip() {
@@ -1964,11 +1983,18 @@ function renderTimelineDialog() {
   const toggle = $('#timeline-toggle-layer');
   const remove = $('#timeline-delete');
   const select = $('#timeline-select-file');
+  const routingControls = $('#timeline-routing-controls');
+  const routeView = $('#timeline-route-view');
+  const routeMode = $('#timeline-route-mode');
+  const routeAdjust = $('#timeline-route-adjust');
+  const routeClear = $('#timeline-route-clear');
+  const routeHelp = $('#timeline-routing-help');
   if (!trip) {
     if (status) status.innerHTML = '<strong>Selecciona un viaje</strong><span>La Cronología de Maps se importa solamente para un viaje cada vez.</span>';
     if (select) select.disabled = true;
     if (toggle) toggle.hidden = true;
     if (remove) remove.hidden = true;
+    if (routingControls) routingControls.hidden = true;
     return;
   }
   activeTimelineTripId = Number(trip.id);
@@ -1987,6 +2013,25 @@ function renderTimelineDialog() {
     toggle.textContent = tripMapState.showTimeline ? 'Ocultar recorrido' : 'Mostrar recorrido';
   }
   if (remove) remove.hidden = !records.length;
+  if (routingControls) routingControls.hidden = !records.length;
+  if (routeView) routeView.value = tripMapState.timelineRouteView === 'adjusted' ? 'adjusted' : 'original';
+  if (routeMode) routeMode.value = timelineRoutingModeKey();
+  const dayRecord = selectedTimelineDayRecord(trip);
+  const cached = timelineAdjustedRouteCache(dayRecord);
+  if (routeAdjust) {
+    routeAdjust.disabled = !dayRecord;
+    routeAdjust.textContent = cached ? 'Recalcular el día' : 'Ajustar el día';
+  }
+  if (routeClear) routeClear.hidden = !cached;
+  if (routeHelp) {
+    routeHelp.textContent = !tripMapState.day
+      ? 'Selecciona primero un día en el mapa. Así solo se consulta lo necesario.'
+      : !dayRecord
+        ? `La Cronología importada no contiene recorrido el ${blogDayDateLabel(tripMapState.day)}.`
+        : cached
+          ? `${blogDayDateLabel(dayRecord.fecha)} ajustado y guardado con ${cached.provider || 'Valhalla / OpenStreetMap'}.`
+          : `Se ajustará únicamente el ${blogDayDateLabel(dayRecord.fecha)} y el resultado quedará guardado.`;
+  }
 }
 
 function openTimelineDialog() {
@@ -2005,6 +2050,114 @@ function closeTimelineDialog() {
   if (!dialog) return;
   if (dialog.open && dialog.close) dialog.close();
   else dialog.removeAttribute('open');
+}
+
+function timelineRoutingErrorMessage(error, status) {
+  const code = String(error || '');
+  if (status === 429 || code === 'rate_limited') return 'El servicio gratuito está ocupado. Espera un poco y vuelve a intentarlo.';
+  if (code === 'route_timeout') return 'El ajuste ha tardado demasiado. Prueba otra vez o cambia entre Coche y A pie.';
+  if (code === 'route_unavailable' || code === 'empty_route') return 'No se encontró una carretera o camino válido entre esos puntos.';
+  return 'No se pudo consultar el servicio de rutas.';
+}
+
+async function requestAdjustedTimelinePath(path, preferredMode) {
+  if (!window.TimelineRouting) throw new Error('No se ha cargado el ajustador de recorridos.');
+  const costing = window.TimelineRouting.costingForPath(path, preferredMode);
+  const locations = window.TimelineRouting.waypointsForPath(path, costing, 12);
+  if (locations.length < 2) return null;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 22000);
+  try {
+    const response = await fetch('/.netlify/functions/route-adjust', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ costing, locations }),
+      signal: controller.signal
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(timelineRoutingErrorMessage(payload && payload.error, response.status));
+    const points = (Array.isArray(payload.points) ? payload.points : [])
+      .map(point => ({ latitude: Number(point.latitude), longitude: Number(point.longitude) }))
+      .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+    if (points.length < 2) throw new Error('No se encontró una carretera o camino válido entre esos puntos.');
+    return {
+      points,
+      costing,
+      adjusted: true,
+      distanceKm: Number(payload.distanceKm || 0),
+      durationSeconds: Number(payload.durationSeconds || 0)
+    };
+  } catch (error) {
+    if (error && error.name === 'AbortError') throw new Error('El ajuste ha tardado demasiado. Prueba otra vez.');
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function adjustSelectedTimelineDay() {
+  const trip = selectedMapTimelineTrip();
+  const record = selectedTimelineDayRecord(trip);
+  if (!tripMapState.day) throw new Error('Selecciona primero un día en el mapa.');
+  if (!record) throw new Error('Ese día no tiene recorrido importado de Cronología de Maps.');
+  if (!window.TimelineRouting) throw new Error('No se ha cargado el ajustador de recorridos.');
+  const preferredMode = timelineRoutingModeKey($('#timeline-route-mode') && $('#timeline-route-mode').value);
+  tripMapState.timelineRoutingMode = preferredMode;
+  const originalPaths = timelineMapPaths([record]);
+  const exactRecords = dailyMapRecordsForScope(new Set([Number(trip.id)]), 0)
+    .filter(item => item.fecha === record.fecha);
+  const sourcePaths = timelineMapPathsWithDailyRecords(originalPaths, exactRecords);
+  if (!sourcePaths.length) throw new Error('Ese día no tiene suficientes puntos para ajustar el recorrido.');
+
+  const adjustedPaths = [];
+  const failures = [];
+  for (let index = 0; index < sourcePaths.length; index += 1) {
+    setTimelineMessage(`Ajustando tramo ${index + 1} de ${sourcePaths.length}…`);
+    try {
+      const adjusted = await requestAdjustedTimelinePath(sourcePaths[index], preferredMode);
+      if (adjusted) adjustedPaths.push(adjusted);
+    } catch (error) {
+      failures.push(error.message || String(error));
+      adjustedPaths.push({
+        points: sourcePaths[index].map(point => ({ latitude: point.latitude, longitude: point.longitude })),
+        costing: window.TimelineRouting.costingForPath(sourcePaths[index], preferredMode),
+        adjusted: false
+      });
+    }
+  }
+  if (!adjustedPaths.some(path => path.adjusted)) throw new Error(failures[0] || 'No se pudo ajustar ningún tramo.');
+  const adjustedTimelineRoutes = {
+    ...(record.adjustedTimelineRoutes || {}),
+    [preferredMode]: {
+      createdAt: new Date().toISOString(),
+      provider: 'Valhalla / OpenStreetMap',
+      paths: adjustedPaths
+    }
+  };
+  const updated = await updateRecord('timelineDays', record.id, { adjustedTimelineRoutes });
+  state.timelineDays = state.timelineDays.map(item => String(item.id) === String(record.id) ? updated : item);
+  tripMapState.timelineRouteView = 'adjusted';
+  resetTripMapView();
+  renderTripMap();
+  renderTimelineDialog();
+  setTimelineMessage(failures.length
+    ? `Recorrido guardado. ${adjustedPaths.length - failures.length} tramos ajustados y ${failures.length} conservados como en el original.`
+    : `Recorrido ajustado y guardado: ${adjustedPaths.length} ${adjustedPaths.length === 1 ? 'tramo' : 'tramos'}.`);
+}
+
+async function clearSelectedTimelineAdjustment() {
+  const record = selectedTimelineDayRecord();
+  if (!record) return;
+  const mode = timelineRoutingModeKey();
+  const adjustedTimelineRoutes = { ...(record.adjustedTimelineRoutes || {}) };
+  delete adjustedTimelineRoutes[mode];
+  const updated = await updateRecord('timelineDays', record.id, { adjustedTimelineRoutes });
+  state.timelineDays = state.timelineDays.map(item => String(item.id) === String(record.id) ? updated : item);
+  tripMapState.timelineRouteView = 'original';
+  resetTripMapView();
+  renderTripMap();
+  renderTimelineDialog();
+  setTimelineMessage('Se ha quitado el ajuste guardado de este día. La Cronología original se conserva.');
 }
 
 function closeLodgingNameDialog() {
@@ -2396,7 +2549,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v271');
+    const worker = new Worker('./timeline-import-worker.js?v=700v272');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3138,7 +3291,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v271');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v272');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3929,7 +4082,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v271');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v272');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4020,7 +4173,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v271');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v272');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4082,7 +4235,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v271');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v272');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4380,7 +4533,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v271');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v272');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -8841,6 +8994,27 @@ function timelineMapMarkerItems(records, dailyMode) {
 }
 
 function timelineMapPaths(records) {
+  const options = arguments[1] || {};
+  if (options.adjusted === true) {
+    return records.flatMap(record => {
+      const cached = timelineAdjustedRouteCache(record, options.mode);
+      if (!cached) return timelineMapPaths([record]);
+      return cached.paths
+        .map(entry => {
+          const path = (Array.isArray(entry) ? entry : entry && entry.points || [])
+            .map(point => ({
+              latitude: Number(point && point.latitude),
+              longitude: Number(point && point.longitude),
+              time: point && point.time || ''
+            }))
+            .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+          path.adjustedRoute = entry && entry.adjusted !== false;
+          path.costing = entry && entry.costing || '';
+          return path;
+        })
+        .filter(path => path.length > 1);
+    });
+  }
   const paths = [];
   records.forEach(record => {
     const points = Array.isArray(record.points) ? record.points : [];
@@ -8878,7 +9052,12 @@ function timelineMapPaths(records) {
           return Math.abs(point.latitude - previous.latitude) > 0.000001
             || Math.abs(point.longitude - previous.longitude) > 0.000001;
         });
-      if (path.length > 1) paths.push(path);
+      if (path.length > 1) {
+        path.activityType = activity.activityType || '';
+        path.startTime = startTime;
+        path.endTime = endTime;
+        paths.push(path);
+      }
     });
     if (!activities.length) {
       const semanticPathPoints = points.filter(point => !point.kind || point.kind === 'path');
@@ -8917,7 +9096,8 @@ function timelineMapPathsWithDailyRecords(paths = [], records = []) {
       latitude: Number(record.latitude),
       longitude: Number(record.longitude),
       time: `${record.fecha || ''}T${record.hora || ''}`,
-      timeKey: `${record.fecha || ''}T${record.hora || ''}`.slice(0, 16)
+      timeKey: `${record.fecha || ''}T${record.hora || ''}`.slice(0, 16),
+      routingAnchor: true
     }))
     .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(point.timeKey))
     .sort((a, b) => a.timeKey.localeCompare(b.timeKey));
@@ -8935,7 +9115,14 @@ function timelineMapPathsWithDailyRecords(paths = [], records = []) {
       .filter(Boolean)
       .filter((candidate, index, candidates) => !index || lodgingDistanceMeters(candidates[index - 1], candidate) > 1);
     if (connector.length > 1) {
-      connectors.push(connector.map(({ latitude, longitude, time }) => ({ latitude, longitude, time })));
+      const connectorPath = connector.map(({ latitude, longitude, time, routingAnchor }) => ({
+        latitude,
+        longitude,
+        time,
+        routingAnchor: routingAnchor === true
+      }));
+      connectorPath.activityType = '';
+      connectors.push(connectorPath);
       accepted.push(point);
     }
   });
@@ -9334,11 +9521,19 @@ function tripMapItemsForCurrentScope() {
   const cityMode = Boolean(tripMapState.cityId);
   if (!cityMode) {
     importedTimelineRecords = timelineRecordsForMap(scopedTripIds, dailyMode ? tripMapState.day : '');
-    const importedPaths = timelineMapPaths(importedTimelineRecords);
-    timelinePaths = timelineMapPathsWithDailyRecords(
-      importedPaths,
-      dailyMode ? selectedExactDailyRecords : exactDailyRecords
-    );
+    const adjustedTimelineAvailable = tripMapState.timelineRouteView === 'adjusted'
+      && importedTimelineRecords.length > 0
+      && importedTimelineRecords.every(record => timelineAdjustedRouteCache(record));
+    const importedPaths = timelineMapPaths(importedTimelineRecords, {
+      adjusted: adjustedTimelineAvailable,
+      mode: tripMapState.timelineRoutingMode
+    });
+    timelinePaths = adjustedTimelineAvailable
+      ? importedPaths
+      : timelineMapPathsWithDailyRecords(
+        importedPaths,
+        dailyMode ? selectedExactDailyRecords : exactDailyRecords
+      );
   }
   const selectedCity = cityMode ? cityOptionsById.get(Number(tripMapState.cityId)) || null : null;
   const visibleCities = cityMode
@@ -9426,6 +9621,9 @@ function tripMapItemsForCurrentScope() {
     cityDayCount: cityDays.size,
     scopedTrips,
     timelinePaths,
+    timelineAdjustment: timelinePaths.some(path => path.adjustedRoute === true)
+      ? (timelinePaths.every(path => path.adjustedRoute === true) ? 'adjusted' : 'partial')
+      : 'original',
     timelineExtentItems,
     timelineAvailable: scopedTrips.length === 1 && state.timelineDays.some(record => Number(record.viajeId) === Number(scopedTrips[0].id))
   };
@@ -11141,6 +11339,7 @@ function renderTripMap() {
     cityDayCount,
     scopedTrips,
     timelinePaths,
+    timelineAdjustment,
     timelineExtentItems,
     timelineAvailable
   } = tripMapItemsForCurrentScope();
@@ -11486,7 +11685,11 @@ function renderTripMap() {
     const fallbackText = dailyUsesCityFallback ? ' Los datos sin GPS exacto se muestran agrupados en su ciudad.' : '';
     const accommodationText = accommodationDestinationCount ? ' El alojamiento geolocalizado se usa como destino de la ciudad.' : '';
     const routeText = timelinePaths.length
-      ? `con recorrido estimado de Cronología de Maps (${timelinePaths.reduce((sum, path) => sum + path.length, 0)} puntos)`
+      ? `${timelineAdjustment === 'adjusted'
+        ? 'con recorrido ajustado a carreteras y caminos'
+        : timelineAdjustment === 'partial'
+          ? 'con recorrido parcialmente ajustado'
+          : 'con recorrido estimado de Cronología de Maps'} (${timelinePaths.reduce((sum, path) => sum + path.length, 0)} puntos)`
       : (dailyRoute.length > 1 ? 'con línea entre las ciudades' : 'sin líneas');
     info.textContent = `${dailyRecords.length} ${dailyRecords.length === 1 ? 'punto marcado' : 'puntos marcados'} el ${blogDayDateLabel(tripMapState.day)}, ${routeText}. La ciudad aparece junto a cada punto.${accommodationText}${fallbackText}${duplicatePhotoText}`;
     return;
@@ -11513,7 +11716,7 @@ function renderTripMap() {
     ? `Ruta: ${route || 'sin gastos con ciudad'}.`
     : `Ciudades: ${route || 'sin gastos con ciudad'}.`;
   const destinationText = destinationOnlyApplied ? ' Modo solo destinos: se muestran únicamente las paradas marcadas como Destino.' : '';
-  const timelineText = timelinePaths.length ? ` Cronología de Maps: ${timelinePaths.length} ${timelinePaths.length === 1 ? 'día' : 'días'} con recorrido estimado.` : '';
+  const timelineText = timelinePaths.length ? ` Cronología de Maps: ${timelinePaths.length} ${timelinePaths.length === 1 ? 'día' : 'días'} con recorrido ${timelineAdjustment === 'adjusted' ? 'ajustado' : timelineAdjustment === 'partial' ? 'parcialmente ajustado' : 'estimado'}.` : '';
   info.textContent = `${cityCount} ciudades en el mapa.${pointText}${photoText}${accommodationText} ${routeLabel}${timelineText}${destinationText}${configuredText}${missingText}${duplicatePhotoText}`;
 }
 
@@ -12693,7 +12896,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v271');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v272');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16612,6 +16815,33 @@ function bindEvents() {
     renderTripMap();
     closeTimelineDialog();
   };
+  $('#timeline-route-view').onchange = event => {
+    tripMapState.timelineRouteView = event.target.value === 'adjusted' ? 'adjusted' : 'original';
+    resetTripMapView();
+    renderTripMap();
+    renderTimelineDialog();
+  };
+  $('#timeline-route-mode').onchange = event => {
+    tripMapState.timelineRoutingMode = timelineRoutingModeKey(event.target.value);
+    if (tripMapState.timelineRouteView === 'adjusted') {
+      resetTripMapView();
+      renderTripMap();
+    }
+    renderTimelineDialog();
+  };
+  $('#timeline-route-adjust').onclick = () => {
+    const button = $('#timeline-route-adjust');
+    button.disabled = true;
+    adjustSelectedTimelineDay()
+      .catch(error => setTimelineMessage(error.message || String(error), true))
+      .finally(() => {
+        button.disabled = false;
+        renderTimelineDialog();
+      });
+  };
+  $('#timeline-route-clear').onclick = () => {
+    clearSelectedTimelineAdjustment().catch(error => setTimelineMessage(error.message || String(error), true));
+  };
   $('#timeline-delete').onclick = () => {
     deleteImportedTimeline().catch(error => setTimelineMessage(error.message || String(error), true));
   };
@@ -18311,7 +18541,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v271');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v272');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v271">
+  <link rel="manifest" href="manifest.webmanifest?v=700v272">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v271">
+  <link rel="stylesheet" href="styles.css?v=700v272">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v271 · 19/08/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v272 · 19/08/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v271</div>
+  <div class="app-version">700v272</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -719,6 +719,26 @@
       <p class="small">En Android: Ajustes → Ubicación → Servicios de ubicación → Cronología → Exportar datos de la cronología.</p>
     </div>
     <div id="timeline-trip-status" class="timeline-trip-status"></div>
+    <div id="timeline-routing-controls" class="timeline-routing-controls" hidden>
+      <strong>Ajustar el trazado a carreteras y caminos</strong>
+      <p class="small" id="timeline-routing-help">Selecciona un día en el mapa. El resultado se guarda y no vuelve a consultar el servicio.</p>
+      <p class="small timeline-routing-privacy">Al ajustar se envían únicamente los puntos del día al servicio público Valhalla/OpenStreetMap. No utiliza créditos de pago.</p>
+      <div class="timeline-routing-fields">
+        <label><span>Mostrar</span><select id="timeline-route-view">
+          <option value="original">Cronología original</option>
+          <option value="adjusted">Recorrido ajustado</option>
+        </select></label>
+        <label><span>Tipo</span><select id="timeline-route-mode">
+          <option value="automatic">Automático</option>
+          <option value="driving">Coche</option>
+          <option value="walking">A pie</option>
+        </select></label>
+      </div>
+      <div class="actions timeline-routing-actions">
+        <button type="button" class="ghost" id="timeline-route-adjust">Ajustar el día</button>
+        <button type="button" class="ghost danger" id="timeline-route-clear" hidden>Quitar ajuste del día</button>
+      </div>
+    </div>
     <p id="timeline-message" class="small" role="status" aria-live="polite"></p>
     <div class="actions timeline-actions">
       <button type="button" class="btn" id="timeline-select-file">Seleccionar e importar</button>
@@ -1192,12 +1212,13 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=700v271"></script>
-<script src="map-model.js?v=700v271"></script>
-<script src="app.bundle.js?v=700v271"></script>
+<script src="timeline-import.js?v=700v272"></script>
+<script src="timeline-routing.js?v=700v272"></script>
+<script src="map-model.js?v=700v272"></script>
+<script src="app.bundle.js?v=700v272"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v271';
+    const pageVersion = '700v272';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1252,7 +1273,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v271', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v272', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;
