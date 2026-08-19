@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v270';
+const APP_VERSION = '700v271';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2369,6 +2369,23 @@ async function moveMapPoint(context, latitude, longitude) {
   setTab('mapa');
 }
 
+async function moveMapCity(context, latitude, longitude) {
+  const cityId = Number(context && context.cityId);
+  const city = state.lugares.find(item => Number(item.id) === cityId && Number(item.parentId) > 0);
+  if (!city) throw new Error('No se encuentra la localidad que quieres mover');
+  const point = {
+    latitude: blogPointCoordinate(latitude, -90, 90),
+    longitude: blogPointCoordinate(longitude, -180, 180)
+  };
+  if (point.latitude == null || point.longitude == null) throw new Error('La nueva posición no es válida');
+  tripMapState.preserveViewportOnNextRender = true;
+  await updateLugar(city.id, { lat: point.latitude, lng: point.longitude });
+  closeTripMapPhotoPopup();
+  await loadAll();
+  setTab('mapa');
+  if ($('#trip-map-info')) $('#trip-map-info').textContent = `Posición de ${city.nombre} actualizada manualmente.`;
+}
+
 function parseTimelineFileInWorker(file, trip) {
   if (typeof Worker !== 'function') {
     return file.text()
@@ -2379,7 +2396,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v270');
+    const worker = new Worker('./timeline-import-worker.js?v=700v271');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3121,7 +3138,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v270');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v271');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3912,7 +3929,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v270');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v271');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4003,7 +4020,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v270');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v271');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4065,7 +4082,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v270');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v271');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4363,7 +4380,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v270');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v271');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -9562,8 +9579,9 @@ function openTripMapMarkerPopup(detail, anchorElement = null) {
   const popup = $('#trip-map-photo-popup');
   if (!popup || !detail) return;
   const meta = [detail.place, ...(detail.dateLines || [])].filter(Boolean);
+  const info = (detail.infoLines || []).filter(Boolean);
   const notes = (detail.noteLines || []).filter(Boolean);
-  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${escapeHtml(detail.title || 'Punto')}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-marker-popup-detail">${meta.length ? meta.map(line => `<span>${escapeHtml(line)}</span>`).join('') : '<span>Sin fecha indicada</span>'}${notes.map(note => `<p class="map-marker-popup-notes"><strong>Notas:</strong> ${escapeHtml(note)}</p>`).join('')}${detail.lodgingEdit ? '<button type="button" class="ghost" data-edit-timeline-lodging="1">Editar nombre del alojamiento</button>' : ''}${detail.pointEdit ? '<span class="map-point-drag-hint">Mantén pulsado el punto y arrástralo para ajustar su posición.</span><button type="button" class="ghost" data-edit-map-point-name="1">Editar punto</button><button type="button" class="ghost danger" data-delete-map-point="1">Eliminar punto</button>' : ''}</div>`;
+  popup.innerHTML = `<div class="map-photo-popup-head"><strong>${escapeHtml(detail.title || 'Punto')}</strong><button type="button" class="ghost icon-btn" data-map-photo-close="1" aria-label="Cerrar">x</button></div><div class="map-marker-popup-detail">${meta.length ? meta.map(line => `<span>${escapeHtml(line)}</span>`).join('') : '<span>Sin fecha indicada</span>'}${info.map(line => `<p class="map-marker-popup-info">${escapeHtml(line)}</p>`).join('')}${notes.map(note => `<p class="map-marker-popup-notes"><strong>Notas:</strong> ${escapeHtml(note)}</p>`).join('')}${detail.lodgingEdit ? '<button type="button" class="ghost" data-edit-timeline-lodging="1">Editar nombre del alojamiento</button>' : ''}${detail.cityEdit ? '<span class="map-point-drag-hint">Mantén pulsado el marcador y arrástralo para corregir la posición guardada de la localidad.</span>' : ''}${detail.pointEdit ? '<span class="map-point-drag-hint">Mantén pulsado el punto y arrástralo para ajustar su posición.</span><button type="button" class="ghost" data-edit-map-point-name="1">Editar punto</button><button type="button" class="ghost danger" data-delete-map-point="1">Eliminar punto</button>' : ''}</div>`;
   popup.hidden = false;
   if (detail.lodgingEdit) {
     const editButton = popup.querySelector('[data-edit-timeline-lodging]');
@@ -9757,13 +9775,36 @@ function tripMapMarkerDetail(items = [], dailyRecord = null) {
       time: String(editablePoint.hora || '')
     }
     : null;
+  const cityIds = [...new Set((dailyRecord ? [dailyRecord.ciudadId] : itemList.map(item => item && item.ciudad && item.ciudad.id))
+    .map(Number)
+    .filter(Boolean))];
+  const editableCity = cityIds.length === 1
+    ? state.lugares.find(item => Number(item.id) === cityIds[0] && Number(item.parentId) > 0)
+    : null;
+  const cityEdit = editableCity
+    && !pointEdit
+    && !(dailyRecord && (dailyRecord.kind !== 'city' || dailyRecord.accommodationDestination))
+    && !itemList.some(item => item && (item.photoPoint || item.timelinePoint || item.stackedOverLodging || item.stackedUnderCity))
+    ? {
+      cityId: Number(editableCity.id),
+      latitude: Number(editableCity.lat),
+      longitude: Number(editableCity.lng),
+      name: String(editableCity.nombre || '')
+    }
+    : null;
+  const groupedCount = dailyRecord && dailyRecord.kind === 'city' ? Number(dailyRecord.count) || 0 : 0;
+  const infoLines = groupedCount
+    ? [`${groupedCount} ${groupedCount === 1 ? 'apunte sin GPS exacto agrupado' : 'apuntes sin GPS exacto agrupados'} en esta localidad.`]
+    : [];
   return {
     title,
     place: place && place !== title ? place : '',
     dateLines,
     noteLines,
+    infoLines,
     lodgingEdit,
-    pointEdit
+    pointEdit,
+    cityEdit
   };
 }
 
@@ -10469,7 +10510,9 @@ function tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute = false, 
   const detailItems = dailyRecord ? [item] : (groupedRouteItems.length ? groupedRouteItems : [item]);
   const markerDetail = tripMapMarkerDetail(detailItems, dailyRecord);
   element.mapPointDragContext = markerDetail.pointEdit || null;
+  element.mapCityDragContext = markerDetail.cityEdit || null;
   if (markerDetail.pointEdit) element.classList.add('manual-point-draggable');
+  if (markerDetail.cityEdit) element.classList.add('city-position-draggable');
   element.title = `${markerDetail.title} · pulsa para ver los detalles`;
   const accommodationPhoto = dailyRecord && dailyRecord.accommodationPhotoRecord;
   if (accommodationPhoto) {
@@ -10655,6 +10698,57 @@ function installTripMapLongPress(target, coordinatesForEvent) {
   };
 }
 
+function installFallbackPositionDrag(frame, marker, options, movePosition) {
+  const { startX, startY, zoom, width, height } = options;
+  let pointerId = null;
+  let start = null;
+  let dragging = false;
+  const reset = () => {
+    marker.removeAttribute('transform');
+    marker.classList.remove('dragging');
+    pointerId = null;
+    start = null;
+    dragging = false;
+  };
+  marker.addEventListener('pointerdown', event => {
+    if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+    event.stopPropagation();
+    pointerId = event.pointerId;
+    start = { x: event.clientX, y: event.clientY };
+    try { marker.setPointerCapture(pointerId); } catch {}
+  });
+  marker.addEventListener('pointermove', event => {
+    if (event.pointerId !== pointerId || !start) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (!dragging && Math.hypot(dx, dy) < 5) return;
+    dragging = true;
+    event.preventDefault();
+    event.stopPropagation();
+    marker.classList.add('dragging');
+    const rect = frame.getBoundingClientRect();
+    marker.setAttribute('transform', `translate(${dx * width / rect.width} ${dy * height / rect.height})`);
+  });
+  marker.addEventListener('pointerup', event => {
+    if (event.pointerId !== pointerId || !start) return;
+    event.stopPropagation();
+    if (!dragging) {
+      reset();
+      return;
+    }
+    event.preventDefault();
+    const rect = frame.getBoundingClientRect();
+    const x = Math.max(0, Math.min(width, ((event.clientX - rect.left) / rect.width) * width));
+    const y = Math.max(0, Math.min(height, ((event.clientY - rect.top) / rect.height) * height));
+    const point = mapLatLngFromWorldPoint(startX + x, startY + y, zoom);
+    marker.dataset.ignoreMapPointClick = '1';
+    window.setTimeout(() => delete marker.dataset.ignoreMapPointClick, 400);
+    reset();
+    movePosition(point.latitude, point.longitude).catch(error => alert(error.message || String(error)));
+  });
+  marker.addEventListener('pointercancel', reset);
+}
+
 function installFallbackManualPointDrag(frame, options = {}) {
   if (!frame) return;
   const { startX, startY, zoom, width, height } = options;
@@ -10765,6 +10859,13 @@ function installFallbackManualPointDrag(frame, options = {}) {
     });
     marker.addEventListener('pointercancel', reset);
   });
+  frame.querySelectorAll('[data-map-city-drag]').forEach(marker => {
+    const detail = tripMapMarkerDetailLookup.get(marker.getAttribute('data-map-city-drag'));
+    const context = detail && detail.cityEdit;
+    if (!context) return;
+    marker.classList.add('city-position-draggable');
+    installFallbackPositionDrag(frame, marker, options, (latitude, longitude) => moveMapCity(context, latitude, longitude));
+  });
 }
 
 function addTripMapSatellite(map) {
@@ -10874,13 +10975,14 @@ function initializeTripVectorMap({ container, withCoords, extentItems = withCoor
     const routeGroup = !dailyMode && !item.configuredOnly ? group : [];
     const markerElement = tripVectorMarkerElement(item, index, dailyMode, dailyHasRoute, routeGroup, presentation);
     const manualPointContext = markerElement.mapPointDragContext || null;
+    const cityContext = markerElement.mapCityDragContext || null;
     const marker = new window.maplibregl.Marker({
       element: markerElement,
       anchor: 'center',
       offset: item.stackedOverLodging ? [0, -30] : [0, 0],
-      draggable: Boolean(manualPointContext)
+      draggable: Boolean(manualPointContext || cityContext)
     }).setLngLat([Number(item.ciudad.lng), Number(item.ciudad.lat)]).addTo(map);
-    if (manualPointContext) {
+    if (manualPointContext || cityContext) {
       marker.on('dragstart', () => {
         closeTripMapPhotoPopup();
         markerElement.classList.add('dragging');
@@ -10890,7 +10992,10 @@ function initializeTripVectorMap({ container, withCoords, extentItems = withCoor
         markerElement.classList.remove('dragging');
         window.setTimeout(() => delete markerElement.dataset.ignoreMapPointClick, 400);
         const position = marker.getLngLat();
-        moveMapPoint(manualPointContext, position.lat, position.lng)
+        const move = manualPointContext
+          ? moveMapPoint(manualPointContext, position.lat, position.lng)
+          : moveMapCity(cityContext, position.lat, position.lng);
+        move
           .catch(error => alert(error.message || String(error)));
       });
     }
@@ -11233,12 +11338,15 @@ function renderTripMap() {
     const pointDragAction = markerDetail.pointEdit && detailKey
       ? ` data-map-point-drag="${detailKey}"`
       : '';
+    const cityDragAction = markerDetail.cityEdit && detailKey
+      ? ` data-map-city-drag="${detailKey}"`
+      : '';
     const markerVisual = transportMarker
       ? (transportMarker.image
         ? `<image href="${escapeHtml(transportMarker.image)}" x="${(p.x - 15).toFixed(1)}" y="${(markerY - 10).toFixed(1)}" width="30" height="20" class="map-marker-transport-image" preserveAspectRatio="xMidYMid meet"></image>`
         : `<text x="${p.x.toFixed(1)}" y="${(markerY + 6).toFixed(1)}" class="map-marker-transport-symbol">${transportMarker.icon}</text>`)
       : `<circle cx="${p.x.toFixed(1)}" cy="${markerY.toFixed(1)}" r="${dailyPhoto ? 10 : 8}"></circle><text x="${p.x.toFixed(1)}" y="${(markerY + 4).toFixed(1)}" class="map-marker-number">${markerText}</text>`;
-    return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${item.timelinePoint ? ' map-marker-timeline' : ''}${transportMarker ? ` map-marker-transport ${transportMarker.type}` : ''}${markerPhotoRecord || detailKey ? ' map-marker-clickable' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction || detailAction}${pointDragAction}>${markerVisual}${markerLabel}<title>${escapeHtml(title)}</title></g>`;
+    return `<g class="map-marker${dailyRecord ? ' map-marker-daily' : ''}${dailyPhoto ? ' map-marker-photo' : ''}${item.timelinePoint ? ' map-marker-timeline' : ''}${transportMarker ? ` map-marker-transport ${transportMarker.type}` : ''}${markerPhotoRecord || detailKey ? ' map-marker-clickable' : ''}${item.configuredOnly ? ' map-marker-config' : ''}${pointStops.length ? ' map-marker-point' : ''}"${photoAction || detailAction}${pointDragAction}${cityDragAction}>${markerVisual}${markerLabel}<title>${escapeHtml(title)}</title></g>`;
   }).join('');
   tripMapPhotoLookup.clear();
   const interactivePhotoItems = dailyMode ? projectedItems.filter(item => item.photoPoint) : photoItems;
@@ -12585,7 +12693,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v270');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v271');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -18203,7 +18311,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v270');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v271');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

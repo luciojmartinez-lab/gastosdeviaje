@@ -3229,6 +3229,8 @@ body.map-fullscreen-open {
 
 .trip-vector-marker.manual-point-draggable,
 .map-marker.manual-point-draggable,
+.trip-vector-marker.city-position-draggable,
+.map-marker.city-position-draggable,
 .trip-vector-photo-marker.photo-position-draggable,
 .map-marker-photo.photo-position-draggable {
   cursor: grab;
@@ -3237,6 +3239,8 @@ body.map-fullscreen-open {
 
 .trip-vector-marker.manual-point-draggable.dragging,
 .map-marker.manual-point-draggable.dragging,
+.trip-vector-marker.city-position-draggable.dragging,
+.map-marker.city-position-draggable.dragging,
 .trip-vector-photo-marker.photo-position-draggable.dragging,
 .map-marker-photo.photo-position-draggable.dragging {
   cursor: grabbing;
@@ -3392,7 +3396,7 @@ body.map-fullscreen-open {
 
 .trip-vector-photo-marker {
   position: absolute;
-  z-index: 2;
+  z-index: 5;
   padding: 0;
   border-width: 2px;
   background: #0f766e;
@@ -3948,6 +3952,12 @@ footer {
 
 .map-point-drag-hint {
   margin: 4px 0;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.map-marker-popup-info {
+  margin: 5px 0 0;
   color: #334155;
   line-height: 1.35;
 }
@@ -4542,7 +4552,9 @@ footer {
     width: min(430px, calc(100vw - 22px));
     max-height: calc(100vh - 18px);
     max-height: calc(100svh - 18px);
+    margin: 9px auto auto;
     overflow: auto;
+    overflow-anchor: none;
     overscroll-behavior: contain;
   }
 

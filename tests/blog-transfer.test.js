@@ -96,7 +96,7 @@ test('añadir una imagen al editar conserva la fecha y evita dos ventanas modale
   assert.match(app, /edit-gasto-extra-images'\)\.onchange = \(\) => syncExpenseExtraImageSelection\('edit-gasto', \{ resetClassifications: true \}\)/);
   assert.match(app, /edit-gasto-extra-images-camera'\)\.onchange = \(\) => syncExpenseExtraImageSelection\('edit-gasto', \{ resetClassifications: true \}\)/);
   assert.doesNotMatch(app, /syncExpenseExtraImageSelection\('edit-gasto', \{ applyDateTime: true/);
-  assert.match(styles, /#edit-gasto-dialog \{[\s\S]*?max-height: calc\(100svh - 18px\);[\s\S]*?overscroll-behavior: contain/);
+  assert.match(styles, /#edit-gasto-dialog \{[\s\S]*?max-height: calc\(100svh - 18px\);[\s\S]*?margin: 9px auto auto;[\s\S]*?overflow-anchor: none;[\s\S]*?overscroll-behavior: contain/);
   assert.match(help, /Al añadir imágenes a un gasto ya guardado se conservan siempre su fecha y su hora, sin abrir otra ventana/);
 });
 

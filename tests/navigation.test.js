@@ -93,9 +93,17 @@ test('una pulsación mantenida permite crear y nombrar un punto en el mapa', () 
   assert.match(html, /id="map-point-city"/);
   assert.match(app, /function resolvedManualMapPointEntry\(entry\)/);
   assert.match(app, /setSelectedTrips\(validSelectedTripIds, \{[\s\S]*?preserveMapState: validSelectedTripIds\.length === previousSelectedTripIds\.length/);
-  assert.match(app, /draggable: Boolean\(manualPointContext\)/);
+  assert.match(app, /draggable: Boolean\(manualPointContext \|\| cityContext\)/);
   assert.match(app, /marker\.on\('dragend',[\s\S]*?moveMapPoint\(manualPointContext, position\.lat, position\.lng\)/);
   assert.match(app, /function installFallbackManualPointDrag\(frame, options = \{\}\)/);
+});
+
+test('las localidades agrupadas se explican y pueden corregirse arrastrándolas bajo las fotos', () => {
+  assert.match(app, /apunte sin GPS exacto agrupado/);
+  assert.match(app, /function moveMapCity\(context, latitude, longitude\)[\s\S]*?updateLugar\(city\.id, \{ lat: point\.latitude, lng: point\.longitude \}\)/);
+  assert.match(app, /element\.mapCityDragContext = markerDetail\.cityEdit/);
+  assert.match(app, /data-map-city-drag/);
+  assert.match(styles, /\.trip-vector-photo-marker \{[\s\S]*?z-index: 5/);
 });
 
 test('el GPS exacto corrige una localidad claramente distinta sin mover ciudades por alojamientos ajenos', () => {
