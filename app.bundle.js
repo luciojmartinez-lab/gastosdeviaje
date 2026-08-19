@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v272';
+const APP_VERSION = '700v273';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -152,6 +152,8 @@ let tripVectorMarkers = [];
 let tripVectorPhotoMarkers = [];
 let tripVectorMapFailed = false;
 let activeTimelineTripId = null;
+let timelineBulkRoutingActive = false;
+let timelineBulkRoutingCancelled = false;
 let activeLodgingEditContext = null;
 let activeMapPointContext = null;
 let tripMapLongPressCleanup = null;
@@ -1983,10 +1985,14 @@ function renderTimelineDialog() {
   const toggle = $('#timeline-toggle-layer');
   const remove = $('#timeline-delete');
   const select = $('#timeline-select-file');
+  const close = $('#timeline-close');
+  const footerClose = $('#timeline-cancel');
   const routingControls = $('#timeline-routing-controls');
   const routeView = $('#timeline-route-view');
   const routeMode = $('#timeline-route-mode');
   const routeAdjust = $('#timeline-route-adjust');
+  const routeAdjustAll = $('#timeline-route-adjust-all');
+  const routeCancel = $('#timeline-route-cancel');
   const routeClear = $('#timeline-route-clear');
   const routeHelp = $('#timeline-routing-help');
   if (!trip) {
@@ -2007,25 +2013,45 @@ function renderTimelineDialog() {
       ? `<strong>${escapeHtml(trip.nombre)} · ${records.length} ${records.length === 1 ? 'día importado' : 'días importados'}</strong><span>${escapeHtml(summaryDocumentDate(first.fecha, true))} – ${escapeHtml(summaryDocumentDate(last.fecha, true))} · ${pointCount} puntos del recorrido</span><span>Archivo: ${escapeHtml(first.sourceName || 'Cronología.json')} · importado ${escapeHtml(new Date(first.importedAt || Date.now()).toLocaleString('es-ES'))}</span>`
       : `<strong>${escapeHtml(trip.nombre)}</strong><span>Viaje del ${escapeHtml(summaryDocumentDate(trip.fechaInicio, true))} al ${escapeHtml(summaryDocumentDate(trip.fechaFin, true))}. Todavía no hay una Cronología de Maps importada.</span>`;
   }
-  if (select) select.disabled = false;
+  if (select) select.disabled = timelineBulkRoutingActive;
   if (toggle) {
     toggle.hidden = !records.length;
+    toggle.disabled = timelineBulkRoutingActive;
     toggle.textContent = tripMapState.showTimeline ? 'Ocultar recorrido' : 'Mostrar recorrido';
   }
-  if (remove) remove.hidden = !records.length;
+  if (remove) {
+    remove.hidden = !records.length;
+    remove.disabled = timelineBulkRoutingActive;
+  }
+  if (close) close.disabled = timelineBulkRoutingActive;
+  if (footerClose) footerClose.disabled = timelineBulkRoutingActive;
   if (routingControls) routingControls.hidden = !records.length;
   if (routeView) routeView.value = tripMapState.timelineRouteView === 'adjusted' ? 'adjusted' : 'original';
   if (routeMode) routeMode.value = timelineRoutingModeKey();
   const dayRecord = selectedTimelineDayRecord(trip);
   const cached = timelineAdjustedRouteCache(dayRecord);
   if (routeAdjust) {
-    routeAdjust.disabled = !dayRecord;
+    routeAdjust.disabled = !dayRecord || timelineBulkRoutingActive;
     routeAdjust.textContent = cached ? 'Recalcular el día' : 'Ajustar el día';
   }
-  if (routeClear) routeClear.hidden = !cached;
+  const currentMode = timelineRoutingModeKey();
+  const pendingDays = records.filter(record => !timelineAdjustedRouteCache(record, currentMode));
+  if (routeAdjustAll) {
+    routeAdjustAll.disabled = !records.length || timelineBulkRoutingActive || !pendingDays.length;
+    routeAdjustAll.textContent = pendingDays.length
+      ? `Ajustar todo el viaje (${pendingDays.length})`
+      : 'Todo el viaje ajustado';
+  }
+  if (routeCancel) routeCancel.hidden = !timelineBulkRoutingActive;
+  if (routeView) routeView.disabled = timelineBulkRoutingActive;
+  if (routeMode) routeMode.disabled = timelineBulkRoutingActive;
+  if (routeClear) {
+    routeClear.hidden = !cached;
+    routeClear.disabled = timelineBulkRoutingActive;
+  }
   if (routeHelp) {
     routeHelp.textContent = !tripMapState.day
-      ? 'Selecciona primero un día en el mapa. Así solo se consulta lo necesario.'
+      ? 'Puedes ajustar todo el viaje o seleccionar primero un día para ajustar únicamente esa fecha.'
       : !dayRecord
         ? `La Cronología importada no contiene recorrido el ${blogDayDateLabel(tripMapState.day)}.`
         : cached
@@ -2095,13 +2121,13 @@ async function requestAdjustedTimelinePath(path, preferredMode) {
   }
 }
 
-async function adjustSelectedTimelineDay() {
-  const trip = selectedMapTimelineTrip();
-  const record = selectedTimelineDayRecord(trip);
-  if (!tripMapState.day) throw new Error('Selecciona primero un día en el mapa.');
+async function adjustSelectedTimelineDay(options = {}) {
+  const trip = options.trip || selectedMapTimelineTrip();
+  const record = options.record || selectedTimelineDayRecord(trip);
+  if (!options.record && !tripMapState.day) throw new Error('Selecciona primero un día en el mapa.');
   if (!record) throw new Error('Ese día no tiene recorrido importado de Cronología de Maps.');
   if (!window.TimelineRouting) throw new Error('No se ha cargado el ajustador de recorridos.');
-  const preferredMode = timelineRoutingModeKey($('#timeline-route-mode') && $('#timeline-route-mode').value);
+  const preferredMode = timelineRoutingModeKey(options.mode || $('#timeline-route-mode') && $('#timeline-route-mode').value);
   tripMapState.timelineRoutingMode = preferredMode;
   const originalPaths = timelineMapPaths([record]);
   const exactRecords = dailyMapRecordsForScope(new Set([Number(trip.id)]), 0)
@@ -2112,7 +2138,9 @@ async function adjustSelectedTimelineDay() {
   const adjustedPaths = [];
   const failures = [];
   for (let index = 0; index < sourcePaths.length; index += 1) {
-    setTimelineMessage(`Ajustando tramo ${index + 1} de ${sourcePaths.length}…`);
+    if (timelineBulkRoutingCancelled && options.bulk) break;
+    const prefix = options.progressPrefix ? `${options.progressPrefix} · ` : '';
+    setTimelineMessage(`${prefix}ajustando tramo ${index + 1} de ${sourcePaths.length}…`);
     try {
       const adjusted = await requestAdjustedTimelinePath(sourcePaths[index], preferredMode);
       if (adjusted) adjustedPaths.push(adjusted);
@@ -2125,6 +2153,7 @@ async function adjustSelectedTimelineDay() {
       });
     }
   }
+  if (timelineBulkRoutingCancelled && options.bulk) return { cancelled: true, failures: [] };
   if (!adjustedPaths.some(path => path.adjusted)) throw new Error(failures[0] || 'No se pudo ajustar ningún tramo.');
   const adjustedTimelineRoutes = {
     ...(record.adjustedTimelineRoutes || {}),
@@ -2136,13 +2165,60 @@ async function adjustSelectedTimelineDay() {
   };
   const updated = await updateRecord('timelineDays', record.id, { adjustedTimelineRoutes });
   state.timelineDays = state.timelineDays.map(item => String(item.id) === String(record.id) ? updated : item);
+  if (!options.silent) {
+    tripMapState.timelineRouteView = 'adjusted';
+    resetTripMapView();
+    renderTripMap();
+    renderTimelineDialog();
+    setTimelineMessage(failures.length
+      ? `Recorrido guardado. ${adjustedPaths.length - failures.length} tramos ajustados y ${failures.length} conservados como en el original.`
+      : `Recorrido ajustado y guardado: ${adjustedPaths.length} ${adjustedPaths.length === 1 ? 'tramo' : 'tramos'}.`);
+  }
+  return { cancelled: false, failures, adjustedPaths };
+}
+
+async function adjustEntireTimelineTrip() {
+  const trip = selectedMapTimelineTrip();
+  if (!trip) throw new Error('Selecciona un viaje.');
+  const mode = timelineRoutingModeKey($('#timeline-route-mode') && $('#timeline-route-mode').value);
+  tripMapState.timelineRoutingMode = mode;
+  const records = timelineRecordsForTrip(trip.id);
+  const pending = records.filter(record => !timelineAdjustedRouteCache(record, mode));
+  if (!pending.length) {
+    tripMapState.timelineRouteView = 'adjusted';
+    renderTripMap();
+    setTimelineMessage('Todos los días del viaje ya están ajustados para este tipo de recorrido.');
+    return;
+  }
+  timelineBulkRoutingActive = true;
+  timelineBulkRoutingCancelled = false;
+  renderTimelineDialog();
+  let completed = 0;
+  let failed = 0;
+  for (let index = 0; index < pending.length; index += 1) {
+    if (timelineBulkRoutingCancelled) break;
+    const record = pending[index];
+    const progressPrefix = `Día ${index + 1} de ${pending.length} (${blogDayDateLabel(record.fecha)})`;
+    try {
+      const result = await adjustSelectedTimelineDay({ trip, record, mode, silent: true, bulk: true, progressPrefix });
+      if (result && result.cancelled) break;
+      completed += 1;
+    } catch (error) {
+      failed += 1;
+      setTimelineMessage(`${progressPrefix}: ${error.message || String(error)} Se continúa con el siguiente día.`, true);
+    }
+  }
+  const cancelled = timelineBulkRoutingCancelled;
+  timelineBulkRoutingActive = false;
+  timelineBulkRoutingCancelled = false;
   tripMapState.timelineRouteView = 'adjusted';
   resetTripMapView();
   renderTripMap();
   renderTimelineDialog();
-  setTimelineMessage(failures.length
-    ? `Recorrido guardado. ${adjustedPaths.length - failures.length} tramos ajustados y ${failures.length} conservados como en el original.`
-    : `Recorrido ajustado y guardado: ${adjustedPaths.length} ${adjustedPaths.length === 1 ? 'tramo' : 'tramos'}.`);
+  const remaining = timelineRecordsForTrip(trip.id).filter(record => !timelineAdjustedRouteCache(record, mode)).length;
+  setTimelineMessage(cancelled
+    ? `Proceso cancelado. ${completed} días guardados; quedan ${remaining}. Puedes continuar cuando quieras.`
+    : `Ajuste general terminado: ${completed} días guardados${failed ? ` y ${failed} sin ajustar` : ''}.`);
 }
 
 async function clearSelectedTimelineAdjustment() {
@@ -2549,7 +2625,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v272');
+    const worker = new Worker('./timeline-import-worker.js?v=700v273');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3291,7 +3367,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v272');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v273');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4082,7 +4158,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v272');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v273');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4173,7 +4249,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v272');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v273');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4235,7 +4311,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v272');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v273');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4533,7 +4609,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v272');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v273');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -12896,7 +12972,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v272');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v273');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16839,6 +16915,19 @@ function bindEvents() {
         renderTimelineDialog();
       });
   };
+  $('#timeline-route-adjust-all').onclick = () => {
+    adjustEntireTimelineTrip()
+      .catch(error => {
+        timelineBulkRoutingActive = false;
+        timelineBulkRoutingCancelled = false;
+        setTimelineMessage(error.message || String(error), true);
+        renderTimelineDialog();
+      });
+  };
+  $('#timeline-route-cancel').onclick = () => {
+    timelineBulkRoutingCancelled = true;
+    setTimelineMessage('Cancelando al terminar la consulta actual…');
+  };
   $('#timeline-route-clear').onclick = () => {
     clearSelectedTimelineAdjustment().catch(error => setTimelineMessage(error.message || String(error), true));
   };
@@ -18541,7 +18630,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v272');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v273');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

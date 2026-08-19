@@ -68,7 +68,7 @@ test('el decodificador de Valhalla usa precisión de seis decimales', () => {
   assert.deepEqual(decodePolyline6(encode(source)), source.map(([latitude, longitude]) => ({ latitude, longitude })));
 });
 
-test('la interfaz permite conservar original, ajustar y elegir coche o a pie', async () => {
+test('la interfaz permite conservar original, ajustar un día o todo el viaje y elegir coche o a pie', async () => {
   const [html, app] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../app.bundle.js', import.meta.url), 'utf8')
@@ -77,6 +77,11 @@ test('la interfaz permite conservar original, ajustar y elegir coche o a pie', a
   assert.match(html, /Recorrido ajustado/);
   assert.match(html, /<option value="driving">Coche<\/option>/);
   assert.match(html, /<option value="walking">A pie<\/option>/);
+  assert.match(html, /id="timeline-route-adjust-all">Ajustar todo el viaje<\/button>/);
+  assert.match(html, /id="timeline-route-cancel" hidden>Cancelar proceso<\/button>/);
   assert.match(app, /adjustedTimelineRoutes/);
+  assert.match(app, /async function adjustEntireTimelineTrip\(\)/);
+  assert.match(app, /records\.filter\(record => !timelineAdjustedRouteCache\(record, mode\)\)/);
+  assert.match(app, /Proceso cancelado\.[^`]+Puedes continuar cuando quieras\./);
   assert.match(app, /\.netlify\/functions\/route-adjust/);
 });
