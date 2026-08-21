@@ -18,7 +18,8 @@ function validLocations(value) {
   const locations = value.map(location => ({
     lat: Number(location && (location.lat ?? location.latitude)),
     lon: Number(location && (location.lon ?? location.longitude)),
-    type: 'break'
+    type: 'break',
+    exact: location && location.routingAnchor === true
   }));
   if (locations.some(location => !Number.isFinite(location.lat)
     || !Number.isFinite(location.lon)
@@ -51,6 +52,29 @@ export function decodePolyline6(encoded) {
   return points;
 }
 
+function samePoint(first, second) {
+  return first && second
+    && Math.abs(Number(first.latitude) - Number(second.latitude)) < 0.000001
+    && Math.abs(Number(first.longitude) - Number(second.longitude)) < 0.000001;
+}
+
+export function routePointsWithExactAnchors(legs, locations) {
+  const points = [];
+  const append = point => {
+    if (!point || !Number.isFinite(Number(point.latitude)) || !Number.isFinite(Number(point.longitude))) return;
+    const normalized = { latitude: Number(point.latitude), longitude: Number(point.longitude) };
+    if (!samePoint(points[points.length - 1], normalized)) points.push(normalized);
+  };
+  (Array.isArray(legs) ? legs : []).forEach((leg, index) => {
+    const start = locations[index];
+    const end = locations[index + 1];
+    if (!index && start && start.exact) append({ latitude: start.lat, longitude: start.lon });
+    decodePolyline6(leg && leg.shape || '').forEach(append);
+    if (end && end.exact) append({ latitude: end.lat, longitude: end.lon });
+  });
+  return points;
+}
+
 export default async function handler(req) {
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
   let body;
@@ -74,7 +98,7 @@ export default async function handler(req) {
         'X-Client-Id': CLIENT_ID
       },
       body: JSON.stringify({
-        locations,
+        locations: locations.map(({ lat, lon, type }) => ({ lat, lon, type })),
         costing,
         units: 'kilometers',
         language: 'es-ES',
@@ -91,10 +115,7 @@ export default async function handler(req) {
       }, response.status === 429 ? 429 : 422);
     }
     const legs = Array.isArray(payload && payload.trip && payload.trip.legs) ? payload.trip.legs : [];
-    const points = legs.flatMap((leg, index) => {
-      const decoded = decodePolyline6(leg && leg.shape || '');
-      return index ? decoded.slice(1) : decoded;
-    });
+    const points = routePointsWithExactAnchors(legs, locations);
     if (points.length < 2) return json({ error: 'empty_route' }, 422);
     return json({
       points,

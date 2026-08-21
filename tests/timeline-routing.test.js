@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { decodePolyline6 } from '../netlify/functions/route-adjust.js';
+import { decodePolyline6, routePointsWithExactAnchors } from '../netlify/functions/route-adjust.js';
 
 await import('../timeline-routing.js');
 
@@ -68,6 +68,20 @@ test('el decodificador de Valhalla usa precisión de seis decimales', () => {
   assert.deepEqual(decodePolyline6(encode(source)), source.map(([latitude, longitude]) => ({ latitude, longitude })));
 });
 
+test('el recorrido ajustado pasa por cada foto o punto GPS marcado como exacto', () => {
+  const legs = [
+    { shape: '_c`|@~zvpQ_ibE_ibE' },
+    { shape: '_gayB~b`qQ_ibE_ibE' }
+  ];
+  const locations = [
+    { lat: 40, lon: -3, exact: false },
+    { lat: 40.005, lon: -3.02, exact: true },
+    { lat: 40.02, lon: -3.03, exact: false }
+  ];
+  const points = routePointsWithExactAnchors(legs, locations);
+  assert.ok(points.some(point => point.latitude === 40.005 && point.longitude === -3.02));
+});
+
 test('la interfaz permite conservar original, ajustar un día o todo el viaje y elegir coche o a pie', async () => {
   const [html, app] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
@@ -84,4 +98,5 @@ test('la interfaz permite conservar original, ajustar un día o todo el viaje y 
   assert.match(app, /records\.filter\(record => !timelineAdjustedRouteCache\(record, mode\)\)/);
   assert.match(app, /Proceso cancelado\.[^`]+Puedes continuar cuando quieras\./);
   assert.match(app, /\.netlify\/functions\/route-adjust/);
+  assert.match(app, />Cronología Maps<\/button>/);
 });

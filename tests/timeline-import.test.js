@@ -248,7 +248,7 @@ test('Cronología avisa de la exportación previa y se procesa fuera de la inter
   assert.match(html, /selecciona <em>Cronología\.json<\/em> desde el lugar donde lo hayas descargado/);
   assert.match(html, /id="timeline-file-input"[^>]*accept="\.json,application\/json"/);
   assert.match(app, /data-map-timeline="1"/);
-  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v274'\)/);
+  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v275'\)/);
   assert.match(worker, /GoogleTimelineImport\.importTrip/);
 });
 
@@ -292,7 +292,7 @@ test('la Cronología se integra en los mapas copiados al Blog sin alterar el map
   assert.match(app, /timelinePaths\.flatMap\(path => path\.map/);
   assert.match(app, /timelinePaths\.forEach\(path => \{[\s\S]*?strokeStyle = '#0f766e'/);
   assert.match(app, /timelineMapPathsWithDailyRecords\([\s\S]*?dailyMode \? selectedExactDailyRecords : exactDailyRecords/);
-  assert.match(app, /TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS = 80/);
+  assert.match(app, /TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS = 25/);
   assert.match(app, /dailyRecords\.length > 0 \|\| timelinePaths\.length > 0/);
   assert.match(app, /activities\.forEach\(\(activity, activityIndex\) => \{/);
 });
@@ -301,7 +301,7 @@ test('Cronología enlaza una foto GPS que Google dejó fuera del recorrido', () 
   const start = app.indexOf('function timelineMapPathsWithDailyRecords');
   const end = app.indexOf('function plannedDailyMapRecordsForScope', start);
   const context = {
-    TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS: 80,
+    TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS: 25,
     TIMELINE_SUPPLEMENT_GROUP_DISTANCE_METERS: 50,
     lodgingDistanceMeters: (first, second) => Math.hypot(
       Number(first.latitude) - Number(second.latitude),
@@ -321,6 +321,34 @@ test('Cronología enlaza una foto GPS que Google dejó fuera del recorrido', () 
   assert.equal(result.length, 2);
   assert.equal(result[1].length, 3);
   assert.equal(result[1][1].latitude, 40.01);
+});
+
+test('un ajuste guardado incorpora después los nuevos puntos GPS exactos', () => {
+  const start = app.indexOf('function timelineMapPathsWithDailyRecords');
+  const end = app.indexOf('function plannedDailyMapRecordsForScope', start);
+  const context = {
+    TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS: 25,
+    TIMELINE_SUPPLEMENT_GROUP_DISTANCE_METERS: 50,
+    lodgingDistanceMeters: (first, second) => Math.hypot(
+      Number(first.latitude) - Number(second.latitude),
+      Number(first.longitude) - Number(second.longitude)
+    ) * 111_000
+  };
+  vm.runInNewContext(`${app.slice(start, end)}; this.timelineAdjustedMapPathsWithDailyRecords = timelineAdjustedMapPathsWithDailyRecords;`, context);
+  const adjusted = [[
+    { latitude: 40, longitude: -3 },
+    { latitude: 40.01, longitude: -3 }
+  ]];
+  const original = [[
+    { latitude: 40, longitude: -3, time: '2026-08-15T10:00:00+02:00' },
+    { latitude: 40.01, longitude: -3, time: '2026-08-15T11:00:00+02:00' }
+  ]];
+  const result = context.timelineAdjustedMapPathsWithDailyRecords(adjusted, original, [
+    { kind: 'photo', fecha: '2026-08-15', hora: '10:30', latitude: 40.005, longitude: -3.004 }
+  ]);
+  assert.equal(result.length, 2);
+  assert.equal(result[1][1].longitude, -3.004);
+  assert.equal(result[1].exactConnector, true);
 });
 
 test('Cronología dibuja los puntos horarios aunque Google no reconozca una actividad', () => {

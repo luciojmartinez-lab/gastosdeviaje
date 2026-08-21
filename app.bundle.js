@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v274';
+const APP_VERSION = '700v275';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -8,7 +8,7 @@ const ROUTE_STOP_ROLE_ENDPOINT = 'endpoint';
 const DESTINATION_RECORD_MAX_DISTANCE_METERS = 50_000;
 const LODGING_NAME_MAX_DISTANCE_METERS = 200;
 const LODGING_FUZZY_NAME_MAX_DISTANCE_METERS = 1_500;
-const TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS = 80;
+const TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS = 25;
 const TIMELINE_SUPPLEMENT_GROUP_DISTANCE_METERS = 50;
 const TIMELINE_CITY_VISIT_MAX_DISTANCE_METERS = 3_000;
 const BACKUP_KEY = 'gastos_viaje_last_backup';
@@ -2625,7 +2625,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v274');
+    const worker = new Worker('./timeline-import-worker.js?v=700v275');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3367,7 +3367,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v274');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v275');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4158,7 +4158,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v274');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v275');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4249,7 +4249,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v274');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v275');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4311,7 +4311,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v274');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v275');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4609,7 +4609,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v274');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v275');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -9230,6 +9230,21 @@ function timelineMapPathsWithDailyRecords(paths = [], records = []) {
   return [...paths, ...connectors];
 }
 
+function timelineAdjustedMapPathsWithDailyRecords(adjustedPaths = [], originalPaths = [], records = []) {
+  const adjustedPoints = adjustedPaths.flat().filter(point => Number.isFinite(point && point.latitude) && Number.isFinite(point && point.longitude));
+  const missingRecords = records.filter(record => {
+    if (!record || (record.kind !== 'point' && record.kind !== 'photo') || record.timelinePoint === true) return false;
+    const point = { latitude: Number(record.latitude), longitude: Number(record.longitude) };
+    if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) return false;
+    return !adjustedPoints.some(candidate => lodgingDistanceMeters(candidate, point) <= TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS);
+  });
+  if (!missingRecords.length) return adjustedPaths;
+  const supplementedOriginal = timelineMapPathsWithDailyRecords(originalPaths, missingRecords);
+  const connectors = supplementedOriginal.slice(originalPaths.length);
+  connectors.forEach(path => { path.exactConnector = true; });
+  return [...adjustedPaths, ...connectors];
+}
+
 function plannedDailyMapRecordsForScope(scopedTripIds, paisId, day, destinationOnlyApplied = false) {
   if (!tripMapState.showPlanned || !day) return [];
   const records = [];
@@ -9628,12 +9643,14 @@ function tripMapItemsForCurrentScope() {
       adjusted: adjustedTimelineAvailable,
       mode: tripMapState.timelineRoutingMode
     });
+    const visibleExactRecords = dailyMode ? selectedExactDailyRecords : exactDailyRecords;
     timelinePaths = adjustedTimelineAvailable
-      ? importedPaths
-      : timelineMapPathsWithDailyRecords(
+      ? timelineAdjustedMapPathsWithDailyRecords(
         importedPaths,
-        dailyMode ? selectedExactDailyRecords : exactDailyRecords
-      );
+        timelineMapPaths(importedTimelineRecords),
+        visibleExactRecords
+      )
+      : timelineMapPathsWithDailyRecords(importedPaths, visibleExactRecords);
   }
   const selectedCity = cityMode ? cityOptionsById.get(Number(tripMapState.cityId)) || null : null;
   const visibleCities = cityMode
@@ -11469,7 +11486,7 @@ function renderTripMap() {
           <label class="map-day-control" title="Mostrar solamente los puntos y fotos de un día"><span>Día</span><select data-map-day="1"><option value="">Todos los días</option>${emptyDayOptions}</select></label>
           <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
           <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar todas las paradas' : 'Mostrar únicamente las paradas marcadas como Destino'}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destinos</button>
-          <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" title="Exportar previamente la Cronología de Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología</button>
+          <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" title="Exportar previamente la Cronología de Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología Maps</button>
           <button type="button" data-map-satellite="1" class="${tripMapState.showSatellite ? 'active' : ''}" aria-pressed="${tripMapState.showSatellite}" title="Mostrar u ocultar las imágenes de satélite" disabled>${tripMapState.showSatellite ? 'Mapa normal' : 'Satélite'}</button>
           <button type="button" data-map-add-stop="1" title="Añadir, borrar, clasificar o reordenar paradas del viaje">Añadir / modificar parada</button>
           <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
@@ -11712,7 +11729,7 @@ function renderTripMap() {
         <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
         <button type="button" data-map-photos="1" class="${tripMapState.showPhotos ? 'active' : ''}" aria-pressed="${tripMapState.showPhotos}" title="Mostrar u ocultar fotos geolocalizadas"${availablePhotoCount ? '' : ' disabled'}>Fotos${availablePhotoCount ? ` (${availablePhotoCount})` : ''}</button>
         <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar todas las paradas' : (destinationOnlyAvailable ? 'Mostrar únicamente las paradas marcadas como Destino' : 'Marca alguna parada como Destino en el editor de ruta')}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destinos</button>
-        <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" aria-pressed="${timelineAvailable && tripMapState.showTimeline}" title="Exportar previamente la Cronología de Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología</button>
+        <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" aria-pressed="${timelineAvailable && tripMapState.showTimeline}" title="Exportar previamente la Cronología de Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología Maps</button>
         <button type="button" data-map-satellite="1" class="${tripMapState.showSatellite ? 'active' : ''}" aria-pressed="${tripMapState.showSatellite}" title="${useVectorInteractiveMap ? 'Mostrar u ocultar las imágenes de satélite' : 'La vista de satélite requiere el mapa interactivo'}"${useVectorInteractiveMap ? '' : ' disabled'}>${tripMapState.showSatellite ? 'Mapa normal' : 'Satélite'}</button>
         <button type="button" data-map-add-stop="1" title="Añadir, borrar o reordenar paradas del viaje">Añadir / modificar parada</button>
         <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
@@ -13007,7 +13024,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v274');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v275');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -18693,7 +18710,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v274');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v275');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
