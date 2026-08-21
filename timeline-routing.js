@@ -78,20 +78,37 @@
     return selected.filter((point, index, candidates) => !index || distanceMeters(candidates[index - 1], point) > 2);
   }
 
+  function selectWithAnchors(points, count) {
+    if (points.length <= count) return points;
+    const requiredIndexes = points
+      .map((point, index) => ({ point, index }))
+      .filter(({ point, index }) => index === 0 || index === points.length - 1 || point.routingAnchor)
+      .map(({ index }) => index);
+    if (requiredIndexes.length >= count) {
+      return evenlySelect(requiredIndexes.map(index => points[index]), count);
+    }
+    const required = new Set(requiredIndexes);
+    const optionalIndexes = points
+      .map((point, index) => index)
+      .filter(index => !required.has(index));
+    const selectedOptional = evenlySelect(optionalIndexes, count - requiredIndexes.length);
+    return [...requiredIndexes, ...selectedOptional]
+      .sort((a, b) => a - b)
+      .map(index => points[index]);
+  }
+
   function waypointsForPath(path, costing, limit = 12) {
     const points = cleanPoints(path);
     if (points.length < 2) return [];
     const safeLimit = Math.max(2, Math.min(16, Number(limit) || 12));
-    if (costing === 'pedestrian' || costing === 'bicycle') return evenlySelect(points, safeLimit);
-    const anchors = points.filter((point, index) => index === 0 || index === points.length - 1 || point.routingAnchor);
-    if (anchors.length > 2) return evenlySelect(anchors, safeLimit);
+    if (costing === 'pedestrian' || costing === 'bicycle') return selectWithAnchors(points, safeLimit);
     const first = points[0];
     const last = points[points.length - 1];
-    if (distanceMeters(first, last) >= 30) return [first, last];
+    if (distanceMeters(first, last) >= 30) return selectWithAnchors(points, safeLimit);
     const farthest = points.slice(1, -1)
       .map(point => ({ point, distance: distanceMeters(first, point) }))
       .sort((a, b) => b.distance - a.distance)[0];
-    return farthest && farthest.distance >= 30 ? [first, farthest.point, last] : [];
+    return farthest && farthest.distance >= 30 ? selectWithAnchors(points, safeLimit) : [];
   }
 
   root.TimelineRouting = Object.freeze({

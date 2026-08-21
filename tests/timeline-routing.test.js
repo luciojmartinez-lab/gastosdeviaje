@@ -22,15 +22,27 @@ test('el modo automático distingue coche y recorrido a pie', () => {
   assert.equal(routing.costingForPath(walk, 'automatic'), 'pedestrian');
 });
 
-test('el coche usa extremos y fotos ancla, mientras a pie conserva el trazado intermedio', () => {
+test('el coche y los trayectos a pie conservan puntos intermedios y fotos ancla', () => {
   const path = [
     { latitude: 40, longitude: -1, time: '2026-08-18T10:00:00' },
     { latitude: 40.01, longitude: -1.01, time: '2026-08-18T10:05:00' },
     { latitude: 40.02, longitude: -1.02, time: '2026-08-18T10:10:00', routingAnchor: true },
     { latitude: 40.03, longitude: -1.03, time: '2026-08-18T10:15:00' }
   ];
-  assert.equal(routing.waypointsForPath(path, 'auto').length, 3);
+  assert.equal(routing.waypointsForPath(path, 'auto').length, 4);
   assert.equal(routing.waypointsForPath(path, 'pedestrian').length, 4);
+});
+
+test('el coche conserva una muestra de hasta 16 puntos para reducir diferencias entre ida y vuelta', () => {
+  const path = Array.from({ length: 25 }, (_, index) => ({
+    latitude: 40 + index * 0.001,
+    longitude: -1 - index * 0.001,
+    routingAnchor: index === 7 || index === 19
+  }));
+  const selected = routing.waypointsForPath(path, 'auto', 16);
+  assert.equal(selected.length, 16);
+  assert.ok(selected.some(point => point.routingAnchor && point.latitude === path[7].latitude));
+  assert.ok(selected.some(point => point.routingAnchor && point.latitude === path[19].latitude));
 });
 
 test('un recorrido circular conserva un punto alejado para no colapsar', () => {
@@ -101,4 +113,6 @@ test('la interfaz permite conservar original, ajustar un día o todo el viaje y 
   assert.match(app, />Cronología Maps<\/button>/);
   assert.match(app, /const adjustedTimelineRequested = tripMapState\.timelineRouteView === 'adjusted'/);
   assert.match(app, /timelineMapPaths\(importedTimelineRecords, \{[\s\S]*?adjusted: adjustedTimelineRequested/);
+  assert.match(app, /restoreTimelineRoutingPreference\(state\.selectedViajeIds\)/);
+  assert.match(app, /timelineRouteView, timelineRoutingMode/);
 });
