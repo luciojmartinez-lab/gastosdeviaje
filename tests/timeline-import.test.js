@@ -248,7 +248,7 @@ test('Cronología avisa de la exportación previa y se procesa fuera de la inter
   assert.match(html, /selecciona <em>Cronología\.json<\/em> desde el lugar donde lo hayas descargado/);
   assert.match(html, /id="timeline-file-input"[^>]*accept="\.json,application\/json"/);
   assert.match(app, /data-map-timeline="1"/);
-  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v279'\)/);
+  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v280'\)/);
   assert.match(worker, /GoogleTimelineImport\.importTrip/);
   assert.match(app, /adjustedTimelineRoutes: previous && previous\.adjustedTimelineRoutes \|\| \{\}/);
   assert.match(app, /const autoAdjust = tripMapState\.timelineRouteView === 'adjusted'/);
@@ -275,6 +275,25 @@ test('la reimportación detecta solo los días cuyo recorrido realmente cambió'
     context.timelineRoutingRecordSignature(base),
     context.timelineRoutingRecordSignature({ ...base, points: [{ ...base.points[0], latitude: 40.01 }] })
   );
+});
+
+test('la reimportación conserva los ajustes existentes y calcula solo los días pendientes', () => {
+  const start = app.indexOf('function timelineImportAdjustmentPlan');
+  const end = app.indexOf('function selectedTimelineDayRecord', start);
+  const context = {};
+  vm.runInNewContext(`${app.slice(start, end)}; this.timelineImportAdjustmentPlan = timelineImportAdjustmentPlan;`, context);
+  const records = [
+    { fecha: '2026-08-09', adjusted: true },
+    { fecha: '2026-08-10', adjusted: false },
+    { fecha: '2026-08-11', adjusted: true }
+  ];
+  const result = context.timelineImportAdjustmentPlan(
+    records,
+    new Set(['2026-08-09', '2026-08-10']),
+    record => record.adjusted
+  );
+  assert.deepEqual(result.pending.map(record => record.fecha), ['2026-08-10']);
+  assert.deepEqual(result.preserved.map(record => record.fecha), ['2026-08-09']);
 });
 
 test('el recorrido importado se guarda por viaje, se sincroniza y tiene capa propia', () => {
