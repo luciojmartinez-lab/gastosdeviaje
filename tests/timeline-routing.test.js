@@ -99,4 +99,6 @@ test('la interfaz permite conservar original, ajustar un día o todo el viaje y 
   assert.match(app, /Proceso cancelado\.[^`]+Puedes continuar cuando quieras\./);
   assert.match(app, /\.netlify\/functions\/route-adjust/);
   assert.match(app, />Cronología Maps<\/button>/);
+  assert.match(app, /const adjustedTimelineRequested = tripMapState\.timelineRouteView === 'adjusted'/);
+  assert.match(app, /timelineMapPaths\(importedTimelineRecords, \{[\s\S]*?adjusted: adjustedTimelineRequested/);
 });
