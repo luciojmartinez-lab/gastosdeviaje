@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v273';
+const APP_VERSION = '700v274';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2625,7 +2625,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v273');
+    const worker = new Worker('./timeline-import-worker.js?v=700v274');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3367,7 +3367,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v273');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v274');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4158,7 +4158,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v273');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v274');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4249,7 +4249,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v273');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v274');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4311,7 +4311,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v273');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v274');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4609,7 +4609,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v273');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v274');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -8159,6 +8159,30 @@ function chooseMapZoom(items, width, height) {
   return TRIP_MAP_MIN_ZOOM;
 }
 
+function chooseBlogMapZoom(items, width, height) {
+  if (items.length <= 1) return 16;
+  for (let zoom = 17; zoom >= TRIP_MAP_MIN_ZOOM; zoom -= 1) {
+    const points = items.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom));
+    const spanX = Math.max(...points.map(point => point.x)) - Math.min(...points.map(point => point.x));
+    const spanY = Math.max(...points.map(point => point.y)) - Math.min(...points.map(point => point.y));
+    if (spanX <= width * 0.68 && spanY <= height * 0.62) return zoom;
+  }
+  return TRIP_MAP_MIN_ZOOM;
+}
+
+function blogMapViewport(items, width, height) {
+  const usableItems = items.filter(item => lugarHasCoords(item.ciudad));
+  if (!usableItems.length) throw new Error('No hay puntos válidos para encuadrar el mapa del Blog.');
+  const zoom = chooseBlogMapZoom(usableItems, width, height);
+  const world = usableItems.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom));
+  const centerWorld = {
+    x: (Math.min(...world.map(point => point.x)) + Math.max(...world.map(point => point.x))) / 2,
+    y: (Math.min(...world.map(point => point.y)) + Math.max(...world.map(point => point.y))) / 2
+  };
+  const center = mapLatLngFromWorldPoint(centerWorld.x, centerWorld.y, zoom);
+  return { zoom, layer: mapTileLayer(center.latitude, center.longitude, zoom, width, height) };
+}
+
 function mapGeocodeNames(name) {
   const clean = String(name || '').trim();
   const normalized = normalizePlaceName(clean);
@@ -10252,14 +10276,7 @@ async function createDailyMapBlogImage(records, day, timelinePaths = []) {
       timelineExtent: true
     })))
   ];
-  const zoom = items.length === 1 ? 15 : chooseMapZoom(items, width, mapHeight);
-  const world = items.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom));
-  const centerWorld = {
-    x: (Math.min(...world.map(point => point.x)) + Math.max(...world.map(point => point.x))) / 2,
-    y: (Math.min(...world.map(point => point.y)) + Math.max(...world.map(point => point.y))) / 2
-  };
-  const center = mapLatLngFromWorldPoint(centerWorld.x, centerWorld.y, zoom);
-  const layer = mapTileLayer(center.latitude, center.longitude, zoom, width, mapHeight);
+  const { zoom, layer } = blogMapViewport(items, width, mapHeight);
   context.fillStyle = '#cfe8f3';
   context.fillRect(0, headerHeight, width, mapHeight);
   const tileImages = await Promise.all(layer.tiles.map(loadMapTileForCanvas));
@@ -10467,6 +10484,7 @@ async function createTripOverviewMapBlogImage(trip) {
   const timelinePaths = tripMapState.showTimeline
     ? timelineMapPaths(timelineRecordsForTrip(trip.id))
     : [];
+  const exactMapRecords = dailyMapRecordsForScope(new Set([Number(trip.id)]), 0);
   const width = TRIP_MAP_WIDTH;
   const mapHeight = TRIP_MAP_HEIGHT;
   const headerHeight = 86;
@@ -10491,18 +10509,16 @@ async function createTripOverviewMapBlogImage(trip) {
     ...mapModel.routeStops.map(item => ({
       ciudad: { lat: item.latitude, lng: item.longitude }
     })),
+    ...exactMapRecords.map(record => ({
+      ciudad: { lat: record.latitude, lng: record.longitude },
+      blogPoint: record.kind === 'point',
+      photoPoint: record.kind === 'photo'
+    })),
     ...timelinePaths.flatMap(path => path.map(point => ({
       ciudad: { lat: point.latitude, lng: point.longitude }
     })))
   ];
-  const zoom = chooseMapZoom(items, width, mapHeight);
-  const world = items.map(item => mapWorldPoint(item.ciudad.lat, item.ciudad.lng, zoom));
-  const centerWorld = {
-    x: (Math.min(...world.map(point => point.x)) + Math.max(...world.map(point => point.x))) / 2,
-    y: (Math.min(...world.map(point => point.y)) + Math.max(...world.map(point => point.y))) / 2
-  };
-  const center = mapLatLngFromWorldPoint(centerWorld.x, centerWorld.y, zoom);
-  const layer = mapTileLayer(center.latitude, center.longitude, zoom, width, mapHeight);
+  const { zoom, layer } = blogMapViewport(items, width, mapHeight);
   context.fillStyle = '#cfe8f3';
   context.fillRect(0, headerHeight, width, mapHeight);
   const tileImages = await Promise.all(layer.tiles.map(loadMapTileForCanvas));
@@ -10541,6 +10557,25 @@ async function createTripOverviewMapBlogImage(trip) {
     context.lineCap = 'round';
     context.strokeStyle = '#0f766e';
     context.stroke();
+  });
+  exactMapRecords.forEach(record => {
+    const point = mapWorldPoint(record.latitude, record.longitude, zoom);
+    const x = point.x - layer.startX;
+    const y = headerHeight + point.y - layer.startY;
+    context.fillStyle = record.kind === 'photo' ? '#0f766e' : '#7c3aed';
+    context.beginPath();
+    context.arc(x, y, 7, 0, Math.PI * 2);
+    context.fill();
+    context.lineWidth = 2;
+    context.strokeStyle = '#ffffff';
+    context.stroke();
+    if (record.kind === 'photo') {
+      context.fillStyle = '#ffffff';
+      context.font = '800 11px system-ui, sans-serif';
+      context.textAlign = 'center';
+      context.fillText('+', x, y + 3.5);
+      context.textAlign = 'left';
+    }
   });
   const projectedByIndex = new Map(projectedStops.map(stop => [stop._mapIndex, stop]));
   mapModel.markerGroups.filter(markerGroup => !markerGroup.primary.item.routeWaypoint).forEach(markerGroup => {
@@ -12972,7 +13007,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v273');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v274');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15032,12 +15067,22 @@ function blogPrintEntryHtml(entry, options = {}) {
   </article>`;
 }
 
+function blogMapSizeControlsHtml() {
+  return `<div class="blog-map-size-controls" role="group" aria-label="Tamaño del mapa">
+    <button type="button" data-blog-map-size="out" aria-label="Reducir mapa">−</button>
+    <button type="button" data-blog-map-size="fit">Ajustar</button>
+    <span data-blog-map-size-label>100%</span>
+    <button type="button" data-blog-map-size="in" aria-label="Ampliar mapa">+</button>
+  </div>`;
+}
+
 function blogPrintFeaturedHtml(entry) {
   const image = entry ? blogEntryImages(entry)[0] : null;
   if (!image || !image.data) return '';
   const imageClass = blogPrintImageClasses(image, entry.descripcion);
   const dailyMap = String(entry.dailyMapDate || '') === String(entry.fecha || '');
-  return `<figure class="blog-print-featured${dailyMap ? ' daily-map' : ''}">
+  return `<figure class="blog-print-featured${dailyMap ? ' daily-map' : ''}"${dailyMap ? ' data-blog-map-resizable="1"' : ''}>
+    ${dailyMap ? blogMapSizeControlsHtml() : ''}
     <img class="blog-print-image ${imageClass}" src="${escapeHtml(image.data)}" alt="${escapeHtml(entry.descripcion || 'Imagen destacada')}" data-blog-lightbox="1">
     <figcaption>${escapeHtml(entry.descripcion || '')}</figcaption>
   </figure>`;
@@ -15087,8 +15132,9 @@ function blogPrintOverviewHtml(entry, trip) {
     .map(date => summaryDocumentDate(date, true))
     .join(' — ');
   const stopList = stops.map(stop => `<li><span><strong>${stop.number}.</strong> ${escapeHtml(stop.city.nombre)}</span><time>${escapeHtml(stop.arrivalDate ? summaryDocumentDate(stop.arrivalDate, true) : 'Fecha no disponible')}</time></li>`).join('');
-  return `<section class="blog-print-overview" aria-label="Mapa general de ${escapeHtml(trip.nombre || 'viaje')}">
+  return `<section class="blog-print-overview" data-blog-map-resizable="1" aria-label="Mapa general de ${escapeHtml(trip.nombre || 'viaje')}">
     <header><h1>${escapeHtml(trip.nombre || 'Viaje')}</h1><p>${escapeHtml(dateRange || 'Fechas no indicadas')}</p></header>
+    ${blogMapSizeControlsHtml()}
     <div class="blog-print-overview-map" style="aspect-ratio:${layout.frameAspectRatio};--overview-map-offset:-${layout.imageOffsetPercent.toFixed(6)}%">
       <img src="${escapeHtml(image.data)}" alt="Mapa general de ${escapeHtml(trip.nombre || 'viaje')}">
     </div>
@@ -15312,8 +15358,8 @@ function printBlog(options = {}) {
     .blog-print-overview > header { margin-bottom: 5mm; }
     .blog-print-overview > header h1 { margin-bottom: 1mm; }
     .blog-print-overview > header p { margin: 0; color: #64748b; font-size: 12px; }
-    .blog-print-overview-map { position: relative; width: 100%; overflow: hidden; background: #cfe8f3; }
-    .blog-print-overview-map img { display: block; width: 100%; max-width: none; height: auto; transform: translateY(var(--overview-map-offset)); }
+    .blog-print-overview-map { position: relative; width: 100%; overflow: auto; background: #cfe8f3; }
+    .blog-print-overview-map img { display: block; width: var(--blog-map-size, 100%); max-width: none; height: auto; transform: translateY(var(--overview-map-offset)); transform-origin: top left; }
     .blog-print-overview-list { margin-top: 5mm; padding-top: 4mm; border-top: 1px solid #94a3b8; }
     .blog-print-overview-list h2 { margin: 0 0 2mm; }
     .blog-print-overview-list ol { margin: 0; padding: 0; list-style: none; }
@@ -15360,8 +15406,12 @@ function printBlog(options = {}) {
     .blog-print-day.compact .blog-print-featured .blog-print-image { width: 82%; max-width: 82%; }
     .blog-print-day.compact .blog-print-featured .blog-print-image.portrait { width: 64%; max-width: 64%; }
     .blog-print-featured.daily-map .blog-print-image,
-    .blog-print-day.compact .blog-print-featured.daily-map .blog-print-image { width: 100%; max-width: 100%; }
+    .blog-print-day.compact .blog-print-featured.daily-map .blog-print-image { width: var(--blog-map-size, 100%); max-width: none; }
+    .blog-print-featured.daily-map { overflow-x: auto; }
     .blog-print-featured figcaption { margin-top: 2mm; color: #64748b; font-size: 11px; }
+    .blog-map-size-controls { position: sticky; z-index: 2; left: 0; display: flex; width: max-content; align-items: center; gap: 6px; margin: 0 0 8px; padding: 5px; border: 1px solid #cbd5e1; border-radius: 8px; background: #ffffffee; box-shadow: 0 3px 10px #0f172a1a; }
+    .blog-map-size-controls button { min-width: 40px; min-height: 38px; padding: 5px 10px; border: 1px solid #b9c8da; border-radius: 6px; color: #173d63; background: #eef5ff; font: inherit; font-weight: 700; }
+    .blog-map-size-controls span { min-width: 46px; color: #475569; text-align: center; font-size: 12px; font-weight: 700; }
     .blog-preview-toolbar { position: sticky; z-index: 10; top: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: -8mm -8mm 8mm; padding: 10px; border-bottom: 1px solid #cbd5e1; background: #ffffffee; box-shadow: 0 4px 14px #0f172a1f; }
     .blog-preview-toolbar button { min-height: 42px; padding: 8px 12px; border: 1px solid #b9c8da; border-radius: 6px; color: #173d63; background: #eef5ff; font: inherit; font-weight: 650; }
     .blog-preview-toolbar button.primary { border-color: #0876c9; color: #fff; background: #0876c9; }
@@ -15374,7 +15424,7 @@ function printBlog(options = {}) {
       body { max-width: 210mm; margin: 0 auto; padding: 12mm; }
       .blog-print-overview { margin-bottom: 6mm; padding-bottom: 5mm; border-bottom: 1px solid #94a3b8; }
     }
-    @media print { .blog-preview-toolbar, .blog-lightbox { display: none !important; } .blog-print-image { cursor: default; } }
+    @media print { .blog-preview-toolbar, .blog-lightbox, .blog-map-size-controls { display: none !important; } [data-blog-map-resizable] { --blog-map-size: 100% !important; overflow: hidden !important; } .blog-print-image { cursor: default; } }
   </style></head><body><nav class="blog-preview-toolbar" aria-label="Acciones de la vista del Blog">
     <button type="button" class="primary" id="blog-preview-share">Compartir HTML</button>
     <button type="button" id="blog-preview-download">Descargar HTML</button>
@@ -15387,8 +15437,21 @@ function printBlog(options = {}) {
       var lightboxImage = document.getElementById('blog-lightbox-image');
       var closeButton = document.getElementById('blog-lightbox-close');
       function closeLightbox(){ lightbox.hidden = true; lightboxImage.removeAttribute('src'); lightboxImage.alt = ''; }
+      function resizeMap(button) {
+        var container = button.closest('[data-blog-map-resizable]');
+        if (!container) return;
+        var current = Number(container.dataset.blogMapSize || 100);
+        var action = button.getAttribute('data-blog-map-size');
+        var next = action === 'fit' ? 100 : Math.max(60, Math.min(200, current + (action === 'in' ? 20 : -20)));
+        container.dataset.blogMapSize = String(next);
+        container.style.setProperty('--blog-map-size', next + '%');
+        var label = container.querySelector('[data-blog-map-size-label]');
+        if (label) label.textContent = next + '%';
+      }
       document.addEventListener('click', function(event) {
         var target = event.target;
+        var mapSizeButton = target && target.closest ? target.closest('[data-blog-map-size]') : null;
+        if (mapSizeButton) { resizeMap(mapSizeButton); return; }
         var image = target && target.closest ? target.closest('[data-blog-lightbox]') : null;
         if (image) {
           event.preventDefault();
@@ -18630,7 +18693,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v273');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v274');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

@@ -398,7 +398,7 @@ test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neu
   assert.match(app, /\.blog-print-gallery \.blog-print-image\.ticket-document\.minor-ticket,[\s\S]*?height: 66\.666%; max-height: 66\.666%;/);
   assert.match(app, /\.blog-print-featured \.blog-print-image \{ width: 100%; max-width: 100%; \}/);
   assert.match(app, /\.blog-print-featured \.blog-print-image\.portrait \{ width: 80%; max-width: 80%; \}/);
-  assert.match(app, /\.blog-print-featured\.daily-map \.blog-print-image,[\s\S]*?width: 100%; max-width: 100%;/);
+  assert.match(app, /\.blog-print-featured\.daily-map \.blog-print-image,[\s\S]*?width: var\(--blog-map-size, 100%\); max-width: none;/);
   assert.match(app, /const dailyMap = group\.entries\.find\(entry =>[\s\S]*?entry\.dailyMapDate[\s\S]*?group\.date[\s\S]*?blogEntryImages\(entry\)\.length[\s\S]*?\) \|\| null/);
   assert.match(app, /const featured = dailyMap \|\| group\.entries\.find\(entry => entry\.tipo === 'imagen' && entry\.featuredImage && blogEntryImages\(entry\)\.length\) \|\| null/);
   assert.match(app, /\.blog-print-day \{ break-before: page; page-break-before: always; \}/);
@@ -423,6 +423,18 @@ test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neu
 test('la vista HTML separa la portada general del primer día sin alterar el salto del PDF', () => {
   assert.match(app, /@media screen \{[\s\S]*?\.blog-print-overview \{ margin-bottom: 6mm; padding-bottom: 5mm; border-bottom: 1px solid #94a3b8; \}/);
   assert.match(app, /\.blog-print-overview \{ display: block; width: 100%; break-after: page; page-break-after: always; \}/);
+});
+
+test('los mapas del Blog se encuadran a sus puntos y cambian de tamaño en el HTML', () => {
+  assert.match(app, /function chooseBlogMapZoom\(items, width, height\)/);
+  assert.match(app, /function blogMapViewport\(items, width, height\)/);
+  assert.match(app, /const exactMapRecords = dailyMapRecordsForScope\(new Set\(\[Number\(trip\.id\)\]\), 0\)/);
+  assert.match(app, /data-blog-map-size="out"/);
+  assert.match(app, /data-blog-map-size="fit">Ajustar/);
+  assert.match(app, /data-blog-map-size="in"/);
+  assert.match(app, /Math\.max\(60, Math\.min\(200,/);
+  assert.match(app, /@media print \{[\s\S]*?blog-map-size-controls[\s\S]*?--blog-map-size: 100% !important/);
+  assert.match(help, /mapas general y diario incluyen los controles/);
 });
 
 test('el PDF del Blog respeta los filtros activos de día, país y ciudad', () => {

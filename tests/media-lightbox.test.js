@@ -15,7 +15,7 @@ test('la vista HTML del Blog abre imagenes en lightbox', () => {
   assert.match(app, /event\.key === 'Escape'/);
   assert.match(app, /script data-keep-html="1"/);
   assert.match(app, /script:not\(\[data-keep-html\]\)/);
-  assert.match(app, /@media print \{ \.blog-preview-toolbar, \.blog-lightbox \{ display: none !important; \}/);
+  assert.match(app, /@media print \{ \.blog-preview-toolbar, \.blog-lightbox, \.blog-map-size-controls \{ display: none !important; \}/);
   assert.match(help, /Al pulsar cualquier foto en la vista HTML se abre una lightbox/);
 });
 
