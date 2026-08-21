@@ -97,6 +97,80 @@
       .map(index => points[index]);
   }
 
+  function averageDistanceToPath(source, target) {
+    const sourcePoints = cleanPoints(source);
+    const targetPoints = cleanPoints(target);
+    if (!sourcePoints.length || !targetPoints.length) return Number.POSITIVE_INFINITY;
+    return sourcePoints.reduce((sum, point) => {
+      const nearest = targetPoints.reduce((best, candidate) => Math.min(best, distanceMeters(point, candidate)), Number.POSITIVE_INFINITY);
+      return sum + nearest;
+    }, 0) / sourcePoints.length;
+  }
+
+  function reversedEndpointsMatch(first, second) {
+    const firstPoints = cleanPoints(first);
+    const secondPoints = cleanPoints(second);
+    if (firstPoints.length < 2 || secondPoints.length < 2) return false;
+    const directDistance = distanceMeters(firstPoints[0], firstPoints[firstPoints.length - 1]);
+    if (!Number.isFinite(directDistance) || directDistance < 500) return false;
+    const endpointTolerance = Math.min(1500, Math.max(250, directDistance * 0.12));
+    return distanceMeters(firstPoints[0], secondPoints[secondPoints.length - 1]) <= endpointTolerance
+      && distanceMeters(firstPoints[firstPoints.length - 1], secondPoints[0]) <= endpointTolerance;
+  }
+
+  function unifyLikelyRoundTrips(sourcePaths, adjustedPaths) {
+    const sources = Array.isArray(sourcePaths) ? sourcePaths : [];
+    const adjusted = (Array.isArray(adjustedPaths) ? adjustedPaths : []).map(path => ({
+      ...path,
+      points: (Array.isArray(path && path.points) ? path.points : []).map(point => ({ ...point }))
+    }));
+    const used = new Set();
+    for (let firstIndex = 0; firstIndex < Math.min(sources.length, adjusted.length); firstIndex += 1) {
+      if (used.has(firstIndex) || sources[firstIndex].some(point => point.routingAnchor)) continue;
+      const firstAdjusted = adjusted[firstIndex];
+      if (!firstAdjusted || firstAdjusted.adjusted === false || firstAdjusted.points.length < 2) continue;
+      for (let secondIndex = firstIndex + 1; secondIndex < Math.min(sources.length, adjusted.length); secondIndex += 1) {
+        if (used.has(secondIndex) || sources[secondIndex].some(point => point.routingAnchor)) continue;
+        const secondAdjusted = adjusted[secondIndex];
+        if (!secondAdjusted || secondAdjusted.adjusted === false || secondAdjusted.points.length < 2) continue;
+        if (String(firstAdjusted.costing || '') !== String(secondAdjusted.costing || '')) continue;
+        if (!reversedEndpointsMatch(sources[firstIndex], sources[secondIndex])) continue;
+
+        const firstSource = cleanPoints(sources[firstIndex]);
+        const secondSource = cleanPoints(sources[secondIndex]);
+        const directDistance = distanceMeters(firstSource[0], firstSource[firstSource.length - 1]);
+        const corridorTolerance = Math.min(1400, Math.max(400, directDistance * 0.12));
+        const firstCandidate = firstAdjusted.points;
+        const secondCandidate = secondAdjusted.points.slice().reverse();
+        const firstScore = Math.max(
+          averageDistanceToPath(firstSource, firstCandidate),
+          averageDistanceToPath(secondSource, firstCandidate.slice().reverse())
+        );
+        const secondScore = Math.max(
+          averageDistanceToPath(firstSource, secondCandidate),
+          averageDistanceToPath(secondSource, secondCandidate.slice().reverse())
+        );
+        const canonical = firstScore <= secondScore ? firstCandidate : secondCandidate;
+        if (Math.min(firstScore, secondScore) > corridorTolerance) continue;
+
+        adjusted[firstIndex] = {
+          ...firstAdjusted,
+          points: canonical.map(point => ({ ...point })),
+          sharedRoundTrip: true
+        };
+        adjusted[secondIndex] = {
+          ...secondAdjusted,
+          points: canonical.slice().reverse().map(point => ({ ...point })),
+          sharedRoundTrip: true
+        };
+        used.add(firstIndex);
+        used.add(secondIndex);
+        break;
+      }
+    }
+    return adjusted;
+  }
+
   function waypointsForPath(path, costing, limit = 12) {
     const points = cleanPoints(path);
     if (points.length < 2) return [];
@@ -114,8 +188,10 @@
   root.TimelineRouting = Object.freeze({
     costingForPath,
     distanceMeters,
+    averageDistanceToPath,
     normalizeMode,
     pathDistanceMeters,
+    unifyLikelyRoundTrips,
     waypointsForPath
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

@@ -54,6 +54,45 @@ test('un recorrido circular conserva un punto alejado para no colapsar', () => {
   assert.equal(routing.waypointsForPath(path, 'auto').length, 3);
 });
 
+test('la ida y la vuelta cercanas reutilizan el mismo trazado en sentido inverso', () => {
+  const outbound = [
+    { latitude: 40, longitude: -1 },
+    { latitude: 40.04, longitude: -1.05 },
+    { latitude: 40.08, longitude: -1.1 }
+  ];
+  const inbound = [
+    { latitude: 40.0802, longitude: -1.1001 },
+    { latitude: 40.041, longitude: -1.052 },
+    { latitude: 40.0002, longitude: -1.0001 }
+  ];
+  const adjusted = routing.unifyLikelyRoundTrips([outbound, inbound], [
+    { adjusted: true, costing: 'auto', points: outbound },
+    { adjusted: true, costing: 'auto', points: [inbound[0], { latitude: 40.05, longitude: -1.06 }, inbound[2]] }
+  ]);
+  assert.equal(adjusted[0].sharedRoundTrip, true);
+  assert.equal(adjusted[1].sharedRoundTrip, true);
+  assert.deepEqual(adjusted[1].points, adjusted[0].points.slice().reverse());
+});
+
+test('una ruta circular realmente separada mantiene distintos los trayectos', () => {
+  const outbound = [
+    { latitude: 40, longitude: -1 },
+    { latitude: 40.04, longitude: -1.05 },
+    { latitude: 40.08, longitude: -1.1 }
+  ];
+  const inbound = [
+    { latitude: 40.08, longitude: -1.1 },
+    { latitude: 40.12, longitude: -1.02 },
+    { latitude: 40, longitude: -1 }
+  ];
+  const adjusted = routing.unifyLikelyRoundTrips([outbound, inbound], [
+    { adjusted: true, costing: 'auto', points: outbound },
+    { adjusted: true, costing: 'auto', points: inbound }
+  ]);
+  assert.equal(adjusted[0].sharedRoundTrip, undefined);
+  assert.equal(adjusted[1].sharedRoundTrip, undefined);
+});
+
 test('el decodificador de Valhalla usa precisión de seis decimales', () => {
   const encode = points => {
     let previousLat = 0;
@@ -115,4 +154,5 @@ test('la interfaz permite conservar original, ajustar un día o todo el viaje y 
   assert.match(app, /timelineMapPaths\(importedTimelineRecords, \{[\s\S]*?adjusted: adjustedTimelineRequested/);
   assert.match(app, /restoreTimelineRoutingPreference\(state\.selectedViajeIds\)/);
   assert.match(app, /timelineRouteView, timelineRoutingMode/);
+  assert.match(app, /unifyLikelyRoundTrips\(sourcePaths, adjustedPaths\)/);
 });
