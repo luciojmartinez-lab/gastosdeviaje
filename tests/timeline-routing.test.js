@@ -74,6 +74,53 @@ test('la ida y la vuelta cercanas reutilizan el mismo trazado en sentido inverso
   assert.deepEqual(adjusted[1].points, adjusted[0].points.slice().reverse());
 });
 
+test('la ida y la vuelta se unifican aunque los puntos originales de Maps sean escasos e imprecisos', () => {
+  const outbound = [
+    { latitude: 40, longitude: -1 },
+    { latitude: 40.08, longitude: -1.1 }
+  ];
+  const inbound = [
+    { latitude: 40.081, longitude: -1.101 },
+    { latitude: 40.055, longitude: -1.035 },
+    { latitude: 40.001, longitude: -1.001 }
+  ];
+  const outboundRoad = [
+    outbound[0],
+    { latitude: 40.035, longitude: -1.035 },
+    outbound[1]
+  ];
+  const inboundRoad = [
+    inbound[0],
+    { latitude: 40.038, longitude: -1.04 },
+    inbound[inbound.length - 1]
+  ];
+  const adjusted = routing.unifyLikelyRoundTrips([outbound, inbound], [
+    { adjusted: true, costing: 'auto', points: outboundRoad },
+    { adjusted: true, costing: 'pedestrian', points: inboundRoad }
+  ]);
+  assert.equal(adjusted[0].sharedRoundTrip, true);
+  assert.deepEqual(adjusted[1].points, adjusted[0].points.slice().reverse());
+});
+
+test('dos tramos duplicados con los mismos extremos y sentido comparten también el trazado', () => {
+  const first = [
+    { latitude: 40, longitude: -1 },
+    { latitude: 40.04, longitude: -1.05 },
+    { latitude: 40.08, longitude: -1.1 }
+  ];
+  const duplicate = [
+    { latitude: 40.0003, longitude: -1.0002 },
+    { latitude: 40.042, longitude: -1.048 },
+    { latitude: 40.0802, longitude: -1.1003 }
+  ];
+  const adjusted = routing.unifyLikelyRoundTrips([first, duplicate], [
+    { adjusted: true, costing: 'auto', points: first },
+    { adjusted: true, costing: 'auto', points: duplicate }
+  ]);
+  assert.equal(adjusted[0].sharedRoundTrip, true);
+  assert.deepEqual(adjusted[1].points, adjusted[0].points);
+});
+
 test('una ruta circular realmente separada mantiene distintos los trayectos', () => {
   const outbound = [
     { latitude: 40, longitude: -1 },

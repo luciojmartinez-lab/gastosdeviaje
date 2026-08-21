@@ -107,15 +107,34 @@
     }, 0) / sourcePoints.length;
   }
 
-  function reversedEndpointsMatch(first, second) {
+  function matchingEndpointOrientation(first, second) {
     const firstPoints = cleanPoints(first);
     const secondPoints = cleanPoints(second);
-    if (firstPoints.length < 2 || secondPoints.length < 2) return false;
+    if (firstPoints.length < 2 || secondPoints.length < 2) return '';
     const directDistance = distanceMeters(firstPoints[0], firstPoints[firstPoints.length - 1]);
-    if (!Number.isFinite(directDistance) || directDistance < 500) return false;
-    const endpointTolerance = Math.min(1500, Math.max(250, directDistance * 0.12));
-    return distanceMeters(firstPoints[0], secondPoints[secondPoints.length - 1]) <= endpointTolerance
-      && distanceMeters(firstPoints[firstPoints.length - 1], secondPoints[0]) <= endpointTolerance;
+    if (!Number.isFinite(directDistance) || directDistance < 500) return '';
+    const endpointTolerance = Math.min(1800, Math.max(300, directDistance * 0.15));
+    const reversedError = Math.max(
+      distanceMeters(firstPoints[0], secondPoints[secondPoints.length - 1]),
+      distanceMeters(firstPoints[firstPoints.length - 1], secondPoints[0])
+    );
+    const sameError = Math.max(
+      distanceMeters(firstPoints[0], secondPoints[0]),
+      distanceMeters(firstPoints[firstPoints.length - 1], secondPoints[secondPoints.length - 1])
+    );
+    if (reversedError > endpointTolerance && sameError > endpointTolerance) return '';
+    return reversedError <= sameError ? 'reversed' : 'same';
+  }
+
+  function routeCorridorDistance(first, second, orientation = 'reversed') {
+    const firstPoints = cleanPoints(first);
+    const secondPoints = cleanPoints(second);
+    if (firstPoints.length < 2 || secondPoints.length < 2) return Number.POSITIVE_INFINITY;
+    const alignedSecond = orientation === 'reversed' ? secondPoints.slice().reverse() : secondPoints;
+    return Math.max(
+      averageDistanceToPath(firstPoints, alignedSecond),
+      averageDistanceToPath(alignedSecond, firstPoints)
+    );
   }
 
   function unifyLikelyRoundTrips(sourcePaths, adjustedPaths) {
@@ -133,25 +152,33 @@
         if (used.has(secondIndex) || sources[secondIndex].some(point => point.routingAnchor)) continue;
         const secondAdjusted = adjusted[secondIndex];
         if (!secondAdjusted || secondAdjusted.adjusted === false || secondAdjusted.points.length < 2) continue;
-        if (String(firstAdjusted.costing || '') !== String(secondAdjusted.costing || '')) continue;
-        if (!reversedEndpointsMatch(sources[firstIndex], sources[secondIndex])) continue;
+        const sourceOrientation = matchingEndpointOrientation(sources[firstIndex], sources[secondIndex]);
+        const adjustedOrientation = matchingEndpointOrientation(firstAdjusted.points, secondAdjusted.points);
+        const orientation = adjustedOrientation || sourceOrientation;
+        if (!orientation) continue;
 
         const firstSource = cleanPoints(sources[firstIndex]);
         const secondSource = cleanPoints(sources[secondIndex]);
-        const directDistance = distanceMeters(firstSource[0], firstSource[firstSource.length - 1]);
-        const corridorTolerance = Math.min(1400, Math.max(400, directDistance * 0.12));
+        const directDistance = Math.max(
+          distanceMeters(firstSource[0], firstSource[firstSource.length - 1]),
+          distanceMeters(firstAdjusted.points[0], firstAdjusted.points[firstAdjusted.points.length - 1])
+        );
+        const corridorTolerance = Math.min(1600, Math.max(450, directDistance * 0.14));
         const firstCandidate = firstAdjusted.points;
-        const secondCandidate = secondAdjusted.points.slice().reverse();
+        const secondCandidate = orientation === 'reversed'
+          ? secondAdjusted.points.slice().reverse()
+          : secondAdjusted.points.slice();
+        const corridorDistance = routeCorridorDistance(firstAdjusted.points, secondAdjusted.points, orientation);
+        if (corridorDistance > corridorTolerance) continue;
         const firstScore = Math.max(
           averageDistanceToPath(firstSource, firstCandidate),
-          averageDistanceToPath(secondSource, firstCandidate.slice().reverse())
+          averageDistanceToPath(secondSource, orientation === 'reversed' ? firstCandidate.slice().reverse() : firstCandidate)
         );
         const secondScore = Math.max(
           averageDistanceToPath(firstSource, secondCandidate),
-          averageDistanceToPath(secondSource, secondCandidate.slice().reverse())
+          averageDistanceToPath(secondSource, orientation === 'reversed' ? secondCandidate.slice().reverse() : secondCandidate)
         );
         const canonical = firstScore <= secondScore ? firstCandidate : secondCandidate;
-        if (Math.min(firstScore, secondScore) > corridorTolerance) continue;
 
         adjusted[firstIndex] = {
           ...firstAdjusted,
@@ -160,7 +187,7 @@
         };
         adjusted[secondIndex] = {
           ...secondAdjusted,
-          points: canonical.slice().reverse().map(point => ({ ...point })),
+          points: (orientation === 'reversed' ? canonical.slice().reverse() : canonical).map(point => ({ ...point })),
           sharedRoundTrip: true
         };
         used.add(firstIndex);
@@ -189,8 +216,10 @@
     costingForPath,
     distanceMeters,
     averageDistanceToPath,
+    matchingEndpointOrientation,
     normalizeMode,
     pathDistanceMeters,
+    routeCorridorDistance,
     unifyLikelyRoundTrips,
     waypointsForPath
   });
