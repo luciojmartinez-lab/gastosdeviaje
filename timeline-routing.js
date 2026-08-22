@@ -137,6 +137,66 @@
     );
   }
 
+  function splitLikelyInternalRoundTrip(path) {
+    const points = cleanPoints(path);
+    if (points.length < 3) return null;
+    const start = points[0];
+    const farthest = points.slice(1, -1)
+      .map((point, index) => ({ point, index: index + 1, distance: distanceMeters(start, point) }))
+      .sort((a, b) => b.distance - a.distance)[0];
+    if (!farthest || farthest.distance < 500) return null;
+    const closureTolerance = Math.min(1200, Math.max(180, farthest.distance * 0.12));
+    if (distanceMeters(start, points[points.length - 1]) > closureTolerance) return null;
+    return {
+      outbound: points.slice(0, farthest.index + 1),
+      inbound: points.slice(farthest.index),
+      turnaround: farthest.point,
+      excursionDistance: farthest.distance
+    };
+  }
+
+  function unifyInternalRoundTrip(source, adjustedPath) {
+    if (!adjustedPath || adjustedPath.adjusted === false) return null;
+    const sourceSplit = splitLikelyInternalRoundTrip(source);
+    const adjustedPoints = cleanPoints(adjustedPath.points);
+    if (!sourceSplit || adjustedPoints.length < 5) return null;
+    const firstAllowed = Math.max(1, Math.floor(adjustedPoints.length * 0.05));
+    const lastAllowed = Math.min(adjustedPoints.length - 2, Math.ceil(adjustedPoints.length * 0.95));
+    let turnaroundIndex = -1;
+    let turnaroundDistance = Number.POSITIVE_INFINITY;
+    for (let index = firstAllowed; index <= lastAllowed; index += 1) {
+      const distance = distanceMeters(adjustedPoints[index], sourceSplit.turnaround);
+      if (distance < turnaroundDistance) {
+        turnaroundDistance = distance;
+        turnaroundIndex = index;
+      }
+    }
+    if (turnaroundIndex <= 0 || turnaroundIndex >= adjustedPoints.length - 1) return null;
+    const outbound = adjustedPoints.slice(0, turnaroundIndex + 1);
+    const inbound = adjustedPoints.slice(turnaroundIndex);
+    const corridorTolerance = Math.min(1600, Math.max(450, sourceSplit.excursionDistance * 0.14));
+    if (routeCorridorDistance(outbound, inbound, 'reversed') > corridorTolerance) return null;
+    const inboundReversed = inbound.slice().reverse();
+    const outboundScore = Math.max(
+      averageDistanceToPath(sourceSplit.outbound, outbound),
+      averageDistanceToPath(sourceSplit.inbound, outbound.slice().reverse())
+    );
+    const inboundScore = Math.max(
+      averageDistanceToPath(sourceSplit.outbound, inboundReversed),
+      averageDistanceToPath(sourceSplit.inbound, inbound)
+    );
+    const canonical = outboundScore <= inboundScore ? outbound : inboundReversed;
+    return {
+      ...adjustedPath,
+      points: [
+        ...canonical.map(point => ({ ...point })),
+        ...canonical.slice(0, -1).reverse().map(point => ({ ...point }))
+      ],
+      sharedRoundTrip: true,
+      internalRoundTrip: true
+    };
+  }
+
   function unifyLikelyRoundTrips(sourcePaths, adjustedPaths) {
     const sources = Array.isArray(sourcePaths) ? sourcePaths : [];
     const adjusted = (Array.isArray(adjustedPaths) ? adjustedPaths : []).map(path => ({
@@ -144,6 +204,13 @@
       points: (Array.isArray(path && path.points) ? path.points : []).map(point => ({ ...point }))
     }));
     const used = new Set();
+    for (let index = 0; index < Math.min(sources.length, adjusted.length); index += 1) {
+      if (!Array.isArray(sources[index]) || sources[index].some(point => point.routingAnchor)) continue;
+      const internal = unifyInternalRoundTrip(sources[index], adjusted[index]);
+      if (!internal) continue;
+      adjusted[index] = internal;
+      used.add(index);
+    }
     for (let firstIndex = 0; firstIndex < Math.min(sources.length, adjusted.length); firstIndex += 1) {
       if (used.has(firstIndex) || sources[firstIndex].some(point => point.routingAnchor)) continue;
       const firstAdjusted = adjusted[firstIndex];
@@ -220,6 +287,8 @@
     normalizeMode,
     pathDistanceMeters,
     routeCorridorDistance,
+    splitLikelyInternalRoundTrip,
+    unifyInternalRoundTrip,
     unifyLikelyRoundTrips,
     waypointsForPath
   });

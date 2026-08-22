@@ -121,6 +121,49 @@ test('dos tramos duplicados con los mismos extremos y sentido comparten también
   assert.deepEqual(adjusted[1].points, adjusted[0].points);
 });
 
+test('una ida y vuelta incluida en un único tramo reutiliza la misma carretera', () => {
+  const source = [
+    { latitude: 40, longitude: -1 },
+    { latitude: 40.035, longitude: -1.035 },
+    { latitude: 40.08, longitude: -1.1 },
+    { latitude: 40.038, longitude: -1.04 },
+    { latitude: 40.0002, longitude: -1.0001 }
+  ];
+  const adjustedPath = [
+    { latitude: 40, longitude: -1 },
+    { latitude: 40.02, longitude: -1.02 },
+    { latitude: 40.04, longitude: -1.04 },
+    { latitude: 40.08, longitude: -1.1 },
+    { latitude: 40.042, longitude: -1.045 },
+    { latitude: 40.021, longitude: -1.025 },
+    { latitude: 40.0002, longitude: -1.0001 }
+  ];
+  const [result] = routing.unifyLikelyRoundTrips([source], [
+    { adjusted: true, costing: 'auto', points: adjustedPath }
+  ]);
+  assert.equal(result.internalRoundTrip, true);
+  const turnaroundIndex = (result.points.length - 1) / 2;
+  assert.deepEqual(
+    result.points.slice(turnaroundIndex),
+    result.points.slice(0, turnaroundIndex + 1).reverse()
+  );
+});
+
+test('un único tramo circular por carreteras realmente distintas no se pliega', () => {
+  const source = [
+    { latitude: 40, longitude: -1 },
+    { latitude: 40.03, longitude: -1.08 },
+    { latitude: 40.08, longitude: -1.1 },
+    { latitude: 40.09, longitude: -0.99 },
+    { latitude: 40.0001, longitude: -1.0001 }
+  ];
+  const [result] = routing.unifyLikelyRoundTrips([source], [
+    { adjusted: true, costing: 'auto', points: source }
+  ]);
+  assert.equal(result.internalRoundTrip, undefined);
+  assert.deepEqual(result.points, source);
+});
+
 test('una ruta circular realmente separada mantiene distintos los trayectos', () => {
   const outbound = [
     { latitude: 40, longitude: -1 },
