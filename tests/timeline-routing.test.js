@@ -149,6 +149,88 @@ test('una ida y vuelta incluida en un único tramo reutiliza la misma carretera'
   );
 });
 
+test('un tramo independiente y la mitad de otro circular comparten la misma carretera', () => {
+  const oneWay = [
+    { latitude: 40.089, longitude: -1.554 },
+    { latitude: 40.044, longitude: -1.65 },
+    { latitude: 40.04, longitude: -1.649 }
+  ];
+  const circular = [
+    { latitude: 40.088, longitude: -1.555 },
+    { latitude: 40.042, longitude: -1.647 },
+    { latitude: 40.04, longitude: -1.649 },
+    { latitude: 40.043, longitude: -1.648 },
+    { latitude: 40.089, longitude: -1.556 }
+  ];
+  const oneWayAdjusted = [
+    oneWay[0],
+    { latitude: 40.065, longitude: -1.60 },
+    oneWay[oneWay.length - 1]
+  ];
+  const circularAdjusted = [
+    circular[0],
+    { latitude: 40.063, longitude: -1.603 },
+    circular[2],
+    { latitude: 40.064, longitude: -1.602 },
+    circular[circular.length - 1]
+  ];
+  const result = routing.unifyLikelyRoundTrips([oneWay, circular], [
+    { adjusted: true, costing: 'pedestrian', points: oneWayAdjusted },
+    { adjusted: true, costing: 'pedestrian', points: circularAdjusted }
+  ]);
+  assert.equal(result[1].internalRoundTrip, true);
+  const circularHalf = result[1].points.slice(0, Math.floor(result[1].points.length / 2) + 1);
+  assert.deepEqual(circularHalf, result[0].points);
+  assert.deepEqual(
+    result[1].points.slice(Math.floor(result[1].points.length / 2)),
+    circularHalf.slice().reverse()
+  );
+});
+
+test('dos falsos tramos circulares y una vuelta normal comparten un único trazado', () => {
+  const salinas = { latitude: 40.0887, longitude: -1.5537 };
+  const canete = { latitude: 40.0423, longitude: -1.6470 };
+  const outboundCircular = [
+    salinas,
+    { latitude: 40.066, longitude: -1.60 },
+    canete,
+    { latitude: 40.08873, longitude: -1.55369 }
+  ];
+  const inboundCircular = [
+    canete,
+    { latitude: 40.08873, longitude: -1.55369 },
+    { latitude: 40.0437, longitude: -1.6505 }
+  ];
+  const inbound = [
+    { latitude: 40.0417, longitude: -1.6477 },
+    { latitude: 40.063, longitude: -1.604 },
+    { latitude: 40.08872, longitude: -1.55366 }
+  ];
+  const preferredRoad = [
+    salinas,
+    { latitude: 40.072, longitude: -1.59 },
+    { latitude: 40.058, longitude: -1.62 },
+    canete
+  ];
+  const alternateRoad = [
+    canete,
+    { latitude: 40.060, longitude: -1.61 },
+    salinas
+  ];
+  const result = routing.unifyLikelyRoundTrips(
+    [outboundCircular, inboundCircular, inbound],
+    [
+      { adjusted: true, costing: 'auto', points: [...preferredRoad, ...preferredRoad.slice(0, -1).reverse()] },
+      { adjusted: true, costing: 'pedestrian', points: [...alternateRoad, ...alternateRoad.slice(0, -1).reverse()] },
+      { adjusted: true, costing: 'auto', points: alternateRoad }
+    ]
+  );
+  const firstHalf = result[0].points.slice(0, Math.floor(result[0].points.length / 2) + 1);
+  const secondHalf = result[1].points.slice(0, Math.floor(result[1].points.length / 2) + 1);
+  assert.deepEqual(secondHalf, firstHalf.slice().reverse());
+  assert.deepEqual(result[2].points, firstHalf.slice().reverse());
+});
+
 test('un único tramo circular por carreteras realmente distintas no se pliega', () => {
   const source = [
     { latitude: 40, longitude: -1 },

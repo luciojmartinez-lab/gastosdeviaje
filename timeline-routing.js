@@ -197,70 +197,119 @@
     };
   }
 
+  function comparableSourcePath(source, adjustedPath) {
+    if (!adjustedPath || adjustedPath.internalRoundTrip !== true) return cleanPoints(source);
+    const split = splitLikelyInternalRoundTrip(source);
+    return split ? split.outbound : cleanPoints(source);
+  }
+
+  function comparableAdjustedPath(adjustedPath) {
+    const points = cleanPoints(adjustedPath && adjustedPath.points);
+    if (!adjustedPath || adjustedPath.internalRoundTrip !== true) return points;
+    return points.slice(0, Math.floor(points.length / 2) + 1);
+  }
+
+  function adjustedPathWithCanonical(adjustedPath, canonical) {
+    const points = canonical.map(point => ({ ...point }));
+    if (!adjustedPath || adjustedPath.internalRoundTrip !== true) {
+      return { ...adjustedPath, points, sharedRoundTrip: true };
+    }
+    return {
+      ...adjustedPath,
+      points: [...points, ...points.slice(0, -1).reverse().map(point => ({ ...point }))],
+      sharedRoundTrip: true,
+      internalRoundTrip: true
+    };
+  }
+
+  function sharedRouteRelation(firstNode, secondNode) {
+    const sourceOrientation = matchingEndpointOrientation(firstNode.source, secondNode.source);
+    const adjustedOrientation = matchingEndpointOrientation(firstNode.candidate, secondNode.candidate);
+    const orientation = adjustedOrientation || sourceOrientation;
+    if (!orientation) return null;
+
+    const directDistance = Math.max(
+      distanceMeters(firstNode.source[0], firstNode.source[firstNode.source.length - 1]),
+      distanceMeters(firstNode.candidate[0], firstNode.candidate[firstNode.candidate.length - 1])
+    );
+    const corridorTolerance = Math.min(1600, Math.max(450, directDistance * 0.14));
+    const corridorDistance = routeCorridorDistance(firstNode.candidate, secondNode.candidate, orientation);
+    if (corridorDistance > corridorTolerance) return null;
+    return { reversed: orientation === 'reversed' };
+  }
+
   function unifyLikelyRoundTrips(sourcePaths, adjustedPaths) {
     const sources = Array.isArray(sourcePaths) ? sourcePaths : [];
     const adjusted = (Array.isArray(adjustedPaths) ? adjustedPaths : []).map(path => ({
       ...path,
       points: (Array.isArray(path && path.points) ? path.points : []).map(point => ({ ...point }))
     }));
-    const used = new Set();
     for (let index = 0; index < Math.min(sources.length, adjusted.length); index += 1) {
       if (!Array.isArray(sources[index]) || sources[index].some(point => point.routingAnchor)) continue;
       const internal = unifyInternalRoundTrip(sources[index], adjusted[index]);
       if (!internal) continue;
       adjusted[index] = internal;
-      used.add(index);
     }
-    for (let firstIndex = 0; firstIndex < Math.min(sources.length, adjusted.length); firstIndex += 1) {
-      if (used.has(firstIndex) || sources[firstIndex].some(point => point.routingAnchor)) continue;
-      const firstAdjusted = adjusted[firstIndex];
-      if (!firstAdjusted || firstAdjusted.adjusted === false || firstAdjusted.points.length < 2) continue;
-      for (let secondIndex = firstIndex + 1; secondIndex < Math.min(sources.length, adjusted.length); secondIndex += 1) {
-        if (used.has(secondIndex) || sources[secondIndex].some(point => point.routingAnchor)) continue;
-        const secondAdjusted = adjusted[secondIndex];
-        if (!secondAdjusted || secondAdjusted.adjusted === false || secondAdjusted.points.length < 2) continue;
-        const sourceOrientation = matchingEndpointOrientation(sources[firstIndex], sources[secondIndex]);
-        const adjustedOrientation = matchingEndpointOrientation(firstAdjusted.points, secondAdjusted.points);
-        const orientation = adjustedOrientation || sourceOrientation;
-        if (!orientation) continue;
 
-        const firstSource = cleanPoints(sources[firstIndex]);
-        const secondSource = cleanPoints(sources[secondIndex]);
-        const directDistance = Math.max(
-          distanceMeters(firstSource[0], firstSource[firstSource.length - 1]),
-          distanceMeters(firstAdjusted.points[0], firstAdjusted.points[firstAdjusted.points.length - 1])
-        );
-        const corridorTolerance = Math.min(1600, Math.max(450, directDistance * 0.14));
-        const firstCandidate = firstAdjusted.points;
-        const secondCandidate = orientation === 'reversed'
-          ? secondAdjusted.points.slice().reverse()
-          : secondAdjusted.points.slice();
-        const corridorDistance = routeCorridorDistance(firstAdjusted.points, secondAdjusted.points, orientation);
-        if (corridorDistance > corridorTolerance) continue;
-        const firstScore = Math.max(
-          averageDistanceToPath(firstSource, firstCandidate),
-          averageDistanceToPath(secondSource, orientation === 'reversed' ? firstCandidate.slice().reverse() : firstCandidate)
-        );
-        const secondScore = Math.max(
-          averageDistanceToPath(firstSource, secondCandidate),
-          averageDistanceToPath(secondSource, orientation === 'reversed' ? secondCandidate.slice().reverse() : secondCandidate)
-        );
-        const canonical = firstScore <= secondScore ? firstCandidate : secondCandidate;
-
-        adjusted[firstIndex] = {
-          ...firstAdjusted,
-          points: canonical.map(point => ({ ...point })),
-          sharedRoundTrip: true
-        };
-        adjusted[secondIndex] = {
-          ...secondAdjusted,
-          points: (orientation === 'reversed' ? canonical.slice().reverse() : canonical).map(point => ({ ...point })),
-          sharedRoundTrip: true
-        };
-        used.add(firstIndex);
-        used.add(secondIndex);
-        break;
+    const limit = Math.min(sources.length, adjusted.length);
+    const nodes = Array.from({ length: limit }, (_, index) => {
+      if (!Array.isArray(sources[index]) || sources[index].some(point => point.routingAnchor)) return null;
+      const adjustedPath = adjusted[index];
+      if (!adjustedPath || adjustedPath.adjusted === false || adjustedPath.points.length < 2) return null;
+      const source = comparableSourcePath(sources[index], adjustedPath);
+      const candidate = comparableAdjustedPath(adjustedPath);
+      return source.length > 1 && candidate.length > 1 ? { index, source, candidate } : null;
+    });
+    const graph = Array.from({ length: limit }, () => []);
+    for (let firstIndex = 0; firstIndex < limit; firstIndex += 1) {
+      const firstNode = nodes[firstIndex];
+      if (!firstNode) continue;
+      for (let secondIndex = firstIndex + 1; secondIndex < limit; secondIndex += 1) {
+        const secondNode = nodes[secondIndex];
+        if (!secondNode) continue;
+        const relation = sharedRouteRelation(firstNode, secondNode);
+        if (!relation) continue;
+        graph[firstIndex].push({ index: secondIndex, reversed: relation.reversed });
+        graph[secondIndex].push({ index: firstIndex, reversed: relation.reversed });
       }
+    }
+
+    const visited = new Set();
+    for (let rootIndex = 0; rootIndex < limit; rootIndex += 1) {
+      if (!nodes[rootIndex] || visited.has(rootIndex)) continue;
+      const orientation = new Map([[rootIndex, false]]);
+      const queue = [rootIndex];
+      const component = [];
+      visited.add(rootIndex);
+      while (queue.length) {
+        const currentIndex = queue.shift();
+        component.push(currentIndex);
+        graph[currentIndex].forEach(edge => {
+          if (visited.has(edge.index)) return;
+          orientation.set(edge.index, orientation.get(currentIndex) !== edge.reversed);
+          visited.add(edge.index);
+          queue.push(edge.index);
+        });
+      }
+      if (component.length < 2) continue;
+
+      const alignedSources = component.map(index => orientation.get(index)
+        ? nodes[index].source.slice().reverse()
+        : nodes[index].source);
+      const candidates = component.map(index => orientation.get(index)
+        ? nodes[index].candidate.slice().reverse()
+        : nodes[index].candidate);
+      const canonical = candidates
+        .map(candidate => ({
+          candidate,
+          score: Math.max(...alignedSources.map(source => averageDistanceToPath(source, candidate)))
+        }))
+        .sort((first, second) => first.score - second.score)[0].candidate;
+
+      component.forEach(index => {
+        const ownCanonical = orientation.get(index) ? canonical.slice().reverse() : canonical;
+        adjusted[index] = adjustedPathWithCanonical(adjusted[index], ownCanonical);
+      });
     }
     return adjusted;
   }
@@ -283,10 +332,14 @@
     costingForPath,
     distanceMeters,
     averageDistanceToPath,
+    adjustedPathWithCanonical,
+    comparableAdjustedPath,
+    comparableSourcePath,
     matchingEndpointOrientation,
     normalizeMode,
     pathDistanceMeters,
     routeCorridorDistance,
+    sharedRouteRelation,
     splitLikelyInternalRoundTrip,
     unifyInternalRoundTrip,
     unifyLikelyRoundTrips,
