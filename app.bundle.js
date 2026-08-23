@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v282';
+const APP_VERSION = '700v283';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -86,7 +86,6 @@ const DIALOG_HELP_TARGETS = {
   'blog-location-dialog': 'blog-formulario-punto',
   'expense-blog-replace-dialog': 'gasto-a-blog',
   'shared-images-dialog': 'compartir',
-  'blog-pdf-guide-dialog': 'blog-pdf',
   'wordpress-export-dialog': 'wordpress-exportar',
   'print-dialog': 'informe-pdf',
   'backup-dialog': 'backup',
@@ -159,7 +158,6 @@ let activeMapPointContext = null;
 let tripMapLongPressCleanup = null;
 let openBlogDays = new Set();
 let openBlogDaysScope = '';
-let pendingBlogPdfDay = '';
 let openExpenseGroups = new Set();
 let openExpenseGroupsScope = '';
 let backupCloudUploadInProgress = false;
@@ -2691,7 +2689,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v282');
+    const worker = new Worker('./timeline-import-worker.js?v=700v283');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3483,7 +3481,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v282');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v283');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4274,7 +4272,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v282');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v283');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4365,7 +4363,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v282');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v283');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4427,7 +4425,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v282');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v283');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4725,7 +4723,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v282');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v283');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -12885,19 +12883,19 @@ function syncBlogDayPdfButton(trip, entries) {
   button.disabled = !trip || !day;
   button.dataset.blogPdfDay = day;
   button.title = day
-    ? `Crear el PDF completo del ${blogDayDateLabel(day)}`
-    : 'Despliega un día del Blog para crear su PDF';
+    ? `Abrir la vista HTML del ${blogDayDateLabel(day)}`
+    : 'Despliega un día del Blog para abrir su vista HTML';
 }
 
-function openCurrentBlogDayPdfGuide() {
+function openCurrentBlogDayHtml() {
   const trip = selectedBlogTrip();
   const entries = trip ? filteredBlogEntries(blogEntriesForTrip(trip.id)) : [];
   const day = currentOpenBlogDay(entries);
   if (!day) {
-    alert('Despliega un día del Blog para crear su PDF.');
+    alert('Despliega un día del Blog para abrir su vista HTML.');
     return;
   }
-  openBlogPdfGuide(day);
+  openBlogHtml({ day });
 }
 
 function blogEntryShareText(entry) {
@@ -13139,7 +13137,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v282');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v283');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15422,43 +15420,7 @@ function exportBlogToWordPress() {
   closeWordPressExportDialog();
 }
 
-function openBlogPdfGuide(day = '') {
-  const trip = selectedBlogTrip();
-  if (!trip) {
-    alert('Selecciona exactamente un viaje para guardar su blog en PDF.');
-    return;
-  }
-  pendingBlogPdfDay = /^\d{4}-\d{2}-\d{2}$/.test(String(day || '')) ? String(day) : '';
-  if ($('#blog-pdf-guide-title')) {
-    $('#blog-pdf-guide-title').textContent = pendingBlogPdfDay
-      ? `PDF del ${blogDayDateLabel(pendingBlogPdfDay)}`
-      : 'Vista HTML y PDF del Blog';
-  }
-  if ($('#blog-pdf-guide-scope')) {
-    $('#blog-pdf-guide-scope').textContent = pendingBlogPdfDay
-      ? 'Se incluirán únicamente las entradas de este día, sin la portada general ni otros días.'
-      : 'Se incluirán las entradas que coinciden con los filtros actuales del Blog.';
-  }
-  const dialog = $('#blog-pdf-guide-dialog');
-  if (dialog.showModal) dialog.showModal();
-  else dialog.setAttribute('open', 'open');
-}
-
-function closeBlogPdfGuide() {
-  pendingBlogPdfDay = '';
-  const dialog = $('#blog-pdf-guide-dialog');
-  if (!dialog) return;
-  if (dialog.open && dialog.close) dialog.close();
-  else dialog.removeAttribute('open');
-}
-
-function continueBlogPdf() {
-  const day = pendingBlogPdfDay;
-  closeBlogPdfGuide();
-  setTimeout(() => printBlog({ day }), 0);
-}
-
-function printBlog(options = {}) {
+function openBlogHtml(options = {}) {
   const trip = selectedBlogTrip();
   if (!trip) {
     alert('Selecciona exactamente un viaje para ver su blog.');
@@ -15625,11 +15587,10 @@ function printBlog(options = {}) {
     document.getElementById('blog-preview-download').onclick=function(){downloadHtmlFile(createHtmlFile());document.getElementById('blog-preview-status').textContent='HTML descargado.';};
     document.getElementById('blog-preview-print').onclick=function(){window.print();};
     document.getElementById('blog-preview-close').onclick=function(){window.close();};
-    Promise.all(Array.from(document.images).map(function(img){return img.complete ? Promise.resolve() : new Promise(function(resolve){img.onload=resolve;img.onerror=resolve;});})).then(function(){setTimeout(function(){window.print();},150);});
   </script></body></html>`;
   const win = window.open('', '_blank');
   if (!win) {
-    alert('El navegador ha bloqueado la ventana del PDF. Permite ventanas emergentes.');
+    alert('El navegador ha bloqueado la vista HTML. Permite ventanas emergentes.');
     return;
   }
   win.document.open();
@@ -17140,12 +17101,9 @@ function bindEvents() {
   $('#btn-last-expense').onclick = () => scrollToLastExpense();
   $('#btn-blog-add').onclick = () => openBlogEntryDialog();
   $('#btn-blog-last').onclick = scrollToLastBlogEntry;
-  $('#btn-blog-pdf').onclick = () => openBlogPdfGuide();
+  $('#btn-blog-pdf').onclick = () => openBlogHtml();
   $('#btn-blog-add-bottom').onclick = () => openBlogEntryDialog();
-  $('#btn-blog-day-pdf-bottom').onclick = openCurrentBlogDayPdfGuide;
-  $('#blog-pdf-guide-close').onclick = closeBlogPdfGuide;
-  $('#blog-pdf-guide-cancel').onclick = closeBlogPdfGuide;
-  $('#blog-pdf-guide-continue').onclick = continueBlogPdf;
+  $('#btn-blog-day-pdf-bottom').onclick = openCurrentBlogDayHtml;
   $('#btn-blog-wordpress').onclick = openWordPressExportDialog;
   $('#shared-images-close').onclick = closeSharedImagesDialog;
   $('#shared-images-cancel').onclick = closeSharedImagesDialog;
@@ -18827,7 +18785,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v282');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v283');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

@@ -34,16 +34,21 @@ test('las entradas del Blog se comparten como un PDF real', () => {
   assert.match(help, /PDF real[\s\S]*?páginas A4[\s\S]*?<code>about:blank<\/code>/);
 });
 
-test('la vista completa del Blog explica Android y comparte el HTML real', () => {
-  assert.match(html, /id="blog-pdf-guide-dialog"/);
-  assert.match(html, /botón redondo con el icono PDF/);
-  assert.match(html, /id="blog-pdf-guide-continue"/);
-  assert.match(app, /function openBlogPdfGuide\(day = ''\)/);
+test('la vista completa del Blog abre directamente y comparte el HTML real', () => {
+  assert.match(html, /id="btn-blog-pdf"[^>]*>Vista HTML</);
+  assert.match(html, /id="btn-blog-day-pdf-bottom"[^>]*>HTML del día</);
+  assert.doesNotMatch(html, /blog-pdf-guide-dialog|blog-pdf-guide-continue/);
+  assert.match(app, /function openBlogHtml\(options = \{\}\)/);
   assert.match(app, /id="blog-preview-share">Compartir HTML/);
+  assert.match(app, /id="blog-preview-print">Imprimir \/ PDF/);
   assert.match(app, /await navigator\.share\(\{files:\[file\]\}\)/);
   assert.match(app, /return '<!doctype html>\\\\n' \+ clone\.outerHTML/);
-  assert.match(app, /\$\('#btn-blog-pdf'\)\.onclick = \(\) => openBlogPdfGuide\(\)/);
-  assert.match(help, /seleccionar solamente la opción superior no crea aún el archivo/);
+  assert.match(app, /\$\('#btn-blog-pdf'\)\.onclick = \(\) => openBlogHtml\(\)/);
+  const viewStart = app.indexOf('function openBlogHtml(options = {})');
+  const viewEnd = app.indexOf('\nasync function seedIfEmpty()', viewStart);
+  const viewSource = app.slice(viewStart, viewEnd);
+  assert.doesNotMatch(viewSource, /setTimeout\(function\(\)\{window\.print\(\)/);
+  assert.match(help, /Abre directamente una vista HTML adaptable[\s\S]*?Imprimir \/ PDF/);
   assert.match(help, /Compartir HTML[\s\S]*?menú de Chrome[\s\S]*?<code>about:blank<\/code>/);
 });
 

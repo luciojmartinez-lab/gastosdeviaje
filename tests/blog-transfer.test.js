@@ -416,7 +416,7 @@ test('el PDF del Blog inicia cada día en una hoja nueva, iguala galerías y neu
   assert.match(help, /las de dos o tres ocupan el 80 % del ancho/);
   assert.match(help, /tickets ordinarios se muestran aproximadamente un tercio más pequeños y con tono neutro/);
   assert.match(help, /billetes de tren o avión y los documentos de alojamiento conservan el tamaño grande y el color original/);
-  assert.match(help, /Cada día comienza en una hoja nueva/);
+  assert.match(help, /cada día comienza en una hoja nueva/i);
   assert.match(help, /En los días largos, el PDF reduce automáticamente un poco más las imágenes y las separaciones/);
 });
 
@@ -437,28 +437,28 @@ test('los mapas del Blog se encuadran a sus puntos y cambian de tamaño en el HT
   assert.match(help, /mapas general y diario incluyen los controles/);
 });
 
-test('el PDF del Blog respeta los filtros activos de día, país y ciudad', () => {
+test('la vista HTML del Blog respeta los filtros activos de día, país y ciudad', () => {
   assert.match(app, /function filteredBlogEntries\(entries\)[\s\S]*?entry\.fecha === date[\s\S]*?entry\.paisId\) === countryId[\s\S]*?entry\.ciudadId\) === cityId/);
-  const printStart = app.indexOf('function printBlog(options = {})');
-  const printEnd = app.indexOf('\nasync function seedIfEmpty()', printStart);
-  const printBlogSource = app.slice(printStart, printEnd);
-  assert.match(printBlogSource, /const allEntries = blogEntriesForTrip\(trip\.id\)/);
-  assert.match(printBlogSource, /const entries = day[\s\S]*?allEntries\.filter\(entry => entry\.fecha === day[\s\S]*?: filteredBlogEntries\(allEntries\)/);
-  assert.match(printBlogSource, /No hay entradas del Blog que coincidan con los filtros seleccionados/);
-  assert.match(printBlogSource, /blogPrintBodyHtml\(trip, entries, \{ overviewEntries: day \? \[\] : allEntries \}\)/);
+  const viewStart = app.indexOf('function openBlogHtml(options = {})');
+  const viewEnd = app.indexOf('\nasync function seedIfEmpty()', viewStart);
+  const viewSource = app.slice(viewStart, viewEnd);
+  assert.match(viewSource, /const allEntries = blogEntriesForTrip\(trip\.id\)/);
+  assert.match(viewSource, /const entries = day[\s\S]*?allEntries\.filter\(entry => entry\.fecha === day[\s\S]*?: filteredBlogEntries\(allEntries\)/);
+  assert.match(viewSource, /No hay entradas del Blog que coincidan con los filtros seleccionados/);
+  assert.match(viewSource, /blogPrintBodyHtml\(trip, entries, \{ overviewEntries: day \? \[\] : allEntries \}\)/);
   assert.match(app, /const overviewEntries = Array\.isArray\(options\.overviewEntries\) \? options\.overviewEntries : entries/);
   assert.match(app, /preparations\.length \? blogPrintPreparationsHtml\(preparations\) : ''/);
 });
 
-test('el boton inferior crea el PDF solamente del dia desplegado', () => {
-  assert.match(html, /id="btn-blog-day-pdf-bottom"[^>]*>PDF del d/);
+test('el boton inferior abre el HTML solamente del dia desplegado', () => {
+  assert.match(html, /id="btn-blog-day-pdf-bottom"[^>]*>HTML del d/);
   assert.match(app, /function currentOpenBlogDay\(entries\)/);
   assert.match(app, /const openDates = \[\.\.\.openBlogDays\]/);
   assert.match(app, /return openDates\.length \? openDates\[openDates\.length - 1\] : ''/);
-  assert.match(app, /function openCurrentBlogDayPdfGuide\(\)[\s\S]*?openBlogPdfGuide\(day\)/);
+  assert.match(app, /function openCurrentBlogDayHtml\(\)[\s\S]*?openBlogHtml\(\{ day \}\)/);
   assert.match(app, /allEntries\.filter\(entry => entry\.fecha === day && !isTripOverviewBlogEntry\(entry, trip\)\)/);
   assert.match(app, /overviewEntries: day \? \[\] : allEntries/);
-  assert.match(help, /PDF del d[\s\S]*?d[\s\S]*?que est[\s\S]*?desplegado[\s\S]*?no a[\s\S]*?la portada general ni otros d/);
+  assert.match(help, /HTML del d[\s\S]*?d[\s\S]*?que est[\s\S]*?desplegado[\s\S]*?no a[\s\S]*?la portada general ni otros d/);
 });
 
 test('copiar el mapa diario al Blog conserva el dia seleccionado', () => {
