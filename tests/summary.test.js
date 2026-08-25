@@ -38,7 +38,7 @@ test('la leyenda del gráfico crece para mostrar todas las subcategorías', () =
 
 test('el resumen de cuentas conserva una tabla y agrupa gastos y saldos con sus porcentajes', () => {
   assert.match(html, /<th>Gastado<\/th><th>% gastos<\/th><th>Saldo<\/th><th>% saldo<\/th><th>EUR<\/th>/);
-  assert.match(app, /saldo: numberValue\(c\.saldoActual\)/);
+  assert.match(app, /row\.saldoEur \+= toEur\(account\.saldoActual, account\.moneda\)/);
   assert.match(app, /data-label="Gastado"[\s\S]*?data-label="% gastos"[\s\S]*?data-label="Saldo"[\s\S]*?data-label="% saldo"[\s\S]*?data-label="EUR"/);
   assert.match(app, /label: row\.chartLabel/);
   assert.match(app, /account-label-mobile[^>]*>\$\{escapeHtml\(row\.chartLabel\)\}/);
@@ -57,6 +57,48 @@ test('el resumen de cuentas conserva una tabla y agrupa gastos y saldos con sus 
   assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /grid-template-columns/);
   assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /border-right/);
   assert.match(app, /account-label-mobile">Total<\/span>/);
+});
+
+test('varios viajes agrupan las cuentas parciales por su matriz global', () => {
+  const start = app.indexOf('function accountMatrixFor');
+  const end = app.indexOf('function accountForBackup', start);
+  const context = {
+    state: { cuentas: [] },
+    normalizePlaceName: value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
+    accountLabel: account => `${account.nombre} (${account.viajeId || 'global'})`,
+    toEur: (value, currency) => Number(value) * (currency === 'PLN' ? 0.25 : 1),
+    fromEur: (value, currency) => Number(value) / (currency === 'PLN' ? 0.25 : 1)
+  };
+  vm.runInNewContext(`${app.slice(start, end)}; this.accountMatrixFor = accountMatrixFor; this.summaryAccountRows = summaryAccountRows;`, context);
+  const matrices = [
+    { id: 1, nombre: 'Santander', moneda: 'EUR', viajeId: null },
+    { id: 2, nombre: 'Efectivo', moneda: 'EUR', viajeId: null },
+    { id: 3, nombre: 'Revolut', moneda: 'EUR', viajeId: null }
+  ];
+  const parciales = [
+    { id: 11, nombre: 'Santander', moneda: 'EUR', viajeId: 101, saldoActual: 100 },
+    { id: 12, nombre: 'Santander', moneda: 'EUR', viajeId: 102, saldoActual: 200 },
+    { id: 21, nombre: 'Efectivo Polonia', moneda: 'PLN', viajeId: 101, saldoActual: 400 },
+    { id: 31, nombre: 'Revolut', moneda: 'EUR', viajeId: 101, saldoActual: 50 },
+    { id: 32, nombre: 'Revolut Polonia', moneda: 'PLN', viajeId: 102, saldoActual: 200 }
+  ];
+  context.state.cuentas = [...matrices, ...parciales];
+  const gastos = [
+    { cuentaId: 11, importe: 10, moneda: 'EUR' },
+    { cuentaId: 12, importe: 20, moneda: 'EUR' },
+    { cuentaId: 21, importe: 40, moneda: 'PLN' },
+    { cuentaId: 31, importe: 30, moneda: 'EUR' },
+    { cuentaId: 32, importe: 80, moneda: 'PLN' }
+  ];
+
+  const rows = context.summaryAccountRows(parciales, gastos, true);
+  assert.equal(JSON.stringify(rows.map(row => row.chartLabel).sort()), JSON.stringify(['Efectivo', 'Revolut', 'Santander']));
+  assert.equal(rows.find(row => row.chartLabel === 'Santander').totalEur, 30);
+  assert.equal(rows.find(row => row.chartLabel === 'Santander').saldoEur, 300);
+  assert.equal(rows.find(row => row.chartLabel === 'Revolut').totalEur, 50);
+  assert.equal(rows.find(row => row.chartLabel === 'Revolut').saldoEur, 100);
+  assert.equal(rows.find(row => row.chartLabel === 'Efectivo').totalEur, 10);
+  assert.match(app, /aggregateByMatrix = !cta && selectedAccountTripIds\.size !== 1/);
 });
 
 test('el presupuesto pertenece al viaje y las cuentas muestran gastos y saldos', () => {

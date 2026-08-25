@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v285';
+const APP_VERSION = '700v286';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2757,7 +2757,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v285');
+    const worker = new Worker('./timeline-import-worker.js?v=700v286');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2950,6 +2950,58 @@ function accountLabel(account) {
 
 function accountKey(account) {
   return `${(account.nombre || '').trim().toLowerCase()}|${account.moneda || ''}`;
+}
+
+function accountMatrixFor(account, accounts = state.cuentas) {
+  if (!account) return null;
+  if (!account.viajeId) return account;
+  const accountName = normalizePlaceName(account.nombre);
+  if (!accountName) return account;
+  const candidates = (Array.isArray(accounts) ? accounts : [])
+    .filter(candidate => candidate && !candidate.viajeId)
+    .map(candidate => {
+      const matrixName = normalizePlaceName(candidate.nombre);
+      let match = 0;
+      if (matrixName && accountName === matrixName) match = 3;
+      else if (matrixName && (accountName.startsWith(`${matrixName} `) || accountName.endsWith(` ${matrixName}`))) match = 2;
+      else if (matrixName && accountName.includes(` ${matrixName} `)) match = 1;
+      return { candidate, matrixName, match };
+    })
+    .filter(item => item.match)
+    .sort((a, b) => b.match - a.match || b.matrixName.length - a.matrixName.length || Number(a.candidate.id) - Number(b.candidate.id));
+  return candidates[0] ? candidates[0].candidate : account;
+}
+
+function summaryAccountRows(accounts, gastos, aggregateByMatrix = false) {
+  const rows = new Map();
+  (Array.isArray(accounts) ? accounts : []).forEach(account => {
+    const matrix = aggregateByMatrix ? accountMatrixFor(account) : account;
+    const key = aggregateByMatrix
+      ? `matrix-${matrix && matrix.id || normalizePlaceName(matrix && matrix.nombre || account.nombre)}`
+      : `account-${account.id}`;
+    const currency = matrix && matrix.moneda || account.moneda || 'EUR';
+    if (!rows.has(key)) {
+      rows.set(key, {
+        label: aggregateByMatrix ? matrix.nombre : accountLabel(account),
+        chartLabel: matrix.nombre || account.nombre,
+        moneda: currency,
+        totalEur: 0,
+        saldoEur: 0
+      });
+    }
+    const row = rows.get(key);
+    row.totalEur += (Array.isArray(gastos) ? gastos : [])
+      .filter(gasto => Number(gasto.cuentaId) === Number(account.id))
+      .reduce((sum, gasto) => sum + toEur(gasto.importe, gasto.moneda), 0);
+    row.saldoEur += toEur(account.saldoActual, account.moneda);
+  });
+  return [...rows.values()]
+    .map(row => ({
+      ...row,
+      total: fromEur(row.totalEur, row.moneda),
+      saldo: fromEur(row.saldoEur, row.moneda)
+    }))
+    .sort((a, b) => b.totalEur - a.totalEur || a.chartLabel.localeCompare(b.chartLabel, 'es'));
 }
 
 function accountForBackup(account) {
@@ -3558,7 +3610,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v285');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v286');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4349,7 +4401,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v285');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v286');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4440,7 +4492,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v285');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v286');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4502,7 +4554,7 @@ async function readLensTicketText(prefix, text) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v285');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v286');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4800,7 +4852,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v285');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v286');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -12406,21 +12458,8 @@ function renderResumen() {
   const accounts = cta
     ? state.cuentas.filter(c => c.id === Number(cta))
     : state.cuentas.filter(c => availableAccountIds.has(Number(c.id)));
-  let accountRows = accounts.map(c => {
-    const spentAccountCurrency = gastos
-      .filter(g => g.cuentaId === c.id)
-      .reduce((sum, g) => sum + fromEur(toEur(g.importe, g.moneda), c.moneda), 0);
-    const spentEur = gastos.filter(g => g.cuentaId === c.id).reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
-    return {
-      label: accountLabel(c),
-      chartLabel: c.nombre,
-      moneda: c.moneda,
-      total: spentAccountCurrency,
-      totalEur: spentEur,
-      saldo: numberValue(c.saldoActual),
-      saldoEur: toEur(c.saldoActual, c.moneda)
-    };
-  }).sort((a, b) => b.totalEur - a.totalEur);
+  const aggregateByMatrix = !cta && selectedAccountTripIds.size !== 1;
+  const accountRows = summaryAccountRows(accounts, gastos, aggregateByMatrix);
   drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.chartLabel, value: row.totalEur })));
   const accountBalanceEur = accountRows.reduce((sum, row) => sum + numberValue(row.saldoEur), 0);
   const accountHtml = accountRows.map(row => {
@@ -13222,7 +13261,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v285');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v286');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -18870,7 +18909,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v285');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v286');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
