@@ -248,7 +248,7 @@ test('Cronología avisa de la exportación previa y se procesa fuera de la inter
   assert.match(html, /selecciona <em>Cronología\.json<\/em> desde el lugar donde lo hayas descargado/);
   assert.match(html, /id="timeline-file-input"[^>]*accept="\.json,application\/json"/);
   assert.match(app, /data-map-timeline="1"/);
-  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v283'\)/);
+  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v284'\)/);
   assert.match(worker, /GoogleTimelineImport\.importTrip/);
   assert.match(app, /adjustedTimelineRoutes: previous && previous\.adjustedTimelineRoutes \|\| \{\}/);
   assert.match(app, /const autoAdjust = tripMapState\.timelineRouteView === 'adjusted'/);
@@ -396,9 +396,11 @@ test('un ajuste guardado incorpora después los nuevos puntos GPS exactos', () =
 });
 
 test('Cronología dibuja los puntos horarios aunque Google no reconozca una actividad', () => {
-  const start = app.indexOf('function timelineMapPaths(records)');
+  const start = app.indexOf('function timelineRecordPointCandidates(record)');
   const end = app.indexOf('function timelineMapPathsWithDailyRecords', start);
   const context = {
+    TIMELINE_STATIONARY_MAX_SPREAD_METERS: 300,
+    timelineAdjustedRouteCache: () => null,
     lodgingDistanceMeters: (first, second) => Math.hypot(
       Number(first.latitude) - Number(second.latitude),
       Number(first.longitude) - Number(second.longitude)
@@ -418,6 +420,50 @@ test('Cronología dibuja los puntos horarios aunque Google no reconozca una acti
   assert.equal(paths.length, 1);
   assert.equal(paths[0].length, 3);
   assert.equal(paths[0][1].time, '2026-08-15T12:00:00+02:00');
+});
+
+test('Cronología no inventa recorridos cuando Maps no detecta actividad y solo hay deriva GPS', () => {
+  const start = app.indexOf('function timelineRecordPointCandidates(record)');
+  const end = app.indexOf('function timelineMapPathsWithDailyRecords', start);
+  const context = {
+    TIMELINE_STATIONARY_MAX_SPREAD_METERS: 300,
+    timelineAdjustedRouteCache: record => record.adjustedTimelineRoutes && record.adjustedTimelineRoutes.automatic,
+    lodgingDistanceMeters: (first, second) => Math.hypot(
+      Number(first.latitude) - Number(second.latitude),
+      Number(first.longitude) - Number(second.longitude)
+    ) * 111_000
+  };
+  vm.runInNewContext(`${app.slice(start, end)}; this.timelineMapPaths = timelineMapPaths; this.timelineRecordIsStationaryNoise = timelineRecordIsStationaryNoise;`, context);
+  const stationary = {
+    fecha: '2026-08-24',
+    activities: [],
+    points: [
+      { latitude: 40, longitude: -3, time: '2026-08-24T08:00:00+02:00', kind: 'path' },
+      { latitude: 40.001, longitude: -3.001, time: '2026-08-24T13:00:00+02:00', kind: 'path' },
+      { latitude: 40.0018, longitude: -3, time: '2026-08-24T19:00:00+02:00', kind: 'path' }
+    ],
+    adjustedTimelineRoutes: {
+      automatic: { paths: [{ adjusted: true, points: [
+        { latitude: 40, longitude: -3 },
+        { latitude: 40.01, longitude: -3.01 }
+      ] }] }
+    }
+  };
+
+  assert.equal(context.timelineRecordIsStationaryNoise(stationary), true);
+  assert.equal(context.timelineMapPaths([stationary]).length, 0);
+  assert.equal(context.timelineMapPaths([stationary], { adjusted: true, mode: 'automatic' }).length, 0);
+
+  const realMovement = {
+    ...stationary,
+    points: [
+      stationary.points[0],
+      { latitude: 40.01, longitude: -3, time: '2026-08-24T13:00:00+02:00', kind: 'path' }
+    ],
+    adjustedTimelineRoutes: {}
+  };
+  assert.equal(context.timelineRecordIsStationaryNoise(realMovement), false);
+  assert.equal(context.timelineMapPaths([realMovement]).length, 1);
 });
 
 test('mostrar Cronología cierra el cuadro y oculta solamente la línea calculada', () => {
