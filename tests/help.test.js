@@ -14,7 +14,7 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
 
   assert.match(html, /Fecha de creación:<\/strong> 17 de julio de 2026/);
   assert.match(html, /Última actualización:<\/strong> 25 de agosto de 2026/);
-  assert.match(html, /Versión documentada:<\/strong> 700v284/);
+  assert.match(html, /Versión documentada:<\/strong> 700v285/);
   assert.match(html, /id="objetivo"/);
   assert.match(html, /1\. Objetivo y filosofía de la aplicación/);
   assert.match(html, /id="flujo"/);
@@ -23,6 +23,7 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
   assert.match(html, /3\. Referencia completa de menús y pantallas/);
   assert.match(html, /La vista HTML se abre directamente y respeta los filtros activos del Blog: día, país, ciudad o cualquier combinación/);
   assert.match(html, /dispersión máxima de 300 m/);
+  assert.match(html, /más de 50 m del alojamiento/);
   assert.doesNotMatch(html, /No cambian el contenido del PDF completo/);
 });
 

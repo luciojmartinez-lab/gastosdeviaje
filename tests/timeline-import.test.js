@@ -248,10 +248,12 @@ test('Cronología avisa de la exportación previa y se procesa fuera de la inter
   assert.match(html, /selecciona <em>Cronología\.json<\/em> desde el lugar donde lo hayas descargado/);
   assert.match(html, /id="timeline-file-input"[^>]*accept="\.json,application\/json"/);
   assert.match(app, /data-map-timeline="1"/);
-  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v284'\)/);
+  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v285'\)/);
   assert.match(worker, /GoogleTimelineImport\.importTrip/);
   assert.match(app, /adjustedTimelineRoutes: previous && previous\.adjustedTimelineRoutes \|\| \{\}/);
   assert.match(app, /const autoAdjust = tripMapState\.timelineRouteView === 'adjusted'/);
+  assert.match(app, /filter\(record => !timelineRecordIsStationaryNoise\(record, exactRecords\)\)/);
+  assert.match(app, /forEach\(record => adjustmentDates\.add\(record\.fecha\)\)/);
   assert.match(app, /progressPrefix: `Actualizando \$\{blogDayDateLabel\(record\.fecha\)\}`/);
   assert.match(app, /Ajuste automático:/);
 });
@@ -400,6 +402,7 @@ test('Cronología dibuja los puntos horarios aunque Google no reconozca una acti
   const end = app.indexOf('function timelineMapPathsWithDailyRecords', start);
   const context = {
     TIMELINE_STATIONARY_MAX_SPREAD_METERS: 300,
+    TIMELINE_STATIONARY_EXACT_EVIDENCE_METERS: 50,
     timelineAdjustedRouteCache: () => null,
     lodgingDistanceMeters: (first, second) => Math.hypot(
       Number(first.latitude) - Number(second.latitude),
@@ -427,6 +430,7 @@ test('Cronología no inventa recorridos cuando Maps no detecta actividad y solo 
   const end = app.indexOf('function timelineMapPathsWithDailyRecords', start);
   const context = {
     TIMELINE_STATIONARY_MAX_SPREAD_METERS: 300,
+    TIMELINE_STATIONARY_EXACT_EVIDENCE_METERS: 50,
     timelineAdjustedRouteCache: record => record.adjustedTimelineRoutes && record.adjustedTimelineRoutes.automatic,
     lodgingDistanceMeters: (first, second) => Math.hypot(
       Number(first.latitude) - Number(second.latitude),
@@ -435,8 +439,13 @@ test('Cronología no inventa recorridos cuando Maps no detecta actividad y solo 
   };
   vm.runInNewContext(`${app.slice(start, end)}; this.timelineMapPaths = timelineMapPaths; this.timelineRecordIsStationaryNoise = timelineRecordIsStationaryNoise;`, context);
   const stationary = {
+    viajeId: 1,
     fecha: '2026-08-24',
     activities: [],
+    departureMode: 'precise',
+    arrivalMode: 'precise',
+    departure: { latitude: 40, longitude: -3, time: '2026-08-24T07:00:00+02:00' },
+    arrival: { latitude: 40, longitude: -3, time: '2026-08-24T23:00:00+02:00' },
     points: [
       { latitude: 40, longitude: -3, time: '2026-08-24T08:00:00+02:00', kind: 'path' },
       { latitude: 40.001, longitude: -3.001, time: '2026-08-24T13:00:00+02:00', kind: 'path' },
@@ -453,6 +462,18 @@ test('Cronología no inventa recorridos cuando Maps no detecta actividad y solo 
   assert.equal(context.timelineRecordIsStationaryNoise(stationary), true);
   assert.equal(context.timelineMapPaths([stationary]).length, 0);
   assert.equal(context.timelineMapPaths([stationary], { adjusted: true, mode: 'automatic' }).length, 0);
+
+  const exactPhotoAtHome = [{
+    kind: 'photo', viajeId: 1, fecha: '2026-08-24', hora: '12:00', latitude: 40.0001, longitude: -3
+  }];
+  assert.equal(context.timelineRecordIsStationaryNoise(stationary, exactPhotoAtHome), true);
+
+  const exactPhotosShowingMovement = [
+    exactPhotoAtHome[0],
+    { kind: 'photo', viajeId: 1, fecha: '2026-08-24', hora: '18:00', latitude: 40.0015, longitude: -3 }
+  ];
+  assert.equal(context.timelineRecordIsStationaryNoise(stationary, exactPhotosShowingMovement), false);
+  assert.equal(context.timelineMapPaths([stationary], { exactRecords: exactPhotosShowingMovement }).length, 1);
 
   const realMovement = {
     ...stationary,
