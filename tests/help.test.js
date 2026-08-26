@@ -13,8 +13,8 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
   const html = await readFile(helpPath, 'utf8');
 
   assert.match(html, /Fecha de creación:<\/strong> 17 de julio de 2026/);
-  assert.match(html, /Última actualización:<\/strong> 25 de agosto de 2026/);
-  assert.match(html, /Versión documentada:<\/strong> 700v286/);
+  assert.match(html, /Última actualización:<\/strong> 26 de agosto de 2026/);
+  assert.match(html, /Versión documentada:<\/strong> 700v287/);
   assert.match(html, /id="objetivo"/);
   assert.match(html, /1\. Objetivo y filosofía de la aplicación/);
   assert.match(html, /id="flujo"/);
@@ -25,6 +25,7 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
   assert.match(html, /dispersión máxima de 300 m/);
   assert.match(html, /más de 50 m del alojamiento/);
   assert.match(html, /agrupa automáticamente las cuentas parciales bajo su cuenta matriz global/);
+  assert.match(html, /el formulario mantiene un tamaño estable mientras prepara la miniatura y comprueba el GPS/);
   assert.doesNotMatch(html, /No cambian el contenido del PDF completo/);
 });
 
