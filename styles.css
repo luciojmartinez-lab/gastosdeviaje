@@ -2448,6 +2448,31 @@ input[type="checkbox"] {
   color: #b91c1c;
 }
 
+.ticket-ocr-details {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.ticket-ocr-details summary {
+  cursor: pointer;
+  color: var(--primary);
+}
+
+.ticket-ocr-details pre {
+  max-height: 240px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--ink);
+  font: 0.78rem/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .ticket-ocr-language-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));

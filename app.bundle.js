@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v290';
+const APP_VERSION = '700v291';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2758,7 +2758,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v290');
+    const worker = new Worker('./timeline-import-worker.js?v=700v291');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3611,7 +3611,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v290');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v291');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4214,6 +4214,22 @@ function setTicketOcrStatus(prefix, text, isError = false) {
   status.classList.toggle('error', isError);
 }
 
+function setTicketOcrDiagnostics(prefix, result = null) {
+  const details = $(`#${prefix}-ticket-ocr-details`);
+  const output = $(`#${prefix}-ticket-ocr-text`);
+  if (!details || !output) return;
+  const readings = Array.isArray(result?.readings) && result.readings.length
+    ? result.readings
+    : result?.text ? [result.text] : [];
+  const text = readings
+    .map((value, index) => readings.length > 1 ? `Lectura ${index + 1}\n${String(value || '').trim()}` : String(value || '').trim())
+    .filter(Boolean)
+    .join('\n\n');
+  output.textContent = text;
+  details.hidden = !text;
+  if (!text) details.open = false;
+}
+
 function currentEditTicket() {
   const id = Number($('#edit-gasto-id')?.value);
   if (activeEditTicketRecord && Number(activeEditTicketRecord.id) === id) return activeEditTicketRecord;
@@ -4407,6 +4423,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
   const languages = normalizeRequestedTicketOcrLanguages(options.languages || ticketOcrLanguagesForExpense(prefix));
   const runId = (ticketOcrRunIds[prefix] || 0) + 1;
   ticketOcrRunIds[prefix] = runId;
+  setTicketOcrDiagnostics(prefix, null);
   try {
     if (button) {
       button.dataset.busy = '1';
@@ -4416,13 +4433,14 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v290');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v291');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
       name: source.name,
       languages,
       preferLargeTitle: options.preferLargeTitle === true,
+      reviewTranslatedReceipt: options.reviewTranslatedReceipt === true,
       onProgress: message => {
         if (ticketOcrRunIds[prefix] === runId) {
           setTicketOcrStatus(prefix, ticketOcrProgressLabel(message, languages));
@@ -4438,6 +4456,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
         state.gastos.map(item => item.desc || item.descripcion || '')
       );
     }
+    setTicketOcrDiagnostics(prefix, result);
     setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result, options));
     if (prefix === 'g') scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
     return result;
@@ -4507,7 +4526,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v290');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v291');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4539,6 +4558,7 @@ async function readLensTicketTranslation(prefix, record, originalSource = null, 
       replaceOcrDescription: true,
       previousOcrDescription: options.previousOcrDescription || '',
       preferLargeTitle: true,
+      reviewTranslatedReceipt: true,
       documentLabel: 'Resultado de Google Lens analizado.',
       preparingMessage: 'Analizando el resultado de Google Lens…'
     });
@@ -4571,7 +4591,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v290');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v291');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4582,10 +4602,12 @@ async function readLensTicketText(prefix, text, options = {}) {
     }
     const result = {
       text: sourceText,
+      readings: [sourceText],
       classificationText: sourceText,
       fields,
       foodEvidence: ocr.extractTicketFoodEvidence(sourceText, fields.total)
     };
+    setTicketOcrDiagnostics(prefix, result);
     setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result, {
       replaceExisting: true,
       preserveDescription: true,
@@ -4900,7 +4922,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v290');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v291');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -13309,7 +13331,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v290');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v291');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -18965,7 +18987,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v290');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v291');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

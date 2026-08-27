@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v290';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v291';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -285,7 +285,7 @@ function recoverTruncatedCurrencyTotal(lines, explicit) {
   const recovered = [...counts.entries()]
     .filter(([value, evidence]) => (evidence.count >= 2 || evidence.paymentSummary)
       && value > explicit
-      && value <= explicit * 100
+      && String(value).length <= explicitDigits.length + 2
       && String(value).endsWith(explicitDigits))
     .sort((left, right) => Number(right[1].paymentSummary) - Number(left[1].paymentSummary)
       || right[1].count - left[1].count
@@ -300,7 +300,9 @@ export function reconcileTicketTotalReadings(readings = [], fallback = null) {
   let selected = extractTicketTotal(texts.join('\n')) ?? values[0] ?? null;
   values.forEach(value => {
     if (!Number.isInteger(selected) || !Number.isInteger(value) || value <= selected) return;
-    if (value <= selected * 100 && String(value).endsWith(String(selected))) selected = value;
+    const selectedDigits = String(selected);
+    const valueDigits = String(value);
+    if (valueDigits.length <= selectedDigits.length + 2 && valueDigits.endsWith(selectedDigits)) selected = value;
   });
   return selected;
 }
@@ -954,6 +956,7 @@ export async function recognizeTicket(source, options = {}) {
   const type = String(options.type || source.type || '').toLowerCase();
   const name = String(options.name || source.name || '').toLowerCase();
   const isPdf = type.includes('pdf') || name.endsWith('.pdf');
+  const reviewTranslatedReceipt = options.reviewTranslatedReceipt === true;
   const preparedResult = isPdf ? await preparePdf(source, onProgress) : await prepareImage(source, onProgress);
   const prepared = preparedResult.primary;
   onProgress({ status: 'Preparando el lector local', progress: 0.08 });
@@ -1020,7 +1023,7 @@ export async function recognizeTicket(source, options = {}) {
       await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
     }
   }
-  if (!fields.total || !fields.merchant || !fields.date) {
+  if (!fields.total || !fields.merchant || !fields.date || reviewTranslatedReceipt) {
     await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SPARSE_TEXT });
     try {
       onProgress({ status: 'Revisando la cabecera', progress: 0.86 });
@@ -1031,7 +1034,7 @@ export async function recognizeTicket(source, options = {}) {
       additionalPasses += 1;
       let footerText = '';
       let footerFields = {};
-      if (!fields.total) {
+      if (!fields.total || reviewTranslatedReceipt) {
         onProgress({ status: 'Revisando el total', progress: 0.93 });
         const footerResult = await worker.recognize(cropCanvas(prepared, 0.43, 1));
         footerText = footerResult?.data?.text || '';
@@ -1041,7 +1044,10 @@ export async function recognizeTicket(source, options = {}) {
       }
       text = [primaryText, headerText, footerText].filter(Boolean).join('\n');
       const mergedFields = extractTicketFields(text);
-      const mergedMerchant = [fields.merchant, headerFields.merchant, mergedFields.merchant]
+      const merchantCandidates = reviewTranslatedReceipt
+        ? [headerFields.merchant, titleMerchant, fields.merchant, mergedFields.merchant]
+        : [fields.merchant, headerFields.merchant, mergedFields.merchant, titleMerchant];
+      const mergedMerchant = merchantCandidates
         .find(isPlausibleTicketMerchant) || titleMerchant || '';
       fields = {
         documentType: mergedFields.documentType,
@@ -1061,6 +1067,7 @@ export async function recognizeTicket(source, options = {}) {
     classificationText,
     confidence: Number(result?.data?.confidence) || 0,
     fields,
+    readings: recognitionTexts.slice(),
     foodEvidence: extractTicketFoodEvidence(classificationText, fields.total),
     additionalPasses,
     pdfFirstPageOnly: isPdf,

@@ -85,6 +85,8 @@ test('el resultado de Lens sustituye los datos reconocidos tanto en texto como e
   assert.match(app, /languages: \['spa'\]/);
   assert.match(app, /replaceExisting: true/);
   assert.match(app, /preferLargeTitle: true/);
+  assert.match(app, /reviewTranslatedReceipt: true/);
+  assert.match(app, /reviewTranslatedReceipt: options\.reviewTranslatedReceipt === true/);
   assert.match(app, /async function readLensTicketText/);
   assert.match(app, /ocr\.extractTicketFields\(sourceText\)/);
   assert.match(app, /payload\.fromLens && lensReceiptText && !hasImages && currentFormTarget/);
@@ -97,6 +99,13 @@ test('el resultado de Lens sustituye los datos reconocidos tanto en texto como e
   assert.match(app, /current === previousOcrDescription/);
   assert.match(app, /previousOcrDescription: currentDescription && currentDescription === recognizedDescription/);
   assert.match(app, /lensText: payload\?\.fromLens \? lensSharedReceiptText\(payload\) : ''/);
+});
+
+test('la lectura de Lens permite consultar las pasadas reales del OCR', () => {
+  assert.match(html, /id="g-ticket-ocr-details"/);
+  assert.match(html, /id="edit-gasto-ticket-ocr-details"/);
+  assert.match(app, /function setTicketOcrDiagnostics/);
+  assert.match(app, /setTicketOcrDiagnostics\(prefix, result\)/);
 });
 
 test('Lens ignora enlaces y textos auxiliares antes de decidir si debe leer la imagen', () => {
