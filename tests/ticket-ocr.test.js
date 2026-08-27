@@ -78,6 +78,9 @@ test('reconoce más formatos de fecha y hora', () => {
   assert.equal(extractTicketTime('19/07/2026 10:19'), '10:19');
   assert.equal(extractTicketTime('HORA: 1020'), '10:20');
   assert.equal(extractTicketTime('2026-07-19 18h26'), '18:26');
+  assert.equal(extractTicketDate('3 de septiembre de 2024 (martes) 11:16'), '2024-09-03');
+  assert.equal(extractTicketTime('Teléfono: 07:35-52-1875\n3 de septiembre de 2024 (martes) 11:16'), '11:16');
+  assert.equal(extractTicketTime('2026/07/12 23:06'), '23:06');
   assert.equal(extractTicketDate('Data 19 juliol 2026'), '2026-07-19');
   assert.equal(extractTicketDate('Päivämäärä 19 heinäkuu 2026'), '2026-07-19');
   assert.equal(extractTicketDate('Date 19 July 2026'), '2026-07-19');
@@ -114,6 +117,17 @@ test('elige Total o Importe y no confunde IVA ni base imponible', () => {
   assert.equal(extractTicketTotal('total ¥8 27'), 827);
   assert.equal(extractTicketTotal('total 2,481'), 2481);
   assert.equal(extractTicketTotal('total (objetivo del 8%) 827'), 827);
+  assert.equal(extractTicketTotal(`total ¥2,481
+(objetivo del 8% ¥2,481)
+¥183
+Depósito total ¥10,481
+cambiar ¥8,000`), 2481);
+  assert.equal(extractTicketTotal(`(Total del producto) ¥857
+(Descuento total) -30
+total ¥827
+pago de dinero de transporte ¥827
+Saldo de dinero de transporte ¥4,489`), 827);
+  assert.equal(extractTicketTotal('Depósito total ¥10,481\ncambiar ¥8,000'), null);
   assert.equal(extractTicketTotal(`領収書
 小計 本信
 \\8, 0U0
@@ -312,6 +326,26 @@ test('el OCR normal conserva datos existentes y Lens puede sustituirlos', () => 
   assert.match(app, /ticketDateAlignedToTrip/);
   assert.match(app, /fecha \(año ajustado al viaje\)/);
   assert.match(app, /fecha incompatible con las fechas del viaje/);
+});
+
+test('analiza como ticket español el resultado traducido por Lens', () => {
+  assert.deepEqual(extractTicketFields(`FamiliaMart
+Tienda Ryogoku
+Teléfono: 03-5625-4705
+3 de septiembre de 2024 (martes) 11:16
+Registro: #2 22463
+[Recibo correcto]
+total ¥2,481
+(objetivo del 8% ¥2,481)
+¥183
+Depósito total ¥10,481
+cambiar ¥8,000`), {
+    documentType: 'receipt',
+    date: '2024-09-03',
+    time: '11:16',
+    merchant: 'FamiliaMart',
+    total: 2481
+  });
 });
 
 test('los comercios de comida tienen prioridad y solo usan una subcategoría configurada', () => {

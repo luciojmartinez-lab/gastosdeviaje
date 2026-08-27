@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v287';
+const APP_VERSION = '700v288';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2757,7 +2757,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v287');
+    const worker = new Worker('./timeline-import-worker.js?v=700v288');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3610,7 +3610,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v287');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v288');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4294,12 +4294,22 @@ function applyTicketOcrFields(prefix, result, options = {}) {
     const control = $(`#${prefix}-${field}`);
     if (!control) return false;
     const current = String(control.value || '').trim();
-    const preserveCurrent = preserveExisting || (options.preserveDescription && field === 'desc');
+    const previousOcrDescription = String(options.previousOcrDescription
+      || pendingTicketOcr[prefix]?.merchant
+      || control.dataset.ticketOcrValue
+      || '').trim();
+    const replacePreviousOcrDescription = field === 'desc'
+      && options.replaceOcrDescription
+      && current
+      && current === previousOcrDescription;
+    const preserveCurrent = preserveExisting
+      || (options.preserveDescription && field === 'desc' && !replacePreviousOcrDescription);
     if (preserveCurrent && current) {
       if (current !== String(value).trim()) preserved.push(label);
       return false;
     }
     control.value = value;
+    if (field === 'desc') control.dataset.ticketOcrValue = String(value).trim();
     applied.push(label);
     return true;
   };
@@ -4401,7 +4411,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v287');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v288');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4492,7 +4502,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v287');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v288');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4508,7 +4518,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   }
 }
 
-async function readLensTicketTranslation(prefix, record, originalSource = null) {
+async function readLensTicketTranslation(prefix, record, originalSource = null, options = {}) {
   if (!record?.data) return null;
   const previousStatus = 'Resultado de Lens preparado junto al ticket principal.';
   try {
@@ -4521,6 +4531,8 @@ async function readLensTicketTranslation(prefix, record, originalSource = null) 
       languages: ['spa'],
       replaceExisting: true,
       preserveDescription: true,
+      replaceOcrDescription: true,
+      previousOcrDescription: options.previousOcrDescription || '',
       preferLargeTitle: true,
       documentLabel: 'Resultado de Google Lens analizado.',
       preparingMessage: 'Analizando el resultado de Google Lens…'
@@ -4549,12 +4561,12 @@ function readStoredLensReturnTarget() {
   return null;
 }
 
-async function readLensTicketText(prefix, text) {
+async function readLensTicketText(prefix, text, options = {}) {
   const sourceText = cleanLensSharedText(text);
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v287');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v288');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4572,6 +4584,8 @@ async function readLensTicketText(prefix, text) {
     setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result, {
       replaceExisting: true,
       preserveDescription: true,
+      replaceOcrDescription: true,
+      previousOcrDescription: options.previousOcrDescription || '',
       documentLabel: 'Texto de Google Lens analizado.'
     }));
     if (prefix === 'g') saveFormDraft(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS, { lensReturn: true });
@@ -4618,13 +4632,21 @@ function currentLensReturnTarget() {
 async function rememberLensReturnTarget(prefix, source = null) {
   if (prefix === 'g') saveFormDraft(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS, { lensReturn: true });
   const sourceLanguage = lensTicketSourceLanguage(prefix);
+  const descriptionControl = $(`#${prefix}-desc`);
+  const currentDescription = String(descriptionControl?.value || '').trim();
+  const recognizedDescription = String(pendingTicketOcr[prefix]?.merchant
+    || descriptionControl?.dataset.ticketOcrValue
+    || '').trim();
   const target = {
     prefix,
     expenseId: prefix === 'edit-gasto' ? Number($('#edit-gasto-id')?.value || 0) : 0,
     tripId: Number($(`#${prefix}-viaje`)?.value || 0),
     startedAt: Date.now(),
     sourceLanguages: sourceLanguage.languages,
-    spanishSource: sourceLanguage.spanish
+    spanishSource: sourceLanguage.spanish,
+    previousOcrDescription: currentDescription && currentDescription === recognizedDescription
+      ? currentDescription
+      : ''
   };
   writeLensReturnTarget(target);
   if (!source || !('caches' in window)) return target;
@@ -4852,7 +4874,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v287');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v288');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -13261,7 +13283,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v287');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v288');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -14696,6 +14718,7 @@ async function openSharedImagesDialog(payload) {
   const selectedIds = selectedTripIds();
   const lensTarget = payload.fromLens ? currentLensReturnTarget() : null;
   payload.lensSpanishOnly = Boolean(payload.fromLens && lensTarget?.spanishSource);
+  payload.previousOcrDescription = String(lensTarget?.previousOcrDescription || '');
   const defaultTripId = lensTarget?.tripId && trips.some(trip => Number(trip.id) === Number(lensTarget.tripId))
     ? Number(lensTarget.tripId)
     : selectedIds.length === 1 ? Number(selectedIds[0]) : Number(trips[0]?.id || 0);
@@ -14735,7 +14758,9 @@ async function openSharedImagesDialog(payload) {
     }
   }
   if (payload.fromLens && lensReceiptText && !hasImages && currentFormTarget) {
-    await readLensTicketText(currentFormTarget.prefix, lensReceiptText);
+    await readLensTicketText(currentFormTarget.prefix, lensReceiptText, {
+      previousOcrDescription: payload.previousOcrDescription
+    });
     pendingSharedImagesPayload = null;
     writeLensReturnTarget(null);
     setTab('gastos');
@@ -14800,8 +14825,8 @@ async function routeSharedExpenseImages(prefix, files, kind, action = 'replace',
   }
   if (options.fromLens && options.spanishOnly) {
     const lensRecord = await prepareSharedTicketCompanion(first, 'translation');
-    if (options.lensText) await readLensTicketText(prefix, options.lensText);
-    else await readLensTicketTranslation(prefix, lensRecord, first);
+    if (options.lensText) await readLensTicketText(prefix, options.lensText, options);
+    else await readLensTicketTranslation(prefix, lensRecord, first, options);
     return;
   }
   if (action === 'translation' || action === 'secondary') {
@@ -14811,17 +14836,17 @@ async function routeSharedExpenseImages(prefix, files, kind, action = 'replace',
     if (action === 'translation' && options.lensText) {
       companion.text = options.lensText;
       companion.sourceLanguages = ['spa'];
-      await readLensTicketText(prefix, options.lensText);
-    } else if (action === 'translation') await readLensTicketTranslation(prefix, companion, first);
+      await readLensTicketText(prefix, options.lensText, options);
+    } else if (action === 'translation') await readLensTicketTranslation(prefix, companion, first, options);
     else setTicketOcrStatus(prefix, 'Segundo ticket preparado junto al ticket principal. Revisa y guarda el gasto.');
   } else {
     assignSharedFilesToInput($(`#${prefix}-ticket`), [first]);
     await syncExpenseTicketSelection(prefix, 'file');
     if (options.fromLens) {
-      if (options.lensText) await readLensTicketText(prefix, options.lensText);
+      if (options.lensText) await readLensTicketText(prefix, options.lensText, options);
       else {
         const lensRecord = pendingExpenseTicketPreviews[prefix];
-        if (lensRecord?.data) await readLensTicketTranslation(prefix, lensRecord, first);
+        if (lensRecord?.data) await readLensTicketTranslation(prefix, lensRecord, first, options);
       }
     }
   }
@@ -14842,7 +14867,8 @@ async function continueSharedImagesImport() {
   const lensOptions = {
     fromLens: Boolean(payload?.fromLens),
     spanishOnly: Boolean(payload?.lensSpanishOnly),
-    lensText: payload?.fromLens ? lensSharedReceiptText(payload) : ''
+    lensText: payload?.fromLens ? lensSharedReceiptText(payload) : '',
+    previousOcrDescription: String(payload?.previousOcrDescription || '')
   };
   const selectedExpenseValue = String($('#shared-images-expense')?.value || '');
   const currentExpenseTarget = selectedExpenseValue.startsWith('current:') ? selectedSharedExpenseTarget() : null;
@@ -15962,6 +15988,7 @@ function openEditGasto(gasto) {
   $('#edit-gasto-tipo').value = currentAmount < 0 ? 'ingreso' : 'gasto';
   $('#edit-gasto-importe').value = Math.abs(currentAmount);
   $('#edit-gasto-desc').value = gasto.desc || '';
+  delete $('#edit-gasto-desc').dataset.ticketOcrValue;
   clearExpenseTicketSelection('edit-gasto');
   pendingExpenseTicketTranslations['edit-gasto'] = ticketTranslationRecordFromExpense(gasto);
   clearExpenseExtraImageSelection('edit-gasto');
@@ -16029,6 +16056,7 @@ function resetAddExpenseForm() {
   const form = $('#add-gasto-form');
   if (!form) return;
   form.reset();
+  delete $('#g-desc').dataset.ticketOcrValue;
   clearExpenseTicketSelection('g');
   clearExpenseExtraImageSelection('g');
   pendingTicketOcr.g = null;
@@ -18909,7 +18937,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v287');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v288');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

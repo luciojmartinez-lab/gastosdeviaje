@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v287';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v288';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -70,7 +70,7 @@ export function extractTicketDate(text) {
       const value = validDateParts(Number(match[3]), Number(match[2]), Number(match[1]));
       if (value) candidates.push({ value, score: (labeled ? 38 : 18) - index * 0.05 });
     }
-    const monthRegex = new RegExp(`\\b(0?[1-9]|[12]\\d|3[01])[\\s/.-]+(${TICKET_MONTH_PATTERN})[\\s/.-]+(\\d{2}|\\d{4})\\b`, 'g');
+    const monthRegex = new RegExp(`\\b(0?[1-9]|[12]\\d|3[01])(?:[\\s/.-]+|\\s+de\\s+)(${TICKET_MONTH_PATTERN})(?:[\\s/.-]+|\\s+de\\s+)(\\d{2}|\\d{4})\\b`, 'g');
     while ((match = monthRegex.exec(normalized))) {
       const month = TICKET_MONTHS[match[2]];
       const value = month ? validDateParts(Number(match[1]), month, Number(match[3])) : '';
@@ -93,10 +93,13 @@ export function extractTicketTime(text) {
   lines.forEach((line, index) => {
     const normalized = normalizeTicketText(line);
     const labeled = /\b(hora|time|aika|heure|ora|zeit)\b/.test(normalized) || /(?:時刻|時間|시간)/u.test(line);
-    const sharesLineWithDate = /\b(?:0?[1-9]|[12]\d|3[01])[\/.-](?:0?[1-9]|1[0-2])[\/.-](?:\d{2}|\d{4})\b|\b\d{4}[\/.-](?:0?[1-9]|1[0-2])[\/.-](?:0?[1-9]|[12]\d|3[01])\b/.test(normalized);
+    const writtenDate = new RegExp(`\\b(?:0?[1-9]|[12]\\d|3[01])(?:[\\s/.-]+|\\s+de\\s+)(?:${TICKET_MONTH_PATTERN})(?:[\\s/.-]+|\\s+de\\s+)(?:\\d{2}|\\d{4})\\b`).test(normalized);
+    const sharesLineWithDate = writtenDate || /\b(?:0?[1-9]|[12]\d|3[01])[\/.-](?:0?[1-9]|1[0-2])[\/.-](?:\d{2}|\d{4})\b|\b\d{4}[\/.-](?:0?[1-9]|1[0-2])[\/.-](?:0?[1-9]|[12]\d|3[01])\b/.test(normalized);
+    const phoneLine = /\b(?:tel(?:efono)?|phone|telefono|fax)\b/.test(normalized);
     const regex = /\b([01]?\d|2[0-3])\s*([:.h])\s*([0-5]\d)(?::[0-5]\d)?\b/gi;
     let match;
     while ((match = regex.exec(line))) {
+      if (phoneLine && !labeled && !sharesLineWithDate) continue;
       if (match[2] === '.' && !labeled && !sharesLineWithDate) continue;
       candidates.push({
         value: `${String(Number(match[1])).padStart(2, '0')}:${match[3]}`,
@@ -248,9 +251,9 @@ const GENERIC_TOTAL_LABEL = /\b(?:total|yhteensa|loppusumma|kokonaissumma|gesamt
 const AMOUNT_TOTAL_LABEL = /\b(?:importe?|amount|summa|betrag|montant|importo|valor)\b|\b(?:a|per)\s+(?:pagar|abonar)\b/;
 const PAYMENT_DUE_LABEL = /\b(?:pendiente\s+de\s+cobro|cobro\s+pendiente|pendent\s+de\s+cobrament|amount\s+due|balance\s+due|total\s+due|maksettav(?:a|aa)|zu\s+zahlen|a\s+payer|da\s+pagare)\b/;
 const TOTAL_TABLE_HEADER = /\b(?:unid(?:ad|ades)?|cant(?:idad)?|descripcion|descripcio|articulo|article|item|unit|units|qty|quantity|price|preu|quantitat|kuvaus|tuote|maara|kpl|hinta)\b/;
-const TOTAL_TAX_LABEL = /\b(?:iva|vat|alv|tax|vero|tva|mwst)\b/;
-const TOTAL_TAX_INCLUDED = /\b(?:iva|vat|alv|tax|vero|tva|mwst)\s+(?:incl|included|sis|compris)/;
-const TOTAL_EXCLUDED_LABEL = /\b(?:subtotal|sub\s+total|valisumma|base\s+(?:imponible|imposable|iva)|taxable\s+amount|net\s+amount|netto|cuota\s+iva|cambio|change|vaihtoraha|entregado|efectivo|cash|kateinen|descuento|discount|alennus|propina|tip|juomaraha)\b/;
+const TOTAL_TAX_LABEL = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\b/;
+const TOTAL_TAX_INCLUDED = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\s+(?:incl|incluido|incluidos|included|sis|compris)/;
+const TOTAL_EXCLUDED_LABEL = /\b(?:subtotal|sub\s+total|valisumma|total\s+(?:del?\s+)?producto|product\s+total|base\s+(?:imponible|imposable|iva)|taxable\s+amount|net\s+amount|netto|cuota\s+iva|deposito|deposit|importe\s+recibido|amount\s+(?:received|tendered)|recibido|received|tendered|cambio|cambiar|change|vaihtoraha|vuelto|entregado|efectivo|cash|kateinen|descuento|discount|alennus|propina|tip|juomaraha)\b/;
 const TOTAL_LABEL_ONLY = /^(?:(?:grand\s+)?total|importe?|amount|summa|betrag|montant|importo|valor|yhteensa|loppusumma|kokonaissumma|gesamtbetrag|maksettav(?:a|aa)|zu\s+zahlen|a\s+payer|da\s+pagare|(?:importe?\s+)?(?:a|per|poder)\s+(?:pagar|abonar)|pendiente\s+de\s+cobro|cobro\s+pendiente|pendent\s+de\s+cobrament)(?:\s+(?:eur|euro|euros|gbp|pounds?|sek|nok|dkk))?$/;
 const EAST_ASIAN_BEST_TOTAL_LABEL = /(?:総\s*合\s*計|合\s*計\s*金\s*額|お\s*支\s*払(?:\s*い)?(?:\s*合\s*計|\s*金\s*額)?|お\s*会\s*計|合\s*計|支\s*払\s*合\s*計|합\s*계\s*금\s*액|총\s*결\s*제\s*금\s*액|결\s*제\s*금\s*액|받\s*을\s*금\s*액|총\s*액|합\s*계)/u;
 const EAST_ASIAN_TOTAL_LABEL_ONLY = /^(?:総\s*合\s*計|合\s*計\s*金\s*額|お\s*支\s*払(?:\s*い)?(?:\s*合\s*計|\s*金\s*額)?|お\s*会\s*計|合\s*計|支\s*払\s*合\s*計|합\s*계\s*금\s*액|총\s*결\s*제\s*금\s*액|결\s*제\s*금\s*액|받\s*을\s*금\s*액|총\s*액|합\s*계)(?:\s*(?:jpy|krw|円|원))?$/iu;
@@ -301,7 +304,7 @@ export function extractTicketTotal(text) {
     let labelScore = hasBestLabel ? 130 : hasTotalLabel ? 115 : hasPaymentDueLabel ? 105 : hasAmountLabel ? 95 : 0;
     if (tableHeader && !hasTotalLabel) labelScore = 0;
     if (hasAmountLabel && !hasTotalLabel && !hasPaymentDueLabel && amounts.length > 1) labelScore = 0;
-    if (excluded) labelScore -= 120;
+    if (excluded) labelScore = 0;
     if (labelScore > 0 && amounts.length) {
       candidates.push({ value: amounts.at(-1), score: labelScore + (/\b(?:eur|euro|euros|gbp|pounds?|sek|nok|dkk|jpy|krw)\b|[€£¥₩円원]/iu.test(line) ? 10 : 0) + index / Math.max(lines.length, 1) });
     }

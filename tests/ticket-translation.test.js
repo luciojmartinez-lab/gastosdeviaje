@@ -87,10 +87,13 @@ test('el resultado de Lens sustituye los datos reconocidos tanto en texto como e
   assert.match(app, /ocr\.extractTicketFields\(sourceText\)/);
   assert.match(app, /payload\.fromLens && lensReceiptText && !hasImages && currentFormTarget/);
   assert.match(app, /const preserveExisting = !options\.replaceExisting/);
-  assert.match(app, /await readLensTicketTranslation\(prefix, companion, first\)/);
+  assert.match(app, /await readLensTicketTranslation\(prefix, companion, first, options\)/);
   assert.match(app, /const recognitionSource = originalSource \|\| record\.data/);
   assert.match(app, /preserveDescription: true/);
   assert.match(app, /options\.preserveDescription && field === 'desc'/);
+  assert.match(app, /replaceOcrDescription: true/);
+  assert.match(app, /current === previousOcrDescription/);
+  assert.match(app, /previousOcrDescription: currentDescription && currentDescription === recognizedDescription/);
   assert.match(app, /lensText: payload\?\.fromLens \? lensSharedReceiptText\(payload\) : ''/);
 });
 
