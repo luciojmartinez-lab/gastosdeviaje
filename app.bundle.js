@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v292';
+const APP_VERSION = '700v293';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -1952,6 +1952,34 @@ function timelineRecordsForTrip(tripId) {
     .sort((a, b) => String(a.fecha || '').localeCompare(String(b.fecha || '')));
 }
 
+function timelineRecordHasMaps(record) {
+  return Boolean((Array.isArray(record && record.points) && record.points.length)
+    || (Array.isArray(record && record.activities) && record.activities.length)
+    || (Array.isArray(record && record.visits) && record.visits.length)
+    || record && record.departure
+    || record && record.arrival);
+}
+
+function timelineRecordGpxPaths(record) {
+  const route = record && record.gpxRoute;
+  return (Array.isArray(route && route.segments) ? route.segments : [])
+    .map(segment => (Array.isArray(segment) ? segment : [])
+      .map(point => ({
+        latitude: Number(point && point.latitude),
+        longitude: Number(point && point.longitude),
+        time: String(point && point.time || ''),
+        elevation: Number.isFinite(Number(point && point.elevation)) ? Number(point.elevation) : undefined,
+        gpxPoint: true
+      }))
+      .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude)))
+    .filter(path => path.length > 1)
+    .map(path => {
+      path.gpxRoute = true;
+      path.provider = route.provider || 'GPX';
+      return path;
+    });
+}
+
 function timelineRecordPointCandidates(record) {
   return [
     ...(Array.isArray(record && record.points) ? record.points : []),
@@ -1996,6 +2024,8 @@ function timelineRecordHasExactMovement(record, exactRecords = []) {
 }
 
 function timelineRecordIsStationaryNoise(record, exactRecords = []) {
+  if (Array.isArray(record && record.gpxRoute && record.gpxRoute.segments)
+    && record.gpxRoute.segments.some(segment => Array.isArray(segment) && segment.length > 1)) return false;
   const activities = Array.isArray(record && record.activities) ? record.activities : [];
   if (activities.length) return false;
   const points = timelineRecordPointCandidates(record);
@@ -2098,6 +2128,9 @@ function renderTimelineDialog() {
   const toggle = $('#timeline-toggle-layer');
   const remove = $('#timeline-delete');
   const select = $('#timeline-select-file');
+  const selectGpx = $('#timeline-select-gpx');
+  const removeGpx = $('#timeline-delete-gpx');
+  const gpxHelp = $('#timeline-gpx-help');
   const close = $('#timeline-close');
   const footerClose = $('#timeline-cancel');
   const routingControls = $('#timeline-routing-controls');
@@ -2111,6 +2144,8 @@ function renderTimelineDialog() {
   if (!trip) {
     if (status) status.innerHTML = '<strong>Selecciona un viaje</strong><span>La Cronología de Maps se importa solamente para un viaje cada vez.</span>';
     if (select) select.disabled = true;
+    if (selectGpx) selectGpx.disabled = true;
+    if (removeGpx) removeGpx.hidden = true;
     if (toggle) toggle.hidden = true;
     if (remove) remove.hidden = true;
     if (routingControls) routingControls.hidden = true;
@@ -2119,14 +2154,34 @@ function renderTimelineDialog() {
   activeTimelineTripId = Number(trip.id);
   const records = timelineRecordsForTrip(trip.id);
   const pointCount = records.reduce((sum, record) => sum + (Array.isArray(record.points) ? record.points.length : 0), 0);
+  const mapsRecords = records.filter(timelineRecordHasMaps);
+  const gpxRecords = records.filter(record => timelineRecordGpxPaths(record).length);
+  const gpxPointCount = gpxRecords.reduce((sum, record) => sum + Number(record.gpxRoute && record.gpxRoute.pointCount || 0), 0);
   const first = records[0];
   const last = records[records.length - 1];
   if (status) {
     status.innerHTML = records.length
-      ? `<strong>${escapeHtml(trip.nombre)} · ${records.length} ${records.length === 1 ? 'día importado' : 'días importados'}</strong><span>${escapeHtml(summaryDocumentDate(first.fecha, true))} – ${escapeHtml(summaryDocumentDate(last.fecha, true))} · ${pointCount} puntos del recorrido</span><span>Archivo: ${escapeHtml(first.sourceName || 'Cronología.json')} · importado ${escapeHtml(new Date(first.importedAt || Date.now()).toLocaleString('es-ES'))}</span>`
+      ? `<strong>${escapeHtml(trip.nombre)} · ${records.length} ${records.length === 1 ? 'día con recorrido' : 'días con recorrido'}</strong><span>${escapeHtml(summaryDocumentDate(first.fecha, true))} – ${escapeHtml(summaryDocumentDate(last.fecha, true))} · Maps: ${mapsRecords.length} días y ${pointCount} puntos · GPX: ${gpxRecords.length} días y ${gpxPointCount} puntos</span>`
       : `<strong>${escapeHtml(trip.nombre)}</strong><span>Viaje del ${escapeHtml(summaryDocumentDate(trip.fechaInicio, true))} al ${escapeHtml(summaryDocumentDate(trip.fechaFin, true))}. Todavía no hay una Cronología de Maps importada.</span>`;
   }
   if (select) select.disabled = timelineBulkRoutingActive;
+  const dayRecord = selectedTimelineDayRecord(trip);
+  const dayGpx = dayRecord && dayRecord.gpxRoute;
+  if (selectGpx) {
+    selectGpx.disabled = !tripMapState.day || timelineBulkRoutingActive;
+    selectGpx.textContent = dayGpx ? 'Reemplazar GPX del día' : 'Importar GPX del día';
+  }
+  if (removeGpx) {
+    removeGpx.hidden = !dayGpx;
+    removeGpx.disabled = timelineBulkRoutingActive;
+  }
+  if (gpxHelp) {
+    gpxHelp.textContent = !tripMapState.day
+      ? 'Selecciona primero un día concreto en el mapa.'
+      : dayGpx
+        ? `${blogDayDateLabel(tripMapState.day)}: ${dayGpx.provider || 'GPX'} · ${dayGpx.name || dayGpx.sourceName || 'recorrido'} · ${Number(dayGpx.pointCount || 0).toLocaleString('es-ES')} puntos. El GPX tiene prioridad y Maps completa los intervalos que no cubre.`
+        : `Importa para el ${blogDayDateLabel(tripMapState.day)} una ruta realizada desde Wikiloc, Garmin u otra aplicación. Sus puntos se conservarán aunque vuelvas a importar Maps.`;
+  }
   if (toggle) {
     toggle.hidden = !records.length;
     toggle.disabled = timelineBulkRoutingActive;
@@ -2142,18 +2197,23 @@ function renderTimelineDialog() {
   if (routeView) routeView.value = tripMapState.timelineRouteView === 'adjusted' ? 'adjusted' : 'original';
   if (routeMode) routeMode.value = timelineRoutingModeKey();
   const exactRecords = dailyMapRecordsForScope(new Set([Number(trip.id)]), 0);
-  const dayRecord = selectedTimelineDayRecord(trip);
   const cached = timelineAdjustedRouteCache(dayRecord);
   const stationaryDay = timelineRecordIsStationaryNoise(dayRecord, exactRecords);
   if (routeAdjust) {
-    routeAdjust.disabled = !dayRecord || stationaryDay || timelineBulkRoutingActive;
-    routeAdjust.textContent = stationaryDay
+    const mapsAvailable = timelineRecordHasMaps(dayRecord);
+    routeAdjust.disabled = !dayRecord || Boolean(dayGpx) || !mapsAvailable || stationaryDay || timelineBulkRoutingActive;
+    routeAdjust.textContent = dayGpx
+      ? 'GPX directo (sin ajuste)'
+      : stationaryDay
       ? 'Día sin desplazamiento'
       : cached ? 'Recalcular el día' : 'Ajustar el día';
   }
   const currentMode = timelineRoutingModeKey();
   const pendingDays = records.filter(record =>
-    !timelineRecordIsStationaryNoise(record, exactRecords) && !timelineAdjustedRouteCache(record, currentMode)
+    timelineRecordHasMaps(record)
+      && !record.gpxRoute
+      && !timelineRecordIsStationaryNoise(record, exactRecords)
+      && !timelineAdjustedRouteCache(record, currentMode)
   );
   if (routeAdjustAll) {
     routeAdjustAll.disabled = !records.length || timelineBulkRoutingActive || !pendingDays.length;
@@ -2173,6 +2233,8 @@ function renderTimelineDialog() {
       ? 'Puedes ajustar todo el viaje o seleccionar primero un día para ajustar únicamente esa fecha.'
       : !dayRecord
         ? `La Cronología importada no contiene recorrido el ${blogDayDateLabel(tripMapState.day)}.`
+        : dayGpx
+          ? `${blogDayDateLabel(dayRecord.fecha)} usa el GPX directamente. No se ajusta a carreteras; Maps solo completa los intervalos que el GPX no cubre.`
         : stationaryDay
           ? `${blogDayDateLabel(dayRecord.fecha)} no contiene desplazamiento: Maps no detectó ninguna actividad y las variaciones de posición son deriva del GPS.`
         : cached
@@ -2311,6 +2373,7 @@ async function adjustEntireTimelineTrip() {
   tripMapState.timelineRoutingMode = mode;
   const exactRecords = dailyMapRecordsForScope(new Set([Number(trip.id)]), 0);
   const records = timelineRecordsForTrip(trip.id)
+    .filter(record => !record.gpxRoute)
     .filter(record => !timelineRecordIsStationaryNoise(record, exactRecords));
   const pending = records.filter(record => !timelineAdjustedRouteCache(record, mode));
   if (!pending.length) {
@@ -2347,6 +2410,7 @@ async function adjustEntireTimelineTrip() {
   renderTripMap();
   renderTimelineDialog();
   const remaining = timelineRecordsForTrip(trip.id)
+    .filter(record => !record.gpxRoute)
     .filter(record => !timelineRecordIsStationaryNoise(record, exactRecords) && !timelineAdjustedRouteCache(record, mode)).length;
   setTimelineMessage(cancelled
     ? `Proceso cancelado. ${completed} días guardados; quedan ${remaining}. Puedes continuar cuando quieras.`
@@ -2758,7 +2822,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v292');
+    const worker = new Worker('./timeline-import-worker.js?v=700v293');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2800,7 +2864,26 @@ async function importTimelineFile(file) {
     const importedDates = new Set(result.days.map(record => record.fecha));
     const changedDates = new Set();
     for (const record of existing) {
-      if (!importedDates.has(record.fecha)) await deleteRecord('timelineDays', record.id);
+      if (importedDates.has(record.fecha)) continue;
+      if (record.gpxRoute) {
+        await putRecord('timelineDays', {
+          id: record.id,
+          viajeId: Number(trip.id),
+          fecha: record.fecha,
+          points: [],
+          visits: [],
+          activities: [],
+          departure: null,
+          arrival: null,
+          departureMode: '',
+          arrivalMode: '',
+          lodgingNames: record.lodgingNames || {},
+          adjustedTimelineRoutes: {},
+          gpxRoute: record.gpxRoute
+        });
+      } else {
+        await deleteRecord('timelineDays', record.id);
+      }
     }
     const importedAt = new Date().toISOString();
     for (const record of result.days) {
@@ -2818,7 +2901,8 @@ async function importTimelineFile(file) {
         sourceLastModified: Number(file.lastModified || 0),
         importedAt,
         lodgingNames: lodgingNamesByDate.get(record.fecha) || {},
-        adjustedTimelineRoutes: previous && previous.adjustedTimelineRoutes || {}
+        adjustedTimelineRoutes: previous && previous.adjustedTimelineRoutes || {},
+        gpxRoute: previous && previous.gpxRoute || null
       });
     }
     tripMapState.showTimeline = true;
@@ -2831,11 +2915,14 @@ async function importTimelineFile(file) {
     const adjustmentDates = new Set(changedDates);
     if (autoAdjust) {
       importedRecords
+        .filter(record => !record.gpxRoute)
         .filter(record => !timelineAdjustedRouteCache(record, autoAdjustMode))
         .filter(record => !timelineRecordIsStationaryNoise(record, exactRecords))
         .forEach(record => adjustmentDates.add(record.fecha));
     }
-    const changedRecords = importedRecords.filter(record => adjustmentDates.has(record.fecha));
+    const changedRecords = importedRecords
+      .filter(record => !record.gpxRoute)
+      .filter(record => adjustmentDates.has(record.fecha));
     const adjustmentPlan = timelineImportAdjustmentPlan(
       changedRecords,
       adjustmentDates,
@@ -2882,17 +2969,128 @@ async function importTimelineFile(file) {
   }
 }
 
-async function deleteImportedTimeline() {
-  const trip = state.viajes.find(item => Number(item.id) === Number(activeTimelineTripId));
-  if (!trip) return;
-  if (!confirm(`¿Eliminar la Cronología de Maps importada de ${trip.nombre}? Los gastos, fotos y entradas del Blog no se modificarán.`)) return;
-  for (const record of timelineRecordsForTrip(trip.id)) await deleteRecord('timelineDays', record.id);
+async function importTimelineGpxFile(file) {
+  const trip = state.viajes.find(item => Number(item.id) === Number(activeTimelineTripId)) || selectedMapTimelineTrip();
+  const selectedDate = String(tripMapState.day || '');
+  if (!trip) throw new Error('Selecciona un viaje antes de importar el GPX.');
+  if (!selectedDate) throw new Error('Selecciona primero el día concreto al que pertenece el GPX.');
+  if (selectedDate < String(trip.fechaInicio || '') || selectedDate > String(trip.fechaFin || trip.fechaInicio || '')) {
+    throw new Error('El día seleccionado no pertenece a las fechas de este viaje.');
+  }
+  if (!file || !/\.gpx$/i.test(file.name || '')) throw new Error('Selecciona un archivo con extensión .gpx.');
+  if (!window.GpxTrackImport) throw new Error('No se ha cargado el lector de archivos GPX.');
+  const previous = timelineRecordsForTrip(trip.id).find(record => record.fecha === selectedDate) || null;
+  if (previous && previous.gpxRoute
+    && !confirm(`El ${blogDayDateLabel(selectedDate)} ya tiene un GPX. ¿Quieres reemplazarlo por ${file.name}?`)) return;
+
+  const button = $('#timeline-select-gpx');
+  if (button) button.disabled = true;
+  setTimelineMessage(`Leyendo ${file.name}…`);
+  try {
+    const result = window.GpxTrackImport.parse(await file.text(), { selectedDate });
+    if (result.observedDates.length && !result.observedDates.includes(selectedDate)) {
+      const detected = result.observedDates.map(date => summaryDocumentDate(date, true)).join(' o ');
+      if (!confirm(`Las horas del GPX corresponden a ${detected}, pero has seleccionado ${summaryDocumentDate(selectedDate, true)}. ¿Importarlo igualmente en el día seleccionado?`)) return;
+    }
+    const importedAt = new Date().toISOString();
+    const base = previous || {
+      id: `${trip.id}:${selectedDate}`,
+      viajeId: Number(trip.id),
+      fecha: selectedDate,
+      points: [],
+      visits: [],
+      activities: [],
+      departure: null,
+      arrival: null,
+      departureMode: '',
+      arrivalMode: '',
+      lodgingNames: {},
+      adjustedTimelineRoutes: {}
+    };
+    await putRecord('timelineDays', {
+      ...base,
+      id: `${trip.id}:${selectedDate}`,
+      viajeId: Number(trip.id),
+      fecha: selectedDate,
+      gpxRoute: {
+        sourceName: file.name || 'recorrido.gpx',
+        sourceSize: Number(file.size || 0),
+        sourceLastModified: Number(file.lastModified || 0),
+        importedAt,
+        provider: result.provider,
+        creator: result.creator,
+        name: result.name,
+        segments: result.segments,
+        pointCount: result.pointCount,
+        startTime: result.startTime,
+        endTime: result.endTime,
+        missingTimeCount: result.missingTimeCount
+      }
+    });
+    tripMapState.showTimeline = true;
+    await loadAll();
+    activeTimelineTripId = Number(trip.id);
+    tripMapState.day = selectedDate;
+    resetTripMapView();
+    renderTripMap();
+    renderTimelineDialog();
+    const pauseCount = Math.max(0, result.segments.length - 1);
+    setTimelineMessage(`${result.provider}: ${result.pointCount.toLocaleString('es-ES')} puntos importados para ${blogDayDateLabel(selectedDate)}${pauseCount ? `, separados en ${result.segments.length} tramos para no unir las pausas` : ''}.`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function deleteTimelineGpxForSelectedDay() {
+  const trip = state.viajes.find(item => Number(item.id) === Number(activeTimelineTripId)) || selectedMapTimelineTrip();
+  const record = selectedTimelineDayRecord(trip);
+  if (!trip || !record || !record.gpxRoute) return;
+  if (!confirm(`¿Quitar el GPX del ${blogDayDateLabel(record.fecha)}? Los datos de Maps de ese día se conservarán.`)) return;
+  if (timelineRecordHasMaps(record)) {
+    const { gpxRoute, ...withoutGpx } = record;
+    await putRecord('timelineDays', withoutGpx);
+  } else {
+    await deleteRecord('timelineDays', record.id);
+  }
   await loadAll();
   activeTimelineTripId = Number(trip.id);
   resetTripMapView();
   renderTripMap();
   renderTimelineDialog();
-  setTimelineMessage('Cronología de Maps eliminada de este viaje.');
+  setTimelineMessage(`GPX del ${blogDayDateLabel(record.fecha)} eliminado. Los datos de Maps no se han modificado.`);
+}
+
+async function deleteImportedTimeline() {
+  const trip = state.viajes.find(item => Number(item.id) === Number(activeTimelineTripId));
+  if (!trip) return;
+  if (!confirm(`¿Eliminar los datos importados de Maps de ${trip.nombre}? Los GPX, gastos, fotos y entradas del Blog se conservarán.`)) return;
+  for (const record of timelineRecordsForTrip(trip.id)) {
+    if (!record.gpxRoute) {
+      await deleteRecord('timelineDays', record.id);
+      continue;
+    }
+    await putRecord('timelineDays', {
+      id: record.id,
+      viajeId: Number(trip.id),
+      fecha: record.fecha,
+      points: [],
+      visits: [],
+      activities: [],
+      departure: null,
+      arrival: null,
+      departureMode: '',
+      arrivalMode: '',
+      lodgingNames: record.lodgingNames || {},
+      adjustedTimelineRoutes: {},
+      gpxRoute: record.gpxRoute
+    });
+  }
+  await loadAll();
+  activeTimelineTripId = Number(trip.id);
+  resetTripMapView();
+  renderTripMap();
+  renderTimelineDialog();
+  setTimelineMessage('Datos de Maps eliminados. Los recorridos GPX se conservan.');
 }
 
 function defaultTripId() {
@@ -3611,7 +3809,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v292');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v293');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4433,7 +4631,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v292');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v293');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4526,7 +4724,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v292');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v293');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4591,7 +4789,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v292');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v293');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4922,7 +5120,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v292');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v293');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -9406,8 +9604,54 @@ function timelineMapMarkerItems(records, dailyMode) {
   return items;
 }
 
+function timelinePathsOutsideGpxIntervals(paths, gpxPaths) {
+  const intervals = gpxPaths
+    .map(path => {
+      const times = path.map(point => Date.parse(point.time || '')).filter(Number.isFinite);
+      return times.length ? { start: Math.min(...times), end: Math.max(...times) } : null;
+    })
+    .filter(Boolean);
+  if (!intervals.length) return paths;
+  const outside = [];
+  paths.forEach(path => {
+    let current = [];
+    const flush = () => {
+      if (current.length > 1) {
+        const segment = current;
+        segment.activityType = path.activityType || '';
+        segment.adjustedRoute = path.adjustedRoute;
+        outside.push(segment);
+      }
+      current = [];
+    };
+    path.forEach(point => {
+      const time = Date.parse(point && point.time || '');
+      const covered = Number.isFinite(time) && intervals.some(interval => time >= interval.start && time <= interval.end);
+      if (covered) flush();
+      else current.push(point);
+    });
+    flush();
+  });
+  return outside;
+}
+
 function timelineMapPaths(records) {
   const options = arguments[1] || {};
+  const gpxPathsForRecord = record => typeof timelineRecordGpxPaths === 'function'
+    ? timelineRecordGpxPaths(record)
+    : [];
+  if (records.some(record => gpxPathsForRecord(record).length)) {
+    return records.flatMap(record => {
+      const gpxPaths = gpxPathsForRecord(record);
+      if (!gpxPaths.length) return timelineMapPaths([record], options);
+      const mapsRecord = { ...record, gpxRoute: null };
+      // Los trazados ajustados no conservan las horas de cada vértice. Cuando hay GPX usamos
+      // el recorrido original de Maps para poder recortar exactamente sus intervalos solapados.
+      const mapsOptions = { ...options, adjusted: false };
+      const mapsPaths = timelineRecordHasMaps(mapsRecord) ? timelineMapPaths([mapsRecord], mapsOptions) : [];
+      return [...timelinePathsOutsideGpxIntervals(mapsPaths, gpxPaths), ...gpxPaths];
+    });
+  }
   if (options.adjusted === true) {
     return records.flatMap(record => {
       if (timelineRecordIsStationaryNoise(record, options.exactRecords)) return [];
@@ -13331,7 +13575,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v292');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v293');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -17243,6 +17487,25 @@ function bindEvents() {
       renderTimelineDialog();
     }
   };
+  $('#timeline-select-gpx').onclick = () => {
+    const input = $('#timeline-gpx-file-input');
+    if (!input) return;
+    input.value = '';
+    input.click();
+  };
+  $('#timeline-gpx-file-input').onchange = async event => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    try {
+      await importTimelineGpxFile(file);
+    } catch (error) {
+      setTimelineMessage(error.message || String(error), true);
+      renderTimelineDialog();
+    }
+  };
+  $('#timeline-delete-gpx').onclick = () => {
+    deleteTimelineGpxForSelectedDay().catch(error => setTimelineMessage(error.message || String(error), true));
+  };
   $('#timeline-toggle-layer').onclick = () => {
     tripMapState.showTimeline = !tripMapState.showTimeline;
     resetTripMapView();
@@ -18987,7 +19250,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v292');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v293');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

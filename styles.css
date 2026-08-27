@@ -3629,6 +3629,18 @@ body.map-fullscreen-open {
   font-size: 13px;
 }
 
+.timeline-gpx-controls {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #cfe0f2;
+  border-radius: 12px;
+  background: #f7fbff;
+}
+
+.timeline-gpx-controls p {
+  margin: 6px 0 10px;
+}
+
 .timeline-actions .danger {
   color: #b91c1c;
 }
