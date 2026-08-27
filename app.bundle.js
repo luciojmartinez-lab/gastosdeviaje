@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v288';
+const APP_VERSION = '700v289';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -21,6 +21,7 @@ const FORM_DRAFTS_KEY = 'gastos_viaje_form_drafts_v1';
 const FORM_DRAFT_MAX_AGE_DAYS = 30;
 const OFFLINE_ENTRY_NOTICE_KEY = 'gastos_viaje_offline_notice_shown';
 const LENS_RETURN_TARGET_KEY = 'gastos_viaje_lens_return_target_v1';
+const LENS_RECENT_TRIP_KEY = 'gastos_viaje_lens_recent_trip_v1';
 const LENS_RETURN_CACHE = 'cuaderno-bitacora-lens-return-v1';
 const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
 const SYNC_STATE_STORAGE = 'gastos_viaje_sync_state_v1';
@@ -2757,7 +2758,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v288');
+    const worker = new Worker('./timeline-import-worker.js?v=700v289');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3610,7 +3611,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v288');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v289');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4180,6 +4181,10 @@ function suggestTicketCategory(text, merchant, foodEvidence = null) {
   const learned = learnedTicketCategory(merchant);
   if (learned) return learned;
   const haystack = normalizedTicketSearch(`${merchant || ''}\n${text || ''}`);
+  const categoryHaystack = haystack.replace(
+    /\b(?:pago|saldo|deposito|dinero|tarjeta)(?:\s+\w+){0,4}\s+transporte\b/g,
+    ' '
+  );
   const rules = [
     { words: ['renfe', 'iryo', 'ouigo', 'ferrocarril', 'tren'], categories: ['Transporte'], subcategories: ['Tren'] },
     { words: ['taxi', 'uber', 'cabify'], categories: ['Transporte'], subcategories: ['Taxi'] },
@@ -4189,11 +4194,11 @@ function suggestTicketCategory(text, merchant, foodEvidence = null) {
     { words: ['hotel', 'hostal', 'apartamento', 'alojamiento', 'residencia', 'booking'], categories: ['Alojamiento'], subcategories: ['Hotel', 'Residencia', 'Apartamento'] },
     { words: ['museo', 'entrada', 'cine', 'teatro', 'espectaculo', 'visita'], categories: ['Ocio'], subcategories: ['Museos', 'Entradas', 'Visitas'] }
   ];
-  const rule = rules.find(item => item.words.some(word => haystack.includes(word)));
+  const rule = rules.find(item => item.words.some(word => categoryHaystack.includes(word)));
   if (!rule) {
     const direct = state.categorias
       .filter(item => !item.parentId)
-      .find(item => haystack.includes(normalizedTicketSearch(item.nombre)));
+      .find(item => categoryHaystack.includes(normalizedTicketSearch(item.nombre)));
     return direct ? { category: direct, subcategory: null, learned: false } : null;
   }
   const category = findCategoryByNames(rule.categories);
@@ -4411,7 +4416,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v288');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v289');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4430,7 +4435,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     if (result.fields?.merchant) {
       result.fields.merchant = ocr.correctTicketMerchantFromKnown(
         result.fields.merchant,
-        state.gastos.map(item => item.descripcion)
+        state.gastos.map(item => item.desc || item.descripcion || '')
       );
     }
     setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result, options));
@@ -4502,7 +4507,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v288');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v289');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4566,7 +4571,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v288');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v289');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4618,6 +4623,26 @@ function writeLensReturnTarget(target = null) {
   }
 }
 
+function rememberRecentLensTrip(target) {
+  const tripId = Number(target?.tripId || 0);
+  if (!tripId) return;
+  const value = JSON.stringify({ tripId, startedAt: Number(target?.startedAt || Date.now()) });
+  for (const storage of [sessionStorage, localStorage]) {
+    try { storage.setItem(LENS_RECENT_TRIP_KEY, value); } catch (_) {}
+  }
+}
+
+function recentLensTripId() {
+  for (const storage of [sessionStorage, localStorage]) {
+    try {
+      const value = JSON.parse(storage.getItem(LENS_RECENT_TRIP_KEY) || 'null');
+      const startedAt = Number(value?.startedAt || 0);
+      if (Number(value?.tripId) && Date.now() - startedAt <= 30 * 60 * 1000) return Number(value.tripId);
+    } catch (_) {}
+  }
+  return 0;
+}
+
 function currentLensReturnTarget() {
   let target = pendingLensReturnTarget || readStoredLensReturnTarget();
   const startedAt = Number(target?.startedAt || 0);
@@ -4648,6 +4673,7 @@ async function rememberLensReturnTarget(prefix, source = null) {
       ? currentDescription
       : ''
   };
+  rememberRecentLensTrip(target);
   writeLensReturnTarget(target);
   if (!source || !('caches' in window)) return target;
   try {
@@ -4874,7 +4900,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v288');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v289');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -13283,7 +13309,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v288');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v289');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -14717,10 +14743,12 @@ async function openSharedImagesDialog(payload) {
   const trips = state.viajes.slice().sort((a, b) => (b.fechaInicio || '').localeCompare(a.fechaInicio || '') || String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
   const selectedIds = selectedTripIds();
   const lensTarget = payload.fromLens ? currentLensReturnTarget() : null;
+  const recentTripId = payload.fromLens ? recentLensTripId() : 0;
   payload.lensSpanishOnly = Boolean(payload.fromLens && lensTarget?.spanishSource);
   payload.previousOcrDescription = String(lensTarget?.previousOcrDescription || '');
   const defaultTripId = lensTarget?.tripId && trips.some(trip => Number(trip.id) === Number(lensTarget.tripId))
     ? Number(lensTarget.tripId)
+    : recentTripId && trips.some(trip => Number(trip.id) === recentTripId) ? recentTripId
     : selectedIds.length === 1 ? Number(selectedIds[0]) : Number(trips[0]?.id || 0);
   if (tripSelect) {
     tripSelect.innerHTML = trips.length
@@ -18937,7 +18965,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v288');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v289');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v288';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v289';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -185,8 +185,8 @@ function eastAsianFallbackAmountsInLine(line) {
 }
 
 const FOOD_CONCEPT_WORDS = new Set([
-  'agua', 'alioli', 'arroz', 'bocadillo', 'bolleria', 'cafe', 'cana', 'carne', 'cerveza',
-  'croqueta', 'croquetas', 'desayuno', 'ensalada', 'hamburguesa', 'helado', 'menu', 'pan',
+  'agua', 'alioli', 'arandano', 'arandanos', 'arroz', 'bocadillo', 'bolleria', 'bollo', 'cafe', 'cana', 'carne', 'cerveza',
+  'chocolat', 'chocolate', 'croqueta', 'croquetas', 'desayuno', 'dulce', 'ensalada', 'galleta', 'hamburguesa', 'helado', 'menu', 'pan',
   'pasta', 'pastel', 'patata', 'patatas', 'pescado', 'pizza', 'pollo', 'postre', 'racion',
   'refresco', 'sandwich', 'tapa', 'tapas', 'tarta', 'tostada', 'tortilla', 'vino'
 ]);
@@ -264,6 +264,28 @@ function ticketTotalLineExcluded(normalized) {
   return TOTAL_EXCLUDED_LABEL.test(normalized) || EAST_ASIAN_EXCLUDED_TOTAL_LABEL.test(normalized) || taxBreakdown;
 }
 
+function recoverRepeatedCurrencyTotal(lines, explicit) {
+  if (!Number.isInteger(explicit) || explicit <= 0) return explicit;
+  const explicitDigits = String(explicit);
+  const counts = new Map();
+  lines.forEach(line => {
+    const normalized = normalizeTicketConcepts(line);
+    if (ticketTotalLineExcluded(normalized)) return;
+    const values = new Set(integerCurrencyAmountsInLine(line));
+    values.forEach(value => {
+      if (!Number.isInteger(value) || value <= 0) return;
+      counts.set(value, (counts.get(value) || 0) + 1);
+    });
+  });
+  const recovered = [...counts.entries()]
+    .filter(([value, count]) => count >= 2
+      && value > explicit
+      && value <= explicit * 100
+      && String(value).endsWith(explicitDigits))
+    .sort((left, right) => right[1] - left[1] || left[0] - right[0])[0]?.[0];
+  return recovered || explicit;
+}
+
 export function detectTicketDocumentType(text) {
   const normalized = normalizeTicketText(text);
   const cardSignals = normalized.match(CARD_PAYMENT_SIGNALS) || [];
@@ -324,7 +346,7 @@ export function extractTicketTotal(text) {
     }
   });
   const explicit = candidates.filter(item => item.value > 0).sort((a, b) => b.score - a.score)[0]?.value ?? null;
-  if (explicit != null) return explicit;
+  if (explicit != null) return recoverRepeatedCurrencyTotal(lines, explicit);
   const source = String(text || '');
   if (detectTicketDocumentType(source) === 'card_payment') {
     const cardAmounts = [];
@@ -426,7 +448,9 @@ export function extractTicketMerchant(text) {
     }
     return { value: cleanMerchantCandidate(line), score };
   }).filter(item => item.value);
-  const best = candidates.sort((a, b) => b.score - a.score)[0];
+  const best = candidates
+    .filter(item => isPlausibleTicketMerchant(item.value))
+    .sort((a, b) => b.score - a.score)[0];
   return best?.score > 0 ? best.value : '';
 }
 
@@ -437,6 +461,7 @@ export function isPlausibleTicketMerchant(value) {
   const compact = normalized.replace(/[^\p{L}\d]/gu, '');
   const minimumLetters = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/u.test(line) ? 2 : 5;
   if (letters.length < minimumLetters || compact.length < minimumLetters || line.length > 60) return false;
+  if (/(\p{L})\1{3,}/iu.test(line)) return false;
   if (MERCHANT_EXCLUSIONS.test(line) || MERCHANT_METADATA_WORDS.test(normalized) || EAST_ASIAN_MERCHANT_METADATA_WORDS.test(line)) return false;
   if (ADDRESS_WORDS.test(line) || BANK_BRAND_LINE.test(line) || PAYMENT_TERMINAL_LINE.test(line)) return false;
   if (/\b\d{1,2}[:./-]\d{1,2}\b|^\d+$/.test(normalized)) return false;

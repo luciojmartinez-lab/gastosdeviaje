@@ -69,6 +69,8 @@ test('Lens vuelve al gasto abierto sin guardarlo ni recargar la aplicación', ()
   assert.match(app, /await rememberLensReturnTarget\(prefix, \{ \.\.\.source, source: blob \}\)/);
   assert.match(app, /for \(const storage of \[sessionStorage, localStorage\]\)/);
   assert.match(app, /storage\.setItem\(LENS_RETURN_TARGET_KEY/);
+  assert.match(app, /storage\.setItem\(LENS_RECENT_TRIP_KEY/);
+  assert.match(app, /recentLensTripId\(\)/);
   assert.match(app, /saveFormDraft\(addExpenseDraftKey\(\), ADD_EXPENSE_DRAFT_FIELDS, \{ lensReturn: true \}\)/);
   assert.match(app, /cache\.put\(target\.sourceUrl/);
   assert.match(app, /restoreLensExpenseFormTarget/);

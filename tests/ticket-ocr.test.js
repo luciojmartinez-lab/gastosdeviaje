@@ -127,6 +127,12 @@ cambiar ¥8,000`), 2481);
 total ¥827
 pago de dinero de transporte ¥827
 Saldo de dinero de transporte ¥4,489`), 827);
+  assert.equal(extractTicketTotal(`(Total del producto) ¥857
+(Descuento total) -30
+total ¥27
+(objetivo del 8%) ¥827
+pago de dinero de transporte ¥827
+Saldo de dinero de transporte ¥489`), 827);
   assert.equal(extractTicketTotal('Depósito total ¥10,481\ncambiar ¥8,000'), null);
   assert.equal(extractTicketTotal(`領収書
 小計 本信
@@ -207,7 +213,9 @@ TEL 982253055
 NIF-33307299X
 FRA SIMP COMPROBANTE`), 'MILLENTUM');
   assert.equal(extractTicketMerchant('f MILLENIUM I\nMARTA RODRIGUEZ\nNIF-33307299X'), 'MILLENIUM');
+  assert.equal(extractTicketMerchant('ralriiiialviar L\nFamiliaMart\nTienda Ryogoku\nTokio'), 'FamiliaMart');
   assert.equal(isPlausibleTicketMerchant('Ad O'), false);
+  assert.equal(isPlausibleTicketMerchant('ralriiiialviar L'), false);
   assert.equal(isPlausibleTicketMerchant('mE. Hora'), false);
   assert.equal(isPlausibleTicketMerchant('MILLENIUM'), true);
 });
@@ -346,6 +354,23 @@ cambiar ¥8,000`), {
     merchant: 'FamiliaMart',
     total: 2481
   });
+});
+
+test('reconoce productos de alimentación aunque Lens traduzca de forma irregular', () => {
+  const evidence = extractTicketFoodEvidence(`Rollo de arándanos ¥158
+Té rooibos con aroma a lichi ¥113
+Pain au Chocolat 3 ¥198
+total ¥827`, 827);
+  assert.equal(evidence.isFood, true);
+  assert.ok(evidence.terms.includes('arandanos'));
+  assert.ok(evidence.terms.includes('chocolat'));
+});
+
+test('el texto de una tarjeta monedero no convierte la compra en Transporte', () => {
+  const app = readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
+  assert.match(app, /categoryHaystack = haystack\.replace/);
+  assert.match(app, /pago\|saldo\|deposito\|dinero\|tarjeta/);
+  assert.match(app, /categoryHaystack\.includes/);
 });
 
 test('los comercios de comida tienen prioridad y solo usan una subcategoría configurada', () => {
