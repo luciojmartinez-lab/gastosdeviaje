@@ -115,6 +115,9 @@ test('elige Total o Importe y no confunde IVA ni base imponible', () => {
   assert.equal(extractTicketTotal('内消費税10% ¥990\n合 計 10,885'), 10885);
   assert.equal(extractTicketTotal('total 827'), 827);
   assert.equal(extractTicketTotal('total Y827'), 827);
+  assert.equal(extractTicketTotal('total YB27'), 827);
+  assert.equal(extractTicketTotal('total\nY827'), 827);
+  assert.equal(extractTicketTotal('total\nY*344'), 344);
   assert.equal(extractTicketTotal('total ¥8 27'), 827);
   assert.equal(extractTicketTotal('total 2,481'), 2481);
   assert.equal(extractTicketTotal('total (objetivo del 8%) 827'), 827);
@@ -141,6 +144,17 @@ pago de dinero de transporte ¥827
 Saldo de dinero de transporte ¥489`), 827);
   assert.equal(extractTicketTotal('total ¥7\npago de dinero de transporte ¥827\nSaldo de dinero de transporte ¥489'), 827);
   assert.equal(extractTicketTotal('Depósito total ¥10,481\ncambiar ¥8,000'), null);
+  assert.equal(extractTicketTotal(`(Total del producto) Y857
+(Descuento total) -30
+total Y8B27
+(objetivo del 8%) 827
+pago de dinero de transporte Yx827`), 827);
+  assert.equal(extractTicketTotal(`Subtotal (sin incluir el 10% de impuestos) *313
+Impuesto al consumo, etc. (10%) *31
+total Y*44
+(Sujeto a una tasa impositiva del 10%) Y344
+custodia Y1000
+cambiar Y656`), 344);
   assert.equal(extractTicketTotal(`領収書
 小計 本信
 \\8, 0U0
@@ -164,6 +178,14 @@ test('combina las lecturas del ticket y no conserva un total al que le falta la 
     'LAWSON\ntotal ¥2,481',
     'Depósito total ¥10,481\ncambiar ¥8,000'
   ], 2481), 2481);
+  assert.equal(reconcileTicketTotalReadings([
+    'total ¥27',
+    'total ¥527'
+  ], 27), 27);
+  assert.equal(reconcileTicketTotalReadings([
+    '(Total del producto) Y857\n(Descuento total) -30\ntotal Y8B27\n(objetivo del 8%) 827',
+    'total ¥527'
+  ], 27), 827);
   const source = readFileSync(new URL('../ticket-ocr.js', import.meta.url), 'utf8');
   assert.match(source, /fields\.total = reconcileTicketTotalReadings\(recognitionTexts, fields\.total\)/);
   assert.match(source, /if \(!fields\.total \|\| reviewTranslatedReceipt\)/);

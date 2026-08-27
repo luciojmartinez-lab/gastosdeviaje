@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v291';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v292';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -147,18 +147,42 @@ function amountsInLine(line) {
   return matches.map(parseTicketAmount).filter(value => Number.isFinite(value));
 }
 
+function normalizeOcrCurrencyMarkers(value) {
+  return String(value || '')
+    .replace(/(?<![\p{L}\d])Y(?:[xXrR*])?(?=\s*[\dBbZzSsIiLlOo|])/gu, '¥')
+    .replace(/(?<![\p{L}\d])(?:[xX*\\])(?=\s*\d{2,}(?![\p{L}\d]))/gu, '¥');
+}
+
+function parseOcrCurrencyInteger(value) {
+  const compact = String(value || '').replace(/[,\.\s]/g, '');
+  if (/^\d+$/.test(compact)) return Number(compact);
+  if (!/^[BbZzSsIiLlOo|][\dBbZzSsIiLlOo|]+$/.test(compact)) return null;
+  const corrected = compact
+    .replace(/[Bb]/g, '8')
+    .replace(/[Zz]/g, '2')
+    .replace(/[Ss]/g, '5')
+    .replace(/[IiLl|]/g, '1')
+    .replace(/[Oo]/g, '0');
+  return /^\d+$/.test(corrected) ? Number(corrected) : null;
+}
+
 function integerCurrencyAmountsInLine(line) {
-  const normalized = String(line || '').replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0');
-  const matches = normalized.match(/(?:[¥₩￥]\s*\d(?:[\d,.\s]*\d)?|(?:\d{1,3}(?:[,.\s]\d{3})+|\d+)\s*(?:円|원|jpy|krw))/giu) || [];
-  return matches.map(value => Number(value.replace(/\D/g, ''))).filter(value => Number.isFinite(value));
+  const normalized = normalizeOcrCurrencyMarkers(
+    String(line || '').replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0')
+  );
+  const prefixed = Array.from(normalized.matchAll(/[¥₩￥]\s*([\dBbZzSsIiLlOo|](?:[\dBbZzSsIiLlOo|,.\s]*[\dBbZzSsIiLlOo|])?)(?![\p{L}\d])/gu))
+    .map(match => parseOcrCurrencyInteger(match[1]));
+  const suffixed = Array.from(normalized.matchAll(/(?:^|[^\p{L}\d])((?:\d{1,3}(?:[,.\s]\d{3})+|\d+))\s*(?:円|원|jpy|krw)(?![\p{L}\d])/giu))
+    .map(match => Number(String(match[1] || '').replace(/\D/g, '')));
+  return prefixed.concat(suffixed).filter(value => Number.isFinite(value));
 }
 
 function labeledIntegerAmountsInLine(line) {
-  const normalized = normalizeTicketText(line).replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0');
+  const normalized = normalizeOcrCurrencyMarkers(normalizeTicketText(line).replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0'));
   const labelIndex = normalized.search(/\b(?:grand\s+)?total\b|\b(?:importe?|amount|summa|betrag|montant|importo|valor)\b|\b(?:a|per)\s+(?:pagar|abonar)\b/);
   if (labelIndex < 0) return [];
   const tail = normalized.slice(labelIndex);
-  return Array.from(tail.matchAll(/(?:^|[^\d])((?:\d{1,3}(?:[,\s.]\d{3})+)|\d+)(?![\d,.])/g))
+  return Array.from(tail.matchAll(/(?:^|[^\p{L}\d])((?:\d{1,3}(?:[,\s.]\d{3})+)|\d+)(?![\p{L}\d,.])/gu))
     .filter(match => !/^\s*%/.test(tail.slice((match.index || 0) + match[0].length)))
     .map(match => Number(String(match[1] || '').replace(/\D/g, '')))
     .filter(value => Number.isFinite(value) && value > 0);
@@ -172,7 +196,7 @@ function groupedIntegerAmountsInLine(line) {
 }
 
 function standaloneIntegerAmount(line) {
-  const value = String(line || '').replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0').trim();
+  const value = normalizeOcrCurrencyMarkers(String(line || '').replace(/(?<=\d)[oOuU](?=\d|\b)/g, '0')).trim();
   if (!/^(?:[¥₩￥]\s*)?(?:\d{1,3}(?:[,.\s]+\d{3})+|\d+)(?:\s*(?:円|원|jpy|krw))?$/iu.test(value)) return [];
   const amount = Number(value.replace(/\D/g, ''));
   return Number.isFinite(amount) ? [amount] : [];
@@ -265,12 +289,13 @@ function ticketTotalLineExcluded(normalized) {
 }
 
 function recoverTruncatedCurrencyTotal(lines, explicit) {
-  if (!Number.isInteger(explicit) || explicit <= 0) return explicit;
-  const explicitDigits = String(explicit);
+  if (explicit != null && (!Number.isInteger(explicit) || explicit <= 0)) return explicit;
+  const hasExplicit = Number.isInteger(explicit) && explicit > 0;
+  const explicitDigits = hasExplicit ? String(explicit) : '';
   const counts = new Map();
   lines.forEach(line => {
     const normalized = normalizeTicketConcepts(line);
-    const unsafeSummary = /\b(?:subtotal|total\s+(?:del?\s+)?producto|deposito|saldo|cambio|cambiar|vuelto|descuento|propina)\b/.test(normalized);
+    const unsafeSummary = /\b(?:subtotal|total\s+(?:del?\s+)?producto|deposito|custodia|saldo|cambio|cambiar|vuelto|descuento|propina|efectivo|cash|entregado|recibido)\b/.test(normalized);
     if (unsafeSummary) return;
     const paymentSummary = /\b(?:pago|pagado|payment|paid|cobrado|cobro|cargo|debito|debitado|importe\s+(?:a|por)\s+pagar|amount\s+due|balance\s+due)\b/.test(normalized);
     const values = new Set(integerCurrencyAmountsInLine(line));
@@ -283,28 +308,86 @@ function recoverTruncatedCurrencyTotal(lines, explicit) {
     });
   });
   const recovered = [...counts.entries()]
-    .filter(([value, evidence]) => (evidence.count >= 2 || evidence.paymentSummary)
-      && value > explicit
-      && String(value).length <= explicitDigits.length + 2
-      && String(value).endsWith(explicitDigits))
+    .filter(([value, evidence]) => hasExplicit
+      ? (evidence.count >= 2 || evidence.paymentSummary)
+        && value > explicit
+        && String(value).length <= explicitDigits.length + 2
+        && String(value).endsWith(explicitDigits)
+      : evidence.paymentSummary)
     .sort((left, right) => Number(right[1].paymentSummary) - Number(left[1].paymentSummary)
       || right[1].count - left[1].count
       || left[0] - right[0])[0]?.[0];
-  return recovered || explicit;
+  return recovered || (hasExplicit ? explicit : null);
+}
+
+function summaryAmountsInLine(line) {
+  const normalized = normalizeOcrCurrencyMarkers(String(line || ''));
+  const looseIntegers = Array.from(normalized.matchAll(/(?:^|[^\p{L}\d])(-?(?:\d{1,3}(?:[,\.\s]\d{3})+|\d+))(?![\p{L}\d,.])/gu))
+    .filter(match => !/^\s*%/.test(normalized.slice((match.index || 0) + match[0].length)))
+    .map(match => Number(String(match[1] || '').replace(/\D/g, '')))
+    .filter(value => Number.isFinite(value));
+  return [...new Set(
+    amountsInLine(line)
+      .concat(integerCurrencyAmountsInLine(line), groupedIntegerAmountsInLine(line), labeledIntegerAmountsInLine(line), standaloneIntegerAmount(line), looseIntegers)
+      .map(value => Math.abs(Number(value)))
+      .filter(value => Number.isFinite(value) && value > 0)
+  )];
+}
+
+function inferCalculatedTicketTotal(lines) {
+  let base = null;
+  let basePriority = 0;
+  let baseExcludesTax = false;
+  let discount = 0;
+  let tax = 0;
+  lines.forEach(line => {
+    const normalized = normalizeTicketConcepts(line);
+    const amounts = summaryAmountsInLine(line);
+    if (!amounts.length) return;
+    const amount = amounts.at(-1);
+    const productTotal = /\b(?:total\s+(?:del?\s+)?producto|product\s+total)\b/.test(normalized);
+    const subtotal = /\b(?:subtotal|sub\s+total|valisumma)\b/.test(normalized);
+    const discountLine = /\b(?:descuento|discount|alennus|rebaja)\b/.test(normalized);
+    if ((productTotal || subtotal) && !discountLine) {
+      const priority = productTotal ? 2 : 1;
+      if (priority >= basePriority) {
+        base = amount;
+        basePriority = priority;
+        baseExcludesTax = /\b(?:sin\s+incluir|antes\s+de|excluido|excluding|before)\b[^\n]*\b(?:impuestos?|tax|iva|vat)\b/.test(normalized);
+      }
+      return;
+    }
+    if (discountLine) {
+      discount += amount;
+      return;
+    }
+    if (/^(?:impuesto|iva|vat|tax)\b/.test(normalized)) tax += amount;
+  });
+  if (!Number.isFinite(base) || base <= 0 || (discount <= 0 && (!baseExcludesTax || tax <= 0))) return null;
+  const value = base - discount + (baseExcludesTax ? tax : 0);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const rounded = Number(value.toFixed(2));
+  const evidence = lines.filter(line => summaryAmountsInLine(line).includes(rounded)).length;
+  return { value: rounded, evidence };
 }
 
 export function reconcileTicketTotalReadings(readings = [], fallback = null) {
   const texts = readings.map(value => String(value || '').trim()).filter(Boolean);
-  const values = texts.map(extractTicketTotal).filter(value => Number.isFinite(value) && value > 0);
-  if (Number.isFinite(fallback) && fallback > 0) values.unshift(fallback);
-  let selected = extractTicketTotal(texts.join('\n')) ?? values[0] ?? null;
-  values.forEach(value => {
-    if (!Number.isInteger(selected) || !Number.isInteger(value) || value <= selected) return;
-    const selectedDigits = String(selected);
-    const valueDigits = String(value);
-    if (valueDigits.length <= selectedDigits.length + 2 && valueDigits.endsWith(selectedDigits)) selected = value;
-  });
-  return selected;
+  const entries = texts
+    .map(text => ({ text, value: extractTicketTotal(text) }))
+    .filter(entry => Number.isFinite(entry.value) && entry.value > 0);
+  const values = entries.map(entry => entry.value);
+  const calculated = inferCalculatedTicketTotal(ticketLines(texts.join('\n')));
+  if (calculated && calculated.evidence > 0) return calculated.value;
+  const counts = new Map();
+  values.forEach(value => counts.set(value, (counts.get(value) || 0) + 1));
+  const consensusEntry = [...counts.entries()]
+    .sort((left, right) => right[1] - left[1] || values.indexOf(left[0]) - values.indexOf(right[0]))[0]?.[0];
+  if (consensusEntry != null && counts.get(consensusEntry) >= 2) return consensusEntry;
+  const paymentValue = entries.find(entry => /\b(?:pago|pagado|payment|paid|cobrado|cobro|cargo|debito|debitado|importe\s+(?:a|por)\s+pagar|amount\s+due|balance\s+due)\b/.test(normalizeTicketConcepts(entry.text)))?.value;
+  if (paymentValue != null) return paymentValue;
+  if (Number.isFinite(fallback) && fallback > 0) return fallback;
+  return values[0] ?? null;
 }
 
 export function detectTicketDocumentType(text) {
@@ -358,7 +441,10 @@ export function extractTicketTotal(text) {
       [-1, 1].forEach(offset => {
         const nearbyIndex = index + offset;
         if (nearbyIndex < 0 || nearbyIndex >= lines.length) return;
-        const nearbyAmounts = amountsInLine(lines[nearbyIndex]).concat(integerCurrencyAmountsInLine(lines[nearbyIndex]), standaloneIntegerAmount(lines[nearbyIndex]));
+        const nearbyDecimalAmounts = amountsInLine(lines[nearbyIndex]);
+        const nearbyAmounts = nearbyDecimalAmounts.length
+          ? nearbyDecimalAmounts
+          : [...new Set(integerCurrencyAmountsInLine(lines[nearbyIndex]).concat(standaloneIntegerAmount(lines[nearbyIndex])))];
         const nearbyNormalized = normalizeTicketConcepts(lines[nearbyIndex]);
         if (nearbyAmounts.length === 1 && !ticketTotalLineExcluded(nearbyNormalized)) {
           candidates.push({ value: nearbyAmounts[0], score: labelScore - (offset < 0 ? 6 : 8) });
@@ -367,7 +453,14 @@ export function extractTicketTotal(text) {
     }
   });
   const explicit = candidates.filter(item => item.value > 0).sort((a, b) => b.score - a.score)[0]?.value ?? null;
-  if (explicit != null) return recoverTruncatedCurrencyTotal(lines, explicit);
+  const recoveredExplicit = explicit != null ? recoverTruncatedCurrencyTotal(lines, explicit) : null;
+  const calculated = inferCalculatedTicketTotal(lines);
+  if (calculated && calculated.evidence > 0
+    && (recoveredExplicit == null || recoveredExplicit !== calculated.value)) return calculated.value;
+  if (recoveredExplicit != null) return recoveredExplicit;
+  if (calculated && calculated.evidence > 0) return calculated.value;
+  const paymentRecovered = recoverTruncatedCurrencyTotal(lines, null);
+  if (paymentRecovered != null) return paymentRecovered;
   const source = String(text || '');
   if (detectTicketDocumentType(source) === 'card_payment') {
     const cardAmounts = [];
