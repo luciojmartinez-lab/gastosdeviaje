@@ -10,6 +10,7 @@ import {
   extractTicketMerchant,
   extractTicketTime,
   extractTicketTotal,
+  reconcileTicketTotalReadings,
   findFirstTextBand,
   findReceiptBounds,
   isPlausibleTicketMerchant,
@@ -133,6 +134,11 @@ total ¥27
 (objetivo del 8%) ¥827
 pago de dinero de transporte ¥827
 Saldo de dinero de transporte ¥489`), 827);
+  assert.equal(extractTicketTotal(`(Total del producto) ¥857
+(Descuento total) -30
+total ¥27
+pago de dinero de transporte ¥827
+Saldo de dinero de transporte ¥489`), 827);
   assert.equal(extractTicketTotal('Depósito total ¥10,481\ncambiar ¥8,000'), null);
   assert.equal(extractTicketTotal(`領収書
 小計 本信
@@ -142,6 +148,19 @@ Saldo de dinero de transporte ¥489`), 827);
 お預り
 \\8, 0U0`), 8000);
   assert.equal(extractTicketTotal('소계 ₩10,000\n부가세 ₩1,000\n결제금액 ₩11,000'), 11000);
+});
+
+test('combina las lecturas del ticket y no conserva un total al que le falta la primera cifra', () => {
+  assert.equal(reconcileTicketTotalReadings([
+    'FamiliaMart\ntotal ¥27',
+    'FamiliaMart\npago de dinero de transporte ¥827'
+  ], 27), 827);
+  assert.equal(reconcileTicketTotalReadings([
+    'LAWSON\ntotal ¥2,481',
+    'Depósito total ¥10,481\ncambiar ¥8,000'
+  ], 2481), 2481);
+  const source = readFileSync(new URL('../ticket-ocr.js', import.meta.url), 'utf8');
+  assert.match(source, /fields\.total = reconcileTicketTotalReadings\(recognitionTexts, fields\.total\)/);
 });
 
 test('extrae los datos principales de tickets japoneses y coreanos', () => {

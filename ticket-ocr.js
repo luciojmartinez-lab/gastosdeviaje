@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v289';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v290';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -264,26 +264,45 @@ function ticketTotalLineExcluded(normalized) {
   return TOTAL_EXCLUDED_LABEL.test(normalized) || EAST_ASIAN_EXCLUDED_TOTAL_LABEL.test(normalized) || taxBreakdown;
 }
 
-function recoverRepeatedCurrencyTotal(lines, explicit) {
+function recoverTruncatedCurrencyTotal(lines, explicit) {
   if (!Number.isInteger(explicit) || explicit <= 0) return explicit;
   const explicitDigits = String(explicit);
   const counts = new Map();
   lines.forEach(line => {
     const normalized = normalizeTicketConcepts(line);
-    if (ticketTotalLineExcluded(normalized)) return;
+    const unsafeSummary = /\b(?:subtotal|total\s+(?:del?\s+)?producto|deposito|saldo|cambio|cambiar|vuelto|descuento|propina)\b/.test(normalized);
+    if (unsafeSummary) return;
+    const paymentSummary = /\b(?:pago|pagado|payment|paid|cobrado|cobro|cargo|debito|debitado|importe\s+(?:a|por)\s+pagar|amount\s+due|balance\s+due)\b/.test(normalized);
     const values = new Set(integerCurrencyAmountsInLine(line));
     values.forEach(value => {
       if (!Number.isInteger(value) || value <= 0) return;
-      counts.set(value, (counts.get(value) || 0) + 1);
+      const current = counts.get(value) || { count: 0, paymentSummary: false };
+      current.count += 1;
+      current.paymentSummary ||= paymentSummary;
+      counts.set(value, current);
     });
   });
   const recovered = [...counts.entries()]
-    .filter(([value, count]) => count >= 2
+    .filter(([value, evidence]) => (evidence.count >= 2 || evidence.paymentSummary)
       && value > explicit
       && value <= explicit * 100
       && String(value).endsWith(explicitDigits))
-    .sort((left, right) => right[1] - left[1] || left[0] - right[0])[0]?.[0];
+    .sort((left, right) => Number(right[1].paymentSummary) - Number(left[1].paymentSummary)
+      || right[1].count - left[1].count
+      || left[0] - right[0])[0]?.[0];
   return recovered || explicit;
+}
+
+export function reconcileTicketTotalReadings(readings = [], fallback = null) {
+  const texts = readings.map(value => String(value || '').trim()).filter(Boolean);
+  const values = texts.map(extractTicketTotal).filter(value => Number.isFinite(value) && value > 0);
+  if (Number.isFinite(fallback) && fallback > 0) values.unshift(fallback);
+  let selected = extractTicketTotal(texts.join('\n')) ?? values[0] ?? null;
+  values.forEach(value => {
+    if (!Number.isInteger(selected) || !Number.isInteger(value) || value <= selected) return;
+    if (value <= selected * 100 && String(value).endsWith(String(selected))) selected = value;
+  });
+  return selected;
 }
 
 export function detectTicketDocumentType(text) {
@@ -346,7 +365,7 @@ export function extractTicketTotal(text) {
     }
   });
   const explicit = candidates.filter(item => item.value > 0).sort((a, b) => b.score - a.score)[0]?.value ?? null;
-  if (explicit != null) return recoverRepeatedCurrencyTotal(lines, explicit);
+  if (explicit != null) return recoverTruncatedCurrencyTotal(lines, explicit);
   const source = String(text || '');
   if (detectTicketDocumentType(source) === 'card_payment') {
     const cardAmounts = [];
@@ -948,6 +967,7 @@ export async function recognizeTicket(source, options = {}) {
   try {
   const result = await worker.recognize(prepared, { rotateAuto: recognitionPsm === OCR_PSM_AUTO });
   const primaryText = result?.data?.text || '';
+  const recognitionTexts = [primaryText];
   let text = primaryText;
   let classificationText = primaryText;
   let fields = extractTicketFields(primaryText);
@@ -958,6 +978,7 @@ export async function recognizeTicket(source, options = {}) {
     onProgress({ status: 'Revisando la imagen con contraste adaptativo', progress: 0.78 });
     const binaryResult = await worker.recognize(preparedResult.binary, { rotateAuto: false });
     const binaryText = binaryResult?.data?.text || '';
+    recognitionTexts.push(binaryText);
     const binaryFields = extractTicketFields(binaryText);
     if (binaryFields.merchant && !isPlausibleTicketMerchant(binaryFields.merchant)) binaryFields.merchant = '';
     text = [primaryText, binaryText].filter(Boolean).join('\n');
@@ -985,6 +1006,7 @@ export async function recognizeTicket(source, options = {}) {
       onProgress({ status: 'Leyendo el título', progress: 0.82 });
       const titleResult = await worker.recognize(cropCanvasBounds(prepared, titleBounds, true));
       const titleText = titleResult?.data?.text || '';
+      recognitionTexts.push(titleText);
       const titleConfidence = Number(titleResult?.data?.confidence || 0);
       const titleCandidate = extractTicketMerchant(titleText);
       const titleMinimumConfidence = options.preferLargeTitle ? 35 : 60;
@@ -1004,6 +1026,7 @@ export async function recognizeTicket(source, options = {}) {
       onProgress({ status: 'Revisando la cabecera', progress: 0.86 });
       const headerResult = await worker.recognize(cropCanvas(prepared, 0, 0.56));
       const headerText = headerResult?.data?.text || '';
+      recognitionTexts.push(headerText);
       const headerFields = extractTicketFields(headerText);
       additionalPasses += 1;
       let footerText = '';
@@ -1012,6 +1035,7 @@ export async function recognizeTicket(source, options = {}) {
         onProgress({ status: 'Revisando el total', progress: 0.93 });
         const footerResult = await worker.recognize(cropCanvas(prepared, 0.43, 1));
         footerText = footerResult?.data?.text || '';
+        recognitionTexts.push(footerText);
         footerFields = extractTicketFields(footerText);
         additionalPasses += 1;
       }
@@ -1030,6 +1054,8 @@ export async function recognizeTicket(source, options = {}) {
       await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
     }
   }
+  text = recognitionTexts.filter(Boolean).join('\n');
+  fields.total = reconcileTicketTotalReadings(recognitionTexts, fields.total);
   return {
     text,
     classificationText,
