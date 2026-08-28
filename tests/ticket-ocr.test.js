@@ -148,6 +148,12 @@ Saldo de dinero de transporte ¥489`), 827);
 10% cuerpo objetivo ¥0
 combinar ¥8,000
 custodia 8,000 yenes`), 8000);
+  assert.equal(extractTicketTotal(`Cuerpo subtotal 8, 001
+10% cuerpo objetivo Y0
+0% cuerpo objetivo Y8, 00
+I combinar aranieme YS8, iso
+custodia 8.000yenes`), 8000);
+  assert.equal(extractTicketTotal('Cuerpo subtotal 344\ncustodia 1.000 yenes'), null);
   assert.equal(extractTicketTotal('Puedes combinar promociones\nCupón 500 yenes'), null);
   assert.equal(extractTicketTotal(`(Total del producto) Y857
 (Descuento total) -30

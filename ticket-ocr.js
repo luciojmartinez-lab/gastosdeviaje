@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v295';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v296';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -277,7 +277,7 @@ const PAYMENT_DUE_LABEL = /\b(?:pendiente\s+de\s+cobro|cobro\s+pendiente|pendent
 // Google Lens occasionally translates the Japanese receipt label 合計 (total)
 // as the Spanish verb "combinar". Treat it as a total only when the line also
 // contains an amount, so ordinary prose using that verb cannot win by itself.
-const LENS_MISTRANSLATED_TOTAL_LABEL = /^\s*(?:combinar|combinado)\b(?=[^\d¥₩￥]*[¥₩￥]?\s*\d)/i;
+const LENS_MISTRANSLATED_TOTAL_LABEL = /^\s*(?:[iIlL1|]\s+)?(?:combinar|combinado)\b(?=[^\d¥₩￥]*[¥₩￥]?\s*\d)/i;
 const TOTAL_TABLE_HEADER = /\b(?:unid(?:ad|ades)?|cant(?:idad)?|descripcion|descripcio|articulo|article|item|unit|units|qty|quantity|price|preu|quantitat|kuvaus|tuote|maara|kpl|hinta)\b/;
 const TOTAL_TAX_LABEL = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\b/;
 const TOTAL_TAX_INCLUDED = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\s+(?:incl|incluido|incluidos|included|sis|compris)/;
@@ -344,14 +344,22 @@ function inferCalculatedTicketTotal(lines) {
   let baseExcludesTax = false;
   let discount = 0;
   let tax = 0;
+  const tenderAmounts = [];
   lines.forEach(line => {
     const normalized = normalizeTicketConcepts(line);
     const amounts = summaryAmountsInLine(line);
     if (!amounts.length) return;
-    const amount = amounts.at(-1);
+    // A grouped integer such as `8.000yenes` can also yield the partial
+    // candidate `8`. Summary lines contain a single monetary figure, so keep
+    // the complete (largest) reading instead of relying on parser order.
+    const amount = Math.max(...amounts);
     const productTotal = /\b(?:total\s+(?:del?\s+)?producto|product\s+total)\b/.test(normalized);
     const subtotal = /\b(?:subtotal|sub\s+total|valisumma)\b/.test(normalized);
     const discountLine = /\b(?:descuento|discount|alennus|rebaja)\b/.test(normalized);
+    if (/^\s*(?:custodia|entregado|recibido|tendered|amount\s+received|cash\s+received)\b/.test(normalized)) {
+      tenderAmounts.push(amount);
+      return;
+    }
     if ((productTotal || subtotal) && !discountLine) {
       const priority = productTotal ? 2 : 1;
       if (priority >= basePriority) {
@@ -367,7 +375,16 @@ function inferCalculatedTicketTotal(lines) {
     }
     if (/^(?:impuesto|iva|vat|tax)\b/.test(normalized)) tax += amount;
   });
-  if (!Number.isFinite(base) || base <= 0 || (discount <= 0 && (!baseExcludesTax || tax <= 0))) return null;
+  if (!Number.isFinite(base) || base <= 0) return null;
+  if (discount <= 0 && (!baseExcludesTax || tax <= 0)) {
+    // Lens can read a zero-tax Japanese subtotal one digit off while preserving
+    // the exact cash received. Accept the tender only when it practically
+    // equals the subtotal; a larger banknote remains excluded.
+    const closeTender = tenderAmounts
+      .filter(value => Math.abs(value - base) <= Math.max(2, base * 0.005))
+      .sort((left, right) => Math.abs(left - base) - Math.abs(right - base))[0];
+    return Number.isFinite(closeTender) ? { value: closeTender, evidence: 1 } : null;
+  }
   const value = base - discount + (baseExcludesTax ? tax : 0);
   if (!Number.isFinite(value) || value <= 0) return null;
   const rounded = Number(value.toFixed(2));
