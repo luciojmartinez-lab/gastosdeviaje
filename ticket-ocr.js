@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v294';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v295';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -274,6 +274,10 @@ const BEST_TOTAL_LABEL = /\b(?:grand\s+total|total\s+(?:importe?|amount|summa|a\
 const GENERIC_TOTAL_LABEL = /\b(?:total|yhteensa|loppusumma|kokonaissumma|gesamtbetrag)\b/;
 const AMOUNT_TOTAL_LABEL = /\b(?:importe?|amount|summa|betrag|montant|importo|valor)\b|\b(?:a|per)\s+(?:pagar|abonar)\b/;
 const PAYMENT_DUE_LABEL = /\b(?:pendiente\s+de\s+cobro|cobro\s+pendiente|pendent\s+de\s+cobrament|amount\s+due|balance\s+due|total\s+due|maksettav(?:a|aa)|zu\s+zahlen|a\s+payer|da\s+pagare)\b/;
+// Google Lens occasionally translates the Japanese receipt label 合計 (total)
+// as the Spanish verb "combinar". Treat it as a total only when the line also
+// contains an amount, so ordinary prose using that verb cannot win by itself.
+const LENS_MISTRANSLATED_TOTAL_LABEL = /^\s*(?:combinar|combinado)\b(?=[^\d¥₩￥]*[¥₩￥]?\s*\d)/i;
 const TOTAL_TABLE_HEADER = /\b(?:unid(?:ad|ades)?|cant(?:idad)?|descripcion|descripcio|articulo|article|item|unit|units|qty|quantity|price|preu|quantitat|kuvaus|tuote|maara|kpl|hinta)\b/;
 const TOTAL_TAX_LABEL = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\b/;
 const TOTAL_TAX_INCLUDED = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\s+(?:incl|incluido|incluidos|included|sis|compris)/;
@@ -410,7 +414,10 @@ export function extractTicketTotal(text) {
     const normalized = normalizeTicketConcepts(line);
     let amounts = amountsInLine(line);
     const hasEastAsianBestLabel = EAST_ASIAN_BEST_TOTAL_LABEL.test(line);
-    const hasBestLabel = BEST_TOTAL_LABEL.test(normalized) || /\btotal\s+(?:compra|operacion|ticket)\b/.test(normalized) || hasEastAsianBestLabel;
+    const hasBestLabel = BEST_TOTAL_LABEL.test(normalized)
+      || /\btotal\s+(?:compra|operacion|ticket)\b/.test(normalized)
+      || LENS_MISTRANSLATED_TOTAL_LABEL.test(normalized)
+      || hasEastAsianBestLabel;
     const hasTotalLabel = GENERIC_TOTAL_LABEL.test(normalized) && !/\b(?:subtotal|sub\s+total|valisumma)\b/.test(normalized);
     const hasAmountLabel = AMOUNT_TOTAL_LABEL.test(normalized);
     const hasPaymentDueLabel = PAYMENT_DUE_LABEL.test(normalized);
@@ -512,6 +519,7 @@ const EAST_ASIAN_MERCHANT_METADATA_WORDS = /(?:領収書|レシート|請求書|
 const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|rua|rúa|cp\s*\d|codigo postal|tlf|telefono|madrid|barcelona)\b/i;
 const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet)$/i;
 const PAYMENT_TERMINAL_LINE = /^(?:venta\b|compra\b|visa\b|mastercard\b|contactless\b|aut(?:orizacion)?[:.\s]|op(?:eracion)?[:.\s]|tran(?:saccion)?[:.\s]|terminal[:.\s]|app\s+(?:bbva|santander|caixabank|sabadell))/i;
+const MERCHANT_PROMOTIONAL_LINE = /\b(?:gana|acumula|canjea|ahorra|consigue|usa)\b.*\b(?:puntos?|recompensas?|descuentos?|rakuten)\b|\b(?:puntos?|recompensas?)\b.*\b(?:rakuten|ahorra|acumula)\b/i;
 
 function cleanMerchantCandidate(value) {
   return cleanLine(value)
@@ -545,12 +553,13 @@ export function extractTicketMerchant(text) {
     if (MERCHANT_METADATA_WORDS.test(normalizeTicketText(line)) || EAST_ASIAN_MERCHANT_METADATA_WORDS.test(line)) score -= 60;
     if (BANK_BRAND_LINE.test(line)) score -= 60;
     if (PAYMENT_TERMINAL_LINE.test(line)) score -= 35;
+    if (MERCHANT_PROMOTIONAL_LINE.test(normalizeTicketText(line))) score -= 80;
     if (/\b\d{5}\b|@|\.com\b|\b(es|com|net)\b$/i.test(line) || ADDRESS_WORDS.test(line)) score -= 12;
     if (fiscalDetailsIndex >= 0 && index < fiscalDetailsIndex) {
       const distance = fiscalDetailsIndex - index;
       if (distance >= 2 && distance <= 4) score += 18 + distance * 4;
     }
-    if (/\b(sa|s\.a\.|sl|s\.l\.|s\.l\.u\.|sociedad|restaurante|hotel|bar|cafeteria|supermercado)\b/i.test(line)) score += 7;
+    if (/\b(sa|s\.a\.|sl|s\.l\.|s\.l\.u\.|sociedad|restaurante|hotel|bar|cafeteria|supermercado|farmacia|pharmacy|drug)\b/i.test(line)) score += 7;
     if (letters.length && uppercase.length / letters.length > 0.65) score += 5;
     if (/\d{2}[\/.-]\d{2}/.test(line) || /\d{1,2}:\d{2}/.test(line)) score -= 15;
     if (documentType === 'receipt' && index <= 2) score += 12 - index * 2;
@@ -576,7 +585,8 @@ export function isPlausibleTicketMerchant(value) {
   const minimumLetters = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/u.test(line) ? 2 : 5;
   if (letters.length < minimumLetters || compact.length < minimumLetters || line.length > 60) return false;
   if (/(\p{L})\1{3,}/iu.test(line)) return false;
-  if (MERCHANT_EXCLUSIONS.test(line) || MERCHANT_METADATA_WORDS.test(normalized) || EAST_ASIAN_MERCHANT_METADATA_WORDS.test(line)) return false;
+  if (MERCHANT_EXCLUSIONS.test(line) || MERCHANT_METADATA_WORDS.test(normalized)
+    || EAST_ASIAN_MERCHANT_METADATA_WORDS.test(line) || MERCHANT_PROMOTIONAL_LINE.test(normalized)) return false;
   if (ADDRESS_WORDS.test(line) || BANK_BRAND_LINE.test(line) || PAYMENT_TERMINAL_LINE.test(line)) return false;
   if (/\b\d{1,2}[:./-]\d{1,2}\b|^\d+$/.test(normalized)) return false;
   return letters.length / Math.max(1, line.replace(/\s/g, '').length) >= 0.58;

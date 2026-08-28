@@ -144,6 +144,11 @@ pago de dinero de transporte ¥827
 Saldo de dinero de transporte ¥489`), 827);
   assert.equal(extractTicketTotal('total ¥7\npago de dinero de transporte ¥827\nSaldo de dinero de transporte ¥489'), 827);
   assert.equal(extractTicketTotal('Depósito total ¥10,481\ncambiar ¥8,000'), null);
+  assert.equal(extractTicketTotal(`Cuerpo subtotal ¥8,000
+10% cuerpo objetivo ¥0
+combinar ¥8,000
+custodia 8,000 yenes`), 8000);
+  assert.equal(extractTicketTotal('Puedes combinar promociones\nCupón 500 yenes'), null);
   assert.equal(extractTicketTotal(`(Total del producto) Y857
 (Descuento total) -30
 total Y8B27
@@ -262,6 +267,12 @@ NIF-33307299X
 FRA SIMP COMPROBANTE`), 'MILLENTUM');
   assert.equal(extractTicketMerchant('f MILLENIUM I\nMARTA RODRIGUEZ\nNIF-33307299X'), 'MILLENIUM');
   assert.equal(extractTicketMerchant('ralriiiialviar L\nFamiliaMart\nTienda Ryogoku\nTokio'), 'FamiliaMart');
+  assert.equal(extractTicketMerchant(`¡Gana y usa Puntos Rakuten!
+www.daikokudrug.com
+Farmacia Daikoku Drug Ueno Ameyoko
+03-5846-1808
+recibo`), 'Farmacia Daikoku Drug Ueno Ameyoko');
+  assert.equal(isPlausibleTicketMerchant('Gana y usa Puntos Rakuten'), false);
   assert.equal(isPlausibleTicketMerchant('Ad O'), false);
   assert.equal(isPlausibleTicketMerchant('ralriiiialviar L'), false);
   assert.equal(isPlausibleTicketMerchant('mE. Hora'), false);
@@ -401,6 +412,28 @@ cambiar ¥8,000`), {
     time: '11:16',
     merchant: 'FamiliaMart',
     total: 2481
+  });
+});
+
+test('interpreta un ticket japonés cuando Lens traduce total como combinar', () => {
+  assert.deepEqual(extractTicketFields(`¡Gana y usa Puntos Rakuten!
+www.daikokudrug.com
+Farmacia Daikoku Drug Ueno Ameyoko
+03-5846-1808
+recibo
+Número de registro: T5120001130746
+24/09/11/Mié 16:46
+Toallas suaves y esponjosas 800 yenes x 3 ¥2,400
+Cuerpo subtotal ¥8,000
+10% cuerpo objetivo ¥0
+8% cuerpo objetivo ¥0
+combinar ¥8,000
+custodia 8,000 yenes`), {
+    documentType: 'receipt',
+    date: '2011-09-24',
+    time: '16:46',
+    merchant: 'Farmacia Daikoku Drug Ueno Ameyoko',
+    total: 8000
   });
 });
 
