@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 
 await import('../gpx-import.js');
 
@@ -50,11 +51,52 @@ test('la interfaz importa, reemplaza y quita un GPX del día sin borrar Maps', (
   assert.match(html, /id="timeline-gpx-file-input"[^>]*accept="\.gpx/);
   assert.match(html, /id="timeline-select-gpx"[^>]*>Importar GPX del día</);
   assert.match(html, /id="timeline-delete-gpx"/);
-  assert.match(html, /src="gpx-import\.js\?v=700v293"/);
+  assert.match(html, /src="gpx-import\.js\?v=700v294"/);
   assert.match(app, /async function importTimelineGpxFile\(file\)/);
   assert.match(app, /gpxRoute: previous && previous\.gpxRoute \|\| null/);
   assert.match(app, /Datos de Maps eliminados\. Los recorridos GPX se conservan/);
   assert.match(app, /timelinePathsOutsideGpxIntervals/);
   assert.match(app, /path\.gpxRoute = true/);
-  assert.match(sw, /gpx-import\.js\?v=700v293/);
+  assert.match(app, /timelineRecordHasAdjustableMaps\(dayRecord, exactRecords\)/);
+  assert.match(app, /gpxSignature: gpxPaths\.length \? timelineGpxRouteSignature/);
+  assert.doesNotMatch(app, /routeAdjust\.disabled = [^;]*Boolean\(dayGpx\)/);
+  assert.match(sw, /gpx-import\.js\?v=700v294/);
+});
+
+test('el GPX queda intacto y solo deja como ajustables los intervalos de Maps que no cubre', () => {
+  const start = app.indexOf('function timelineGpxRouteSignature(route)');
+  const end = app.indexOf('function timelineMapPaths(records)', start);
+  const context = {};
+  vm.runInNewContext(`${app.slice(start, end)}; this.outside = timelinePathsOutsideGpxIntervals; this.recordsOutside = timelineRecordsOutsideGpxIntervals;`, context);
+  const maps = [[
+    { latitude: 40, longitude: -3, time: '2026-08-26T07:00:00Z' },
+    { latitude: 40.01, longitude: -3, time: '2026-08-26T08:00:00Z' },
+    { latitude: 40.02, longitude: -3, time: '2026-08-26T09:00:00Z' },
+    { latitude: 40.03, longitude: -3, time: '2026-08-26T10:00:00Z' },
+    { latitude: 40.04, longitude: -3, time: '2026-08-26T11:00:00Z' },
+    { latitude: 40.05, longitude: -3, time: '2026-08-26T12:00:00Z' }
+  ]];
+  const gpx = [[
+    { latitude: 41, longitude: -4, time: '2026-08-26T09:00:00Z' },
+    { latitude: 41.01, longitude: -4, time: '2026-08-26T10:00:00Z' }
+  ]];
+  const outside = context.outside(maps, gpx);
+  assert.equal(outside.length, 2);
+  assert.deepEqual(Array.from(outside[0], point => point.time), [
+    '2026-08-26T07:00:00Z',
+    '2026-08-26T08:00:00Z'
+  ]);
+  assert.deepEqual(Array.from(outside[1], point => point.time), [
+    '2026-08-26T11:00:00Z',
+    '2026-08-26T12:00:00Z'
+  ]);
+  const records = context.recordsOutside([
+    { time: '2026-08-26T08:30:00Z' },
+    { time: '2026-08-26T09:30:00Z' },
+    { time: '2026-08-26T11:30:00Z' }
+  ], gpx);
+  assert.deepEqual(Array.from(records, record => record.time), [
+    '2026-08-26T08:30:00Z',
+    '2026-08-26T11:30:00Z'
+  ]);
 });

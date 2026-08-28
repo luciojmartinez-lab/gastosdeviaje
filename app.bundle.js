@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v293';
+const APP_VERSION = '700v294';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2041,7 +2041,9 @@ function timelineRoutingModeKey(value = tripMapState.timelineRoutingMode) {
 function timelineAdjustedRouteCache(record, mode = timelineRoutingModeKey()) {
   const routes = record && record.adjustedTimelineRoutes;
   const cached = routes && routes[timelineRoutingModeKey(mode)];
-  return cached && Array.isArray(cached.paths) && cached.paths.length ? cached : null;
+  if (!cached || !Array.isArray(cached.paths) || !cached.paths.length) return null;
+  if (record && record.gpxRoute && cached.gpxSignature !== timelineGpxRouteSignature(record.gpxRoute)) return null;
+  return cached;
 }
 
 function restoreTimelineRoutingPreference(selectedIds = selectedTripIds()) {
@@ -2199,19 +2201,16 @@ function renderTimelineDialog() {
   const exactRecords = dailyMapRecordsForScope(new Set([Number(trip.id)]), 0);
   const cached = timelineAdjustedRouteCache(dayRecord);
   const stationaryDay = timelineRecordIsStationaryNoise(dayRecord, exactRecords);
+  const mapsAvailable = timelineRecordHasAdjustableMaps(dayRecord, exactRecords);
   if (routeAdjust) {
-    const mapsAvailable = timelineRecordHasMaps(dayRecord);
-    routeAdjust.disabled = !dayRecord || Boolean(dayGpx) || !mapsAvailable || stationaryDay || timelineBulkRoutingActive;
-    routeAdjust.textContent = dayGpx
-      ? 'GPX directo (sin ajuste)'
-      : stationaryDay
+    routeAdjust.disabled = !dayRecord || !mapsAvailable || stationaryDay || timelineBulkRoutingActive;
+    routeAdjust.textContent = stationaryDay
       ? 'Día sin desplazamiento'
       : cached ? 'Recalcular el día' : 'Ajustar el día';
   }
   const currentMode = timelineRoutingModeKey();
   const pendingDays = records.filter(record =>
-    timelineRecordHasMaps(record)
-      && !record.gpxRoute
+    timelineRecordHasAdjustableMaps(record, exactRecords)
       && !timelineRecordIsStationaryNoise(record, exactRecords)
       && !timelineAdjustedRouteCache(record, currentMode)
   );
@@ -2234,7 +2233,11 @@ function renderTimelineDialog() {
       : !dayRecord
         ? `La Cronología importada no contiene recorrido el ${blogDayDateLabel(tripMapState.day)}.`
         : dayGpx
-          ? `${blogDayDateLabel(dayRecord.fecha)} usa el GPX directamente. No se ajusta a carreteras; Maps solo completa los intervalos que el GPX no cubre.`
+          ? mapsAvailable
+            ? cached
+              ? `${blogDayDateLabel(dayRecord.fecha)} conserva el GPX directo y tiene ajustados los tramos complementarios de Maps con ${cached.provider || 'Valhalla / OpenStreetMap'}.`
+              : `${blogDayDateLabel(dayRecord.fecha)} conserva el GPX directo. Ajustar el día modificará únicamente los intervalos complementarios de Maps.`
+            : `${blogDayDateLabel(dayRecord.fecha)} queda cubierto por el GPX y no contiene tramos adicionales de Maps que ajustar.`
         : stationaryDay
           ? `${blogDayDateLabel(dayRecord.fecha)} no contiene desplazamiento: Maps no detectó ninguna actividad y las variaciones de posición son deriva del GPS.`
         : cached
@@ -2317,9 +2320,17 @@ async function adjustSelectedTimelineDay(options = {}) {
   if (!window.TimelineRouting) throw new Error('No se ha cargado el ajustador de recorridos.');
   const preferredMode = timelineRoutingModeKey(options.mode || $('#timeline-route-mode') && $('#timeline-route-mode').value);
   tripMapState.timelineRoutingMode = preferredMode;
-  const originalPaths = timelineMapPaths([record], { exactRecords });
-  const sourcePaths = timelineMapPathsWithDailyRecords(originalPaths, exactRecords);
-  if (!sourcePaths.length) throw new Error('Ese día no tiene suficientes puntos para ajustar el recorrido.');
+  const gpxPaths = timelineRecordGpxPaths(record);
+  const originalPaths = gpxPaths.length
+    ? timelineMapsPathsOutsideGpx(record, exactRecords)
+    : timelineMapPaths([record], { exactRecords });
+  const routingRecords = gpxPaths.length
+    ? timelineRecordsOutsideGpxIntervals(exactRecords, gpxPaths)
+    : exactRecords;
+  const sourcePaths = timelineMapPathsWithDailyRecords(originalPaths, routingRecords);
+  if (!sourcePaths.length) throw new Error(gpxPaths.length
+    ? 'El GPX ya cubre el recorrido y no hay intervalos complementarios de Maps que ajustar.'
+    : 'Ese día no tiene suficientes puntos para ajustar el recorrido.');
 
   const adjustedPaths = [];
   const failures = [];
@@ -2348,6 +2359,7 @@ async function adjustSelectedTimelineDay(options = {}) {
     [preferredMode]: {
       createdAt: new Date().toISOString(),
       provider: 'Valhalla / OpenStreetMap',
+      gpxSignature: gpxPaths.length ? timelineGpxRouteSignature(record.gpxRoute) : '',
       paths: adjustedPaths
     }
   };
@@ -2373,7 +2385,7 @@ async function adjustEntireTimelineTrip() {
   tripMapState.timelineRoutingMode = mode;
   const exactRecords = dailyMapRecordsForScope(new Set([Number(trip.id)]), 0);
   const records = timelineRecordsForTrip(trip.id)
-    .filter(record => !record.gpxRoute)
+    .filter(record => timelineRecordHasAdjustableMaps(record, exactRecords))
     .filter(record => !timelineRecordIsStationaryNoise(record, exactRecords));
   const pending = records.filter(record => !timelineAdjustedRouteCache(record, mode));
   if (!pending.length) {
@@ -2410,7 +2422,7 @@ async function adjustEntireTimelineTrip() {
   renderTripMap();
   renderTimelineDialog();
   const remaining = timelineRecordsForTrip(trip.id)
-    .filter(record => !record.gpxRoute)
+    .filter(record => timelineRecordHasAdjustableMaps(record, exactRecords))
     .filter(record => !timelineRecordIsStationaryNoise(record, exactRecords) && !timelineAdjustedRouteCache(record, mode)).length;
   setTimelineMessage(cancelled
     ? `Proceso cancelado. ${completed} días guardados; quedan ${remaining}. Puedes continuar cuando quieras.`
@@ -2822,7 +2834,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v293');
+    const worker = new Worker('./timeline-import-worker.js?v=700v294');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -2915,13 +2927,13 @@ async function importTimelineFile(file) {
     const adjustmentDates = new Set(changedDates);
     if (autoAdjust) {
       importedRecords
-        .filter(record => !record.gpxRoute)
+        .filter(record => timelineRecordHasAdjustableMaps(record, exactRecords))
         .filter(record => !timelineAdjustedRouteCache(record, autoAdjustMode))
         .filter(record => !timelineRecordIsStationaryNoise(record, exactRecords))
         .forEach(record => adjustmentDates.add(record.fecha));
     }
     const changedRecords = importedRecords
-      .filter(record => !record.gpxRoute)
+      .filter(record => timelineRecordHasAdjustableMaps(record, exactRecords))
       .filter(record => adjustmentDates.has(record.fecha));
     const adjustmentPlan = timelineImportAdjustmentPlan(
       changedRecords,
@@ -3012,6 +3024,7 @@ async function importTimelineGpxFile(file) {
       id: `${trip.id}:${selectedDate}`,
       viajeId: Number(trip.id),
       fecha: selectedDate,
+      adjustedTimelineRoutes: {},
       gpxRoute: {
         sourceName: file.name || 'recorrido.gpx',
         sourceSize: Number(file.size || 0),
@@ -3048,7 +3061,7 @@ async function deleteTimelineGpxForSelectedDay() {
   if (!confirm(`¿Quitar el GPX del ${blogDayDateLabel(record.fecha)}? Los datos de Maps de ese día se conservarán.`)) return;
   if (timelineRecordHasMaps(record)) {
     const { gpxRoute, ...withoutGpx } = record;
-    await putRecord('timelineDays', withoutGpx);
+    await putRecord('timelineDays', { ...withoutGpx, adjustedTimelineRoutes: {} });
   } else {
     await deleteRecord('timelineDays', record.id);
   }
@@ -3809,7 +3822,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v293');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v294');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4631,7 +4644,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v293');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v294');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4724,7 +4737,7 @@ async function handleExpenseTicketLanguageChange(prefix) {
   const languages = ticketOcrLanguagesForExpense(prefix);
   setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
   try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v293');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v294');
     const ocr = await ticketOcrModulePromise;
     ocr.resetTicketOcrWorker?.();
     await pendingExpenseTicketLocationChecks[prefix];
@@ -4789,7 +4802,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v293');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v294');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5120,7 +5133,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v293');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v294');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -9604,13 +9617,37 @@ function timelineMapMarkerItems(records, dailyMode) {
   return items;
 }
 
-function timelinePathsOutsideGpxIntervals(paths, gpxPaths) {
-  const intervals = gpxPaths
+function timelineGpxRouteSignature(route) {
+  if (!route) return '';
+  const segmentLengths = (Array.isArray(route.segments) ? route.segments : [])
+    .map(segment => Array.isArray(segment) ? segment.length : 0);
+  return JSON.stringify([
+    String(route.sourceName || ''),
+    Number(route.sourceSize || 0),
+    Number(route.sourceLastModified || 0),
+    Number(route.pointCount || 0),
+    String(route.startTime || ''),
+    String(route.endTime || ''),
+    segmentLengths
+  ]);
+}
+
+function timelineGpxTimeIntervals(gpxPaths) {
+  return gpxPaths
     .map(path => {
       const times = path.map(point => Date.parse(point.time || '')).filter(Number.isFinite);
       return times.length ? { start: Math.min(...times), end: Math.max(...times) } : null;
     })
     .filter(Boolean);
+}
+
+function timelineTimeCoveredByGpx(value, intervals) {
+  const time = Date.parse(value || '');
+  return Number.isFinite(time) && intervals.some(interval => time >= interval.start && time <= interval.end);
+}
+
+function timelinePathsOutsideGpxIntervals(paths, gpxPaths) {
+  const intervals = timelineGpxTimeIntervals(gpxPaths);
   if (!intervals.length) return paths;
   const outside = [];
   paths.forEach(path => {
@@ -9625,14 +9662,56 @@ function timelinePathsOutsideGpxIntervals(paths, gpxPaths) {
       current = [];
     };
     path.forEach(point => {
-      const time = Date.parse(point && point.time || '');
-      const covered = Number.isFinite(time) && intervals.some(interval => time >= interval.start && time <= interval.end);
+      const covered = timelineTimeCoveredByGpx(point && point.time, intervals);
       if (covered) flush();
       else current.push(point);
     });
     flush();
   });
   return outside;
+}
+
+function timelineRecordsOutsideGpxIntervals(records, gpxPaths) {
+  const intervals = timelineGpxTimeIntervals(gpxPaths);
+  if (!intervals.length) return records;
+  return (records || []).filter(record => {
+    const value = record && record.time
+      || `${record && record.fecha || ''}T${record && record.hora || ''}`;
+    return !timelineTimeCoveredByGpx(value, intervals);
+  });
+}
+
+function timelineMapsPathsOutsideGpx(record, exactRecords = []) {
+  const gpxPaths = timelineRecordGpxPaths(record);
+  if (!gpxPaths.length || !timelineRecordHasMaps(record)) return [];
+  const mapsRecord = { ...record, gpxRoute: null };
+  const mapsPaths = timelineMapPaths([mapsRecord], { exactRecords, adjusted: false });
+  return timelinePathsOutsideGpxIntervals(mapsPaths, gpxPaths);
+}
+
+function timelineRecordHasAdjustableMaps(record, exactRecords = []) {
+  if (!record || !timelineRecordHasMaps(record)) return false;
+  const gpxPaths = timelineRecordGpxPaths(record);
+  return !gpxPaths.length || timelineMapsPathsOutsideGpx(record, exactRecords).length > 0;
+}
+
+function timelineCachedMapPaths(record, options = {}) {
+  const cached = timelineAdjustedRouteCache(record, options.mode);
+  if (!cached) return [];
+  return cached.paths
+    .map(entry => {
+      const path = (Array.isArray(entry) ? entry : entry && entry.points || [])
+        .map(point => ({
+          latitude: Number(point && point.latitude),
+          longitude: Number(point && point.longitude),
+          time: point && point.time || ''
+        }))
+        .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+      path.adjustedRoute = entry && entry.adjusted !== false;
+      path.costing = entry && entry.costing || '';
+      return path;
+    })
+    .filter(path => path.length > 1);
 }
 
 function timelineMapPaths(records) {
@@ -9644,33 +9723,18 @@ function timelineMapPaths(records) {
     return records.flatMap(record => {
       const gpxPaths = gpxPathsForRecord(record);
       if (!gpxPaths.length) return timelineMapPaths([record], options);
-      const mapsRecord = { ...record, gpxRoute: null };
-      // Los trazados ajustados no conservan las horas de cada vértice. Cuando hay GPX usamos
-      // el recorrido original de Maps para poder recortar exactamente sus intervalos solapados.
-      const mapsOptions = { ...options, adjusted: false };
-      const mapsPaths = timelineRecordHasMaps(mapsRecord) ? timelineMapPaths([mapsRecord], mapsOptions) : [];
-      return [...timelinePathsOutsideGpxIntervals(mapsPaths, gpxPaths), ...gpxPaths];
+      const cachedMapsPaths = options.adjusted === true ? timelineCachedMapPaths(record, options) : [];
+      const mapsPaths = cachedMapsPaths.length
+        ? cachedMapsPaths
+        : timelineMapsPathsOutsideGpx(record, options.exactRecords || []);
+      return [...mapsPaths, ...gpxPaths];
     });
   }
   if (options.adjusted === true) {
     return records.flatMap(record => {
       if (timelineRecordIsStationaryNoise(record, options.exactRecords)) return [];
-      const cached = timelineAdjustedRouteCache(record, options.mode);
-      if (!cached) return timelineMapPaths([record], { exactRecords: options.exactRecords });
-      return cached.paths
-        .map(entry => {
-          const path = (Array.isArray(entry) ? entry : entry && entry.points || [])
-            .map(point => ({
-              latitude: Number(point && point.latitude),
-              longitude: Number(point && point.longitude),
-              time: point && point.time || ''
-            }))
-            .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
-          path.adjustedRoute = entry && entry.adjusted !== false;
-          path.costing = entry && entry.costing || '';
-          return path;
-        })
-        .filter(path => path.length > 1);
+      const cachedPaths = timelineCachedMapPaths(record, options);
+      return cachedPaths.length ? cachedPaths : timelineMapPaths([record], { exactRecords: options.exactRecords });
     });
   }
   const paths = [];
@@ -13575,7 +13639,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v293');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v294');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -19250,7 +19314,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v293');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v294');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

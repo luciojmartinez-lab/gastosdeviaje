@@ -1,4 +1,4 @@
-importScripts('./timeline-import.js?v=700v293');
+importScripts('./timeline-import.js?v=700v294');
 
 self.addEventListener('message', async event => {
   const payload = event.data || {};
