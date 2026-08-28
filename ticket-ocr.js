@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v297';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v298';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -392,26 +392,6 @@ function inferCalculatedTicketTotal(lines) {
   return { value: rounded, evidence };
 }
 
-function repeatedSummaryTotal(lines, values) {
-  const uniqueLines = [...new Set(lines.map(line => cleanLine(line)).filter(Boolean))];
-  const ranked = [...new Set(values)]
-    .map(value => {
-      const evidence = uniqueLines.filter(line => {
-        const normalized = normalizeTicketConcepts(line);
-        if (!summaryAmountsInLine(line).includes(value) || ticketTotalLineExcluded(normalized)) return false;
-        return BEST_TOTAL_LABEL.test(normalized)
-          || GENERIC_TOTAL_LABEL.test(normalized)
-          || PAYMENT_DUE_LABEL.test(normalized)
-          || /\b(?:pago|pagado|payment|paid|cobrado|cobro|cargo|debito|debitado)\b/.test(normalized);
-      }).length;
-      return { value, evidence };
-    })
-    .sort((left, right) => right.evidence - left.evidence || right.value - left.value);
-  const best = ranked[0];
-  const second = ranked[1];
-  return best?.evidence >= 2 && best.evidence > (second?.evidence || 0) ? best.value : null;
-}
-
 export function reconcileTicketTotalReadings(readings = [], fallback = null) {
   const texts = readings.map(value => String(value || '').trim()).filter(Boolean);
   const entries = texts
@@ -420,8 +400,6 @@ export function reconcileTicketTotalReadings(readings = [], fallback = null) {
   const values = entries.map(entry => entry.value);
   const calculated = inferCalculatedTicketTotal(ticketLines(texts.join('\n')));
   if (calculated && calculated.evidence > 0) return calculated.value;
-  const repeatedSummary = repeatedSummaryTotal(ticketLines(texts.join('\n')), values);
-  if (repeatedSummary != null) return repeatedSummary;
   const counts = new Map();
   values.forEach(value => counts.set(value, (counts.get(value) || 0) + 1));
   const consensusEntry = [...counts.entries()]
@@ -757,6 +735,7 @@ function prepareImageWithDocumentScanner(image, sourceWidth, sourceHeight, onPro
       }
       onProgress({ status: result.documentDetected ? 'Ticket enderezado' : 'Mejorando la imagen', progress: 0.07 });
       resolve({
+        original: canvas,
         primary: canvasFromGrayscale(new Uint8ClampedArray(result.enhancedBuffer), result.width, result.height),
         binary: canvasFromGrayscale(new Uint8ClampedArray(result.binaryBuffer), result.width, result.height),
         documentDetected: Boolean(result.documentDetected)
@@ -972,6 +951,10 @@ function prepareImageFallback(image, sourceWidth, sourceHeight) {
     canvas.width,
     canvas.height
   );
+  const original = document.createElement('canvas');
+  original.width = canvas.width;
+  original.height = canvas.height;
+  original.getContext('2d').drawImage(canvas, 0, 0);
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
   for (let index = 0; index < pixels.data.length; index += 4) {
     const grey = pixels.data[index] * 0.299 + pixels.data[index + 1] * 0.587 + pixels.data[index + 2] * 0.114;
@@ -981,30 +964,14 @@ function prepareImageFallback(image, sourceWidth, sourceHeight) {
     pixels.data[index + 2] = contrasted;
   }
   context.putImageData(pixels, 0, 0);
-  return { primary: canvas, binary: null, documentDetected: Boolean(detectedBounds) };
+  return { original, primary: canvas, binary: null, documentDetected: Boolean(detectedBounds) };
 }
 
-async function prepareImage(source, onProgress, options = {}) {
+async function prepareImage(source, onProgress) {
   const blob = typeof source === 'string' ? await dataUrlToBlob(source) : source;
   const image = await imageFromBlob(blob);
   const sourceWidth = image.width || image.naturalWidth;
   const sourceHeight = image.height || image.naturalHeight;
-  if (options.preserveOriginal === true) {
-    // Lens has already flattened its translated labels onto a clean receipt.
-    // Re-detecting and warping that composite can deform the large total and
-    // the shop logo, so only resize it to a safe OCR resolution.
-    const maximumPixels = 6_000_000;
-    const scale = Math.min(
-      1,
-      3000 / Math.max(sourceWidth, sourceHeight, 1),
-      Math.sqrt(maximumPixels / Math.max(1, sourceWidth * sourceHeight))
-    );
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
-    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-    return { primary: canvas, binary: null, documentDetected: false };
-  }
   try {
     try {
       return await prepareImageWithDocumentScanner(image, sourceWidth, sourceHeight, onProgress);
@@ -1117,13 +1084,11 @@ export async function recognizeTicket(source, options = {}) {
   const reviewTranslatedReceipt = options.reviewTranslatedReceipt === true;
   const preparedResult = isPdf
     ? await preparePdf(source, onProgress)
-    : await prepareImage(source, onProgress, { preserveOriginal: reviewTranslatedReceipt });
+    : await prepareImage(source, onProgress);
   const prepared = preparedResult.primary;
   onProgress({ status: 'Preparando el lector local', progress: 0.08 });
   const worker = await getWorker(onProgress, options.languages || ['spa']);
-  const recognitionPsm = reviewTranslatedReceipt
-    ? OCR_PSM_SINGLE_BLOCK
-    : preparedResult.binary && preparedResult.documentDetected
+  const recognitionPsm = preparedResult.binary && preparedResult.documentDetected
     ? OCR_PSM_SINGLE_BLOCK
     : OCR_PSM_AUTO;
   if (recognitionPsm !== OCR_PSM_AUTO) {
@@ -1139,6 +1104,7 @@ export async function recognizeTicket(source, options = {}) {
   if (fields.merchant && !isPlausibleTicketMerchant(fields.merchant)) fields.merchant = '';
   let additionalPasses = 0;
   let titleMerchant = '';
+  let rescuedLensTotal = null;
   if (preparedResult.binary && (preparedResult.documentDetected || !fields.total || !fields.merchant || !fields.date)) {
     onProgress({ status: 'Revisando la imagen con contraste adaptativo', progress: 0.78 });
     const binaryResult = await worker.recognize(preparedResult.binary, { rotateAuto: false });
@@ -1222,8 +1188,44 @@ export async function recognizeTicket(source, options = {}) {
       await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
     }
   }
+  const currentLensTotal = Number(fields.total);
+  const suspiciousLensTotal = reviewTranslatedReceipt
+    && preparedResult.original
+    && (!Number.isFinite(currentLensTotal) || currentLensTotal <= 0 || currentLensTotal < 100);
+  if (suspiciousLensTotal) {
+    await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SINGLE_BLOCK });
+    try {
+      onProgress({ status: 'Comprobando un total dudoso de Lens', progress: 0.96 });
+      const rawResult = await worker.recognize(preparedResult.original, { rotateAuto: false });
+      const rawText = rawResult?.data?.text || '';
+      const rawFields = extractTicketFields(rawText);
+      const rawTotal = Number(rawFields.total);
+      const rawTotalEvidence = ticketLines(rawText).filter(line => {
+        const normalized = normalizeTicketConcepts(line);
+        if (!summaryAmountsInLine(line).includes(rawTotal) || ticketTotalLineExcluded(normalized)) return false;
+        return BEST_TOTAL_LABEL.test(normalized)
+          || GENERIC_TOTAL_LABEL.test(normalized)
+          || PAYMENT_DUE_LABEL.test(normalized)
+          || /\b(?:pago|pagado|payment|paid|cobrado|cobro|cargo|debito|debitado|importe\s+(?:a|por)\s+pagar)\b/.test(normalized);
+      }).length;
+      const rawRescuesTotal = Number.isFinite(rawTotal)
+        && rawTotal >= 100
+        && rawTotalEvidence >= 2
+        && (!Number.isFinite(currentLensTotal) || currentLensTotal <= 0 || rawTotal >= currentLensTotal * 5);
+      if (rawRescuesTotal) {
+        recognitionTexts.push(rawText);
+        rescuedLensTotal = rawTotal;
+        fields.total = rawTotal;
+        if (isPlausibleTicketMerchant(rawFields.merchant)) fields.merchant = rawFields.merchant;
+        additionalPasses += 1;
+      }
+    } finally {
+      await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
+    }
+  }
   text = recognitionTexts.filter(Boolean).join('\n');
   fields.total = reconcileTicketTotalReadings(recognitionTexts, fields.total);
+  if (rescuedLensTotal != null) fields.total = rescuedLensTotal;
   return {
     text,
     classificationText,
