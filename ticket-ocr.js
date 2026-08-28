@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v296';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v297';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -392,6 +392,26 @@ function inferCalculatedTicketTotal(lines) {
   return { value: rounded, evidence };
 }
 
+function repeatedSummaryTotal(lines, values) {
+  const uniqueLines = [...new Set(lines.map(line => cleanLine(line)).filter(Boolean))];
+  const ranked = [...new Set(values)]
+    .map(value => {
+      const evidence = uniqueLines.filter(line => {
+        const normalized = normalizeTicketConcepts(line);
+        if (!summaryAmountsInLine(line).includes(value) || ticketTotalLineExcluded(normalized)) return false;
+        return BEST_TOTAL_LABEL.test(normalized)
+          || GENERIC_TOTAL_LABEL.test(normalized)
+          || PAYMENT_DUE_LABEL.test(normalized)
+          || /\b(?:pago|pagado|payment|paid|cobrado|cobro|cargo|debito|debitado)\b/.test(normalized);
+      }).length;
+      return { value, evidence };
+    })
+    .sort((left, right) => right.evidence - left.evidence || right.value - left.value);
+  const best = ranked[0];
+  const second = ranked[1];
+  return best?.evidence >= 2 && best.evidence > (second?.evidence || 0) ? best.value : null;
+}
+
 export function reconcileTicketTotalReadings(readings = [], fallback = null) {
   const texts = readings.map(value => String(value || '').trim()).filter(Boolean);
   const entries = texts
@@ -400,6 +420,8 @@ export function reconcileTicketTotalReadings(readings = [], fallback = null) {
   const values = entries.map(entry => entry.value);
   const calculated = inferCalculatedTicketTotal(ticketLines(texts.join('\n')));
   if (calculated && calculated.evidence > 0) return calculated.value;
+  const repeatedSummary = repeatedSummaryTotal(ticketLines(texts.join('\n')), values);
+  if (repeatedSummary != null) return repeatedSummary;
   const counts = new Map();
   values.forEach(value => counts.set(value, (counts.get(value) || 0) + 1));
   const consensusEntry = [...counts.entries()]
@@ -962,11 +984,27 @@ function prepareImageFallback(image, sourceWidth, sourceHeight) {
   return { primary: canvas, binary: null, documentDetected: Boolean(detectedBounds) };
 }
 
-async function prepareImage(source, onProgress) {
+async function prepareImage(source, onProgress, options = {}) {
   const blob = typeof source === 'string' ? await dataUrlToBlob(source) : source;
   const image = await imageFromBlob(blob);
   const sourceWidth = image.width || image.naturalWidth;
   const sourceHeight = image.height || image.naturalHeight;
+  if (options.preserveOriginal === true) {
+    // Lens has already flattened its translated labels onto a clean receipt.
+    // Re-detecting and warping that composite can deform the large total and
+    // the shop logo, so only resize it to a safe OCR resolution.
+    const maximumPixels = 6_000_000;
+    const scale = Math.min(
+      1,
+      3000 / Math.max(sourceWidth, sourceHeight, 1),
+      Math.sqrt(maximumPixels / Math.max(1, sourceWidth * sourceHeight))
+    );
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+    return { primary: canvas, binary: null, documentDetected: false };
+  }
   try {
     try {
       return await prepareImageWithDocumentScanner(image, sourceWidth, sourceHeight, onProgress);
@@ -1077,11 +1115,15 @@ export async function recognizeTicket(source, options = {}) {
   const name = String(options.name || source.name || '').toLowerCase();
   const isPdf = type.includes('pdf') || name.endsWith('.pdf');
   const reviewTranslatedReceipt = options.reviewTranslatedReceipt === true;
-  const preparedResult = isPdf ? await preparePdf(source, onProgress) : await prepareImage(source, onProgress);
+  const preparedResult = isPdf
+    ? await preparePdf(source, onProgress)
+    : await prepareImage(source, onProgress, { preserveOriginal: reviewTranslatedReceipt });
   const prepared = preparedResult.primary;
   onProgress({ status: 'Preparando el lector local', progress: 0.08 });
   const worker = await getWorker(onProgress, options.languages || ['spa']);
-  const recognitionPsm = preparedResult.binary && preparedResult.documentDetected
+  const recognitionPsm = reviewTranslatedReceipt
+    ? OCR_PSM_SINGLE_BLOCK
+    : preparedResult.binary && preparedResult.documentDetected
     ? OCR_PSM_SINGLE_BLOCK
     : OCR_PSM_AUTO;
   if (recognitionPsm !== OCR_PSM_AUTO) {

@@ -197,10 +197,22 @@ test('combina las lecturas del ticket y no conserva un total al que le falta la 
     '(Total del producto) Y857\n(Descuento total) -30\ntotal Y8B27\n(objetivo del 8%) 827',
     'total ¥527'
   ], 27), 827);
+  assert.equal(reconcileTicketTotalReadings([
+    'MANDARAKE\ntotal ¥30',
+    'SHANEARAME\ntotal ¥30',
+    `Complejo Mandarake TEL
+Total parcial ¥1,980
+Monto sujeto a impuestos ¥1,980
+total ¥1,980
+Total sujeto a una tasa impositiva del 10% ¥1,980
+Dinero electrónico (relacionado con el transporte) ¥1,980`
+  ], 30), 1980);
   const source = readFileSync(new URL('../ticket-ocr.js', import.meta.url), 'utf8');
   assert.match(source, /fields\.total = reconcileTicketTotalReadings\(recognitionTexts, fields\.total\)/);
   assert.match(source, /if \(!fields\.total \|\| reviewTranslatedReceipt\)/);
   assert.match(source, /\[headerFields\.merchant, titleMerchant, fields\.merchant, mergedFields\.merchant\]/);
+  assert.match(source, /preserveOriginal: reviewTranslatedReceipt/);
+  assert.match(source, /reviewTranslatedReceipt\s*\? OCR_PSM_SINGLE_BLOCK/);
 });
 
 test('extrae los datos principales de tickets japoneses y coreanos', () => {
@@ -457,6 +469,7 @@ test('el texto de una tarjeta monedero no convierte la compra en Transporte', ()
   const app = readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
   assert.match(app, /categoryHaystack = haystack\.replace/);
   assert.match(app, /pago\|saldo\|deposito\|dinero\|tarjeta/);
+  assert.match(app, /\[\^\\n\]\{0,80\}/);
   assert.match(app, /categoryHaystack\.includes/);
 });
 
