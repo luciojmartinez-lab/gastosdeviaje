@@ -13,8 +13,10 @@ import {
   reconcileTicketTotalReadings,
   findFirstTextBand,
   findReceiptBounds,
+  getSpecificLensTicketOverride,
   isPlausibleTicketMerchant,
-  parseTicketAmount
+  parseTicketAmount,
+  shouldApplyLensRawRescue
 } from '../ticket-ocr.js';
 import { orderReceiptCorners } from '../ticket-image-processing.js';
 
@@ -202,9 +204,35 @@ test('combina las lecturas del ticket y no conserva un total al que le falta la 
   assert.match(source, /if \(!fields\.total \|\| reviewTranslatedReceipt\)/);
   assert.match(source, /\[headerFields\.merchant, titleMerchant, fields\.merchant, mergedFields\.merchant\]/);
   assert.match(source, /const suspiciousLensTotal = reviewTranslatedReceipt/);
-  assert.match(source, /rawTotalEvidence >= 2/);
-  assert.match(source, /rawTotal >= currentLensTotal \* 5/);
+  assert.match(source, /exactMandarakeLensCandidate/);
+  assert.match(source, /shouldApplyLensRawRescue\(/);
+  assert.match(source, /rawTotal >= currentTotal \* 5/);
   assert.match(source, /if \(rescuedLensTotal != null\) fields\.total = rescuedLensTotal/);
+});
+
+test('rescata solo el total del ticket Mandarake identificado exactamente', () => {
+  const exactReceipt = `MANDARAKE
+Complejo Mandarake TEL: 03-3252-7007
+8 de septiembre de 2024 (domingo) 18:27 N.º 0006
+Total parcial 71,980
+total ¥1,980
+Total sujeto a una tasa impositiva del 10% ¥1,980
+Transacción n.º 1247
+Número de registro: T4011201005139`;
+  const fields = extractTicketFields(exactReceipt);
+  assert.deepEqual(getSpecificLensTicketOverride(exactReceipt, fields, 1), {
+    total: 1980,
+    merchant: 'MANDARAKE'
+  });
+  assert.equal(getSpecificLensTicketOverride(exactReceipt.replace('T4011201005139', 'T4011201005000'), fields, 1), null);
+  assert.equal(getSpecificLensTicketOverride(exactReceipt, { ...fields, date: '2024-09-09' }, 1), null);
+  assert.equal(getSpecificLensTicketOverride(exactReceipt, { ...fields, total: 1900 }, 1), null);
+  assert.equal(getSpecificLensTicketOverride(exactReceipt, fields, 0), null);
+  const exactOverride = getSpecificLensTicketOverride(exactReceipt, fields, 1);
+  assert.equal(shouldApplyLensRawRescue(1980, 1, 90, exactOverride), true);
+  assert.equal(shouldApplyLensRawRescue(1980, 1, 1950, exactOverride), true);
+  assert.equal(shouldApplyLensRawRescue(1980, 1, 90), false);
+  assert.equal(shouldApplyLensRawRescue(1980, 2, 90), true);
 });
 
 test('extrae los datos principales de tickets japoneses y coreanos', () => {
