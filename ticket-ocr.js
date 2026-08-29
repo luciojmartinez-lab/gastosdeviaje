@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v299';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v300';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -644,10 +644,16 @@ export function getSpecificLensTicketOverride(rawText, rawFields = extractTicket
 }
 
 export function shouldApplyLensRawRescue(rawTotal, totalEvidence, currentTotal, specificOverride = null) {
+  const closeHigherReading = Number.isFinite(currentTotal)
+    && currentTotal >= 100
+    && rawTotal > currentTotal
+    && rawTotal <= currentTotal * 1.08
+    && totalEvidence >= 1;
   return Number.isFinite(rawTotal)
     && rawTotal >= 100
-    && (totalEvidence >= 2 || specificOverride?.total === rawTotal)
+    && (totalEvidence >= 2 || closeHigherReading || specificOverride?.total === rawTotal)
     && (specificOverride?.total === rawTotal
+      || closeHigherReading
       || !Number.isFinite(currentTotal)
       || currentTotal <= 0
       || rawTotal >= currentTotal * 5);
@@ -1231,11 +1237,13 @@ export async function recognizeTicket(source, options = {}) {
       || !Number.isFinite(currentLensTotal)
       || currentLensTotal <= 0
       || currentLensTotal < 100);
-  if (suspiciousLensTotal) {
-    await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SINGLE_BLOCK });
-    try {
-      onProgress({ status: 'Comprobando un total dudoso de Lens', progress: 0.96 });
-      const rawResult = await worker.recognize(preparedResult.original, { rotateAuto: false });
+  if (reviewTranslatedReceipt && preparedResult.original) {
+    let autoRawTotal = null;
+    let rawRescueApplied = false;
+    const reviewRawLensPass = async (psm, rotateAuto, status) => {
+      await worker.setParameters({ tessedit_pageseg_mode: psm });
+      onProgress({ status, progress: 0.96 });
+      const rawResult = await worker.recognize(preparedResult.original, { rotateAuto });
       const rawText = rawResult?.data?.text || '';
       const rawFields = extractTicketFields(rawText);
       const rawTotal = Number(rawFields.total);
@@ -1254,13 +1262,35 @@ export async function recognizeTicket(source, options = {}) {
         currentLensTotal,
         specificLensOverride
       );
-      if (rawRescuesTotal) {
-        recognitionTexts.push(rawText);
-        rescuedLensTotal = rawTotal;
-        fields.total = rawTotal;
-        if (specificLensOverride?.merchant) fields.merchant = specificLensOverride.merchant;
-        else if (isPlausibleTicketMerchant(rawFields.merchant)) fields.merchant = rawFields.merchant;
-        additionalPasses += 1;
+      if (!rawRescuesTotal) return { rawTotal, rescued: false };
+      recognitionTexts.push(rawText);
+      rescuedLensTotal = rawTotal;
+      fields.total = rawTotal;
+      if (specificLensOverride?.merchant) fields.merchant = specificLensOverride.merchant;
+      else if (isPlausibleTicketMerchant(rawFields.merchant)) fields.merchant = rawFields.merchant;
+      additionalPasses += 1;
+      return { rawTotal, rescued: true };
+    };
+    try {
+      const autoReview = await reviewRawLensPass(
+        OCR_PSM_AUTO,
+        true,
+        'Contrastando la lectura de Google Lens'
+      );
+      autoRawTotal = autoReview.rawTotal;
+      rawRescueApplied = autoReview.rescued;
+      const needsBlockFallback = !rawRescueApplied && (
+        suspiciousLensTotal
+        || !Number.isFinite(autoRawTotal)
+        || autoRawTotal < 100
+      );
+      if (needsBlockFallback) {
+        const blockReview = await reviewRawLensPass(
+          OCR_PSM_SINGLE_BLOCK,
+          false,
+          'Confirmando el total de Google Lens'
+        );
+        rawRescueApplied = blockReview.rescued;
       }
     } finally {
       await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
