@@ -9,14 +9,14 @@ import {
   extractTicketFoodEvidence,
   extractTicketMerchant,
   extractTicketTime,
+  extractTicketLayoutTotal,
   extractTicketTotal,
   reconcileTicketTotalReadings,
+  reconstructTicketLayoutText,
   findFirstTextBand,
   findReceiptBounds,
-  getSpecificLensTicketOverride,
   isPlausibleTicketMerchant,
-  parseTicketAmount,
-  shouldApplyLensRawRescue
+  parseTicketAmount
 } from '../ticket-ocr.js';
 import { orderReceiptCorners } from '../ticket-image-processing.js';
 
@@ -146,6 +146,7 @@ pago de dinero de transporte ¥827
 Saldo de dinero de transporte ¥489`), 827);
   assert.equal(extractTicketTotal('total ¥7\npago de dinero de transporte ¥827\nSaldo de dinero de transporte ¥489'), 827);
   assert.equal(extractTicketTotal('Depósito total ¥10,481\ncambiar ¥8,000'), null);
+  assert.equal(extractTicketTotal('Total parcial ¥1,920\nimpuesto ¥180'), null);
   assert.equal(extractTicketTotal(`Cuerpo subtotal ¥8,000
 10% cuerpo objetivo ¥0
 combinar ¥8,000
@@ -178,15 +179,15 @@ cambiar Y656`), 344);
   assert.equal(extractTicketTotal('소계 ₩10,000\n부가세 ₩1,000\n결제금액 ₩11,000'), 11000);
 });
 
-test('combina las lecturas del ticket y no conserva un total al que le falta la primera cifra', () => {
+test('no mezcla lecturas OCR conflictivas como si fueran evidencias independientes', () => {
   assert.equal(reconcileTicketTotalReadings([
     'FamiliaMart\ntotal ¥27',
     'FamiliaMart\npago de dinero de transporte ¥827'
-  ], 27), 827);
+  ], 27), null);
   assert.equal(reconcileTicketTotalReadings([
     'total ¥7',
     'pago de dinero de transporte ¥827'
-  ], 7), 827);
+  ], 7), null);
   assert.equal(reconcileTicketTotalReadings([
     'LAWSON\ntotal ¥2,481',
     'Depósito total ¥10,481\ncambiar ¥8,000'
@@ -194,49 +195,60 @@ test('combina las lecturas del ticket y no conserva un total al que le falta la 
   assert.equal(reconcileTicketTotalReadings([
     'total ¥27',
     'total ¥527'
-  ], 27), 27);
+  ], 27), null);
   assert.equal(reconcileTicketTotalReadings([
-    '(Total del producto) Y857\n(Descuento total) -30\ntotal Y8B27\n(objetivo del 8%) 827',
-    'total ¥527'
-  ], 27), 827);
+    'Subtotal 313\nImpuesto 31\ntotal 344',
+    'Subtotal 313\nImpuesto 31\ntotal 344',
+    'Artículo 406'
+  ], 344), 344);
+  assert.equal(reconcileTicketTotalReadings(['total 90', 'total 1920', 'total 1980']), null);
   const source = readFileSync(new URL('../ticket-ocr.js', import.meta.url), 'utf8');
-  assert.match(source, /fields\.total = reconcileTicketTotalReadings\(recognitionTexts, fields\.total\)/);
-  assert.match(source, /if \(!fields\.total \|\| reviewTranslatedReceipt\)/);
-  assert.match(source, /\[headerFields\.merchant, titleMerchant, fields\.merchant, mergedFields\.merchant\]/);
-  assert.match(source, /const suspiciousLensTotal = reviewTranslatedReceipt/);
-  assert.match(source, /exactMandarakeLensCandidate/);
-  assert.match(source, /shouldApplyLensRawRescue\(/);
-  assert.match(source, /rawTotal >= currentTotal \* 5/);
-  assert.match(source, /if \(rescuedLensTotal != null\) fields\.total = rescuedLensTotal/);
+  assert.match(source, /const OCR_TEXT_WITH_LAYOUT = \{ text: true, blocks: true \}/);
+  assert.match(source, /bestTicketLayoutTotalRow\(blocks\)/);
+  assert.match(source, /Confirmando la fila del total/);
+  assert.match(source, /readings: text \? \[text\] : \[\]/);
+  assert.doesNotMatch(source, /recognitionTexts|exactMandarakeLensCandidate|getSpecificLensTicketOverride/);
 });
 
-test('rescata solo el total del ticket Mandarake identificado exactamente', () => {
-  const exactReceipt = `MANDARAKE
-Complejo Mandarake TEL: 03-3252-7007
-8 de septiembre de 2024 (domingo) 18:27 N.º 0006
-Total parcial 71,980
-total ¥1,980
-Total sujeto a una tasa impositiva del 10% ¥1,980
-Transacción n.º 1247
-Número de registro: T4011201005139`;
-  const fields = extractTicketFields(exactReceipt);
-  assert.deepEqual(getSpecificLensTicketOverride(exactReceipt, fields, 1), {
-    total: 1980,
-    merchant: 'MANDARAKE'
+test('reconstruye la fila visual de Total aunque etiqueta y cifra estén en bloques distintos', () => {
+  const line = (text, x0, y0, x1, y1, confidence = 92) => ({
+    text,
+    confidence,
+    bbox: { x0, y0, x1, y1 },
+    baseline: { x0, y0: y1 - 2, x1, y1: y1 - 2 },
+    words: []
   });
-  assert.equal(getSpecificLensTicketOverride(exactReceipt.replace('T4011201005139', 'T4011201005000'), fields, 1), null);
-  assert.equal(getSpecificLensTicketOverride(exactReceipt, { ...fields, date: '2024-09-09' }, 1), null);
-  assert.equal(getSpecificLensTicketOverride(exactReceipt, { ...fields, total: 1900 }, 1), null);
-  assert.equal(getSpecificLensTicketOverride(exactReceipt, fields, 0), null);
-  const exactOverride = getSpecificLensTicketOverride(exactReceipt, fields, 1);
-  assert.equal(shouldApplyLensRawRescue(1980, 1, 90, exactOverride), true);
-  assert.equal(shouldApplyLensRawRescue(1980, 1, 1950, exactOverride), true);
-  assert.equal(shouldApplyLensRawRescue(1980, 1, 1950), true);
-  assert.equal(shouldApplyLensRawRescue(1980, 1, 1920), true);
-  assert.equal(shouldApplyLensRawRescue(1920, 1, 1980), false);
-  assert.equal(shouldApplyLensRawRescue(1980, 1, 1500), false);
-  assert.equal(shouldApplyLensRawRescue(1980, 1, 90), false);
-  assert.equal(shouldApplyLensRawRescue(1980, 2, 90), true);
+  const blocks = [
+    { paragraphs: [{ lines: [
+      line('Total parcial', 20, 70, 150, 92),
+      line('total', 20, 110, 90, 135),
+      line('cambiar', 20, 150, 100, 174)
+    ] }] },
+    { paragraphs: [{ lines: [
+      line('¥1,920', 300, 70, 390, 92),
+      line('¥1,980', 300, 108, 390, 136),
+      line('0', 350, 151, 370, 174)
+    ] }] }
+  ];
+  const layout = reconstructTicketLayoutText(blocks);
+  assert.match(layout, /Total parcial ¥1,920/);
+  assert.match(layout, /total ¥1,980/);
+  assert.match(layout, /cambiar 0/);
+  assert.equal(extractTicketLayoutTotal(blocks), 1980);
+});
+
+test('la lectura espacial es general y no depende de un comercio concreto', () => {
+  const blocks = [{ paragraphs: [{ lines: [{
+    text: 'TOTAL A PAGAR', confidence: 95,
+    bbox: { x0: 10, y0: 50, x1: 160, y1: 75 },
+    baseline: { x0: 10, y0: 72, x1: 160, y1: 72 }, words: []
+  }] }] }, { paragraphs: [{ lines: [{
+    text: '344 €', confidence: 94,
+    bbox: { x0: 270, y0: 49, x1: 340, y1: 76 },
+    baseline: { x0: 270, y0: 72, x1: 340, y1: 72 }, words: []
+  }] }] }];
+  assert.equal(reconstructTicketLayoutText(blocks), 'TOTAL A PAGAR 344 €');
+  assert.equal(extractTicketLayoutTotal(blocks), 344);
 });
 
 test('extrae los datos principales de tickets japoneses y coreanos', () => {
@@ -264,11 +276,11 @@ test('extrae los datos principales de tickets japoneses y coreanos', () => {
   });
 });
 
-test('el lector cambia de paquete según los idiomas solicitados', () => {
+test('el lector local usa español e inglés por defecto', () => {
   const ocr = readFileSync(new URL('../ticket-ocr.js', import.meta.url), 'utf8');
   assert.match(ocr, /normalizeWorkerLanguages\(languages\)/);
   assert.match(ocr, /createWorker\(languageKey/);
-  assert.match(ocr, /options\.languages \|\| \['spa'\]/);
+  assert.match(ocr, /options\.languages \|\| \['spa', 'eng'\]/);
 });
 
 test('deduce comida por los conceptos y restaurante por cantidad o total', () => {
@@ -389,19 +401,15 @@ test('ordena las esquinas del papel antes de corregir la perspectiva', () => {
   ]);
 });
 
-test('activa lecturas de rescate separadas para cabecera y total', () => {
+test('limita el rescate a una lectura espacial y comprobaciones localizadas', () => {
   const ocr = readFileSync(new URL('../ticket-ocr.js', import.meta.url), 'utf8');
-  assert.match(ocr, /Revisando la cabecera/);
-  assert.match(ocr, /Revisando el total/);
-  assert.match(ocr, /Leyendo el título/);
-  assert.match(ocr, /OCR_PSM_SINGLE_BLOCK/);
+  assert.match(ocr, /OCR_TEXT_WITH_LAYOUT = \{ text: true, blocks: true \}/);
+  assert.match(ocr, /Confirmando la fila del total/);
+  assert.match(ocr, /Comprobando el nombre del comercio/);
   assert.match(ocr, /OCR_PSM_SINGLE_LINE/);
-  assert.match(ocr, /options\.preferLargeTitle/);
-  assert.match(ocr, /titleMinimumConfidence = options\.preferLargeTitle \? 35 : 60/);
-  assert.match(ocr, /preparedResult\.documentDetected \|\| !fields\.total/);
-  assert.match(ocr, /binaryFields\.merchant \|\| fields\.merchant/);
-  assert.match(ocr, /cropCanvas\(prepared, 0, 0\.56\)/);
-  assert.match(ocr, /cropCanvas\(prepared, 0\.43, 1\)/);
+  assert.match(ocr, /titleResult\?\.data\?\.confidence \|\| 0\) >= 60/);
+  assert.match(ocr, /preparedResult\.binary && \(!primary\.fields\.total \|\| !primary\.fields\.merchant\)/);
+  assert.doesNotMatch(ocr, /cropCanvas\(prepared, 0, 0\.56\)|cropCanvas\(prepared, 0\.43, 1\)/);
 });
 
 test('tolera una O leída dentro de un importe', () => {
@@ -517,14 +525,14 @@ test('los comercios de comida tienen prioridad y solo usan una subcategoría con
   assert.match(app, /foodEvidence\.restaurantLikely \? \['Restaurante'\] : \[\]/);
 });
 
-test('la ayuda explica solo el resultado de Leer ticket y su alcance multilingüe', () => {
+test('la ayuda separa el lector español del flujo extranjero con Lens', () => {
   const help = readFileSync(new URL('../ayuda.html', import.meta.url), 'utf8');
   const section = help.match(/<td id="ocr">Leer ticket<\/td><td>([\s\S]*?)<\/td>/)?.[1] || '';
-  assert.match(section, /propone comercio, fecha, hora, importe, categoría y subcategoría/);
-  assert.match(section, /idiomas elegidos o activados por el país del viaje/);
-  assert.match(section, /japonés y coreano/);
+  assert.match(section, /justificantes en español/);
+  assert.match(section, /posición visual/);
+  assert.match(section, /tickets extranjeros usa <em>Leer con Google Lens<\/em>/);
   assert.match(section, /completa solo campos vacíos/);
-  assert.match(section, /nunca rellena un importe dudoso/);
+  assert.match(section, /deja el importe sin completar/);
   assert.ok(section.length < 600, `La explicación de Leer ticket vuelve a ser demasiado larga (${section.length})`);
-  assert.doesNotMatch(section, /perspectiva|contraste adaptativo|esquinas|procesamiento|lecturas complementarias/);
+  assert.doesNotMatch(section, /japonés|coreano|idioma de lectura/i);
 });

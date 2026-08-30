@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 
 const root = new URL('../', import.meta.url);
 const [app, html, styles, ticketOcr] = await Promise.all([
@@ -38,20 +38,15 @@ test('una foto nueva de ticket muestra vista previa, gira y guarda esa versión'
   assert.match(app, /const ticket = await readSelectedExpenseTicket\('edit-gasto'\)/);
 });
 
-test('los idiomas de tickets son configurables y se preparan por país del viaje', async () => {
-  assert.match(html, /id="config-ticket-ocr"/);
-  assert.match(html, /id="ticket-ocr-language-list"/);
-  assert.match(app, /const TICKET_OCR_COUNTRY_ALIASES = \{/);
-  assert.match(app, /pol: \['polonia', 'poland', 'polska'\]/);
-  assert.match(app, /jpn: \['japon', 'japan', 'nippon'\]/);
-  assert.match(app, /kor: \['corea', 'corea del sur'/);
-  assert.match(app, /warmTicketOcrLanguagesForTrip\(newTripId\)/);
+test('el lector local queda fijo en español e inglés y los tickets extranjeros pasan por Lens', () => {
+  assert.doesNotMatch(html, /config-ticket-ocr|ticket-ocr-language-list|g-ticket-language|edit-gasto-ticket-language/);
+  assert.match(app, /const TICKET_OCR_BASE_LANGUAGES = TICKET_OCR_LANGUAGES\.map/);
+  assert.match(app, /function ticketOcrLanguagesForExpense\(\) \{[\s\S]*?return TICKET_OCR_BASE_LANGUAGES\.slice\(\)/);
+  assert.match(app, /languages: TICKET_OCR_BASE_LANGUAGES/);
+  assert.match(app, /record\.sourceLanguages = TICKET_OCR_BASE_LANGUAGES\.slice\(\)/);
+  assert.doesNotMatch(app, /ticketOcrLanguagesForTrip|handleExpenseTicketLanguageChange|saveTicketOcrLanguageSettings/);
   assert.match(app, /caches\.open\(TICKET_OCR_LANGUAGE_CACHE\)/);
-  for (const code of ['spa', 'cat', 'eng', 'fin', 'pol', 'fra', 'deu', 'ita', 'por', 'nld', 'jpn', 'kor']) {
-    const file = new URL(`../vendor/tesseract/lang/${code}.traineddata.gz`, import.meta.url);
-    await access(file);
-    assert.ok((await stat(file)).size > 100_000, `${code} no contiene un paquete OCR válido`);
-  }
+  assert.match(html, /Para un ticket extranjero, usa Google Lens/);
 });
 
 test('la foto del ticket se reduce antes del OCR y sus metadatos se leen una sola vez', () => {
@@ -62,10 +57,7 @@ test('la foto del ticket se reduce antes del OCR y sus metadatos se leen una sol
   assert.match(app, /#g-ticket-camera'\)\.onclick = \(\) => saveFormDraft\(addExpenseDraftKey\(\), ADD_EXPENSE_DRAFT_FIELDS\)/);
 });
 
-test('cambiar el idioma reinicia una lectura bloqueada y la vuelve a lanzar', () => {
-  assert.match(app, /async function handleExpenseTicketLanguageChange\(prefix\)/);
-  assert.match(app, /ocr\.resetTicketOcrWorker\?\.\(\)[\s\S]*?return readExpenseTicket\(prefix\)/);
-  assert.match(app, /#g-ticket-language'\)\.onchange = \(\) => handleExpenseTicketLanguageChange\('g'\)/);
+test('el lector local puede recuperarse si el trabajador tarda demasiado', () => {
   assert.match(ticketOcr, /const OCR_WORKER_START_TIMEOUT_MS = 45_000/);
   assert.match(ticketOcr, /export function resetTicketOcrWorker\(\)/);
   assert.match(ticketOcr, /El lector local ha tardado demasiado en iniciarse/);

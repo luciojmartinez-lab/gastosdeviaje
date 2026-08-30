@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v300">
+  <link rel="manifest" href="manifest.webmanifest?v=700v301">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v300">
+  <link rel="stylesheet" href="styles.css?v=700v301">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v300 · 29/08/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v301 · 30/08/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v300</div>
+  <div class="app-version">700v301</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -292,7 +292,6 @@
         <a class="btn ghost" href="#config-transferencias">Transferencias</a>
         <a class="btn ghost" href="#config-categorias">Categorías</a>
         <a class="btn ghost" href="#config-photo-types">Clasificaciones</a>
-        <a class="btn ghost" href="#config-ticket-ocr">Idiomas de tickets</a>
         <a class="btn ghost" href="#config-backups">Backups</a>
         <a class="btn ghost" href="#config-avanzado">Avanzado</a>
       </div>
@@ -425,13 +424,6 @@
       <div id="photo-types-list" class="photo-types-list"></div>
     </div>
 
-    <div class="card compact-config-form" id="config-ticket-ocr">
-      <h2>Idiomas para leer tickets</h2>
-      <p class="small">El español está siempre disponible. La aplicación añade automáticamente el idioma de los países del viaje; marca aquí idiomas adicionales que quieras usar en cualquier viaje.</p>
-      <div id="ticket-ocr-language-list" class="ticket-ocr-language-list"></div>
-      <p id="msg-ticket-ocr-languages" class="small" aria-live="polite"></p>
-    </div>
-
     <div class="card" id="config-backups">
       <h2>Exportar / Importar</h2>
       <div class="actions">
@@ -514,10 +506,8 @@
         <summary>Ver texto reconocido</summary>
         <pre id="g-ticket-ocr-text"></pre>
       </details>
-      <label for="g-ticket-language">Idioma de lectura</label>
-      <select id="g-ticket-language" class="ticket-language-select"></select>
       <button type="button" class="btn ghost ticket-translate-button" id="g-ticket-translate" disabled>Leer con Google Lens</button>
-      <p class="small ticket-translate-note">Comparte la fotografía real. En Android, elige Lens para leerla o traducirla y vuelve a compartir el resultado con Cuaderno de Bitácora.</p>
+      <p class="small ticket-translate-note">«Leer ticket» reconoce tickets en español. Para un ticket extranjero, usa Google Lens, tradúcelo al español y comparte el resultado de vuelta con Cuaderno de Bitácora.</p>
       <div class="expense-ticket-preview-pair">
         <div id="g-ticket-new-preview" class="expense-ticket-preview selected-expense-ticket-preview" hidden aria-live="polite"></div>
         <div id="g-ticket-translation-preview" class="expense-ticket-preview ticket-translation-preview" hidden aria-live="polite"></div>
@@ -601,10 +591,8 @@
           <summary>Ver texto reconocido</summary>
           <pre id="edit-gasto-ticket-ocr-text"></pre>
         </details>
-        <label for="edit-gasto-ticket-language">Idioma de lectura</label>
-        <select id="edit-gasto-ticket-language" class="ticket-language-select"></select>
         <button type="button" class="btn ghost ticket-translate-button" id="edit-gasto-ticket-translate" disabled>Leer con Google Lens</button>
-        <p class="small ticket-translate-note">Comparte la fotografía real. En Android, elige Lens para leerla o traducirla y vuelve a compartir el resultado con Cuaderno de Bitácora.</p>
+        <p class="small ticket-translate-note">«Leer ticket» reconoce tickets en español. Para un ticket extranjero, usa Google Lens, tradúcelo al español y comparte el resultado de vuelta con Cuaderno de Bitácora.</p>
         <div class="expense-ticket-preview-pair">
           <div id="edit-gasto-ticket-new-preview" class="expense-ticket-preview selected-expense-ticket-preview" hidden aria-live="polite"></div>
           <div id="edit-gasto-ticket-new-translation-preview" class="expense-ticket-preview ticket-translation-preview" hidden aria-live="polite"></div>
@@ -1211,14 +1199,14 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=700v300"></script>
-<script src="gpx-import.js?v=700v300"></script>
-<script src="timeline-routing.js?v=700v300"></script>
-<script src="map-model.js?v=700v300"></script>
-<script src="app.bundle.js?v=700v300"></script>
+<script src="timeline-import.js?v=700v301"></script>
+<script src="gpx-import.js?v=700v301"></script>
+<script src="timeline-routing.js?v=700v301"></script>
+<script src="map-model.js?v=700v301"></script>
+<script src="app.bundle.js?v=700v301"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v300';
+    const pageVersion = '700v301';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1273,7 +1261,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v300', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v301', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

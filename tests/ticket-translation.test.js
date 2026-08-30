@@ -82,7 +82,8 @@ test('el resultado de Lens sustituye los datos reconocidos tanto en texto como e
   assert.match(app, /secondaryOption\.hidden = lensResult/);
   assert.match(app, /if \(lensResult && actionSelect\) actionSelect\.value = 'translation'/);
   assert.match(app, /async function readLensTicketTranslation/);
-  assert.match(app, /languages: \['spa'\]/);
+  assert.match(app, /languages: TICKET_OCR_BASE_LANGUAGES/);
+  assert.match(app, /record\.sourceLanguages = TICKET_OCR_BASE_LANGUAGES\.slice\(\)/);
   assert.match(app, /replaceExisting: true/);
   assert.match(app, /preferLargeTitle: true/);
   assert.match(app, /reviewTranslatedReceipt: true/);

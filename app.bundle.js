@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v300';
+const APP_VERSION = '700v301';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -27,7 +27,6 @@ const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
 const SYNC_STATE_STORAGE = 'gastos_viaje_sync_state_v1';
 const BACKUP_DIRECTORY_SETTING_KEY = 'backupDirectory';
 const PHOTO_TYPES_SETTING_KEY = 'photoTypes';
-const TICKET_OCR_LANGUAGES_SETTING_KEY = 'ticketOcrLanguages';
 const TICKET_OCR_LANGUAGE_CACHE = 'cuaderno-bitacora-ocr-languages-v1';
 const SYNC_ENDPOINT = '/api/travel-sync';
 const LOCAL_BACKUP_LIMIT = 5;
@@ -45,19 +44,10 @@ const DEFAULT_PHOTO_TYPES = [
   { id: 'selfie', nombre: 'Selfie', useAsDestination: false }
 ];
 const TICKET_OCR_LANGUAGES = [
-  { code: 'spa', name: 'Español', fixed: true },
-  { code: 'cat', name: 'Catalán' },
-  { code: 'eng', name: 'Inglés' },
-  { code: 'fin', name: 'Finés' },
-  { code: 'pol', name: 'Polaco' },
-  { code: 'fra', name: 'Francés' },
-  { code: 'deu', name: 'Alemán' },
-  { code: 'ita', name: 'Italiano' },
-  { code: 'por', name: 'Portugués' },
-  { code: 'nld', name: 'Neerlandés' },
-  { code: 'jpn', name: 'Japonés' },
-  { code: 'kor', name: 'Coreano' }
+  { code: 'spa', name: 'Español' },
+  { code: 'eng', name: 'Inglés' }
 ];
+const TICKET_OCR_BASE_LANGUAGES = TICKET_OCR_LANGUAGES.map(language => language.code);
 const TICKET_OCR_COUNTRY_ALIASES = {
   spa: ['espana', 'spain'],
   eng: ['reino unido', 'gran bretana', 'inglaterra', 'escocia', 'gales', 'irlanda', 'united kingdom', 'great britain', 'england', 'scotland', 'wales', 'ireland', 'estados unidos', 'united states', 'australia', 'nueva zelanda', 'new zealand'],
@@ -921,7 +911,6 @@ const state = {
   cuentas: [],
   categorias: [],
   photoTypes: [],
-  ticketOcrLanguages: ['spa'],
   lugares: [],
   gastos: [],
   viajes: [],
@@ -1530,17 +1519,10 @@ function normalizePlaceName(name) {
   return String(name || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-function normalizeTicketOcrLanguages(codes = []) {
-  const supported = new Set(TICKET_OCR_LANGUAGES.map(language => language.code));
-  const normalized = [...new Set((Array.isArray(codes) ? codes : []).map(String).filter(code => supported.has(code)))];
-  if (!normalized.includes('spa')) normalized.unshift('spa');
-  return normalized;
-}
-
 function normalizeRequestedTicketOcrLanguages(codes = []) {
   const supported = new Set(TICKET_OCR_LANGUAGES.map(language => language.code));
   const normalized = [...new Set((Array.isArray(codes) ? codes : []).map(String).filter(code => supported.has(code)))];
-  return normalized.length ? normalized : ['spa'];
+  return normalized.length ? normalized : TICKET_OCR_BASE_LANGUAGES.slice();
 }
 
 function ticketOcrLanguageName(code) {
@@ -1562,41 +1544,15 @@ function automaticTicketOcrLanguagesForCountryIds(countryIds = []) {
   }))];
 }
 
-function automaticTicketOcrLanguagesForTrip(tripId) {
-  const trip = state.viajes.find(item => Number(item.id) === Number(tripId));
-  return trip ? automaticTicketOcrLanguagesForCountryIds(tripCountryIds(trip)) : [];
-}
-
-function ticketOcrLanguagesForTrip(tripId) {
-  return normalizeTicketOcrLanguages([
-    ...automaticTicketOcrLanguagesForTrip(tripId),
-    ...state.ticketOcrLanguages
-  ]);
-}
-
-function ticketOcrLanguagesForExpense(prefix) {
-  const chosenLanguage = String($(`#${prefix}-ticket-language`)?.value || '');
-  if (TICKET_OCR_LANGUAGES.some(language => language.code === chosenLanguage)) return [chosenLanguage];
-  return ticketOcrLanguagesForTrip(Number($(`#${prefix}-viaje`)?.value));
+function ticketOcrLanguagesForExpense() {
+  return TICKET_OCR_BASE_LANGUAGES.slice();
 }
 
 function lensTicketSourceLanguage(prefix) {
-  const chosenLanguage = String($(`#${prefix}-ticket-language`)?.value || '');
-  if (TICKET_OCR_LANGUAGES.some(language => language.code === chosenLanguage)) {
-    return { languages: [chosenLanguage], spanish: chosenLanguage === 'spa' };
-  }
   const countryId = Number($(`#${prefix}-pais`)?.value || 0);
   const countryLanguages = countryId ? automaticTicketOcrLanguagesForCountryIds([countryId]) : [];
-  const languages = countryLanguages.length ? countryLanguages : ticketOcrLanguagesForExpense(prefix);
+  const languages = countryLanguages.length ? countryLanguages : ['spa'];
   return { languages, spanish: languages.length === 1 && languages[0] === 'spa' };
-}
-
-function renderExpenseTicketLanguageSelect(prefix) {
-  const select = $(`#${prefix}-ticket-language`);
-  if (!select) return;
-  const previous = String(select.value || '');
-  select.innerHTML = `<option value="">Automático · viaje y configuración</option>${TICKET_OCR_LANGUAGES.map(language => `<option value="${escapeHtml(language.code)}">${escapeHtml(language.name)}</option>`).join('')}`;
-  select.value = TICKET_OCR_LANGUAGES.some(language => language.code === previous) ? previous : '';
 }
 
 async function cacheTicketOcrLanguage(code) {
@@ -1621,50 +1577,9 @@ async function warmTicketOcrLanguages(codes = []) {
   return languages;
 }
 
-function warmTicketOcrLanguagesForTrip(tripId) {
-  return warmTicketOcrLanguages(ticketOcrLanguagesForTrip(tripId));
-}
 
-function renderTicketOcrLanguageControls() {
-  const container = $('#ticket-ocr-language-list');
-  if (!container) return;
-  const configured = new Set(normalizeTicketOcrLanguages(state.ticketOcrLanguages));
-  container.innerHTML = TICKET_OCR_LANGUAGES.map(language => `<label class="check-option"><input type="checkbox" data-ticket-ocr-language="${escapeHtml(language.code)}"${configured.has(language.code) ? ' checked' : ''}${language.fixed ? ' disabled' : ''}> ${escapeHtml(language.name)}${language.fixed ? ' · siempre' : ''}</label>`).join('');
-  const automatic = [...new Set(selectedTripIds().flatMap(automaticTicketOcrLanguagesForTrip))];
-  const status = $('#msg-ticket-ocr-languages');
-  if (status && !status.dataset.busy) {
-    status.textContent = automatic.length
-      ? `Por el viaje seleccionado se activará automáticamente: ${automatic.map(ticketOcrLanguageName).join(', ')}.`
-      : 'Los idiomas adicionales se descargan una sola vez y después funcionan sin conexión.';
-    status.classList.remove('error');
-  }
-}
-
-async function saveTicketOcrLanguageSettings() {
-  const status = $('#msg-ticket-ocr-languages');
-  const codes = normalizeTicketOcrLanguages($$('[data-ticket-ocr-language]:checked').map(input => input.dataset.ticketOcrLanguage));
-  state.ticketOcrLanguages = codes;
-  await putRecord('appSettings', {
-    key: TICKET_OCR_LANGUAGES_SETTING_KEY,
-    codes,
-    updatedAt: new Date().toISOString()
-  });
-  if (status) {
-    status.dataset.busy = '1';
-    status.textContent = 'Descargando los idiomas elegidos para usarlos también sin conexión…';
-    status.classList.remove('error');
-  }
-  try {
-    await warmTicketOcrLanguages(codes);
-    if (status) status.textContent = 'Idiomas preparados. Ya pueden usarse sin conexión.';
-  } catch (error) {
-    if (status) {
-      status.textContent = `${error.message || error}. Se volverá a intentar cuando haya conexión.`;
-      status.classList.add('error');
-    }
-  } finally {
-    if (status) delete status.dataset.busy;
-  }
+function warmTicketOcrBaseLanguages() {
+  return warmTicketOcrLanguages(TICKET_OCR_BASE_LANGUAGES);
 }
 
 function normalizePhotoTypes(types = []) {
@@ -2834,7 +2749,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v300');
+    const worker = new Worker('./timeline-import-worker.js?v=700v301');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3822,7 +3737,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v300');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v301');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4646,7 +4561,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v300');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v301');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4727,34 +4642,6 @@ async function readExpenseTicket(prefix) {
   });
 }
 
-async function handleExpenseTicketLanguageChange(prefix) {
-  ticketOcrRunIds[prefix] = (ticketOcrRunIds[prefix] || 0) + 1;
-  pendingTicketOcr[prefix] = null;
-  const button = $(`#${prefix}-ticket-read`);
-  if (button) {
-    delete button.dataset.busy;
-    button.textContent = 'Leer ticket';
-  }
-  syncTicketOcrAvailability(prefix);
-  const languages = ticketOcrLanguagesForExpense(prefix);
-  setTicketOcrStatus(prefix, `Reiniciando la lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
-  try {
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v300');
-    const ocr = await ticketOcrModulePromise;
-    ocr.resetTicketOcrWorker?.();
-    await pendingExpenseTicketLocationChecks[prefix];
-    if (!ticketOcrSource(prefix)) {
-      setTicketOcrStatus(prefix, `Lectura preparada en ${languages.map(ticketOcrLanguageName).join(', ')}.`);
-      await warmTicketOcrLanguages(languages);
-      return null;
-    }
-    return readExpenseTicket(prefix);
-  } catch (error) {
-    setTicketOcrStatus(prefix, error?.message || 'No se ha podido reiniciar la lectura.', true);
-    return null;
-  }
-}
-
 async function readLensTicketTranslation(prefix, record, originalSource = null, options = {}) {
   if (!record?.data) return null;
   const previousStatus = 'Resultado de Lens preparado junto al ticket principal.';
@@ -4765,7 +4652,7 @@ async function readLensTicketTranslation(prefix, record, originalSource = null, 
       type: originalSource?.type || record.type || 'image/jpeg',
       name: originalSource?.name || record.name || 'traduccion-lens.jpg'
     }, {
-      languages: ['spa'],
+      languages: TICKET_OCR_BASE_LANGUAGES,
       replaceExisting: true,
       preserveDescription: true,
       replaceOcrDescription: true,
@@ -4777,7 +4664,7 @@ async function readLensTicketTranslation(prefix, record, originalSource = null, 
     });
     if (result) {
       record.text = result.text || '';
-      record.sourceLanguages = ['spa'];
+      record.sourceLanguages = TICKET_OCR_BASE_LANGUAGES.slice();
     } else {
       setTicketOcrStatus(prefix, `${previousStatus} No se encontraron otros datos claros; puedes completarlos manualmente.`);
     }
@@ -4804,7 +4691,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v300');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v301');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5135,7 +5022,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v300');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v301');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -7415,7 +7302,7 @@ async function delTransferencia(id) {
 }
 
 async function loadAll() {
-  const [cuentas, categorias, lugares, gastos, viajes, viajeDocumentos, blogEntries, timelineDays, monedas, transferencias, photoTypeSetting, ticketOcrLanguageSetting] = await Promise.all([
+  const [cuentas, categorias, lugares, gastos, viajes, viajeDocumentos, blogEntries, timelineDays, monedas, transferencias, photoTypeSetting] = await Promise.all([
     getAll('cuentas'),
     getAll('categorias'),
     getAll('lugares'),
@@ -7426,8 +7313,7 @@ async function loadAll() {
     getAll('timelineDays'),
     getAll('monedas'),
     getAll('transferencias'),
-    getOne('appSettings', PHOTO_TYPES_SETTING_KEY),
-    getOne('appSettings', TICKET_OCR_LANGUAGES_SETTING_KEY)
+    getOne('appSettings', PHOTO_TYPES_SETTING_KEY)
   ]);
   state.cuentas = cuentas.sort(byName);
   state.categorias = sortCategoriasHierarchical(categorias);
@@ -7436,7 +7322,6 @@ async function loadAll() {
     state.photoTypes = normalizePhotoTypes(DEFAULT_PHOTO_TYPES);
     await putRecord('appSettings', { key: PHOTO_TYPES_SETTING_KEY, items: state.photoTypes, updatedAt: new Date().toISOString() });
   }
-  state.ticketOcrLanguages = normalizeTicketOcrLanguages(ticketOcrLanguageSetting?.codes || ['spa']);
   state.lugares = sortLugaresHierarchical(lugares);
   state.gastos = gastos.map(g => ({
     ...g,
@@ -7463,7 +7348,7 @@ async function loadAll() {
   state.transferencias = transferencias.sort(compareTransferenciasChronologically);
   renderAll();
   restoreInlineFormDrafts();
-  selectedTripIds().forEach(tripId => warmTicketOcrLanguagesForTrip(tripId).catch(() => {}));
+  warmTicketOcrBaseLanguages().catch(() => {});
   if (state.activeTab === 'resumen') renderResumen();
   if (state.activeTab === 'mapa') renderMapPaises();
 }
@@ -7481,9 +7366,6 @@ function renderAll() {
   renderMonedasConfig();
   renderCategorias();
   renderPhotoTypeControls();
-  renderTicketOcrLanguageControls();
-  renderExpenseTicketLanguageSelect('g');
-  renderExpenseTicketLanguageSelect('edit-gasto');
   renderLugares();
   renderGastosTabla();
   renderBackupStatus();
@@ -8007,7 +7889,6 @@ function renderViajesHome() {
   const info = $('#selected-trip-info');
   const selectedIds = selectedTripSet();
   info.textContent = selectedTripsLabel();
-  renderTicketOcrLanguageControls();
   if (!state.viajes.length) {
     const tr = document.createElement('tr');
     tr.innerHTML = '<td colspan="10">Todavía no hay viajes. Puedes crearlos en Configuración.</td>';
@@ -12868,7 +12749,6 @@ function buildBackupData(scope = 'all', tripId = null) {
     cuentas: state.cuentas.map(accountForBackup),
     categorias: state.categorias,
     photoTypes: state.photoTypes,
-    ticketOcrLanguages: state.ticketOcrLanguages,
     lugares: state.lugares,
     gastos: state.gastos,
     viajes: state.viajes,
@@ -12906,7 +12786,6 @@ function buildTripBackupData(tripId) {
     cuentas,
     categorias: state.categorias,
     photoTypes: state.photoTypes,
-    ticketOcrLanguages: state.ticketOcrLanguages,
     lugares: state.lugares,
     gastos,
     viajes: [trip],
@@ -12926,11 +12805,6 @@ async function importAll(data) {
   await putRecord('appSettings', {
     key: PHOTO_TYPES_SETTING_KEY,
     items: normalizePhotoTypes(Array.isArray(data.photoTypes) ? data.photoTypes : DEFAULT_PHOTO_TYPES),
-    updatedAt: new Date().toISOString()
-  });
-  await putRecord('appSettings', {
-    key: TICKET_OCR_LANGUAGES_SETTING_KEY,
-    codes: normalizeTicketOcrLanguages(data.ticketOcrLanguages || ['spa']),
     updatedAt: new Date().toISOString()
   });
   await ensureBaseCurrency();
@@ -13284,7 +13158,6 @@ function openEditViajeDialog(v) {
         routeStops: mergeTripRouteStops({ ...v, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin }, cityIds),
         presupuesto: numberValue(values.presupuesto)
       });
-      warmTicketOcrLanguages([...automaticTicketOcrLanguagesForCountryIds(values.paisIds), ...state.ticketOcrLanguages]).catch(() => {});
       return updated;
     }
   });
@@ -13641,7 +13514,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v300');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v301');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16361,7 +16234,6 @@ function openEditGasto(gasto) {
   syncTicketOcrAvailability('edit-gasto');
   renderEditExpenseImages(gasto);
   setMessage('#msg-edit-gasto', '');
-  warmTicketOcrLanguagesForTrip(Number($('#edit-gasto-viaje')?.value)).catch(() => {});
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute('open', 'open');
 }
@@ -16444,7 +16316,6 @@ function openAddGasto() {
     restoreAddExpenseDraft();
   }
   rememberLastValidExpenseCategory('g');
-  warmTicketOcrLanguagesForTrip(Number($('#g-viaje')?.value)).catch(() => {});
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute('open', 'open');
 }
@@ -17429,7 +17300,6 @@ async function resetDataValue(option) {
     await clearStores(stores);
     if (value === 'todo') {
       await deleteRecord('appSettings', PHOTO_TYPES_SETTING_KEY);
-      await deleteRecord('appSettings', TICKET_OCR_LANGUAGES_SETTING_KEY);
     }
     if (value === 'todo' || value === 'monedas') await ensureBaseCurrency();
     if (value === 'todo' || value === 'cuentas') await seedDefaultAccounts();
@@ -17898,14 +17768,12 @@ function bindEvents() {
   $('#g-ticket-type').onchange = () => scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
   $('#g-ticket-translate').onclick = () => translateExpenseTicket('g');
-  $('#g-ticket-language').onchange = () => handleExpenseTicketLanguageChange('g');
   $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#edit-gasto-ticket').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'file'); };
   $('#edit-gasto-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'camera'); };
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
   $('#edit-gasto-ticket-translate').onclick = () => translateExpenseTicket('edit-gasto');
-  $('#edit-gasto-ticket-language').onchange = () => handleExpenseTicketLanguageChange('edit-gasto');
   $('#edit-gasto-ticket-type').onchange = () => {
     saveOpenExpenseTicketClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
@@ -17980,7 +17848,6 @@ function bindEvents() {
   $('#edit-gasto-viaje').onchange = () => {
     renderEditGastoAccountSelector();
     renderEditCiudades();
-    warmTicketOcrLanguagesForTrip(Number($('#edit-gasto-viaje').value)).catch(() => {});
   };
   $('#edit-gasto-close').onclick = closeEditGasto;
   $('#edit-gasto-cancel').onclick = closeEditGasto;
@@ -18112,7 +17979,6 @@ function bindEvents() {
   $('#g-viaje').onchange = () => {
     renderGastoAccountSelector();
     applyDefaultExpenseLocation();
-    warmTicketOcrLanguagesForTrip(Number($('#g-viaje').value)).catch(() => {});
     scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   };
   $('#g-moneda').onchange = () => {
@@ -18387,7 +18253,6 @@ function bindEvents() {
       if ($('#v-ciudades')) [...$('#v-ciudades').options].forEach(opt => { opt.selected = false; });
       setMessage('#msg-viaje', 'Viaje anadido');
       await loadAll();
-      warmTicketOcrLanguagesForTrip(newTripId).catch(() => {});
     } catch (err) {
       setMessage('#msg-viaje', err.message || String(err), true);
     }
@@ -18551,10 +18416,6 @@ function bindEvents() {
 
   document.addEventListener('change', async event => {
     const target = event.target;
-    if (target instanceof HTMLInputElement && target.dataset.ticketOcrLanguage) {
-      await saveTicketOcrLanguageSettings();
-      return;
-    }
     if (target instanceof HTMLInputElement && target.dataset.tripCheck) {
       toggleSelectedTrip(target.dataset.tripCheck, target.checked);
       renderViajesHome();
@@ -19316,7 +19177,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v300');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v301');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

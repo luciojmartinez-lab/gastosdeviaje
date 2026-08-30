@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v300';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v301';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -281,7 +281,7 @@ const LENS_MISTRANSLATED_TOTAL_LABEL = /^\s*(?:[iIlL1|]\s+)?(?:combinar|combinad
 const TOTAL_TABLE_HEADER = /\b(?:unid(?:ad|ades)?|cant(?:idad)?|descripcion|descripcio|articulo|article|item|unit|units|qty|quantity|price|preu|quantitat|kuvaus|tuote|maara|kpl|hinta)\b/;
 const TOTAL_TAX_LABEL = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\b/;
 const TOTAL_TAX_INCLUDED = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\s+(?:incl|incluido|incluidos|included|sis|compris)/;
-const TOTAL_EXCLUDED_LABEL = /\b(?:subtotal|sub\s+total|valisumma|total\s+(?:del?\s+)?producto|product\s+total|base\s+(?:imponible|imposable|iva)|taxable\s+amount|net\s+amount|netto|cuota\s+iva|deposito|deposit|importe\s+recibido|amount\s+(?:received|tendered)|recibido|received|tendered|cambio|cambiar|change|vaihtoraha|vuelto|entregado|efectivo|cash|kateinen|descuento|discount|alennus|propina|tip|juomaraha)\b/;
+const TOTAL_EXCLUDED_LABEL = /\b(?:subtotal|sub\s+total|total\s+parcial|partial\s+total|valisumma|total\s+(?:del?\s+)?producto|product\s+total|base\s+(?:imponible|imposable|iva)|taxable\s+amount|net\s+amount|netto|cuota\s+iva|deposito|deposit|importe\s+recibido|amount\s+(?:received|tendered)|recibido|received|tendered|cambio|cambiar|change|vaihtoraha|vuelto|entregado|efectivo|cash|kateinen|descuento|discount|alennus|propina|tip|juomaraha)\b/;
 const TOTAL_LABEL_ONLY = /^(?:(?:grand\s+)?total|importe?|amount|summa|betrag|montant|importo|valor|yhteensa|loppusumma|kokonaissumma|gesamtbetrag|maksettav(?:a|aa)|zu\s+zahlen|a\s+payer|da\s+pagare|(?:importe?\s+)?(?:a|per|poder)\s+(?:pagar|abonar)|pendiente\s+de\s+cobro|cobro\s+pendiente|pendent\s+de\s+cobrament)(?:\s+(?:eur|euro|euros|gbp|pounds?|sek|nok|dkk))?$/;
 const EAST_ASIAN_BEST_TOTAL_LABEL = /(?:総\s*合\s*計|合\s*計\s*金\s*額|お\s*支\s*払(?:\s*い)?(?:\s*合\s*計|\s*金\s*額)?|お\s*会\s*計|合\s*計|支\s*払\s*合\s*計|합\s*계\s*금\s*액|총\s*결\s*제\s*금\s*액|결\s*제\s*금\s*액|받\s*을\s*금\s*액|총\s*액|합\s*계)/u;
 const EAST_ASIAN_TOTAL_LABEL_ONLY = /^(?:総\s*合\s*計|合\s*計\s*金\s*額|お\s*支\s*払(?:\s*い)?(?:\s*合\s*計|\s*金\s*額)?|お\s*会\s*計|合\s*計|支\s*払\s*合\s*計|합\s*계\s*금\s*액|총\s*결\s*제\s*금\s*액|결\s*제\s*금\s*액|받\s*을\s*금\s*액|총\s*액|합\s*계)(?:\s*(?:jpy|krw|円|원))?$/iu;
@@ -290,6 +290,155 @@ const EAST_ASIAN_EXCLUDED_TOTAL_LABEL = /(?:小計|消費税|税額|お預り|�
 function ticketTotalLineExcluded(normalized) {
   const taxBreakdown = TOTAL_TAX_LABEL.test(normalized) && !TOTAL_TAX_INCLUDED.test(normalized);
   return TOTAL_EXCLUDED_LABEL.test(normalized) || EAST_ASIAN_EXCLUDED_TOTAL_LABEL.test(normalized) || taxBreakdown;
+}
+
+function validOcrBox(box) {
+  return box
+    && [box.x0, box.y0, box.x1, box.y1].every(value => Number.isFinite(Number(value)))
+    && Number(box.x1) > Number(box.x0)
+    && Number(box.y1) > Number(box.y0);
+}
+
+function ticketOcrLineFragments(blocks = []) {
+  const fragments = [];
+  (Array.isArray(blocks) ? blocks : []).forEach(block => {
+    (block?.paragraphs || []).forEach(paragraph => {
+      (paragraph?.lines || []).forEach(line => {
+        const words = (line?.words || [])
+          .filter(word => cleanLine(word?.text) && validOcrBox(word?.bbox))
+          .sort((left, right) => Number(left.bbox.x0) - Number(right.bbox.x0));
+        const text = cleanLine(line?.text) || cleanLine(words.map(word => word.text).join(' '));
+        const wordBox = words.length ? {
+          x0: Math.min(...words.map(word => Number(word.bbox.x0))),
+          y0: Math.min(...words.map(word => Number(word.bbox.y0))),
+          x1: Math.max(...words.map(word => Number(word.bbox.x1))),
+          y1: Math.max(...words.map(word => Number(word.bbox.y1)))
+        } : null;
+        const box = validOcrBox(line?.bbox) ? line.bbox : wordBox;
+        if (!text || !validOcrBox(box)) return;
+        const baselineValues = [line?.baseline?.y0, line?.baseline?.y1]
+          .map(Number)
+          .filter(Number.isFinite);
+        fragments.push({
+          text,
+          confidence: Number(line?.confidence || 0),
+          x0: Number(box.x0),
+          y0: Number(box.y0),
+          x1: Number(box.x1),
+          y1: Number(box.y1),
+          baselineY: baselineValues.length
+            ? baselineValues.reduce((sum, value) => sum + value, 0) / baselineValues.length
+            : null
+        });
+      });
+    });
+  });
+  return fragments.filter((fragment, index, values) => !values.slice(0, index).some(previous => (
+    previous.text === fragment.text
+      && Math.abs(previous.x0 - fragment.x0) <= 1
+      && Math.abs(previous.y0 - fragment.y0) <= 1
+      && Math.abs(previous.x1 - fragment.x1) <= 1
+      && Math.abs(previous.y1 - fragment.y1) <= 1
+  )));
+}
+
+function median(values = []) {
+  const ordered = values.filter(Number.isFinite).sort((left, right) => left - right);
+  if (!ordered.length) return 0;
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
+}
+
+function fragmentFitsTicketRow(row, fragment, medianHeight) {
+  const rowHeight = Math.max(1, row.y1 - row.y0);
+  const fragmentHeight = Math.max(1, fragment.y1 - fragment.y0);
+  const baselineTolerance = Math.max(4, medianHeight * 0.35);
+  if (Number.isFinite(row.baselineY) && Number.isFinite(fragment.baselineY)) {
+    return Math.abs(row.baselineY - fragment.baselineY) <= baselineTolerance;
+  }
+  const overlap = Math.max(0, Math.min(row.y1, fragment.y1) - Math.max(row.y0, fragment.y0));
+  const overlapRatio = overlap / Math.min(rowHeight, fragmentHeight);
+  const rowCenter = (row.y0 + row.y1) / 2;
+  const fragmentCenter = (fragment.y0 + fragment.y1) / 2;
+  return overlapRatio >= 0.45
+    && Math.abs(rowCenter - fragmentCenter) <= Math.max(4, Math.max(rowHeight, fragmentHeight) * 0.6);
+}
+
+export function reconstructTicketLayoutRows(blocks = []) {
+  const fragments = ticketOcrLineFragments(blocks);
+  const medianHeight = median(fragments.map(fragment => fragment.y1 - fragment.y0)) || 12;
+  const rows = [];
+  fragments
+    .sort((left, right) => (left.baselineY ?? (left.y0 + left.y1) / 2) - (right.baselineY ?? (right.y0 + right.y1) / 2)
+      || left.x0 - right.x0)
+    .forEach(fragment => {
+      const matches = rows
+        .filter(row => fragmentFitsTicketRow(row, fragment, medianHeight))
+        .sort((left, right) => {
+          const leftCenter = Number.isFinite(left.baselineY) ? left.baselineY : (left.y0 + left.y1) / 2;
+          const rightCenter = Number.isFinite(right.baselineY) ? right.baselineY : (right.y0 + right.y1) / 2;
+          const fragmentCenter = Number.isFinite(fragment.baselineY) ? fragment.baselineY : (fragment.y0 + fragment.y1) / 2;
+          return Math.abs(leftCenter - fragmentCenter) - Math.abs(rightCenter - fragmentCenter);
+        });
+      const row = matches[0];
+      if (!row) {
+        rows.push({
+          fragments: [fragment],
+          x0: fragment.x0,
+          y0: fragment.y0,
+          x1: fragment.x1,
+          y1: fragment.y1,
+          baselineY: fragment.baselineY
+        });
+        return;
+      }
+      row.fragments.push(fragment);
+      row.x0 = Math.min(row.x0, fragment.x0);
+      row.y0 = Math.min(row.y0, fragment.y0);
+      row.x1 = Math.max(row.x1, fragment.x1);
+      row.y1 = Math.max(row.y1, fragment.y1);
+      const baselines = row.fragments.map(item => item.baselineY).filter(Number.isFinite);
+      row.baselineY = baselines.length ? median(baselines) : null;
+    });
+  return rows
+    .map(row => {
+      const ordered = row.fragments.sort((left, right) => left.x0 - right.x0);
+      return {
+        text: cleanLine(ordered.map(fragment => fragment.text).join(' ')),
+        confidence: ordered.reduce((sum, fragment) => sum + fragment.confidence, 0) / Math.max(1, ordered.length),
+        bbox: { x0: row.x0, y0: row.y0, x1: row.x1, y1: row.y1 }
+      };
+    })
+    .filter(row => row.text)
+    .sort((left, right) => left.bbox.y0 - right.bbox.y0 || left.bbox.x0 - right.bbox.x0);
+}
+
+export function reconstructTicketLayoutText(blocks = []) {
+  return reconstructTicketLayoutRows(blocks).map(row => row.text).join('\n');
+}
+
+function ticketTotalRowScore(line) {
+  const normalized = normalizeTicketConcepts(line);
+  if (ticketTotalLineExcluded(normalized)) return 0;
+  if (BEST_TOTAL_LABEL.test(normalized) || LENS_MISTRANSLATED_TOTAL_LABEL.test(normalized)
+    || EAST_ASIAN_BEST_TOTAL_LABEL.test(line)) return 130;
+  if (GENERIC_TOTAL_LABEL.test(normalized) && !/\b(?:subtotal|sub\s+total|total\s+parcial|partial\s+total|valisumma)\b/.test(normalized)) return 115;
+  if (PAYMENT_DUE_LABEL.test(normalized)) return 105;
+  return 0;
+}
+
+function bestTicketLayoutTotalRow(blocks = []) {
+  return reconstructTicketLayoutRows(blocks)
+    .map(row => ({ ...row, score: ticketTotalRowScore(row.text), value: extractTicketTotal(row.text) }))
+    .filter(row => row.score > 0)
+    .sort((left, right) => right.score - left.score
+      || Number(Number.isFinite(right.value)) - Number(Number.isFinite(left.value))
+      || right.bbox.y0 - left.bbox.y0)[0] || null;
+}
+
+export function extractTicketLayoutTotal(blocks = []) {
+  const candidate = bestTicketLayoutTotalRow(blocks);
+  return Number.isFinite(candidate?.value) && candidate.value > 0 ? candidate.value : null;
 }
 
 function recoverTruncatedCurrencyTotal(lines, explicit) {
@@ -397,18 +546,16 @@ export function reconcileTicketTotalReadings(readings = [], fallback = null) {
   const entries = texts
     .map(text => ({ text, value: extractTicketTotal(text) }))
     .filter(entry => Number.isFinite(entry.value) && entry.value > 0);
+  if (!entries.length) return null;
+  if (entries.length === 1) return entries[0].value;
   const values = entries.map(entry => entry.value);
-  const calculated = inferCalculatedTicketTotal(ticketLines(texts.join('\n')));
-  if (calculated && calculated.evidence > 0) return calculated.value;
   const counts = new Map();
   values.forEach(value => counts.set(value, (counts.get(value) || 0) + 1));
   const consensusEntry = [...counts.entries()]
     .sort((left, right) => right[1] - left[1] || values.indexOf(left[0]) - values.indexOf(right[0]))[0]?.[0];
   if (consensusEntry != null && counts.get(consensusEntry) >= 2) return consensusEntry;
-  const paymentValue = entries.find(entry => /\b(?:pago|pagado|payment|paid|cobrado|cobro|cargo|debito|debitado|importe\s+(?:a|por)\s+pagar|amount\s+due|balance\s+due)\b/.test(normalizeTicketConcepts(entry.text)))?.value;
-  if (paymentValue != null) return paymentValue;
-  if (Number.isFinite(fallback) && fallback > 0) return fallback;
-  return values[0] ?? null;
+  if (Number.isFinite(fallback) && fallback > 0 && counts.get(fallback) >= 2) return fallback;
+  return null;
 }
 
 export function detectTicketDocumentType(text) {
@@ -542,6 +689,7 @@ function cleanMerchantCandidate(value) {
   return cleanLine(value)
     .replace(/^(?:[I1lf]\s+)(?=\p{Lu}{5,}(?:\s|$))/u, '')
     .replace(/\s+[I1lf]$/, '')
+    .replace(/\s+(?:tel(?:efono)?|phone)\s*:?[\s.-]*$/iu, '')
     .replace(/^[^\p{L}\d]+|[^\p{L}\d.)]+$/gu, '')
     .trim();
 }
@@ -617,46 +765,6 @@ export function extractTicketFields(text) {
     merchant: extractTicketMerchant(text),
     total: extractTicketTotal(text)
   };
-}
-
-// Exception deliberately limited to the exact Mandarake receipt that Google
-// Lens can recompress in two slightly different ways. In the problematic copy,
-// the raw OCR still reads the correct total once, but the second printed
-// occurrence loses its label. The general Lens rescue continues to require
-// two independent confirmations; this receipt can use one only when every
-// identifying field below agrees.
-function isExactMandarakeLensReceipt(text, fields) {
-  const normalized = normalizeTicketConcepts(text);
-  const compact = normalized.replace(/[^a-z0-9]/g, '');
-  return compact.includes('t4011201005139')
-    && compact.includes('0332527007')
-    && fields?.date === '2024-09-08'
-    && fields?.time === '18:27';
-}
-
-export function getSpecificLensTicketOverride(rawText, rawFields = extractTicketFields(rawText), totalEvidence = 0) {
-  const normalized = normalizeTicketConcepts(rawText);
-  const exactMandarakeReceipt = /\bmandarake\b/.test(normalized)
-    && isExactMandarakeLensReceipt(rawText, rawFields)
-    && Number(rawFields?.total) === 1980
-    && Number(totalEvidence) >= 1;
-  return exactMandarakeReceipt ? { total: 1980, merchant: 'MANDARAKE' } : null;
-}
-
-export function shouldApplyLensRawRescue(rawTotal, totalEvidence, currentTotal, specificOverride = null) {
-  const closeHigherReading = Number.isFinite(currentTotal)
-    && currentTotal >= 100
-    && rawTotal > currentTotal
-    && rawTotal <= currentTotal * 1.08
-    && totalEvidence >= 1;
-  return Number.isFinite(rawTotal)
-    && rawTotal >= 100
-    && (totalEvidence >= 2 || closeHigherReading || specificOverride?.total === rawTotal)
-    && (specificOverride?.total === rawTotal
-      || closeHigherReading
-      || !Number.isFinite(currentTotal)
-      || currentTotal <= 0
-      || rawTotal >= currentTotal * 5);
 }
 
 function ticketTextDistance(left, right) {
@@ -1115,6 +1223,109 @@ async function getWorker(onProgress, languages = ['spa']) {
   return workerPromise;
 }
 
+const OCR_TEXT_WITH_LAYOUT = { text: true, blocks: true };
+
+function ticketMerchantFromLayout(text, rows, imageHeight, confidence) {
+  const merchant = extractTicketMerchant(text);
+  if (!isPlausibleTicketMerchant(merchant)) return '';
+  const normalizedMerchant = normalizeTicketText(merchant).replace(/\s+/g, ' ').trim();
+  const row = rows.find(item => normalizeTicketText(item.text).replace(/\s+/g, ' ').includes(normalizedMerchant));
+  if (row) {
+    if (row.bbox.y0 > imageHeight * 0.45 || row.confidence < 45) return '';
+    return merchant;
+  }
+  return confidence >= 60 ? merchant : '';
+}
+
+function ticketRecognitionQuality(recognition) {
+  const fields = recognition.fields;
+  return (recognition.layoutTotalRow?.value ? 8 : Number.isFinite(fields.total) && fields.total > 0 ? 5 : 0)
+    + (fields.merchant ? 4 : 0)
+    + (fields.date ? 2 : 0)
+    + (fields.time ? 1 : 0)
+    + recognition.confidence / 100;
+}
+
+function normalizeTicketRecognition(result, image) {
+  const linearText = String(result?.data?.text || '').trim();
+  const blocks = result?.data?.blocks || [];
+  const rows = reconstructTicketLayoutRows(blocks);
+  const layoutText = rows.map(row => row.text).join('\n');
+  const text = layoutText || linearText;
+  const confidence = Number(result?.data?.confidence || 0);
+  const fields = extractTicketFields(text);
+  const layoutTotalRow = bestTicketLayoutTotalRow(blocks);
+  if (Number.isFinite(layoutTotalRow?.value) && layoutTotalRow.value > 0) fields.total = layoutTotalRow.value;
+  fields.merchant = ticketMerchantFromLayout(text, rows, image.height, confidence);
+  return { result, image, text, linearText, rows, blocks, confidence, fields, layoutTotalRow };
+}
+
+async function recognizeTicketLayoutPass(worker, image, rotateAuto = false) {
+  const result = await worker.recognize(image, { rotateAuto }, OCR_TEXT_WITH_LAYOUT);
+  return normalizeTicketRecognition(result, image);
+}
+
+function totalFromKnownLayoutRow(text) {
+  const explicit = extractTicketTotal(text);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const values = [...new Set(ticketLines(text).flatMap(summaryAmountsInLine))]
+    .filter(value => Number.isFinite(value) && value > 0);
+  return values.length ? Math.max(...values) : null;
+}
+
+function chooseConfirmedTicketTotal(current, confirmed, confidence) {
+  if (!Number.isFinite(confirmed) || confirmed <= 0 || confidence < 35) return current;
+  if (!Number.isFinite(current) || current <= 0 || current === confirmed) return confirmed;
+  if (current < 100 && confirmed >= 100) return confirmed;
+  if (confirmed < 100 && current >= 100) return current;
+  const ratio = confirmed / current;
+  return ratio >= 0.75 && ratio <= 1.33 ? confirmed : current;
+}
+
+async function confirmLayoutTotal(worker, recognition, onProgress) {
+  const row = recognition.layoutTotalRow;
+  if (!row?.bbox) return null;
+  const rowHeight = Math.max(1, row.bbox.y1 - row.bbox.y0);
+  const verticalPadding = Math.max(6, Math.round(rowHeight * 0.55));
+  const bounds = {
+    x: 0,
+    y: Math.max(0, Math.round(row.bbox.y0 - verticalPadding)),
+    width: recognition.image.width,
+    height: Math.min(
+      recognition.image.height,
+      Math.round(row.bbox.y1 + verticalPadding)
+    ) - Math.max(0, Math.round(row.bbox.y0 - verticalPadding))
+  };
+  if (bounds.height <= 0) return null;
+  await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SINGLE_LINE });
+  onProgress({ status: 'Confirmando la fila del total', progress: 0.92 });
+  const result = await worker.recognize(cropCanvasBounds(recognition.image, bounds), { rotateAuto: false }, OCR_TEXT_WITH_LAYOUT);
+  const confirmedText = reconstructTicketLayoutText(result?.data?.blocks) || String(result?.data?.text || '');
+  return {
+    value: totalFromKnownLayoutRow(`${row.text} ${confirmedText}`),
+    confidence: Number(result?.data?.confidence || 0)
+  };
+}
+
+async function recognizeMissingTicketTitle(worker, recognition, onProgress) {
+  if (recognition.fields.merchant) return '';
+  const context = recognition.image.getContext('2d', { willReadFrequently: true });
+  const titleBounds = findFirstTextBand(
+    context.getImageData(0, 0, recognition.image.width, recognition.image.height).data,
+    recognition.image.width,
+    recognition.image.height
+  );
+  if (!titleBounds) return '';
+  await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SINGLE_LINE });
+  onProgress({ status: 'Comprobando el nombre del comercio', progress: 0.96 });
+  const titleResult = await worker.recognize(cropCanvasBounds(recognition.image, titleBounds, true), { rotateAuto: false }, { text: true });
+  const titleText = String(titleResult?.data?.text || '');
+  const titleCandidate = extractTicketMerchant(titleText);
+  return Number(titleResult?.data?.confidence || 0) >= 60 && isPlausibleTicketMerchant(titleCandidate)
+    ? titleCandidate
+    : '';
+}
+
 export async function recognizeTicket(source, options = {}) {
   if (!source) throw new Error('Selecciona o fotografía primero un ticket.');
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
@@ -1125,198 +1336,60 @@ export async function recognizeTicket(source, options = {}) {
   const preparedResult = isPdf
     ? await preparePdf(source, onProgress)
     : await prepareImage(source, onProgress);
-  const prepared = preparedResult.primary;
+  const primaryImage = reviewTranslatedReceipt && preparedResult.original
+    ? preparedResult.original
+    : preparedResult.primary;
   onProgress({ status: 'Preparando el lector local', progress: 0.08 });
-  const worker = await getWorker(onProgress, options.languages || ['spa']);
-  const recognitionPsm = preparedResult.binary && preparedResult.documentDetected
-    ? OCR_PSM_SINGLE_BLOCK
-    : OCR_PSM_AUTO;
-  if (recognitionPsm !== OCR_PSM_AUTO) {
-    await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
-  }
-  try {
-  const result = await worker.recognize(prepared, { rotateAuto: recognitionPsm === OCR_PSM_AUTO });
-  const primaryText = result?.data?.text || '';
-  const recognitionTexts = [primaryText];
-  let text = primaryText;
-  let classificationText = primaryText;
-  let fields = extractTicketFields(primaryText);
-  if (fields.merchant && !isPlausibleTicketMerchant(fields.merchant)) fields.merchant = '';
+  const worker = await getWorker(onProgress, options.languages || ['spa', 'eng']);
   let additionalPasses = 0;
-  let titleMerchant = '';
-  let rescuedLensTotal = null;
-  if (preparedResult.binary && (preparedResult.documentDetected || !fields.total || !fields.merchant || !fields.date)) {
-    onProgress({ status: 'Revisando la imagen con contraste adaptativo', progress: 0.78 });
-    const binaryResult = await worker.recognize(preparedResult.binary, { rotateAuto: false });
-    const binaryText = binaryResult?.data?.text || '';
-    recognitionTexts.push(binaryText);
-    const binaryFields = extractTicketFields(binaryText);
-    if (binaryFields.merchant && !isPlausibleTicketMerchant(binaryFields.merchant)) binaryFields.merchant = '';
-    text = [primaryText, binaryText].filter(Boolean).join('\n');
-    if (binaryText.trim()) classificationText = binaryText;
-    fields = {
-      documentType: detectTicketDocumentType(text),
-      date: fields.date || binaryFields.date || '',
-      time: fields.time || binaryFields.time || '',
-      merchant: preparedResult.documentDetected
-        ? binaryFields.merchant || fields.merchant || ''
-        : fields.merchant || binaryFields.merchant || '',
-      total: fields.total ?? binaryFields.total ?? null
-    };
-    additionalPasses += 1;
-  }
-  const preparedContext = prepared.getContext('2d', { willReadFrequently: true });
-  const titleBounds = findFirstTextBand(
-    preparedContext.getImageData(0, 0, prepared.width, prepared.height).data,
-    prepared.width,
-    prepared.height
-  );
-  if ((!fields.merchant || options.preferLargeTitle) && titleBounds) {
-    await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SINGLE_LINE });
-    try {
-      onProgress({ status: 'Leyendo el título', progress: 0.82 });
-      const titleResult = await worker.recognize(cropCanvasBounds(prepared, titleBounds, true));
-      const titleText = titleResult?.data?.text || '';
-      recognitionTexts.push(titleText);
-      const titleConfidence = Number(titleResult?.data?.confidence || 0);
-      const titleCandidate = extractTicketMerchant(titleText);
-      const titleMinimumConfidence = options.preferLargeTitle ? 35 : 60;
-      if (isPlausibleTicketMerchant(titleCandidate) && titleConfidence >= titleMinimumConfidence) {
-        titleMerchant = titleCandidate;
-        fields.merchant = titleMerchant;
-      }
-      text = [titleText, primaryText].filter(Boolean).join('\n');
+  try {
+    await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_AUTO });
+    onProgress({ status: reviewTranslatedReceipt ? 'Leyendo la traducción de Google Lens' : 'Leyendo el ticket', progress: 0.15 });
+    const primary = await recognizeTicketLayoutPass(worker, primaryImage, !preparedResult.documentDetected);
+    let selected = primary;
+
+    if (preparedResult.binary && (!primary.fields.total || !primary.fields.merchant)) {
+      onProgress({ status: 'Comprobando el contraste del ticket', progress: 0.78 });
+      const contrast = await recognizeTicketLayoutPass(worker, preparedResult.binary, false);
       additionalPasses += 1;
-    } finally {
-      await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
+      if (ticketRecognitionQuality(contrast) > ticketRecognitionQuality(primary)) selected = contrast;
     }
-  }
-  if (!fields.total || !fields.merchant || !fields.date || reviewTranslatedReceipt) {
-    await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SPARSE_TEXT });
-    try {
-      onProgress({ status: 'Revisando la cabecera', progress: 0.86 });
-      const headerResult = await worker.recognize(cropCanvas(prepared, 0, 0.56));
-      const headerText = headerResult?.data?.text || '';
-      recognitionTexts.push(headerText);
-      const headerFields = extractTicketFields(headerText);
-      additionalPasses += 1;
-      let footerText = '';
-      let footerFields = {};
-      if (!fields.total || reviewTranslatedReceipt) {
-        onProgress({ status: 'Revisando el total', progress: 0.93 });
-        const footerResult = await worker.recognize(cropCanvas(prepared, 0.43, 1));
-        footerText = footerResult?.data?.text || '';
-        recognitionTexts.push(footerText);
-        footerFields = extractTicketFields(footerText);
-        additionalPasses += 1;
-      }
-      text = [primaryText, headerText, footerText].filter(Boolean).join('\n');
-      const mergedFields = extractTicketFields(text);
-      const merchantCandidates = reviewTranslatedReceipt
-        ? [headerFields.merchant, titleMerchant, fields.merchant, mergedFields.merchant]
-        : [fields.merchant, headerFields.merchant, mergedFields.merchant, titleMerchant];
-      const mergedMerchant = merchantCandidates
-        .find(isPlausibleTicketMerchant) || titleMerchant || '';
-      fields = {
-        documentType: mergedFields.documentType,
-        date: headerFields.date || fields.date || mergedFields.date || footerFields.date || '',
-        time: headerFields.time || fields.time || mergedFields.time || footerFields.time || '',
-        merchant: mergedMerchant,
-        total: fields.total ?? footerFields.total ?? mergedFields.total ?? null
-      };
-    } finally {
-      await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
-    }
-  }
-  const currentLensTotal = Number(fields.total);
-  const preliminaryLensText = recognitionTexts.filter(Boolean).join('\n');
-  const exactMandarakeLensCandidate = isExactMandarakeLensReceipt(preliminaryLensText, fields);
-  const suspiciousLensTotal = reviewTranslatedReceipt
-    && preparedResult.original
-    && (exactMandarakeLensCandidate
-      || !Number.isFinite(currentLensTotal)
-      || currentLensTotal <= 0
-      || currentLensTotal < 100);
-  if (reviewTranslatedReceipt && preparedResult.original) {
-    let autoRawTotal = null;
-    let rawRescueApplied = false;
-    const reviewRawLensPass = async (psm, rotateAuto, status) => {
-      await worker.setParameters({ tessedit_pageseg_mode: psm });
-      onProgress({ status, progress: 0.96 });
-      const rawResult = await worker.recognize(preparedResult.original, { rotateAuto });
-      const rawText = rawResult?.data?.text || '';
-      const rawFields = extractTicketFields(rawText);
-      const rawTotal = Number(rawFields.total);
-      const rawTotalEvidence = ticketLines(rawText).filter(line => {
-        const normalized = normalizeTicketConcepts(line);
-        if (!summaryAmountsInLine(line).includes(rawTotal) || ticketTotalLineExcluded(normalized)) return false;
-        return BEST_TOTAL_LABEL.test(normalized)
-          || GENERIC_TOTAL_LABEL.test(normalized)
-          || PAYMENT_DUE_LABEL.test(normalized)
-          || /\b(?:pago|pagado|payment|paid|cobrado|cobro|cargo|debito|debitado|importe\s+(?:a|por)\s+pagar)\b/.test(normalized);
-      }).length;
-      const specificLensOverride = getSpecificLensTicketOverride(rawText, rawFields, rawTotalEvidence);
-      const rawRescuesTotal = shouldApplyLensRawRescue(
-        rawTotal,
-        rawTotalEvidence,
-        currentLensTotal,
-        specificLensOverride
-      );
-      if (!rawRescuesTotal) return { rawTotal, rescued: false };
-      recognitionTexts.push(rawText);
-      rescuedLensTotal = rawTotal;
-      fields.total = rawTotal;
-      if (specificLensOverride?.merchant) fields.merchant = specificLensOverride.merchant;
-      else if (isPlausibleTicketMerchant(rawFields.merchant)) fields.merchant = rawFields.merchant;
-      additionalPasses += 1;
-      return { rawTotal, rescued: true };
-    };
-    try {
-      const autoReview = await reviewRawLensPass(
-        OCR_PSM_AUTO,
-        true,
-        'Contrastando la lectura de Google Lens'
-      );
-      autoRawTotal = autoReview.rawTotal;
-      rawRescueApplied = autoReview.rescued;
-      const needsBlockFallback = !rawRescueApplied && (
-        suspiciousLensTotal
-        || !Number.isFinite(autoRawTotal)
-        || autoRawTotal < 100
-      );
-      if (needsBlockFallback) {
-        const blockReview = await reviewRawLensPass(
-          OCR_PSM_SINGLE_BLOCK,
-          false,
-          'Confirmando el total de Google Lens'
+
+    if (selected.layoutTotalRow) {
+      const confirmation = await confirmLayoutTotal(worker, selected, onProgress);
+      additionalPasses += confirmation ? 1 : 0;
+      if (confirmation) {
+        selected.fields.total = chooseConfirmedTicketTotal(
+          selected.fields.total,
+          confirmation.value,
+          confirmation.confidence
         );
-        rawRescueApplied = blockReview.rescued;
       }
-    } finally {
-      await worker.setParameters({ tessedit_pageseg_mode: recognitionPsm });
     }
-  }
-  text = recognitionTexts.filter(Boolean).join('\n');
-  fields.total = reconcileTicketTotalReadings(recognitionTexts, fields.total);
-  if (rescuedLensTotal != null) fields.total = rescuedLensTotal;
-  return {
-    text,
-    classificationText,
-    confidence: Number(result?.data?.confidence) || 0,
-    fields,
-    readings: recognitionTexts.slice(),
-    foodEvidence: extractTicketFoodEvidence(classificationText, fields.total),
-    additionalPasses,
-    pdfFirstPageOnly: isPdf,
-    documentDetected: preparedResult.documentDetected
-  };
+
+    const titleMerchant = await recognizeMissingTicketTitle(worker, selected, onProgress);
+    additionalPasses += titleMerchant ? 1 : 0;
+    if (titleMerchant) selected.fields.merchant = titleMerchant;
+
+    const text = selected.text;
+    const classificationText = text;
+    return {
+      text,
+      classificationText,
+      confidence: selected.confidence,
+      fields: selected.fields,
+      readings: text ? [text] : [],
+      foodEvidence: extractTicketFoodEvidence(classificationText, selected.fields.total),
+      additionalPasses,
+      pdfFirstPageOnly: isPdf,
+      documentDetected: preparedResult.documentDetected,
+      layoutAware: true
+    };
   } finally {
-    if (recognitionPsm !== OCR_PSM_AUTO) {
-      try {
-        await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_AUTO });
-      } catch (_) {
-        // El siguiente uso vuelve a preparar el lector; este restablecimiento es preventivo.
-      }
+    try {
+      await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_AUTO });
+    } catch (_) {
+      // El siguiente uso vuelve a preparar el lector; este restablecimiento es preventivo.
     }
   }
 }
