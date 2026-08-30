@@ -15,6 +15,7 @@ import {
   reconstructTicketLayoutText,
   findFirstTextBand,
   findReceiptBounds,
+  isGoogleLensTranslationText,
   isPlausibleTicketMerchant,
   parseTicketAmount
 } from '../ticket-ocr.js';
@@ -408,8 +409,15 @@ test('limita el rescate a una lectura espacial y comprobaciones localizadas', ()
   assert.match(ocr, /Comprobando el nombre del comercio/);
   assert.match(ocr, /OCR_PSM_SINGLE_LINE/);
   assert.match(ocr, /titleResult\?\.data\?\.confidence \|\| 0\) >= 60/);
-  assert.match(ocr, /preparedResult\.binary && \(!primary\.fields\.total \|\| !primary\.fields\.merchant\)/);
+  assert.match(ocr, /preparedResult\.binary && \(!selected\.fields\.total \|\| !selected\.fields\.merchant\)/);
+  assert.match(ocr, /isGoogleLensTranslationText\(primary\.text\)/);
   assert.doesNotMatch(ocr, /cropCanvas\(prepared, 0, 0\.56\)|cropCanvas\(prepared, 0\.43, 1\)/);
+});
+
+test('una captura traducida por Lens se reconoce por su marca sin depender del comercio', () => {
+  assert.equal(isGoogleLensTranslationText('Translated with Google Lens'), true);
+  assert.equal(isGoogleLensTranslationText('Translated with (8) Google Lens'), true);
+  assert.equal(isGoogleLensTranslationText('Ticket de comercio normal'), false);
 });
 
 test('tolera una O leída dentro de un importe', () => {

@@ -19,6 +19,10 @@ export const normalizeTicketText = value => String(value || '')
   .replace(/[\u0300-\u036f]/g, '')
   .toLowerCase();
 
+export function isGoogleLensTranslationText(text) {
+  return /translated\s+with[\s\S]{0,32}google\s+lens/i.test(String(text || ''));
+}
+
 const normalizeTicketConcepts = value => normalizeTicketText(value)
   .replace(/\bt[o0]ta[l1i]\b/g, 'total')
   .replace(/\bimp[o0]rte\b/g, 'importe');
@@ -1348,11 +1352,21 @@ export async function recognizeTicket(source, options = {}) {
     const primary = await recognizeTicketLayoutPass(worker, primaryImage, !preparedResult.documentDetected);
     let selected = primary;
 
-    if (preparedResult.binary && (!primary.fields.total || !primary.fields.merchant)) {
+    if (!reviewTranslatedReceipt
+      && preparedResult.original
+      && preparedResult.original !== primaryImage
+      && isGoogleLensTranslationText(primary.text)) {
+      onProgress({ status: 'Leyendo la traducción de Google Lens sin deformarla', progress: 0.72 });
+      const lensOriginal = await recognizeTicketLayoutPass(worker, preparedResult.original, false);
+      additionalPasses += 1;
+      if (ticketRecognitionQuality(lensOriginal) > ticketRecognitionQuality(selected)) selected = lensOriginal;
+    }
+
+    if (preparedResult.binary && (!selected.fields.total || !selected.fields.merchant)) {
       onProgress({ status: 'Comprobando el contraste del ticket', progress: 0.78 });
       const contrast = await recognizeTicketLayoutPass(worker, preparedResult.binary, false);
       additionalPasses += 1;
-      if (ticketRecognitionQuality(contrast) > ticketRecognitionQuality(primary)) selected = contrast;
+      if (ticketRecognitionQuality(contrast) > ticketRecognitionQuality(selected)) selected = contrast;
     }
 
     if (selected.layoutTotalRow) {
