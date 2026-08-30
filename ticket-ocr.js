@@ -12,7 +12,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v301';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v302';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -286,6 +286,7 @@ const TOTAL_TABLE_HEADER = /\b(?:unid(?:ad|ades)?|cant(?:idad)?|descripcion|desc
 const TOTAL_TAX_LABEL = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\b/;
 const TOTAL_TAX_INCLUDED = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\s+(?:incl|incluido|incluidos|included|sis|compris)/;
 const TOTAL_EXCLUDED_LABEL = /\b(?:subtotal|sub\s+total|total\s+parcial|partial\s+total|valisumma|total\s+(?:del?\s+)?producto|product\s+total|base\s+(?:imponible|imposable|iva)|taxable\s+amount|net\s+amount|netto|cuota\s+iva|deposito|deposit|importe\s+recibido|amount\s+(?:received|tendered)|recibido|received|tendered|cambio|cambiar|change|vaihtoraha|vuelto|entregado|efectivo|cash|kateinen|descuento|discount|alennus|propina|tip|juomaraha)\b/;
+const PER_PERSON_TOTAL_LABEL = /\b(?:total\s*(?:\/|por\s+|per\s+)(?:comensal(?:es)?|persona(?:s)?|person|diner)|(?:importe?\s+)?(?:por|per)\s+(?:comensal(?:es)?|persona(?:s)?|person|diner)|cada\s+(?:comensal|persona))\b/;
 const TOTAL_LABEL_ONLY = /^(?:(?:grand\s+)?total|importe?|amount|summa|betrag|montant|importo|valor|yhteensa|loppusumma|kokonaissumma|gesamtbetrag|maksettav(?:a|aa)|zu\s+zahlen|a\s+payer|da\s+pagare|(?:importe?\s+)?(?:a|per|poder)\s+(?:pagar|abonar)|pendiente\s+de\s+cobro|cobro\s+pendiente|pendent\s+de\s+cobrament)(?:\s+(?:eur|euro|euros|gbp|pounds?|sek|nok|dkk))?$/;
 const EAST_ASIAN_BEST_TOTAL_LABEL = /(?:総\s*合\s*計|合\s*計\s*金\s*額|お\s*支\s*払(?:\s*い)?(?:\s*合\s*計|\s*金\s*額)?|お\s*会\s*計|合\s*計|支\s*払\s*合\s*計|합\s*계\s*금\s*액|총\s*결\s*제\s*금\s*액|결\s*제\s*금\s*액|받\s*을\s*금\s*액|총\s*액|합\s*계)/u;
 const EAST_ASIAN_TOTAL_LABEL_ONLY = /^(?:総\s*合\s*計|合\s*計\s*金\s*額|お\s*支\s*払(?:\s*い)?(?:\s*合\s*計|\s*金\s*額)?|お\s*会\s*計|合\s*計|支\s*払\s*合\s*計|합\s*계\s*금\s*액|총\s*결\s*제\s*금\s*액|결\s*제\s*금\s*액|받\s*을\s*금\s*액|총\s*액|합\s*계)(?:\s*(?:jpy|krw|円|원))?$/iu;
@@ -681,6 +682,39 @@ export function extractTicketTotal(text) {
   return best?.value ?? null;
 }
 
+export function extractTicketTotalChoices(text) {
+  const lines = ticketLines(text);
+  const perPersonCandidates = [];
+  const generalLines = [];
+  lines.forEach(line => {
+    const normalized = normalizeTicketConcepts(line);
+    const match = PER_PERSON_TOTAL_LABEL.exec(normalized);
+    if (!match) {
+      generalLines.push(line);
+      return;
+    }
+    const tail = line.slice(match.index);
+    const decimalAmounts = amountsInLine(tail);
+    const amounts = decimalAmounts.length ? decimalAmounts : summaryAmountsInLine(tail);
+    if (amounts.length) perPersonCandidates.push(decimalAmounts.length ? amounts.at(-1) : Math.max(...amounts));
+    const beforeLabel = line.slice(0, match.index).trim();
+    if (beforeLabel && GENERIC_TOTAL_LABEL.test(normalizeTicketConcepts(beforeLabel))) {
+      generalLines.push(beforeLabel);
+    }
+  });
+  const perPerson = perPersonCandidates.find(value => Number.isFinite(value) && value > 0) ?? null;
+  const general = extractTicketTotal(generalLines.join('\n'));
+  if (!Number.isFinite(general) || general <= 0 || !Number.isFinite(perPerson) || perPerson <= 0
+    || Math.abs(general - perPerson) < 0.005) return null;
+  const dinersMatch = normalizeTicketConcepts(text).match(/\b(?:comensales?|personas?|diners?)\s*:?\s*(\d{1,3})\b/);
+  const diners = dinersMatch ? Number(dinersMatch[1]) : null;
+  return {
+    general,
+    perPerson,
+    diners: Number.isInteger(diners) && diners > 0 ? diners : null
+  };
+}
+
 const MERCHANT_EXCLUSIONS = /^(ticket|receipt|kuitti|factura|invoice|lasku|simplificada|copia|cliente|customer|fecha|date|hora|time|mesa|caja|cajero|nif|cif|n\.i\.f|tel|telefono|www\.|https?|gracias|iva|vat|alv|total|subtotal|importe|import|amount|summa|yhteensa|direccion|domicilio|articulo|item|descripcion|description|unidades|venta|compra|operacion|transaction|transaccion|autorizacion|authorization|terminal|contactless|aprobada|aceptada|traducid[oa]\s+con\s+google\s+lens|translated\s+by\s+google\s+lens|google\s+lens)/i;
 const MERCHANT_METADATA_WORDS = /\b(fecha|hora|date|time|data|paivamaara|aika|mesa|comensales|caja|cajero|nif|cif|telefono|ticket|receipt|kuitti|factura|invoice|lasku|total|subtotal|importe|import|amount|summa|yhteensa|iva|vat|alv|descripcion|description|kuvaus|unidades|units|maara|precio|price|hinta)\b/i;
 const EAST_ASIAN_MERCHANT_METADATA_WORDS = /(?:領収書|レシート|請求書|日付|時刻|合計|小計|消費税|영수증|계산서|날짜|시간|합계|소계|부가세)/u;
@@ -750,10 +784,12 @@ export function isPlausibleTicketMerchant(value) {
   const line = cleanLine(value);
   const normalized = normalizeTicketText(line);
   const letters = normalized.match(/\p{L}/gu) || [];
+  const words = normalized.match(/\p{L}+/gu) || [];
   const compact = normalized.replace(/[^\p{L}\d]/gu, '');
   const minimumLetters = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/u.test(line) ? 2 : 5;
   if (letters.length < minimumLetters || compact.length < minimumLetters || line.length > 60) return false;
   if (/(\p{L})\1{3,}/iu.test(line)) return false;
+  if (words.length >= 3 && words.filter(word => word.length <= 2).length / words.length >= 0.75) return false;
   if (MERCHANT_EXCLUSIONS.test(line) || MERCHANT_METADATA_WORDS.test(normalized)
     || EAST_ASIAN_MERCHANT_METADATA_WORDS.test(line) || MERCHANT_PROMOTIONAL_LINE.test(normalized)) return false;
   if (ADDRESS_WORDS.test(line) || BANK_BRAND_LINE.test(line) || PAYMENT_TERMINAL_LINE.test(line)) return false;
@@ -762,13 +798,16 @@ export function isPlausibleTicketMerchant(value) {
 }
 
 export function extractTicketFields(text) {
-  return {
+  const totalChoices = extractTicketTotalChoices(text);
+  const fields = {
     documentType: detectTicketDocumentType(text),
     date: extractTicketDate(text),
     time: extractTicketTime(text),
     merchant: extractTicketMerchant(text),
-    total: extractTicketTotal(text)
+    total: totalChoices?.general ?? extractTicketTotal(text)
   };
+  if (totalChoices) fields.totalChoices = totalChoices;
+  return fields;
 }
 
 function ticketTextDistance(left, right) {
@@ -1259,7 +1298,7 @@ function normalizeTicketRecognition(result, image) {
   const confidence = Number(result?.data?.confidence || 0);
   const fields = extractTicketFields(text);
   const layoutTotalRow = bestTicketLayoutTotalRow(blocks);
-  if (Number.isFinite(layoutTotalRow?.value) && layoutTotalRow.value > 0) fields.total = layoutTotalRow.value;
+  if (!fields.totalChoices && Number.isFinite(layoutTotalRow?.value) && layoutTotalRow.value > 0) fields.total = layoutTotalRow.value;
   fields.merchant = ticketMerchantFromLayout(text, rows, image.height, confidence);
   return { result, image, text, linearText, rows, blocks, confidence, fields, layoutTotalRow };
 }

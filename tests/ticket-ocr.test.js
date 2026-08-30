@@ -11,6 +11,7 @@ import {
   extractTicketTime,
   extractTicketLayoutTotal,
   extractTicketTotal,
+  extractTicketTotalChoices,
   reconcileTicketTotalReadings,
   reconstructTicketLayoutText,
   findFirstTextBand,
@@ -327,10 +328,16 @@ www.daikokudrug.com
 Farmacia Daikoku Drug Ueno Ameyoko
 03-5846-1808
 recibo`), 'Farmacia Daikoku Drug Ueno Ameyoko');
+  assert.equal(extractTicketMerchant(`E El Bj NJ)
+¡Gana y usa Puntos Rakuten!
+www.daikokudrug.com
+Farmacia Daikoku Drug Ueno Ameyoko
+recibo`), 'Farmacia Daikoku Drug Ueno Ameyoko');
   assert.equal(isPlausibleTicketMerchant('Gana y usa Puntos Rakuten'), false);
   assert.equal(isPlausibleTicketMerchant('Ad O'), false);
   assert.equal(isPlausibleTicketMerchant('ralriiiialviar L'), false);
   assert.equal(isPlausibleTicketMerchant('mE. Hora'), false);
+  assert.equal(isPlausibleTicketMerchant('E El Bj NJ)'), false);
   assert.equal(isPlausibleTicketMerchant('MILLENIUM'), true);
 });
 
@@ -453,6 +460,37 @@ test('el OCR normal conserva datos existentes y Lens puede sustituirlos', () => 
   assert.match(app, /fecha incompatible con las fechas del viaje/);
 });
 
+test('distingue el total general del total por comensal y conserva ambos para que el usuario elija', () => {
+  const text = `BAR RESTAURANTE HERMANOS SORIANO
+10/08/2026 23:30
+Total (Impuestos Incl.) 85,10 €
+Comensales: 5 Total/Comensal: 17,02 €`;
+  assert.deepEqual(extractTicketTotalChoices(text), {
+    general: 85.1,
+    perPerson: 17.02,
+    diners: 5
+  });
+  const fields = extractTicketFields(text);
+  assert.equal(fields.total, 85.1);
+  assert.deepEqual(fields.totalChoices, {
+    general: 85.1,
+    perPerson: 17.02,
+    diners: 5
+  });
+  assert.equal(extractTicketTotalChoices('TOTAL A PAGAR 7,10 EUR'), null);
+});
+
+test('la interfaz pregunta qué total usar solamente cuando existen ambos importes explícitos', () => {
+  const app = readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /id="ticket-total-choice-dialog"/);
+  assert.match(html, /id="ticket-total-choice-general"/);
+  assert.match(html, /id="ticket-total-choice-per-person"/);
+  assert.match(app, /async function applyTicketOcrFields/);
+  assert.match(app, /await chooseTicketTotalAmount\(prefix, fields\.totalChoices\)/);
+  assert.match(app, /await applyTicketOcrFields\(prefix, result/);
+});
+
 test('analiza como ticket español el resultado traducido por Lens', () => {
   assert.deepEqual(extractTicketFields(`FamiliaMart
 Tienda Ryogoku
@@ -474,7 +512,8 @@ cambiar ¥8,000`), {
 });
 
 test('interpreta un ticket japonés cuando Lens traduce total como combinar', () => {
-  assert.deepEqual(extractTicketFields(`¡Gana y usa Puntos Rakuten!
+  assert.deepEqual(extractTicketFields(`E El Bj NJ)
+¡Gana y usa Puntos Rakuten!
 www.daikokudrug.com
 Farmacia Daikoku Drug Ueno Ameyoko
 03-5846-1808
@@ -485,13 +524,32 @@ Toallas suaves y esponjosas 800 yenes x 3 ¥2,400
 Cuerpo subtotal ¥8,000
 10% cuerpo objetivo ¥0
 8% cuerpo objetivo ¥0
-combinar ¥8,000
+combirar Amanuense ¥8 . e) e O
 custodia 8,000 yenes`), {
     documentType: 'receipt',
     date: '2011-09-24',
     time: '16:46',
     merchant: 'Farmacia Daikoku Drug Ueno Ameyoko',
     total: 8000
+  });
+});
+
+test('el resumen Mandarake conserva el total completo y no el impuesto', () => {
+  assert.deepEqual(extractTicketFields(`Complejo Mandarake TEL:
+03-3252-7007
+8 de septiembre de 2024 (domingo) 18:27 N.º 0006
+0003 El mundo de Yoshi's Woolf ¥1,980
+Total parcial ¥1,980
+Monto sujeto a impuestos ¥1,980
+Impuesto ¥180
+total ¥1, 980
+Dinero electrónico (relacionado con el transporte) ¥1,980
+cambiar 0`), {
+    documentType: 'receipt',
+    date: '2024-09-08',
+    time: '18:27',
+    merchant: 'Complejo Mandarake',
+    total: 1980
   });
 });
 

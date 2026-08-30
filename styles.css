@@ -1479,6 +1479,15 @@ input[type="checkbox"] {
   width: min(420px, calc(100vw - 40px));
 }
 
+#ticket-total-choice-dialog .actions {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+#ticket-total-choice-dialog .actions button {
+  width: 100%;
+}
+
 .expense-current-image-preview {
   display: block;
   width: 100%;

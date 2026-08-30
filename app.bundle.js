@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v301';
+const APP_VERSION = '700v302';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -66,6 +66,7 @@ const DIALOG_HELP_TARGETS = {
   'add-gasto-dialog': 'gasto-formulario',
   'edit-gasto-dialog': 'gasto-formulario',
   'image-datetime-dialog': 'gasto-formulario',
+  'ticket-total-choice-dialog': 'ocr',
   'expense-files-dialog': 'gasto-archivos',
   'image-viewer-dialog': 'traducir-ticket',
   'form-dialog': 'referencia',
@@ -2749,7 +2750,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v301');
+    const worker = new Worker('./timeline-import-worker.js?v=700v302');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3737,7 +3738,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v301');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v302');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4342,6 +4343,54 @@ function setTicketOcrStatus(prefix, text, isError = false) {
   status.classList.toggle('error', isError);
 }
 
+function chooseTicketTotalAmount(prefix, choices) {
+  const general = Number(choices?.general);
+  const perPerson = Number(choices?.perPerson);
+  if (!Number.isFinite(general) || general <= 0 || !Number.isFinite(perPerson) || perPerson <= 0) {
+    return Promise.resolve(Number.isFinite(general) && general > 0 ? general : null);
+  }
+  const dialog = $('#ticket-total-choice-dialog');
+  if (!dialog) return Promise.resolve(general);
+  const currency = String($(`#${prefix}-moneda`)?.value || 'EUR');
+  return new Promise(resolve => {
+    const message = $('#ticket-total-choice-message');
+    const generalButton = $('#ticket-total-choice-general');
+    const perPersonButton = $('#ticket-total-choice-per-person');
+    const manualButton = $('#ticket-total-choice-manual');
+    let resolved = false;
+    const finish = value => {
+      if (resolved) return;
+      resolved = true;
+      if (generalButton) generalButton.onclick = null;
+      if (perPersonButton) perPersonButton.onclick = null;
+      if (manualButton) manualButton.onclick = null;
+      dialog.oncancel = null;
+      if (dialog.close) dialog.close();
+      else dialog.removeAttribute('open');
+      resolve(value);
+    };
+    const diners = Number(choices?.diners);
+    if (message) message.textContent = Number.isInteger(diners) && diners > 0
+      ? `El ticket contiene el total general y el importe para cada uno de los ${diners} comensales. Elige el que corresponde a este gasto.`
+      : 'El ticket contiene un total general y otro por comensal. Elige el que corresponde a este gasto.';
+    if (generalButton) {
+      generalButton.textContent = `Total general · ${fmtCurrency(general, currency)}`;
+      generalButton.onclick = () => finish(general);
+    }
+    if (perPersonButton) {
+      perPersonButton.textContent = `Por comensal · ${fmtCurrency(perPerson, currency)}`;
+      perPersonButton.onclick = () => finish(perPerson);
+    }
+    if (manualButton) manualButton.onclick = () => finish(null);
+    dialog.oncancel = event => {
+      event.preventDefault();
+      finish(null);
+    };
+    if (dialog.showModal) dialog.showModal();
+    else dialog.setAttribute('open', 'open');
+  });
+}
+
 function setTicketOcrDiagnostics(prefix, result = null) {
   const details = $(`#${prefix}-ticket-ocr-details`);
   const output = $(`#${prefix}-ticket-ocr-text`);
@@ -4431,7 +4480,7 @@ function ticketDateAlignedToTrip(prefix, value) {
   return { value: '', corrected: false, rejected: true };
 }
 
-function applyTicketOcrFields(prefix, result, options = {}) {
+async function applyTicketOcrFields(prefix, result, options = {}) {
   const fields = result.fields || {};
   const detected = [];
   const applied = [];
@@ -4466,7 +4515,18 @@ function applyTicketOcrFields(prefix, result, options = {}) {
   if (alignedDate.rejected) preserved.push('fecha incompatible con las fechas del viaje');
   else applyValue('fecha', alignedDate.value, alignedDate.corrected ? 'fecha (año ajustado al viaje)' : 'fecha');
   applyValue('hora', fields.time || '', 'hora');
-  applyValue('importe', Number.isFinite(fields.total) && fields.total > 0 ? fields.total.toFixed(2) : '', 'total');
+  let selectedTotal = Number.isFinite(fields.total) && fields.total > 0 ? fields.total : null;
+  let selectedTotalLabel = 'total';
+  if (fields.totalChoices) {
+    selectedTotal = await chooseTicketTotalAmount(prefix, fields.totalChoices);
+    if (selectedTotal === fields.totalChoices.general) selectedTotalLabel = 'total general';
+    else if (selectedTotal === fields.totalChoices.perPerson) selectedTotalLabel = 'total por comensal';
+    else {
+      detected.push('total general y total por comensal');
+      preserved.push('importe pendiente de introducir manualmente');
+    }
+  }
+  applyValue('importe', Number.isFinite(selectedTotal) && selectedTotal > 0 ? selectedTotal.toFixed(2) : '', selectedTotalLabel);
   const merchantApplied = applyValue('desc', fields.merchant || '', 'establecimiento');
   const suggestion = suggestTicketCategory(
     result.classificationText || result.text || '',
@@ -4500,9 +4560,11 @@ function applyTicketOcrFields(prefix, result, options = {}) {
   if (!detected.length) throw new Error('No se han podido reconocer datos claros en este ticket. Puedes introducirlos manualmente.');
   const documentLabel = options.documentLabel
     || (fields.documentType === 'card_payment' ? 'Justificante de tarjeta detectado.' : 'Ticket de comercio detectado.');
-  const missingAmount = Number.isFinite(fields.total) && fields.total > 0
+  const missingAmount = Number.isFinite(selectedTotal) && selectedTotal > 0
     ? ''
-    : ' No se encontró un total claro en el justificante; se mantiene el importe que ya figuraba.';
+    : fields.totalChoices
+      ? ' El importe queda pendiente para que lo introduzcas manualmente.'
+      : ' No se encontró un total claro en el justificante; se mantiene el importe que ya figuraba.';
   const appliedMessage = applied.length ? ` Campos completados: ${[...new Set(applied)].join(', ')}.` : '';
   const preservedMessage = preserved.length ? ` Se conservaron sin cambios: ${[...new Set(preserved)].join(', ')}.` : '';
   return `${documentLabel} Datos reconocidos: ${[...new Set(detected)].join(', ')}.${appliedMessage}${preservedMessage} Revisa los datos; no se guardarán hasta que pulses ${prefix === 'edit-gasto' ? 'Guardar cambios' : 'Añadir'}.${missingAmount}${result.pdfFirstPageOnly ? ' En PDF se ha leído la primera página.' : ''}`;
@@ -4561,7 +4623,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v301');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v302');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4585,7 +4647,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
       );
     }
     setTicketOcrDiagnostics(prefix, result);
-    setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result, options));
+    setTicketOcrStatus(prefix, await applyTicketOcrFields(prefix, result, options));
     if (prefix === 'g') scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
     return result;
   } catch (error) {
@@ -4691,7 +4753,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v301');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v302');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4708,7 +4770,7 @@ async function readLensTicketText(prefix, text, options = {}) {
       foodEvidence: ocr.extractTicketFoodEvidence(sourceText, fields.total)
     };
     setTicketOcrDiagnostics(prefix, result);
-    setTicketOcrStatus(prefix, applyTicketOcrFields(prefix, result, {
+    setTicketOcrStatus(prefix, await applyTicketOcrFields(prefix, result, {
       replaceExisting: true,
       preserveDescription: true,
       replaceOcrDescription: true,
@@ -5022,7 +5084,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v301');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v302');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -13514,7 +13576,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v301');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v302');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -19177,7 +19239,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v301');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v302');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
