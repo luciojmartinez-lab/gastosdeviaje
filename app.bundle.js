@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v310';
+const APP_VERSION = '700v311';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2750,7 +2750,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v310');
+    const worker = new Worker('./timeline-import-worker.js?v=700v311');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3738,7 +3738,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v310');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v311');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4568,9 +4568,12 @@ async function applyTicketOcrFields(prefix, result, options = {}) {
     : fields.totalChoices
       ? ' El importe queda pendiente para que lo introduzcas manualmente.'
       : ' No se encontró un total claro en el justificante; se mantiene el importe que ya figuraba.';
+  const missingLensMerchant = result.lensAiSummary && !fields.merchant
+    ? ' El resumen de Lens no incluye un establecimiento claro; se conserva el que ya figuraba o el campo queda vacío.'
+    : '';
   const appliedMessage = applied.length ? ` Campos completados: ${[...new Set(applied)].join(', ')}.` : '';
   const preservedMessage = preserved.length ? ` Se conservaron sin cambios: ${[...new Set(preserved)].join(', ')}.` : '';
-  return `${documentLabel} Datos reconocidos: ${[...new Set(detected)].join(', ')}.${appliedMessage}${preservedMessage} Revisa los datos; no se guardarán hasta que pulses ${prefix === 'edit-gasto' ? 'Guardar cambios' : 'Añadir'}.${missingAmount}${result.pdfFirstPageOnly ? ' En PDF se ha leído la primera página.' : ''}`;
+  return `${documentLabel} Datos reconocidos: ${[...new Set(detected)].join(', ')}.${appliedMessage}${preservedMessage} Revisa los datos; no se guardarán hasta que pulses ${prefix === 'edit-gasto' ? 'Guardar cambios' : 'Añadir'}.${missingAmount}${missingLensMerchant}${result.pdfFirstPageOnly ? ' En PDF se ha leído la primera página.' : ''}`;
 }
 
 function markTicketCategoryEdited(prefix) {
@@ -4626,7 +4629,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v310');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v311');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4762,7 +4765,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v310');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v311');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5094,7 +5097,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v310');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v311');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -13586,7 +13589,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v310');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v311');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15047,7 +15050,7 @@ async function openSharedImagesDialog(payload) {
   if (payload.fromLens && currentFormTarget && !lensReceiptText && sharedPayloadIsGoogleAiLinkOnly(payload)) {
     pendingSharedImagesPayload = null;
     setTab('gastos');
-    setTicketOcrStatus(currentFormTarget.prefix, 'Google ha compartido únicamente el enlace al análisis de IA, cuyo contenido no puede leer la aplicación. Vuelve a Lens, pulsa «Mostrar más», realiza una captura desplazable del resumen y compártela con Cuaderno de Bitácora.');
+    setTicketOcrStatus(currentFormTarget.prefix, 'Google ha compartido únicamente el enlace al análisis de IA, cuyo contenido no puede leer la aplicación. Vuelve a Lens, pulsa «Mostrar más» y haz una captura desplazable que incluya el comercio y el total. En Xiaomi: Encendido + Volumen abajo, toca enseguida la miniatura y elige «Desplazar» o «Capturar más». Si Lens no menciona el comercio, pregúntale «¿Cuál es el comercio, la fecha, la hora y el total pagado?» antes de capturar. Después comparte la captura con Cuaderno de Bitácora.');
     return;
   }
   const preferredStoredExpense = lensTarget?.expenseId
@@ -19255,7 +19258,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v310');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v311');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

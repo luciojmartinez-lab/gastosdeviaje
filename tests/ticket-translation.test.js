@@ -132,6 +132,8 @@ test('Lens ignora enlaces y textos auxiliares antes de decidir si debe leer la i
   assert.equal(receiptText({ text: ticket }), ticket);
   assert.match(app, /function sharedPayloadIsGoogleAiLinkOnly/);
   assert.match(app, /Google ha compartido únicamente el enlace al análisis de IA/);
+  assert.match(app, /Encendido \+ Volumen abajo/);
+  assert.match(app, /El resumen de Lens no incluye un establecimiento claro/);
   assert.match(app, /sharedPayloadIsGoogleAiLinkOnly\(payload\)/);
 });
 

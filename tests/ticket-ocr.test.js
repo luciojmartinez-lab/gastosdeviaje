@@ -108,6 +108,16 @@ Detalles de la compra
 Mostrar más
 Coincidencias visuales`;
 
+const lensAiEconomicBreakdown = `22:12
+E Desglose Económico
+• Cantidad total de artículos: 10 piezas
+• Monto imponible al 10% (Bienes generales): Y0
+• Monto exento de impuestos (0% Tax-Free): Y8,000
+• Total de la compra: Y*8,000
+• Importe total del impuesto ahorrado: Y800
+• Método de pago utilizado: Efectivo / Tarjeta sin contacto / Puntos Rakuten.
+Si lo deseas, indícame si hay algún término específico del recibo que te genere dudas.`;
+
 const milleniumReceiptOcr = `MILLENIUM
 MARTA RODRIGUEZ GAVIEIRO
 FRA SIMP: COMPROBANTE FECHA: 18/07/2026
@@ -133,9 +143,11 @@ test('en tickets prioriza el encabezado del comercio', () => {
 test('interpreta el resumen de Lens IA sin confundir su interfaz con el comercio', () => {
   assert.equal(isGoogleLensAiReceiptSummary(lensAiSevenEleven), true);
   assert.equal(isGoogleLensAiReceiptSummary(lensAiLawson), true);
+  assert.equal(isGoogleLensAiReceiptSummary(lensAiEconomicBreakdown), true);
   assert.equal(extractGoogleLensAiMerchant(lensAiSevenEleven), '7-Eleven, sucursal Futtsu Hamakanaya');
   assert.equal(extractGoogleLensAiMerchant(lensAiLawson), 'Lawson');
   assert.equal(extractGoogleLensAiTotal(lensAiSevenElevenShort), 344);
+  assert.equal(extractGoogleLensAiTotal(lensAiEconomicBreakdown), 8000);
   assert.deepEqual(extractTicketFields(lensAiSevenEleven), {
     documentType: 'receipt',
     date: '2024-08-23',
@@ -157,6 +169,14 @@ test('interpreta el resumen de Lens IA sin confundir su interfaz con el comercio
     merchant: '7-Eleven, sucursal Futtsu Hamakanaya',
     total: 344
   });
+  assert.deepEqual(extractTicketFields(lensAiEconomicBreakdown), {
+    documentType: 'receipt',
+    date: '',
+    time: '',
+    merchant: '',
+    total: 8000
+  });
+  assert.equal(extractTicketMerchant(lensAiEconomicBreakdown), '');
 });
 
 test('en copias de tarjeta omite el sistema de pago y localiza el comercio', () => {

@@ -13,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v310';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v311';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -31,8 +31,17 @@ export function isGoogleLensAiReceiptSummary(text) {
     /\barticulos\s+adquiridos\b/,
     /\btotales\s+y\s+pago\b/
   ].filter(pattern => pattern.test(normalized)).length;
+  const economicBreakdownSignals = [
+    /\bcantidad\s+total\s+de\s+articulos\b/,
+    /\bmonto\s+imponible\b/,
+    /\bmonto\s+exento\s+de\s+impuestos\b/,
+    /\btotal\s+de\s+la\s+compra\b/,
+    /\bimporte\s+total\s+del\s+impuesto\s+ahorrado\b/,
+    /\bmetodo\s+de\s+pago\s+utilizado\b/
+  ].filter(pattern => pattern.test(normalized)).length;
   return /\bvista\s+creada\s+con\s+(?:ia|la)\b/.test(normalized)
     || sectionSignals >= 2
+    || (/\bdesglose\s+economico\b/.test(normalized) && economicBreakdownSignals >= 2)
     || /\bel\s+ticket\s+de\s+compra\s+es\s+de\s+una\s+tienda\b[\s\S]{0,100}\btotal\b/.test(normalized)
     || /\beste\s+es\s+el\s+recibo\b[\s\S]{0,140}\brealizad[ao]\s+en\s+una\s+tienda\b/.test(normalized);
 }
@@ -45,7 +54,7 @@ const ticketLines = text => String(text || '').split(/\r?\n/).map(cleanLine).fil
 
 function googleLensAiSummaryBody(text) {
   const lines = ticketLines(text);
-  const start = lines.findIndex(line => /\b(?:vista\s+creada\s+con\s+(?:ia|la)|detalles\s+de\s+la\s+compra|este\s+es\s+el\s+recibo|el\s+ticket\s+de\s+compra)\b/i.test(normalizeTicketText(line)));
+  const start = lines.findIndex(line => /\b(?:vista\s+creada\s+con\s+(?:ia|la)|detalles\s+de\s+la\s+compra|desglose\s+economico|este\s+es\s+el\s+recibo|el\s+ticket\s+de\s+compra)\b/i.test(normalizeTicketText(line)));
   const body = start >= 0 ? lines.slice(start) : lines;
   const end = body.findIndex(line => /\bcoincidencias\s+(?:visuales|exactas)\b/i.test(normalizeTicketText(line)));
   return (end >= 0 ? body.slice(0, end) : body).join('\n');
@@ -160,13 +169,14 @@ function extractGoogleLensAiSummaryDate(text) {
 
 export function extractGoogleLensAiTotal(text) {
   if (!isGoogleLensAiReceiptSummary(text)) return null;
-  const summary = googleLensAiSummaryBody(text).replace(/\s+/g, ' ');
-  const match = summary.match(/\b(?:total\s+pagado\s*:?|total\s+de)\s*([\d][\d.,\s]*?)\s*(yen(?:es)?|jpy|won(?:es)?|krw|euros?|eur|dolares?|usd|libras?|gbp)\b/i);
+  const summary = normalizeOcrCurrencyMarkers(googleLensAiSummaryBody(text)).replace(/\s+/g, ' ');
+  const match = summary.match(/\b(?:total\s+pagado|total\s+de\s+la\s+compra|total\s+de)\s*:?\s*([€$£¥])?\s*(\d(?:[\d.,\s]*\d)?)\s*(yen(?:es)?|jpy|won(?:es)?|krw|euros?|eur|dolares?|usd|libras?|gbp)?/i);
   if (!match) return null;
-  const currency = normalizeTicketText(match[2]);
-  const value = /^(?:yen|yenes|jpy|won|wones|krw)$/.test(currency)
-    ? Number(String(match[1]).replace(/\D/g, ''))
-    : parseTicketAmount(match[1]);
+  const currency = normalizeTicketText(match[3]);
+  const integerCurrency = match[1] === '¥' || /^(?:yen|yenes|jpy|won|wones|krw)$/.test(currency);
+  const value = integerCurrency
+    ? Number(String(match[2]).replace(/\D/g, ''))
+    : parseTicketAmount(match[2]);
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
@@ -844,7 +854,7 @@ const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|rua|rúa|
 const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|by(?:\s+\S{1,3})?\s+santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet(?:\s+by\s+santander)?)$/i;
 const PAYMENT_TERMINAL_LINE = /^(?:venta\b|compra\b|visa\b|mastercard\b|contactless\b|aut(?:orizacion)?[:.\s]|op(?:eracion)?[:.\s]|tran(?:saccion)?[:.\s]|terminal[:.\s]|app\s+(?:bbva|santander|caixabank|sabadell))/i;
 const MERCHANT_PROMOTIONAL_LINE = /\b(?:gana|acumula|canjea|ahorra|consigue|usa)\b.*\b(?:puntos?|recompensas?|descuentos?|rakuten)\b|\b(?:puntos?|recompensas?)\b.*\b(?:rakuten|ahorra|acumula)\b/i;
-const LENS_AI_INTERFACE_LINE = /\b(?:detalles\s+de\s+la\s+compra|articulos?\s+adquiridos|totales\s+y\s+pago|vista\s+creada\s+con\s+(?:ia|la)|mostrar\s+mas|pregunta\s+(?:lo\s+que\s+quieras|sobre\s+esta\s+imagen)|coincidencias\s+(?:visuales|exactas)|busquedas?\s+relacionadas?|shutterstock)\b/i;
+const LENS_AI_INTERFACE_LINE = /\b(?:detalles\s+de\s+la\s+compra|articulos?\s+adquiridos|totales\s+y\s+pago|desglose\s+economico|vista\s+creada\s+con\s+(?:ia|la)|mostrar\s+mas|pregunta\s+(?:lo\s+que\s+quieras|sobre\s+esta\s+imagen)|coincidencias\s+(?:visuales|exactas)|busquedas?\s+relacionadas?|las\s+respuestas\s+de\s+la\s+ia|shutterstock)\b/i;
 
 function cleanMerchantCandidate(value) {
   return cleanLine(value)
@@ -872,8 +882,7 @@ export function extractGoogleLensAiMerchant(text) {
 }
 
 export function extractTicketMerchant(text) {
-  const lensAiMerchant = extractGoogleLensAiMerchant(text);
-  if (lensAiMerchant) return lensAiMerchant;
+  if (isGoogleLensAiReceiptSummary(text)) return extractGoogleLensAiMerchant(text);
   const lines = ticketLines(text).slice(0, 24);
   const documentType = detectTicketDocumentType(text);
   const explicit = lines.map((line, index) => {
