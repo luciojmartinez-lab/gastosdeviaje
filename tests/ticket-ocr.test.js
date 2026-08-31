@@ -19,6 +19,7 @@ import {
   findFirstTextBand,
   findReceiptBounds,
   isGoogleLensTranslationText,
+  isImplausibleTranslatedTicketTotal,
   isPlausibleTicketMerchant,
   parseTicketAmount
 } from '../ticket-ocr.js';
@@ -219,9 +220,15 @@ test('no mezcla lecturas OCR conflictivas como si fueran evidencias independient
 test('una cifra aislada de la fila grande no sustituye el total corroborado por el ticket', () => {
   assert.equal(reconcileTicketLayoutTotal(1980, 980), 1980);
   assert.equal(reconcileTicketLayoutTotal(null, 344), 344);
+  assert.equal(reconcileTicketLayoutTotal(1, 930), null);
   assert.equal(chooseConfirmedTicketTotal(1980, 930, 92), 1980);
   assert.equal(chooseConfirmedTicketTotal(980, 930, 92), 980);
   assert.equal(chooseConfirmedTicketTotal(27, 827, 92), 827);
+  assert.equal(isImplausibleTranslatedTicketTotal('Artículo ¥1,980\ntotal ¥1', 1), true);
+  assert.equal(isImplausibleTranslatedTicketTotal('TOTAL 1,00 €', 1), false);
+  const source = readFileSync(new URL('../ticket-ocr.js', import.meta.url), 'utf8');
+  assert.match(source, /confirmation && !selected\.totalConflict/);
+  assert.match(source, /reviewTranslatedReceipt && isImplausibleTranslatedTicketTotal/);
 });
 
 test('reconstruye la fila visual de Total aunque etiqueta y cifra estén en bloques distintos', () => {
@@ -571,6 +578,12 @@ Impuesto al consumo ¥180
 total 980
 Total sujeto a una tasa impositiva del 10% ¥1,980
 Dinero electrónico ¥ 1 y 980
+cambiar O`), 1980);
+  assert.equal(extractTicketTotal(`0003 El mundo de Yoshi's Woolf ¥1,980
+Total parcial ¥1,980
+Monto sujeto a impuestos ¥180
+total 1
+Total sujeto a una tasa impositiva del 10% ¥1,980
 cambiar O`), 1980);
 });
 
