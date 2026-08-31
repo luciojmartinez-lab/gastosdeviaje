@@ -593,6 +593,16 @@ cambiar O`), 1980);
   assert.equal(extractTicketTotal(`Total parcial 71,980
 total 41,980
 Pago 41,980`), 41980);
+  assert.equal(extractTicketTotal(`Complejo Mandarake TEL:
+03-3252-7007
+0003 El mundo de Yoshi's Woolf ¥1,950
+———]———]——]];—_———]—]—]——l —]—]——]_—]————]] total 1, 980
+Total parcial $1,400
+Monto sujeto a impuestos Yi , 30
+(ImgJesto al consume y atras impuestos internos) Y i 59
+Total sujeto a una tasa impositiva del 10%. Y ; 30
+Dinero electrónico (re'acionado con el transporte) Y 1 , 0
+cambiar . O`), 1980);
 });
 
 test('reconoce productos de alimentación aunque Lens traduzca de forma irregular', () => {

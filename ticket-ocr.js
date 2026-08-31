@@ -13,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v307';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v308';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -284,7 +284,7 @@ const PAYMENT_DUE_LABEL = /\b(?:pendiente\s+de\s+cobro|cobro\s+pendiente|pendent
 // contains an amount, so ordinary prose using that verb cannot win by itself.
 const LENS_MISTRANSLATED_TOTAL_LABEL = /^\s*(?:[iIlL1|]\s+)?(?:combinar|combinado)\b(?=[^\d¥₩￥]*[¥₩￥]?\s*\d)/i;
 const TOTAL_TABLE_HEADER = /\b(?:unid(?:ad|ades)?|cant(?:idad)?|descripcion|descripcio|articulo|article|item|unit|units|qty|quantity|price|preu|quantitat|kuvaus|tuote|maara|kpl|hinta)\b/;
-const TOTAL_TAX_LABEL = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\b/;
+const TOTAL_TAX_LABEL = /\b(?:iva|vat|alv|tax|impuesto|impuestos|impositiv(?:a|o|as|os)|vero|tva|mwst)\b/;
 const TOTAL_TAX_INCLUDED = /\b(?:iva|vat|alv|tax|impuesto|impuestos|vero|tva|mwst)\s+(?:incl|incluido|incluidos|included|sis|compris)/;
 const TOTAL_EXCLUDED_LABEL = /\b(?:subtotal|sub\s+total|total\s+parcial|partial\s+total|valisumma|total\s+(?:del?\s+)?producto|product\s+total|base\s+(?:imponible|imposable|iva)|taxable\s+amount|net\s+amount|netto|cuota\s+iva|deposito|deposit|importe\s+recibido|amount\s+(?:received|tendered)|recibido|received|tendered|cambio|cambiar|change|vaihtoraha|vuelto|entregado|efectivo|cash|kateinen|descuento|discount|alennus|propina|tip|juomaraha)\b/;
 const PER_PERSON_TOTAL_LABEL = /\b(?:total\s*(?:\/|por\s+|per\s+)(?:comensal(?:es)?|persona(?:s)?|person|diner)|(?:importe?\s+)?(?:por|per)\s+(?:comensal(?:es)?|persona(?:s)?|person|diner)|cada\s+(?:comensal|persona))\b/;
@@ -296,6 +296,16 @@ const EAST_ASIAN_EXCLUDED_TOTAL_LABEL = /(?:小計|消費税|税額|お預り|�
 function ticketTotalLineExcluded(normalized) {
   const taxBreakdown = TOTAL_TAX_LABEL.test(normalized) && !TOTAL_TAX_INCLUDED.test(normalized);
   return TOTAL_EXCLUDED_LABEL.test(normalized) || EAST_ASIAN_EXCLUDED_TOTAL_LABEL.test(normalized) || taxBreakdown;
+}
+
+function isBareTicketTotalLine(line) {
+  const source = String(line || '');
+  const match = /(?:grand\s+)?total\s*[:=.-]?\s*(?:[€£¥₩￥$]|\d)/iu.exec(source);
+  if (!match) return false;
+  // Lens sometimes prefixes the real total with a long OCR rendering of the
+  // receipt separator. Accept punctuation and isolated stray letters there,
+  // but not an actual product or explanatory phrase.
+  return !/[\p{L}\d]{2,}/u.test(source.slice(0, match.index));
 }
 
 function validOcrBox(box) {
@@ -426,7 +436,7 @@ export function reconstructTicketLayoutText(blocks = []) {
 function ticketTotalRowScore(line) {
   const normalized = normalizeTicketConcepts(line);
   if (ticketTotalLineExcluded(normalized)) return 0;
-  if (/^\s*(?:grand\s+)?total\s*[:=.-]?\s*(?:[€£¥₩￥$]|\d)/iu.test(line)) return 150;
+  if (isBareTicketTotalLine(line)) return 150;
   if (BEST_TOTAL_LABEL.test(normalized) || LENS_MISTRANSLATED_TOTAL_LABEL.test(normalized)
     || EAST_ASIAN_BEST_TOTAL_LABEL.test(line)) return 130;
   if (GENERIC_TOTAL_LABEL.test(normalized) && !/\b(?:subtotal|sub\s+total|total\s+parcial|partial\s+total|valisumma)\b/.test(normalized)) return 115;
@@ -658,7 +668,7 @@ export function extractTicketTotal(text) {
         if (labeledIntegers.length) amounts = labeledIntegers;
       }
     }
-    const bareTotal = /^\s*(?:grand\s+)?total\s*[:=.-]?\s*(?:[€£¥₩￥$]|\d)/iu.test(line);
+    const bareTotal = isBareTicketTotalLine(line);
     let labelScore = bareTotal ? 150 : hasBestLabel ? 130 : hasTotalLabel ? 115 : hasPaymentDueLabel ? 105 : hasAmountLabel ? 95 : 0;
     if (tableHeader && !hasTotalLabel) labelScore = 0;
     if (hasAmountLabel && !hasTotalLabel && !hasPaymentDueLabel && amounts.length > 1) labelScore = 0;
