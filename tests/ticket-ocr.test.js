@@ -572,6 +572,25 @@ total 980
 Total sujeto a una tasa impositiva del 10% ¥1,980
 Dinero electrónico ¥ 1 y 980
 cambiar O`), 1980);
+  assert.equal(extractTicketTotal(`0003 El mundo de Yoshi's Woolf 41,950
+Total parcial 71,980
+Monto sujeto a impuestos +1,980
+Impuesto Y 180
+total 1, 980
+Total sujeto a una tasa impositiva del 10%. Y, 980
+Dinero electrónico 41,980
+cambiar O`), 1980);
+  assert.equal(extractTicketTotal(`0003 El mundo de Yoshi's Woolf 41,950
+Total parcial 71,980
+Monto sujeto a impuestos +1,980
+Impuesto Y 180
+total 1, 930
+Total sujeto a una tasa impositiva del 10%. Y, 980
+Dinero electrónico 41,980
+cambiar O`), 1980);
+  assert.equal(extractTicketTotal(`Total parcial 71,980
+total 41,980
+Pago 41,980`), 41980);
 });
 
 test('reconoce productos de alimentación aunque Lens traduzca de forma irregular', () => {

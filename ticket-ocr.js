@@ -13,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v305';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v306';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -426,6 +426,7 @@ export function reconstructTicketLayoutText(blocks = []) {
 function ticketTotalRowScore(line) {
   const normalized = normalizeTicketConcepts(line);
   if (ticketTotalLineExcluded(normalized)) return 0;
+  if (/^\s*(?:grand\s+)?total\s*[:=.-]?\s*(?:[€£¥₩￥$]|\d)/iu.test(line)) return 150;
   if (BEST_TOTAL_LABEL.test(normalized) || LENS_MISTRANSLATED_TOTAL_LABEL.test(normalized)
     || EAST_ASIAN_BEST_TOTAL_LABEL.test(line)) return 130;
   if (GENERIC_TOTAL_LABEL.test(normalized) && !/\b(?:subtotal|sub\s+total|total\s+parcial|partial\s+total|valisumma)\b/.test(normalized)) return 115;
@@ -496,6 +497,54 @@ function summaryAmountsInLine(line) {
       .map(value => Math.abs(Number(value)))
       .filter(value => Number.isFinite(value) && value > 0)
   )];
+}
+
+function ticketAmountDigitDistance(left, right) {
+  const leftDigits = String(Math.trunc(left));
+  const rightDigits = String(Math.trunc(right));
+  if (leftDigits.length !== rightDigits.length) return Infinity;
+  let distance = 0;
+  for (let index = 0; index < leftDigits.length; index += 1) {
+    if (leftDigits[index] !== rightDigits[index]) distance += 1;
+  }
+  return distance;
+}
+
+function recoverRepeatedSummarySuffix(lines, explicit) {
+  if (!Number.isInteger(explicit) || explicit <= 0) return explicit;
+  const summaryValues = [];
+  lines.forEach(line => {
+    const normalized = normalizeTicketConcepts(line);
+    const summaryLine = GENERIC_TOTAL_LABEL.test(normalized)
+      || TOTAL_EXCLUDED_LABEL.test(normalized)
+      || TOTAL_TAX_LABEL.test(normalized)
+      || PAYMENT_DUE_LABEL.test(normalized)
+      || /\b(?:monto\s+sujeto|dinero\s+electronico|pago|pagado|payment|paid|cobrado|custodia)\b/.test(normalized);
+    if (!summaryLine) return;
+    summaryAmountsInLine(line)
+      .filter(value => Number.isInteger(value) && value >= 100)
+      .forEach(value => summaryValues.push(value));
+  });
+  const parentsBySuffix = new Map();
+  [...new Set(summaryValues)].forEach(value => {
+    const digits = String(value);
+    if (digits.length < 4) return;
+    const suffix = Number(digits.slice(1));
+    if (!Number.isInteger(suffix) || suffix < 100) return;
+    if (!parentsBySuffix.has(suffix)) parentsBySuffix.set(suffix, new Set());
+    parentsBySuffix.get(suffix).add(value);
+  });
+  const explicitDigits = String(explicit);
+  const candidate = [...parentsBySuffix.entries()]
+    .filter(([value, parents]) => parents.size >= 2 && (
+      explicit <= 9
+      || String(value).endsWith(explicitDigits)
+      || ticketAmountDigitDistance(value, explicit) === 1
+    ))
+    .sort((left, right) => right[1].size - left[1].size
+      || ticketAmountDigitDistance(left[0], explicit) - ticketAmountDigitDistance(right[0], explicit)
+      || right[0] - left[0])[0]?.[0];
+  return candidate || explicit;
 }
 
 function inferCalculatedTicketTotal(lines) {
@@ -609,7 +658,8 @@ export function extractTicketTotal(text) {
         if (labeledIntegers.length) amounts = labeledIntegers;
       }
     }
-    let labelScore = hasBestLabel ? 130 : hasTotalLabel ? 115 : hasPaymentDueLabel ? 105 : hasAmountLabel ? 95 : 0;
+    const bareTotal = /^\s*(?:grand\s+)?total\s*[:=.-]?\s*(?:[€£¥₩￥$]|\d)/iu.test(line);
+    let labelScore = bareTotal ? 150 : hasBestLabel ? 130 : hasTotalLabel ? 115 : hasPaymentDueLabel ? 105 : hasAmountLabel ? 95 : 0;
     if (tableHeader && !hasTotalLabel) labelScore = 0;
     if (hasAmountLabel && !hasTotalLabel && !hasPaymentDueLabel && amounts.length > 1) labelScore = 0;
     if (excluded) labelScore = 0;
@@ -636,10 +686,13 @@ export function extractTicketTotal(text) {
   });
   const explicit = candidates.filter(item => item.value > 0).sort((a, b) => b.score - a.score)[0]?.value ?? null;
   const recoveredExplicit = explicit != null ? recoverTruncatedCurrencyTotal(lines, explicit) : null;
+  const reinforcedExplicit = recoveredExplicit != null
+    ? recoverRepeatedSummarySuffix(lines, recoveredExplicit)
+    : null;
   const calculated = inferCalculatedTicketTotal(lines);
   if (calculated && calculated.evidence > 0
-    && (recoveredExplicit == null || recoveredExplicit !== calculated.value)) return calculated.value;
-  if (recoveredExplicit != null) return recoveredExplicit;
+    && (reinforcedExplicit == null || reinforcedExplicit !== calculated.value)) return calculated.value;
+  if (reinforcedExplicit != null) return reinforcedExplicit;
   if (calculated && calculated.evidence > 0) return calculated.value;
   const paymentRecovered = recoverTruncatedCurrencyTotal(lines, null);
   if (paymentRecovered != null) return paymentRecovered;
