@@ -102,6 +102,16 @@ test('el resultado de Lens sustituye los datos reconocidos tanto en texto como e
   assert.match(app, /lensText: payload\?\.fromLens \? lensSharedReceiptText\(payload\) : ''/);
 });
 
+test('si Lens devuelve imagen y texto siempre se reconoce la imagen traducida', () => {
+  const routeStart = app.indexOf('async function routeSharedExpenseImages');
+  const routeEnd = app.indexOf('\nasync function continueSharedImagesImport', routeStart);
+  const route = app.slice(routeStart, routeEnd);
+  assert.match(route, /await readLensTicketTranslation\(prefix, lensRecord, first, options\)/);
+  assert.match(route, /await readLensTicketTranslation\(prefix, companion, first, options\)/);
+  assert.doesNotMatch(route, /readLensTicketText/);
+  assert.match(app, /payload\.fromLens && lensReceiptText && !hasImages && currentFormTarget/);
+});
+
 test('la lectura de Lens permite consultar las pasadas reales del OCR', () => {
   assert.match(html, /id="g-ticket-ocr-details"/);
   assert.match(html, /id="edit-gasto-ticket-ocr-details"/);
