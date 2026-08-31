@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v308';
+const APP_VERSION = '700v309';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2750,7 +2750,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v308');
+    const worker = new Worker('./timeline-import-worker.js?v=700v309');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3738,7 +3738,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v308');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v309');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3985,6 +3985,7 @@ function clearExpenseTicketSelection(prefix) {
   pendingExpenseTicketTranslations[prefix] = null;
   renderSelectedExpenseTicketPreview(prefix);
   pendingTicketOcr[prefix] = null;
+  setTicketOcrDiagnostics(prefix, null);
   setTicketOcrStatus(prefix, '');
   syncTicketOcrAvailability(prefix);
   syncExpenseTicketTypeAvailability(prefix);
@@ -4320,7 +4321,7 @@ function suggestTicketCategory(text, merchant, foodEvidence = null) {
     { words: ['renfe', 'iryo', 'ouigo', 'ferrocarril', 'tren'], categories: ['Transporte'], subcategories: ['Tren'] },
     { words: ['taxi', 'uber', 'cabify'], categories: ['Transporte'], subcategories: ['Taxi'] },
     { words: ['metro', 'autobus', 'bus ', 'transporte urbano'], categories: ['Transporte'], subcategories: ['Metro', 'Autobús', 'Bus'] },
-    { words: ['gasolina', 'gasoleo', 'combustible', 'repsol', 'cepsa', 'bp '], categories: ['Transporte'], subcategories: ['Combustible', 'Gasolina'] },
+    { words: ['gasolinera', 'gasolina', 'gasoleo', 'combustible', 'repsol', 'cepsa', 'bp '], categories: ['Transporte'], subcategories: ['Combustible', 'Gasolina'] },
     { words: ['parking', 'aparcamiento'], categories: ['Transporte'], subcategories: ['Parking', 'Aparcamiento'] },
     { words: ['hotel', 'hostal', 'apartamento', 'alojamiento', 'residencia', 'booking'], categories: ['Alojamiento'], subcategories: ['Hotel', 'Residencia', 'Apartamento'] },
     { words: ['museo', 'entrada', 'cine', 'teatro', 'espectaculo', 'visita'], categories: ['Ocio'], subcategories: ['Museos', 'Entradas', 'Visitas'] }
@@ -4625,7 +4626,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v308');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v309');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4755,7 +4756,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v308');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v309');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5086,7 +5087,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v308');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v309');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -13578,7 +13579,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v308');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v309');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16388,6 +16389,12 @@ function closeAddGasto() {
   else dialog.removeAttribute('open');
 }
 
+function cancelAddGasto() {
+  discardAddExpenseDraft();
+  resetAddExpenseForm();
+  closeAddGasto();
+}
+
 function openFiltersPanel() {
   const panel = $('#filters-panel');
   if (!panel) return;
@@ -17780,13 +17787,9 @@ function bindEvents() {
   $('#offline-entry-continue').onclick = closeOfflineEntryNotice;
   $('#btn-open-filters').onclick = openFiltersPanel;
   $('#filters-close').onclick = closeFiltersPanel;
-  $('#add-gasto-close').onclick = closeAddGasto;
-  $('#add-gasto-cancel').onclick = () => {
-    discardAddExpenseDraft();
-    resetAddExpenseForm();
-    closeAddGasto();
-  };
-  $('#add-gasto-dialog').oncancel = () => closeAddGasto();
+  $('#add-gasto-close').onclick = cancelAddGasto;
+  $('#add-gasto-cancel').onclick = cancelAddGasto;
+  $('#add-gasto-dialog').oncancel = cancelAddGasto;
   $('#add-gasto-form').onsubmit = event => {
     event.preventDefault();
     $('#btn-add-gasto').click();
@@ -19233,7 +19236,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v308');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v309');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

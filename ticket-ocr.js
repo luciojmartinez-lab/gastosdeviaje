@@ -13,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v308';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v309';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -637,8 +637,31 @@ export function detectTicketDocumentType(text) {
   receiptScore += (String(text || '').match(EAST_ASIAN_RECEIPT_SIGNALS) || []).length * 3;
   if (/copia\s+(?:para\s+el\s+)?cliente|copia\s+comercio/.test(normalized)) cardScore += 5;
   if (/factura\s+simplificada|base\s+imponible|desglose\s+iva/.test(normalized)) receiptScore += 5;
-  if (/\b(?:bbva|santander|caixabank|bankinter|sabadell|ing|unicaja|abanca|revolut|comercia|worldline)\b/.test(normalized)) cardScore += 2;
-  return cardScore >= 6 && cardScore > receiptScore ? 'card_payment' : 'receipt';
+  const hasBankBrand = /\b(?:bbva|santander|caixabank|bankinter|sabadell|ing|unicaja|abanca|revolut|comercia|worldline)\b/.test(normalized);
+  if (hasBankBrand) cardScore += 2;
+  if (hasBankBrand && /\b(?:venta|compra)\b[^\n]{0,40}\b(?:debit|debito|credit|credito|visa|mastercard)\b/.test(normalized)) cardScore += 3;
+  const bankCopyThreshold = hasBankBrand && receiptScore === 0 && cardScore >= 4;
+  return (cardScore >= 6 || bankCopyThreshold) && cardScore > receiptScore ? 'card_payment' : 'receipt';
+}
+
+export function extractCardPaymentAmount(text) {
+  const lines = ticketLines(text);
+  const candidates = [];
+  lines.forEach((line, index) => {
+    const normalized = normalizeTicketConcepts(line);
+    const amounts = amountsInLine(line).filter(value => value > 0);
+    if (amounts.length !== 1 || ticketTotalLineExcluded(normalized)) return;
+    const hasCurrency = /(?:eur|euro|euros|€|gbp|£|usd|\$|sek|nok|dkk)/i.test(line);
+    const maskedAmount = /\*{2,}\s*\d+[,.]\d{1,2}/.test(line);
+    const paymentNearby = lines.slice(Math.max(0, index - 2), index + 1)
+      .some(value => /\b(?:venta|compra|importe?|amount|deb(?:ito)?|cargo)\b/i.test(normalizeTicketText(value)));
+    if (!hasCurrency && !maskedAmount) return;
+    candidates.push({
+      value: amounts[0],
+      score: (hasCurrency ? 45 : 0) + (maskedAmount ? 30 : 0) + (paymentNearby ? 20 : 0) + index / Math.max(lines.length, 1)
+    });
+  });
+  return candidates.sort((left, right) => right.score - left.score)[0]?.value ?? null;
 }
 
 export function extractTicketTotal(text) {
@@ -708,22 +731,7 @@ export function extractTicketTotal(text) {
   if (paymentRecovered != null) return paymentRecovered;
   const source = String(text || '');
   if (detectTicketDocumentType(source) === 'card_payment') {
-    const cardAmounts = [];
-    lines.forEach((line, index) => {
-      const normalized = normalizeTicketConcepts(line);
-      const amounts = amountsInLine(line).filter(value => value > 0);
-      if (amounts.length !== 1 || ticketTotalLineExcluded(normalized)) return;
-      const hasCurrency = /(?:eur|euro|euros|€|gbp|£|usd|\$|sek|nok|dkk)/i.test(line);
-      const maskedAmount = /\*{2,}\s*\d+[,.]\d{1,2}/.test(line);
-      const paymentNearby = lines.slice(Math.max(0, index - 2), index + 1)
-        .some(value => /\b(?:venta|compra|importe?|amount|deb(?:ito)?|cargo)\b/i.test(normalizeTicketText(value)));
-      if (!hasCurrency && !maskedAmount) return;
-      cardAmounts.push({
-        value: amounts[0],
-        score: (hasCurrency ? 45 : 0) + (maskedAmount ? 30 : 0) + (paymentNearby ? 20 : 0) + index / Math.max(lines.length, 1)
-      });
-    });
-    const cardTotal = cardAmounts.sort((left, right) => right.score - left.score)[0]?.value;
+    const cardTotal = extractCardPaymentAmount(source);
     if (Number.isFinite(cardTotal)) return cardTotal;
   }
   if (!/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/u.test(source)) return null;
@@ -788,7 +796,7 @@ const MERCHANT_EXCLUSIONS = /^(ticket|receipt|kuitti|factura|invoice|lasku|simpl
 const MERCHANT_METADATA_WORDS = /\b(fecha|hora|date|time|data|paivamaara|aika|mesa|comensales|caja|cajero|nif|cif|telefono|ticket|receipt|kuitti|factura|invoice|lasku|total|subtotal|importe|import|amount|summa|yhteensa|impuesto|impuestos|iva|vat|alv|descripcion|description|kuvaus|unidades|units|maara|precio|price|hinta)\b/i;
 const EAST_ASIAN_MERCHANT_METADATA_WORDS = /(?:領収書|レシート|請求書|日付|時刻|合計|小計|消費税|영수증|계산서|날짜|시간|합계|소계|부가세)/u;
 const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|rua|rúa|cp\s*\d|codigo postal|tlf|telefono|madrid|barcelona)\b/i;
-const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet)$/i;
+const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|by(?:\s+\S{1,3})?\s+santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet(?:\s+by\s+santander)?)$/i;
 const PAYMENT_TERMINAL_LINE = /^(?:venta\b|compra\b|visa\b|mastercard\b|contactless\b|aut(?:orizacion)?[:.\s]|op(?:eracion)?[:.\s]|tran(?:saccion)?[:.\s]|terminal[:.\s]|app\s+(?:bbva|santander|caixabank|sabadell))/i;
 const MERCHANT_PROMOTIONAL_LINE = /\b(?:gana|acumula|canjea|ahorra|consigue|usa)\b.*\b(?:puntos?|recompensas?|descuentos?|rakuten)\b|\b(?:puntos?|recompensas?)\b.*\b(?:rakuten|ahorra|acumula)\b/i;
 
@@ -797,6 +805,7 @@ function cleanMerchantCandidate(value) {
     .replace(/^(?:[I1lf]\s+)(?=\p{Lu}{5,}(?:\s|$))/u, '')
     .replace(/\s+[I1lf]$/, '')
     .replace(/\s+(?:tel(?:efono)?|phone)\s*:?[\s.-]*$/iu, '')
+    .replace(/(?<=\p{L})[.:;]\s+(?=\p{L})/gu, ' ')
     .replace(/^[^\p{L}\d]+|[^\p{L}\d.)]+$/gu, '')
     .trim();
 }
@@ -831,7 +840,7 @@ export function extractTicketMerchant(text) {
       const distance = fiscalDetailsIndex - index;
       if (distance >= 2 && distance <= 4) score += 18 + distance * 4;
     }
-    if (/\b(sa|s\.a\.|sl|s\.l\.|s\.l\.u\.|sociedad|restaurante|hotel|bar|cafeteria|supermercado|farmacia|pharmacy|drug)\b/i.test(line)) score += 7;
+    if (/\b(sa|s\.a\.|sl|s\.l\.|s\.l\.u\.|sociedad|restaurante|hotel|bar|cafeteria|supermercado|farmacia|gasolinera|pharmacy|drug)\b/i.test(line)) score += 7;
     if (letters.length && uppercase.length / letters.length > 0.65) score += 5;
     if (/\d{2}[\/.-]\d{2}/.test(line) || /\d{1,2}:\d{2}/.test(line)) score -= 15;
     if (documentType === 'receipt' && index <= 2) score += 12 - index * 2;
@@ -1343,7 +1352,8 @@ function ticketMerchantFromLayout(text, rows, imageHeight, confidence) {
   const normalizedMerchant = normalizeTicketText(merchant).replace(/\s+/g, ' ').trim();
   const row = rows.find(item => normalizeTicketText(item.text).replace(/\s+/g, ' ').includes(normalizedMerchant));
   if (row) {
-    if (row.bbox.y0 > imageHeight * 0.45 || row.confidence < 45) return '';
+    const maximumTop = detectTicketDocumentType(text) === 'card_payment' ? 0.7 : 0.45;
+    if (row.bbox.y0 > imageHeight * maximumTop || row.confidence < 45) return '';
     return merchant;
   }
   return confidence >= 60 ? merchant : '';
@@ -1424,6 +1434,44 @@ async function confirmLayoutTotal(worker, recognition, onProgress) {
   };
 }
 
+async function recognizeMissingCardPaymentAmount(worker, recognition, onProgress) {
+  if (recognition.fields.documentType !== 'card_payment'
+    || (Number.isFinite(recognition.fields.total) && recognition.fields.total > 0)) return null;
+  const image = recognition.image;
+  const timeRow = recognition.rows.find(row => /\b(?:hora|time)\b/i.test(normalizeTicketText(row.text)));
+  const rowHeight = timeRow ? Math.max(1, timeRow.bbox.y1 - timeRow.bbox.y0) : 0;
+  const bounds = [];
+  if (timeRow && rowHeight) {
+    const y = Math.max(0, Math.round(timeRow.bbox.y0 - rowHeight * 2));
+    bounds.push({
+      x: Math.round(image.width * 0.25),
+      y,
+      width: Math.round(image.width * 0.5),
+      height: Math.min(image.height - y, Math.round(rowHeight * 6))
+    });
+  }
+  [0.64, 0.7].forEach(startRatio => bounds.push({
+    x: Math.round(image.width * 0.22),
+    y: Math.round(image.height * startRatio),
+    width: Math.round(image.width * 0.56),
+    height: Math.round(image.height * 0.16)
+  }));
+  await worker.setParameters({ tessedit_pageseg_mode: OCR_PSM_SINGLE_BLOCK });
+  onProgress({ status: 'Comprobando el importe del pago con tarjeta', progress: 0.9 });
+  let passes = 0;
+  for (const area of bounds) {
+    if (area.width <= 0 || area.height <= 0) continue;
+    passes += 1;
+    const result = await worker.recognize(cropCanvasBounds(image, area), { rotateAuto: false }, { text: true });
+    const text = String(result?.data?.text || '').trim();
+    const value = extractCardPaymentAmount(text);
+    if (Number.isFinite(value) && value > 0) {
+      return { value, text, confidence: Number(result?.data?.confidence || 0), passes };
+    }
+  }
+  return { value: null, text: '', confidence: 0, passes };
+}
+
 async function recognizeMissingTicketTitle(worker, recognition, onProgress) {
   if (recognition.fields.merchant) return '';
   const context = recognition.image.getContext('2d', { willReadFrequently: true });
@@ -1480,6 +1528,15 @@ async function recognizeTicketUnlocked(source, options = {}) {
       const contrast = await recognizeTicketLayoutPass(worker, preparedResult.binary, false);
       additionalPasses += 1;
       if (ticketRecognitionQuality(contrast) > ticketRecognitionQuality(selected)) selected = contrast;
+    }
+
+    const cardAmount = await recognizeMissingCardPaymentAmount(worker, selected, onProgress);
+    if (cardAmount) {
+      additionalPasses += cardAmount.passes;
+      if (Number.isFinite(cardAmount.value) && cardAmount.value > 0) {
+        selected.fields.total = cardAmount.value;
+        selected.text = [selected.text, cardAmount.text].filter(Boolean).join('\n');
+      }
     }
 
     if (selected.layoutTotalRow) {

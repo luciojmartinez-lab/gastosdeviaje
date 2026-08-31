@@ -5,6 +5,7 @@ import {
   correctTicketMerchantFromKnown,
   detectTicketDocumentType,
   extractTicketDate,
+  extractCardPaymentAmount,
   extractTicketFields,
   extractTicketFoodEvidence,
   extractTicketMerchant,
@@ -49,6 +50,25 @@ AUT: KTH6FJ DEB
 *****16,54EUR
 VERIFICADO EN DISPOSITIVO`;
 
+const getnetCardCopy = `Getnet
+By Santander
+GASOLINERA CAÑETE
+CAÑETE
+Tran:00013 APLIC.:A0000000041010
+************1357
+VENTA DEBIT MASTERCARD
+Aut 553077 Op 046559 CONTACTLESS
+Fecha:31.08.26 Hora:10:55
+30,00 EUR`;
+
+const getnetWeakOcr = `By «b Santander
+GASOLINERA. CAÑETE
+CAYETE
+Tran:00013 APLIC.:A0000000041010
+VENTA DEBIT MASTERCARD
+Aut 553077 Op 046559 CONTACTLESE
+Hora: 10:55`;
+
 const milleniumReceiptOcr = `MILLENIUM
 MARTA RODRIGUEZ GAVIEIRO
 FRA SIMP: COMPROBANTE FECHA: 18/07/2026
@@ -63,6 +83,8 @@ PENDIENTE DE COBRO 8,30`;
 test('distingue un ticket comercial de un justificante de tarjeta', () => {
   assert.equal(detectTicketDocumentType(shopReceipt), 'receipt');
   assert.equal(detectTicketDocumentType(cardCopy), 'card_payment');
+  assert.equal(detectTicketDocumentType(getnetCardCopy), 'card_payment');
+  assert.equal(detectTicketDocumentType(getnetWeakOcr), 'card_payment');
 });
 
 test('en tickets prioriza el encabezado del comercio', () => {
@@ -76,6 +98,8 @@ COPIA CLIENTE
 COMERCIO: FARMACIA CENTRAL
 TERMINAL 1234
 IMPORTE 15,45 EUR`), 'FARMACIA CENTRAL');
+  assert.equal(extractTicketMerchant(getnetCardCopy), 'GASOLINERA CAÑETE');
+  assert.equal(extractTicketMerchant(getnetWeakOcr), 'GASOLINERA CAÑETE');
 });
 
 test('reconoce más formatos de fecha y hora', () => {
@@ -102,6 +126,8 @@ test('elige Total o Importe y no confunde IVA ni base imponible', () => {
   assert.equal(extractTicketTotal(shopReceipt), 7.1);
   assert.equal(extractTicketTotal(cardCopy), 7.1);
   assert.equal(extractTicketTotal(unlabeledCardCopy), 16.54);
+  assert.equal(extractTicketTotal(getnetCardCopy), 30);
+  assert.equal(extractCardPaymentAmount('Fecha:31.08.26 Hora:10:55\n30,00 EUR'), 30);
   assert.equal(extractTicketTotal('BASE IMPONIBLE 10,00\nIVA 21% 2,10\nTOTAL\n12,10 EUR'), 12.1);
   assert.equal(extractTicketTotal('IMPORTE IVA: 2,10\nT0TAL A PAGAR 12,10 EUR'), 12.1);
   assert.equal(extractTicketTotal('BASE IMPONIBLE 10,00\nIVA 21% 2,10\nEFECTIVO 12,10'), null);
@@ -429,6 +455,8 @@ test('limita el rescate a una lectura espacial y comprobaciones localizadas', ()
   assert.match(ocr, /OCR_TEXT_WITH_LAYOUT = \{ text: true, blocks: true \}/);
   assert.match(ocr, /Confirmando la fila del total/);
   assert.match(ocr, /Comprobando el nombre del comercio/);
+  assert.match(ocr, /Comprobando el importe del pago con tarjeta/);
+  assert.match(ocr, /recognizeMissingCardPaymentAmount\(worker, selected, onProgress\)/);
   assert.match(ocr, /OCR_PSM_SINGLE_LINE/);
   assert.match(ocr, /titleResult\?\.data\?\.confidence \|\| 0\) >= 60/);
   assert.match(ocr, /preparedResult\.binary && \(!selected\.fields\.total \|\| !selected\.fields\.merchant\)/);
@@ -622,6 +650,7 @@ test('el texto de una tarjeta monedero no convierte la compra en Transporte', ()
   assert.match(app, /dinero\\s\+electronico/);
   assert.match(app, /\[\^\\n\]\{0,120\}\\btransporte/);
   assert.match(app, /categoryHaystack\.includes/);
+  assert.match(app, /'gasolinera', 'gasolina'/);
 });
 
 test('los comercios de comida tienen prioridad y solo usan una subcategoría configurada', () => {

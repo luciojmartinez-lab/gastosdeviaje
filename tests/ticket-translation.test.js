@@ -117,6 +117,7 @@ test('la lectura de Lens permite consultar las pasadas reales del OCR', () => {
   assert.match(html, /id="edit-gasto-ticket-ocr-details"/);
   assert.match(app, /function setTicketOcrDiagnostics/);
   assert.match(app, /setTicketOcrDiagnostics\(prefix, result\)/);
+  assert.match(app, /function clearExpenseTicketSelection\(prefix\)[\s\S]*?setTicketOcrDiagnostics\(prefix, null\)/);
 });
 
 test('Lens ignora enlaces y textos auxiliares antes de decidir si debe leer la imagen', () => {
