@@ -13,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v306';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v307';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -1380,7 +1380,11 @@ export function chooseConfirmedTicketTotal(current, confirmed, confidence) {
   if (!Number.isFinite(current) || current <= 0 || current === confirmed) return confirmed;
   const currentDigits = Number.isInteger(current) ? String(current) : '';
   const confirmedDigits = Number.isInteger(confirmed) ? String(confirmed) : '';
-  if (currentDigits && confirmedDigits && confirmedDigits.length > currentDigits.length
+  // The focused visual pass may restore one leading digit lost by OCR (980 -> 1980).
+  // Once the text pass already has four digits, however, a longer suffix match is
+  // usually the yen sign misread as a digit (1980 -> 41980), so keep the text total.
+  if (currentDigits && confirmedDigits && currentDigits.length <= 3
+    && confirmedDigits.length === currentDigits.length + 1
     && confirmedDigits.endsWith(currentDigits)) return confirmed;
   return current;
 }

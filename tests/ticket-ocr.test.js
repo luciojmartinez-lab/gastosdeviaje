@@ -222,6 +222,8 @@ test('una cifra aislada de la fila grande no sustituye el total corroborado por 
   assert.equal(chooseConfirmedTicketTotal(1980, 930, 92), 1980);
   assert.equal(chooseConfirmedTicketTotal(980, 930, 92), 980);
   assert.equal(chooseConfirmedTicketTotal(27, 827, 92), 827);
+  assert.equal(chooseConfirmedTicketTotal(980, 1980, 92), 1980);
+  assert.equal(chooseConfirmedTicketTotal(1980, 41980, 92), 1980);
 });
 
 test('reconstruye la fila visual de Total aunque etiqueta y cifra estén en bloques distintos', () => {
@@ -608,7 +610,7 @@ test('el texto de una tarjeta monedero no convierte la compra en Transporte', ()
   assert.match(app, /categoryHaystack = haystack/);
   assert.match(app, /pago\|saldo\|deposito\|dinero\|tarjeta/);
   assert.match(app, /dinero\\s\+electronico/);
-  assert.match(app, /relacionado\\s\+con\\s\+el\\s\+transporte/);
+  assert.match(app, /\[\^\\n\]\{0,120\}\\btransporte/);
   assert.match(app, /categoryHaystack\.includes/);
 });
 
