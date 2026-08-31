@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v309';
+const APP_VERSION = '700v310';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2750,7 +2750,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v309');
+    const worker = new Worker('./timeline-import-worker.js?v=700v310');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3738,7 +3738,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v309');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v310');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4626,7 +4626,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v309');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v310');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4730,6 +4730,12 @@ async function readLensTicketTranslation(prefix, record, originalSource = null, 
     if (result) {
       record.text = result.text || '';
       record.sourceLanguages = TICKET_OCR_BASE_LANGUAGES.slice();
+      if (result.lensAiSummary && pendingExpenseTicketTranslations[prefix] === record) {
+        pendingExpenseTicketTranslations[prefix] = null;
+        renderExpenseTicketTranslation(prefix);
+        const status = String($(`#${prefix}-ticket-ocr-status`)?.textContent || '').trim();
+        setTicketOcrStatus(prefix, `${status} La captura del resumen de IA se utilizó solo para extraer los datos y no se guardará como traducción.`.trim());
+      }
     } else {
       setTicketOcrStatus(prefix, `${previousStatus} No se encontraron otros datos claros; puedes completarlos manualmente.`);
     }
@@ -4756,7 +4762,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v309');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v310');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4770,6 +4776,7 @@ async function readLensTicketText(prefix, text, options = {}) {
       readings: [sourceText],
       classificationText: sourceText,
       fields,
+      lensAiSummary: ocr.isGoogleLensAiReceiptSummary(sourceText),
       foodEvidence: ocr.extractTicketFoodEvidence(sourceText, fields.total)
     };
     setTicketOcrDiagnostics(prefix, result);
@@ -4911,7 +4918,7 @@ async function translateExpenseTicket(prefix) {
       data: typeof source.source === 'string' ? source.source : ''
     }, 'Leer ticket con Google Lens');
     if ($('#image-viewer-status')) {
-      $('#image-viewer-status').textContent = 'Pulsa «Compartir / Google Lens», elige Lens y lee o traduce. Después comparte el resultado de nuevo con Cuaderno de Bitácora.';
+      $('#image-viewer-status').textContent = 'Pulsa «Compartir / Google Lens» y elige Lens. Usa Modo IA; después comparte su texto o una captura desplazable del resumen con Cuaderno de Bitácora. La traducción queda como alternativa.';
     }
     setTicketOcrStatus(prefix, 'Ticket listo para compartir con Google Lens. La aplicación no usa ningún servicio de pago.');
   } catch (error) {
@@ -5087,7 +5094,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v309');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v310');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -13579,7 +13586,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v309');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v310');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -14935,6 +14942,12 @@ function sharedPayloadLooksLikeLens(payload) {
   return Boolean(currentLensReturnTarget()) || /google\s*lens|traducid[oa]\s+con\s+google\s+lens|lens\b/i.test(hint);
 }
 
+function sharedPayloadIsGoogleAiLinkOnly(payload) {
+  if (Array.isArray(payload?.files) && payload.files.length) return false;
+  const content = [payload?.text, payload?.sourceUrl].map(value => String(value || '')).join(' ');
+  return /https?:\/\/share\.google\/aimode\/[\w-]+/i.test(content);
+}
+
 function syncSharedImagesDestination() {
   const hasImages = Boolean(pendingSharedImagesPayload?.files?.length);
   const hasText = Boolean(sharedPayloadText(pendingSharedImagesPayload));
@@ -15030,6 +15043,12 @@ async function openSharedImagesDialog(payload) {
   let currentFormTarget = activeSharedExpenseFormTarget(defaultTripId);
   if (payload.fromLens && lensTarget) {
     currentFormTarget = await restoreLensExpenseFormTarget(lensTarget, defaultTripId);
+  }
+  if (payload.fromLens && currentFormTarget && !lensReceiptText && sharedPayloadIsGoogleAiLinkOnly(payload)) {
+    pendingSharedImagesPayload = null;
+    setTab('gastos');
+    setTicketOcrStatus(currentFormTarget.prefix, 'Google ha compartido únicamente el enlace al análisis de IA, cuyo contenido no puede leer la aplicación. Vuelve a Lens, pulsa «Mostrar más», realiza una captura desplazable del resumen y compártela con Cuaderno de Bitácora.');
+    return;
   }
   const preferredStoredExpense = lensTarget?.expenseId
     ? state.gastos.find(item => Number(item.id) === Number(lensTarget.expenseId) && Number(item.viajeId) === Number(defaultTripId))
@@ -19236,7 +19255,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v309');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v310');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

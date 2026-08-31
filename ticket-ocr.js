@@ -13,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v309';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v310';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -24,11 +24,32 @@ export function isGoogleLensTranslationText(text) {
   return /translated\s+with[\s\S]{0,32}google\s+lens/i.test(String(text || ''));
 }
 
+export function isGoogleLensAiReceiptSummary(text) {
+  const normalized = normalizeTicketText(text).replace(/\s+/g, ' ');
+  const sectionSignals = [
+    /\bdetalles\s+de\s+la\s+compra\b/,
+    /\barticulos\s+adquiridos\b/,
+    /\btotales\s+y\s+pago\b/
+  ].filter(pattern => pattern.test(normalized)).length;
+  return /\bvista\s+creada\s+con\s+(?:ia|la)\b/.test(normalized)
+    || sectionSignals >= 2
+    || /\bel\s+ticket\s+de\s+compra\s+es\s+de\s+una\s+tienda\b[\s\S]{0,100}\btotal\b/.test(normalized)
+    || /\beste\s+es\s+el\s+recibo\b[\s\S]{0,140}\brealizad[ao]\s+en\s+una\s+tienda\b/.test(normalized);
+}
+
 const normalizeTicketConcepts = value => normalizeTicketText(value)
   .replace(/\bt[o0]ta[l1i]\b/g, 'total')
   .replace(/\bimp[o0]rte\b/g, 'importe');
 
 const ticketLines = text => String(text || '').split(/\r?\n/).map(cleanLine).filter(Boolean);
+
+function googleLensAiSummaryBody(text) {
+  const lines = ticketLines(text);
+  const start = lines.findIndex(line => /\b(?:vista\s+creada\s+con\s+(?:ia|la)|detalles\s+de\s+la\s+compra|este\s+es\s+el\s+recibo|el\s+ticket\s+de\s+compra)\b/i.test(normalizeTicketText(line)));
+  const body = start >= 0 ? lines.slice(start) : lines;
+  const end = body.findIndex(line => /\bcoincidencias\s+(?:visuales|exactas)\b/i.test(normalizeTicketText(line)));
+  return (end >= 0 ? body.slice(0, end) : body).join('\n');
+}
 
 const TICKET_MONTHS = {
   ene: 1, enero: 1, gen: 1, gener: 1, jan: 1, january: 1, tammi: 1, tammikuu: 1,
@@ -115,7 +136,7 @@ export function extractTicketTime(text) {
     while ((match = eastAsianRegex.exec(line))) {
       candidates.push({ value: `${String(Number(match[1])).padStart(2, '0')}:${String(Number(match[2])).padStart(2, '0')}`, score: (labeled ? 38 : 18) - index * 0.05 });
     }
-    if (labeled) {
+    if (labeled && !writtenDate) {
       const compactRegex = /\b([01]\d|2[0-3])([0-5]\d)\b/g;
       while ((match = compactRegex.exec(normalized))) {
         candidates.push({ value: `${match[1]}:${match[2]}`, score: 30 - index * 0.05 });
@@ -123,6 +144,30 @@ export function extractTicketTime(text) {
     }
   });
   return candidates.sort((a, b) => b.score - a.score)[0]?.value || '';
+}
+
+function extractGoogleLensAiSummaryTime(text) {
+  if (!isGoogleLensAiReceiptSummary(text)) return '';
+  const summary = googleLensAiSummaryBody(text);
+  const normalized = normalizeTicketText(summary).replace(/\s+/g, ' ');
+  const match = normalized.match(/\bfecha\s+y\s+hora\b[\s\S]{0,160}?\b(?:a\s+las\s+)?([01]?\d|2[0-3])\s*[:h]\s*([0-5]\d)\b/);
+  return match ? `${String(Number(match[1])).padStart(2, '0')}:${match[2]}` : extractTicketTime(summary);
+}
+
+function extractGoogleLensAiSummaryDate(text) {
+  return isGoogleLensAiReceiptSummary(text) ? extractTicketDate(googleLensAiSummaryBody(text)) : '';
+}
+
+export function extractGoogleLensAiTotal(text) {
+  if (!isGoogleLensAiReceiptSummary(text)) return null;
+  const summary = googleLensAiSummaryBody(text).replace(/\s+/g, ' ');
+  const match = summary.match(/\b(?:total\s+pagado\s*:?|total\s+de)\s*([\d][\d.,\s]*?)\s*(yen(?:es)?|jpy|won(?:es)?|krw|euros?|eur|dolares?|usd|libras?|gbp)\b/i);
+  if (!match) return null;
+  const currency = normalizeTicketText(match[2]);
+  const value = /^(?:yen|yenes|jpy|won|wones|krw)$/.test(currency)
+    ? Number(String(match[1]).replace(/\D/g, ''))
+    : parseTicketAmount(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 export function parseTicketAmount(value) {
@@ -799,6 +844,7 @@ const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|rua|rúa|
 const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|by(?:\s+\S{1,3})?\s+santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet(?:\s+by\s+santander)?)$/i;
 const PAYMENT_TERMINAL_LINE = /^(?:venta\b|compra\b|visa\b|mastercard\b|contactless\b|aut(?:orizacion)?[:.\s]|op(?:eracion)?[:.\s]|tran(?:saccion)?[:.\s]|terminal[:.\s]|app\s+(?:bbva|santander|caixabank|sabadell))/i;
 const MERCHANT_PROMOTIONAL_LINE = /\b(?:gana|acumula|canjea|ahorra|consigue|usa)\b.*\b(?:puntos?|recompensas?|descuentos?|rakuten)\b|\b(?:puntos?|recompensas?)\b.*\b(?:rakuten|ahorra|acumula)\b/i;
+const LENS_AI_INTERFACE_LINE = /\b(?:detalles\s+de\s+la\s+compra|articulos?\s+adquiridos|totales\s+y\s+pago|vista\s+creada\s+con\s+(?:ia|la)|mostrar\s+mas|pregunta\s+(?:lo\s+que\s+quieras|sobre\s+esta\s+imagen)|coincidencias\s+(?:visuales|exactas)|busquedas?\s+relacionadas?|shutterstock)\b/i;
 
 function cleanMerchantCandidate(value) {
   return cleanLine(value)
@@ -810,7 +856,24 @@ function cleanMerchantCandidate(value) {
     .trim();
 }
 
+export function extractGoogleLensAiMerchant(text) {
+  if (!isGoogleLensAiReceiptSummary(text)) return '';
+  const lines = ticketLines(text);
+  for (const line of lines) {
+    const place = line.match(/^\s*(?:[•*·-]\s*)?lugar\s*:\s*(.+)$/i);
+    if (!place) continue;
+    const candidate = cleanMerchantCandidate(place[1].replace(/\s*\([^)]*$/, ''));
+    if (isPlausibleTicketMerchant(candidate)) return candidate;
+  }
+  const flattened = String(text || '').replace(/\s+/g, ' ');
+  const sentence = flattened.match(/\b(?:realizad[ao]\s+en|es\s+de)\s+una\s+tienda\s+(.+?)(?=\s+en\s+(?:jap[oó]n|españa|francia|italia|alemania|portugal|reino\s+unido|estados\s+unidos)\b|\s+con\s+un\s+total\b|[.;]|$)/i);
+  const candidate = cleanMerchantCandidate(sentence?.[1] || '');
+  return isPlausibleTicketMerchant(candidate) ? candidate : '';
+}
+
 export function extractTicketMerchant(text) {
+  const lensAiMerchant = extractGoogleLensAiMerchant(text);
+  if (lensAiMerchant) return lensAiMerchant;
   const lines = ticketLines(text).slice(0, 24);
   const documentType = detectTicketDocumentType(text);
   const explicit = lines.map((line, index) => {
@@ -835,6 +898,7 @@ export function extractTicketMerchant(text) {
     if (BANK_BRAND_LINE.test(line)) score -= 60;
     if (PAYMENT_TERMINAL_LINE.test(line)) score -= 35;
     if (MERCHANT_PROMOTIONAL_LINE.test(normalizeTicketText(line))) score -= 80;
+    if (LENS_AI_INTERFACE_LINE.test(normalizeTicketText(line))) score -= 80;
     if (/\b\d{5}\b|@|\.com\b|\b(es|com|net)\b$/i.test(line) || ADDRESS_WORDS.test(line)) score -= 12;
     if (fiscalDetailsIndex >= 0 && index < fiscalDetailsIndex) {
       const distance = fiscalDetailsIndex - index;
@@ -869,20 +933,22 @@ export function isPlausibleTicketMerchant(value) {
   if (/(\p{L})\1{3,}/iu.test(line)) return false;
   if (words.length >= 3 && words.filter(word => word.length <= 2).length / words.length >= 0.75) return false;
   if (MERCHANT_EXCLUSIONS.test(line) || MERCHANT_METADATA_WORDS.test(normalized)
-    || EAST_ASIAN_MERCHANT_METADATA_WORDS.test(line) || MERCHANT_PROMOTIONAL_LINE.test(normalized)) return false;
+    || EAST_ASIAN_MERCHANT_METADATA_WORDS.test(line) || MERCHANT_PROMOTIONAL_LINE.test(normalized)
+    || LENS_AI_INTERFACE_LINE.test(normalized)) return false;
   if (ADDRESS_WORDS.test(line) || BANK_BRAND_LINE.test(line) || PAYMENT_TERMINAL_LINE.test(line)) return false;
   if (/\b\d{1,2}[:./-]\d{1,2}\b|^\d+$/.test(normalized)) return false;
   return letters.length / Math.max(1, line.replace(/\s/g, '').length) >= 0.58;
 }
 
 export function extractTicketFields(text) {
+  const lensAiSummary = isGoogleLensAiReceiptSummary(text);
   const totalChoices = extractTicketTotalChoices(text);
   const fields = {
     documentType: detectTicketDocumentType(text),
-    date: extractTicketDate(text),
-    time: extractTicketTime(text),
+    date: lensAiSummary ? extractGoogleLensAiSummaryDate(text) : extractTicketDate(text),
+    time: lensAiSummary ? extractGoogleLensAiSummaryTime(text) : extractTicketTime(text),
     merchant: extractTicketMerchant(text),
-    total: totalChoices?.general ?? extractTicketTotal(text)
+    total: totalChoices?.general ?? (lensAiSummary ? extractGoogleLensAiTotal(text) : null) ?? extractTicketTotal(text)
   };
   if (totalChoices) fields.totalChoices = totalChoices;
   return fields;
@@ -1562,6 +1628,7 @@ async function recognizeTicketUnlocked(source, options = {}) {
       classificationText,
       confidence: selected.confidence,
       fields: selected.fields,
+      lensAiSummary: isGoogleLensAiReceiptSummary(text),
       readings: text ? [text] : [],
       foodEvidence: extractTicketFoodEvidence(classificationText, selected.fields.total),
       additionalPasses,

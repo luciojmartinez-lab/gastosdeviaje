@@ -6,6 +6,8 @@ import {
   detectTicketDocumentType,
   extractTicketDate,
   extractCardPaymentAmount,
+  extractGoogleLensAiMerchant,
+  extractGoogleLensAiTotal,
   extractTicketFields,
   extractTicketFoodEvidence,
   extractTicketMerchant,
@@ -20,6 +22,7 @@ import {
   findFirstTextBand,
   findReceiptBounds,
   isGoogleLensTranslationText,
+  isGoogleLensAiReceiptSummary,
   isPlausibleTicketMerchant,
   parseTicketAmount
 } from '../ticket-ocr.js';
@@ -69,6 +72,42 @@ VENTA DEBIT MASTERCARD
 Aut 553077 Op 046559 CONTACTLESE
 Hora: 10:55`;
 
+const lensAiSevenEleven = `al 17:40
+Japon. Shutterstock
+Detalles de la compra
+• Lugar: 7-Eleven, sucursal Futtsu Hamakanaya
+(Prefectura de Chiba, Japón).
+• Fecha y hora: 23 de agosto de 2024 a las
+17:50.
+Artículos adquiridos
+• Ganchos en S de acero Daiso (4 unidades): 100 yenes.
+• Toallitas húmedas desinfectantes Kirei Kirei: 213 yenes.
+Totales y pago
+• Subtotal sin impuestos: 313 yenes.
+• Impuesto (10%): 31 yenes.
+• Total pagado: 344 yenes.
+• Efectivo entregado: 1,000 yenes.
+• Cambio devuelto: 656 yenes.
+Pregunta lo que quieras`;
+
+const lensAiLawson = `Vista creada con IA
+El ticket de compra es de una tienda Lawson en
+Japón con un total de 2.481 yenes.
+Si necesitas que te traduzca algún producto específico, dime cuál te interesa.
+Mostrar más
+Coincidencias visuales`;
+
+const lensAiSevenElevenShort = `17:40
+Vista creada con IA
+Este es el recibo de una compra por un total de
+344 yenes realizada en una tienda 7-Eleven en
+Japón.
+Detalles de la compra
+• Lugar: 7-Eleven, sucursal Futtsu Hamakanaya
+(Prefectura de Chiba, Japón)
+Mostrar más
+Coincidencias visuales`;
+
 const milleniumReceiptOcr = `MILLENIUM
 MARTA RODRIGUEZ GAVIEIRO
 FRA SIMP: COMPROBANTE FECHA: 18/07/2026
@@ -89,6 +128,35 @@ test('distingue un ticket comercial de un justificante de tarjeta', () => {
 
 test('en tickets prioriza el encabezado del comercio', () => {
   assert.equal(extractTicketMerchant(shopReceipt), 'BEKER-CAFE');
+});
+
+test('interpreta el resumen de Lens IA sin confundir su interfaz con el comercio', () => {
+  assert.equal(isGoogleLensAiReceiptSummary(lensAiSevenEleven), true);
+  assert.equal(isGoogleLensAiReceiptSummary(lensAiLawson), true);
+  assert.equal(extractGoogleLensAiMerchant(lensAiSevenEleven), '7-Eleven, sucursal Futtsu Hamakanaya');
+  assert.equal(extractGoogleLensAiMerchant(lensAiLawson), 'Lawson');
+  assert.equal(extractGoogleLensAiTotal(lensAiSevenElevenShort), 344);
+  assert.deepEqual(extractTicketFields(lensAiSevenEleven), {
+    documentType: 'receipt',
+    date: '2024-08-23',
+    time: '17:50',
+    merchant: '7-Eleven, sucursal Futtsu Hamakanaya',
+    total: 344
+  });
+  assert.deepEqual(extractTicketFields(lensAiLawson), {
+    documentType: 'receipt',
+    date: '',
+    time: '',
+    merchant: 'Lawson',
+    total: 2481
+  });
+  assert.deepEqual(extractTicketFields(lensAiSevenElevenShort), {
+    documentType: 'receipt',
+    date: '',
+    time: '',
+    merchant: '7-Eleven, sucursal Futtsu Hamakanaya',
+    total: 344
+  });
 });
 
 test('en copias de tarjeta omite el sistema de pago y localiza el comercio', () => {

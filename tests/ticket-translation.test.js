@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
 
-const [app, html, styles, help, pkg] = await Promise.all([
+const [app, html, styles, help, pkg, ticketOcr] = await Promise.all([
   readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../styles.css', import.meta.url), 'utf8'),
   readFile(new URL('../ayuda.html', import.meta.url), 'utf8'),
-  readFile(new URL('../package.json', import.meta.url), 'utf8')
+  readFile(new URL('../package.json', import.meta.url), 'utf8'),
+  readFile(new URL('../ticket-ocr.js', import.meta.url), 'utf8')
 ]);
 
 test('Google Lens recibe el archivo real del ticket sin servicios de pago', async () => {
@@ -129,6 +130,9 @@ test('Lens ignora enlaces y textos auxiliares antes de decidir si debe leer la i
   assert.equal(receiptText({ text: 'Abrir con Google Lens' }), '');
   const ticket = 'Tienda Futtsu Hamakanaya\n23/08/2024 17:50\nTotal ¥344';
   assert.equal(receiptText({ text: ticket }), ticket);
+  assert.match(app, /function sharedPayloadIsGoogleAiLinkOnly/);
+  assert.match(app, /Google ha compartido únicamente el enlace al análisis de IA/);
+  assert.match(app, /sharedPayloadIsGoogleAiLinkOnly\(payload\)/);
 });
 
 test('Lens en español usa los datos sin crear un segundo ticket', () => {
@@ -144,10 +148,21 @@ test('Lens en español usa los datos sin crear un segundo ticket', () => {
   assert.doesNotMatch(spanishRoute, /pendingExpenseTicketTranslations/);
 });
 
+test('el resumen de Lens IA se analiza y su captura no se guarda como traducción', () => {
+  assert.match(html, /Google Lens en Modo IA/);
+  assert.match(html, /captura desplazable del resumen/);
+  assert.match(app, /lensAiSummary: ocr\.isGoogleLensAiReceiptSummary\(sourceText\)/);
+  assert.match(ticketOcr, /lensAiSummary: isGoogleLensAiReceiptSummary\(text\)/);
+  assert.match(app, /result\.lensAiSummary && pendingExpenseTicketTranslations\[prefix\] === record/);
+  assert.match(app, /La captura del resumen de IA se utilizó solo para extraer los datos y no se guardará como traducción/);
+});
+
 test('la ayuda explica el flujo gratuito con Lens y el regreso a la aplicación', () => {
   assert.match(help, /id="traducir-ticket"/);
   assert.match(help, /Google Lens/);
   assert.match(help, /gratuit/i);
   assert.match(help, /español|otro idioma/);
   assert.match(help, /no llama a OpenAI ni a otra API de pago/);
+  assert.match(help, /Modo IA/);
+  assert.match(help, /captura desplazable/);
 });
