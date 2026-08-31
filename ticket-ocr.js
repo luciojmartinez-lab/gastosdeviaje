@@ -13,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v304';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v303';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -448,10 +448,7 @@ export function extractTicketLayoutTotal(blocks = []) {
 }
 
 export function reconcileTicketLayoutTotal(textTotal, layoutTotal) {
-  if (Number.isFinite(textTotal) && textTotal > 0) {
-    if (Number.isFinite(layoutTotal) && layoutTotal >= 100 && textTotal <= 9) return null;
-    return textTotal;
-  }
+  if (Number.isFinite(textTotal) && textTotal > 0) return textTotal;
   return Number.isFinite(layoutTotal) && layoutTotal > 0 ? layoutTotal : null;
 }
 
@@ -462,18 +459,15 @@ function recoverTruncatedCurrencyTotal(lines, explicit) {
   const counts = new Map();
   lines.forEach(line => {
     const normalized = normalizeTicketConcepts(line);
-    const unsafeSummary = ticketTotalLineExcluded(normalized) || /\b(?:custodia|saldo)\b/.test(normalized);
+    const unsafeSummary = /\b(?:subtotal|total\s+(?:del?\s+)?producto|deposito|custodia|saldo|cambio|cambiar|vuelto|descuento|propina|efectivo|cash|entregado|recibido)\b/.test(normalized);
     if (unsafeSummary) return;
     const paymentSummary = /\b(?:pago|pagado|payment|paid|cobrado|cobro|cargo|debito|debitado|importe\s+(?:a|por)\s+pagar|amount\s+due|balance\s+due)\b/.test(normalized);
-    const totalSummary = GENERIC_TOTAL_LABEL.test(normalized) || PAYMENT_DUE_LABEL.test(normalized)
-      || LENS_MISTRANSLATED_TOTAL_LABEL.test(normalized);
     const values = new Set(integerCurrencyAmountsInLine(line));
     values.forEach(value => {
       if (!Number.isInteger(value) || value <= 0) return;
-      const current = counts.get(value) || { count: 0, paymentSummary: false, totalSummary: false };
+      const current = counts.get(value) || { count: 0, paymentSummary: false };
       current.count += 1;
       current.paymentSummary ||= paymentSummary;
-      current.totalSummary ||= totalSummary;
       counts.set(value, current);
     });
   });
@@ -481,11 +475,10 @@ function recoverTruncatedCurrencyTotal(lines, explicit) {
     .filter(([value, evidence]) => hasExplicit
       ? (evidence.count >= 2 || evidence.paymentSummary)
         && value > explicit
-        && ((String(value).length <= explicitDigits.length + 2 && String(value).endsWith(explicitDigits))
-          || (explicit <= 9 && value >= 100 && evidence.count >= 2 && evidence.totalSummary))
+        && String(value).length <= explicitDigits.length + 2
+        && String(value).endsWith(explicitDigits)
       : evidence.paymentSummary)
-    .sort((left, right) => Number(right[1].totalSummary) - Number(left[1].totalSummary)
-      || Number(right[1].paymentSummary) - Number(left[1].paymentSummary)
+    .sort((left, right) => Number(right[1].paymentSummary) - Number(left[1].paymentSummary)
       || right[1].count - left[1].count
       || left[0] - right[0])[0]?.[0];
   return recovered || (hasExplicit ? explicit : null);
@@ -1311,13 +1304,9 @@ function normalizeTicketRecognition(result, image) {
   const confidence = Number(result?.data?.confidence || 0);
   const fields = extractTicketFields(text);
   const layoutTotalRow = bestTicketLayoutTotalRow(blocks);
-  const parsedTotal = fields.total;
-  const layoutTotal = layoutTotalRow?.value;
-  const totalConflict = Number.isFinite(parsedTotal) && parsedTotal > 0 && parsedTotal <= 9
-    && Number.isFinite(layoutTotal) && layoutTotal >= 100;
-  if (!fields.totalChoices) fields.total = reconcileTicketLayoutTotal(parsedTotal, layoutTotal);
+  if (!fields.totalChoices) fields.total = reconcileTicketLayoutTotal(fields.total, layoutTotalRow?.value);
   fields.merchant = ticketMerchantFromLayout(text, rows, image.height, confidence);
-  return { result, image, text, linearText, rows, blocks, confidence, fields, layoutTotalRow, totalConflict };
+  return { result, image, text, linearText, rows, blocks, confidence, fields, layoutTotalRow };
 }
 
 async function recognizeTicketLayoutPass(worker, image, rotateAuto = false) {
@@ -1341,13 +1330,6 @@ export function chooseConfirmedTicketTotal(current, confirmed, confidence) {
   if (currentDigits && confirmedDigits && confirmedDigits.length > currentDigits.length
     && confirmedDigits.endsWith(currentDigits)) return confirmed;
   return current;
-}
-
-export function isImplausibleTranslatedTicketTotal(text, total) {
-  if (!Number.isFinite(total) || total <= 0 || total > 9) return false;
-  const source = String(text || '');
-  if (!/(?:[¥￥₩]|\b(?:jpy|krw|yen(?:es)?|won(?:es)?)\b)/iu.test(source)) return false;
-  return ticketLines(source).some(line => integerCurrencyAmountsInLine(line).some(value => value >= 100));
 }
 
 async function confirmLayoutTotal(worker, recognition, onProgress) {
@@ -1436,7 +1418,7 @@ async function recognizeTicketUnlocked(source, options = {}) {
     if (selected.layoutTotalRow) {
       const confirmation = await confirmLayoutTotal(worker, selected, onProgress);
       additionalPasses += confirmation ? 1 : 0;
-      if (confirmation && !selected.totalConflict) {
+      if (confirmation) {
         selected.fields.total = chooseConfirmedTicketTotal(
           selected.fields.total,
           confirmation.value,
@@ -1450,9 +1432,6 @@ async function recognizeTicketUnlocked(source, options = {}) {
     if (titleMerchant) selected.fields.merchant = titleMerchant;
 
     const text = selected.text;
-    if (reviewTranslatedReceipt && isImplausibleTranslatedTicketTotal(text, selected.fields.total)) {
-      selected.fields.total = null;
-    }
     const classificationText = text;
     return {
       text,
