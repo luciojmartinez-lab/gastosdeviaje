@@ -1,5 +1,6 @@
 let workerPromise = null;
 let workerLanguageKey = '';
+let ticketRecognitionTail = Promise.resolve();
 let progressListener = () => {};
 const OCR_WORKER_START_TIMEOUT_MS = 45_000;
 const OCR_PSM_AUTO = '3';
@@ -12,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v302';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v303';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -446,6 +447,11 @@ export function extractTicketLayoutTotal(blocks = []) {
   return Number.isFinite(candidate?.value) && candidate.value > 0 ? candidate.value : null;
 }
 
+export function reconcileTicketLayoutTotal(textTotal, layoutTotal) {
+  if (Number.isFinite(textTotal) && textTotal > 0) return textTotal;
+  return Number.isFinite(layoutTotal) && layoutTotal > 0 ? layoutTotal : null;
+}
+
 function recoverTruncatedCurrencyTotal(lines, explicit) {
   if (explicit != null && (!Number.isInteger(explicit) || explicit <= 0)) return explicit;
   const hasExplicit = Number.isInteger(explicit) && explicit > 0;
@@ -716,7 +722,7 @@ export function extractTicketTotalChoices(text) {
 }
 
 const MERCHANT_EXCLUSIONS = /^(ticket|receipt|kuitti|factura|invoice|lasku|simplificada|copia|cliente|customer|fecha|date|hora|time|mesa|caja|cajero|nif|cif|n\.i\.f|tel|telefono|www\.|https?|gracias|iva|vat|alv|total|subtotal|importe|import|amount|summa|yhteensa|direccion|domicilio|articulo|item|descripcion|description|unidades|venta|compra|operacion|transaction|transaccion|autorizacion|authorization|terminal|contactless|aprobada|aceptada|traducid[oa]\s+con\s+google\s+lens|translated\s+by\s+google\s+lens|google\s+lens)/i;
-const MERCHANT_METADATA_WORDS = /\b(fecha|hora|date|time|data|paivamaara|aika|mesa|comensales|caja|cajero|nif|cif|telefono|ticket|receipt|kuitti|factura|invoice|lasku|total|subtotal|importe|import|amount|summa|yhteensa|iva|vat|alv|descripcion|description|kuvaus|unidades|units|maara|precio|price|hinta)\b/i;
+const MERCHANT_METADATA_WORDS = /\b(fecha|hora|date|time|data|paivamaara|aika|mesa|comensales|caja|cajero|nif|cif|telefono|ticket|receipt|kuitti|factura|invoice|lasku|total|subtotal|importe|import|amount|summa|yhteensa|impuesto|impuestos|iva|vat|alv|descripcion|description|kuvaus|unidades|units|maara|precio|price|hinta)\b/i;
 const EAST_ASIAN_MERCHANT_METADATA_WORDS = /(?:領収書|レシート|請求書|日付|時刻|合計|小計|消費税|영수증|계산서|날짜|시간|합계|소계|부가세)/u;
 const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|rua|rúa|cp\s*\d|codigo postal|tlf|telefono|madrid|barcelona)\b/i;
 const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet)$/i;
@@ -1298,7 +1304,7 @@ function normalizeTicketRecognition(result, image) {
   const confidence = Number(result?.data?.confidence || 0);
   const fields = extractTicketFields(text);
   const layoutTotalRow = bestTicketLayoutTotalRow(blocks);
-  if (!fields.totalChoices && Number.isFinite(layoutTotalRow?.value) && layoutTotalRow.value > 0) fields.total = layoutTotalRow.value;
+  if (!fields.totalChoices) fields.total = reconcileTicketLayoutTotal(fields.total, layoutTotalRow?.value);
   fields.merchant = ticketMerchantFromLayout(text, rows, image.height, confidence);
   return { result, image, text, linearText, rows, blocks, confidence, fields, layoutTotalRow };
 }
@@ -1316,13 +1322,14 @@ function totalFromKnownLayoutRow(text) {
   return values.length ? Math.max(...values) : null;
 }
 
-function chooseConfirmedTicketTotal(current, confirmed, confidence) {
+export function chooseConfirmedTicketTotal(current, confirmed, confidence) {
   if (!Number.isFinite(confirmed) || confirmed <= 0 || confidence < 35) return current;
   if (!Number.isFinite(current) || current <= 0 || current === confirmed) return confirmed;
-  if (current < 100 && confirmed >= 100) return confirmed;
-  if (confirmed < 100 && current >= 100) return current;
-  const ratio = confirmed / current;
-  return ratio >= 0.75 && ratio <= 1.33 ? confirmed : current;
+  const currentDigits = Number.isInteger(current) ? String(current) : '';
+  const confirmedDigits = Number.isInteger(confirmed) ? String(confirmed) : '';
+  if (currentDigits && confirmedDigits && confirmedDigits.length > currentDigits.length
+    && confirmedDigits.endsWith(currentDigits)) return confirmed;
+  return current;
 }
 
 async function confirmLayoutTotal(worker, recognition, onProgress) {
@@ -1369,7 +1376,7 @@ async function recognizeMissingTicketTitle(worker, recognition, onProgress) {
     : '';
 }
 
-export async function recognizeTicket(source, options = {}) {
+async function recognizeTicketUnlocked(source, options = {}) {
   if (!source) throw new Error('Selecciona o fotografía primero un ticket.');
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
   const type = String(options.type || source.type || '').toLowerCase();
@@ -1445,4 +1452,13 @@ export async function recognizeTicket(source, options = {}) {
       // El siguiente uso vuelve a preparar el lector; este restablecimiento es preventivo.
     }
   }
+}
+
+export function recognizeTicket(source, options = {}) {
+  const recognition = ticketRecognitionTail.then(
+    () => recognizeTicketUnlocked(source, options),
+    () => recognizeTicketUnlocked(source, options)
+  );
+  ticketRecognitionTail = recognition.catch(() => {});
+  return recognition;
 }

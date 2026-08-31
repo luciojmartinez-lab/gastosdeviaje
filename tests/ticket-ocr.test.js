@@ -12,6 +12,8 @@ import {
   extractTicketLayoutTotal,
   extractTicketTotal,
   extractTicketTotalChoices,
+  chooseConfirmedTicketTotal,
+  reconcileTicketLayoutTotal,
   reconcileTicketTotalReadings,
   reconstructTicketLayoutText,
   findFirstTextBand,
@@ -208,8 +210,18 @@ test('no mezcla lecturas OCR conflictivas como si fueran evidencias independient
   assert.match(source, /const OCR_TEXT_WITH_LAYOUT = \{ text: true, blocks: true \}/);
   assert.match(source, /bestTicketLayoutTotalRow\(blocks\)/);
   assert.match(source, /Confirmando la fila del total/);
+  assert.match(source, /let ticketRecognitionTail = Promise\.resolve\(\)/);
+  assert.match(source, /ticketRecognitionTail\.then\(/);
   assert.match(source, /readings: text \? \[text\] : \[\]/);
   assert.doesNotMatch(source, /recognitionTexts|exactMandarakeLensCandidate|getSpecificLensTicketOverride/);
+});
+
+test('una cifra aislada de la fila grande no sustituye el total corroborado por el ticket', () => {
+  assert.equal(reconcileTicketLayoutTotal(1980, 980), 1980);
+  assert.equal(reconcileTicketLayoutTotal(null, 344), 344);
+  assert.equal(chooseConfirmedTicketTotal(1980, 930, 92), 1980);
+  assert.equal(chooseConfirmedTicketTotal(980, 930, 92), 980);
+  assert.equal(chooseConfirmedTicketTotal(27, 827, 92), 827);
 });
 
 test('reconstruye la fila visual de Total aunque etiqueta y cifra estén en bloques distintos', () => {
@@ -338,6 +350,7 @@ recibo`), 'Farmacia Daikoku Drug Ueno Ameyoko');
   assert.equal(isPlausibleTicketMerchant('ralriiiialviar L'), false);
   assert.equal(isPlausibleTicketMerchant('mE. Hora'), false);
   assert.equal(isPlausibleTicketMerchant('E El Bj NJ)'), false);
+  assert.equal(isPlausibleTicketMerchant('Monto sujeto a impuestos le 990'), false);
   assert.equal(isPlausibleTicketMerchant('MILLENIUM'), true);
 });
 
@@ -551,6 +564,14 @@ cambiar 0`), {
     merchant: 'Complejo Mandarake',
     total: 1980
   });
+  assert.equal(extractTicketTotal(`0003 El mundo de Yoshi's Woolf ¥1,980
+Total parcial ¥1,4980
+Monto sujeto a impuestos ¥i 380
+Impuesto al consumo ¥180
+total 980
+Total sujeto a una tasa impositiva del 10% ¥1,980
+Dinero electrónico ¥ 1 y 980
+cambiar O`), 1980);
 });
 
 test('reconoce productos de alimentación aunque Lens traduzca de forma irregular', () => {
