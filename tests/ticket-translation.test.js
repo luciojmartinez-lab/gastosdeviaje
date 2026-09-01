@@ -20,7 +20,7 @@ test('Google Lens recibe el archivo real del ticket sin servicios de pago', asyn
   assert.match(html, /id="image-viewer-share"[^>]*>Compartir \/ Google Lens/);
   assert.match(app, /const shareData = \{ files: \[file\] \}/);
   assert.match(app, /await navigator\.share\(shareData\)/);
-  const translateFlow = app.slice(app.indexOf('async function translateExpenseTicket'), app.indexOf('async function applyLensAiPastedText'));
+  const translateFlow = app.slice(app.indexOf('async function translateExpenseTicket'), app.indexOf('function wrapLensAiSummaryLines'));
   assert.match(translateFlow, /await rememberLensReturnTarget/);
   assert.match(translateFlow, /pendingLensShareRequest/);
   assert.match(translateFlow, /showModal\(\)/);
@@ -30,7 +30,7 @@ test('Google Lens recibe el archivo real del ticket sin servicios de pago', asyn
   await assert.rejects(access(new URL('../netlify/functions/translate-ticket.js', import.meta.url)));
 });
 
-test('el modal ofrece los dos modos y permite pegar la respuesta de Lens IA', () => {
+test('el modal informa de los dos modos sin exigir selección y permite pegar la respuesta de Lens IA', () => {
   for (const id of [
     'lens-mode-dialog',
     'lens-mode-continue',
@@ -41,13 +41,16 @@ test('el modal ofrece los dos modos y permite pegar la respuesta de Lens IA', ()
     'lens-paste-text',
     'lens-paste-read'
   ]) assert.match(html, new RegExp(`id="${id}"`));
-  assert.match(html, /name="lens-mode" value="translation"/);
-  assert.match(html, /name="lens-mode" value="ai"/);
-  assert.match(styles, /\.lens-mode-option:has\(input:checked\)/);
+  assert.doesNotMatch(html, /name="lens-mode"/);
+  assert.match(html, /id="lens-mode-continue">Continuar y compartir/);
+  assert.match(html, /cierra la ventana de Lens/);
+  assert.match(html, /pulsar también «Leer ticket»/);
+  assert.match(styles, /\.lens-mode-number \{/);
   assert.match(app, /function syncLensPasteAvailability\(prefix\)/);
   assert.match(app, /navigator\.clipboard\?\.readText/);
   assert.match(app, /async function applyLensAiPastedText/);
   assert.match(app, /async function readManualLensPaste/);
+  assert.doesNotMatch(app, /function lensModeSelection/);
   assert.match(app, /#lens-mode-continue/);
 });
 
@@ -81,7 +84,7 @@ test('la imagen compañera se guarda y aparece junto al ticket original', () => 
     'edit-gasto-ticket-translation-preview'
   ]) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(styles, /\.expense-ticket-preview-pair \{[\s\S]*?grid-template-columns: repeat\(2/);
-  assert.match(app, /ticketTranslationKind: record\?\.kind === 'secondary-ticket'/);
+  assert.match(app, /ticketTranslationKind: normalizeTicketCompanionKind/);
   assert.match(app, /next\.ticketTranslationRef = await addAttachment/);
   assert.match(app, /ticketTranslationData: gasto\.ticketTranslationRef \?/);
   const blogImages = app.slice(app.indexOf('async function expenseBlogImages'), app.indexOf('const numberValue', app.indexOf('async function expenseBlogImages')));
@@ -185,6 +188,17 @@ test('el resumen de Lens IA se analiza y no se guarda como traducción', () => {
   assert.match(ticketOcr, /lensAiSummary: isGoogleLensAiReceiptSummary\(text\)/);
   assert.match(app, /result\.lensAiSummary && pendingExpenseTicketTranslations\[prefix\] === record/);
   assert.match(app, /La captura del resumen de IA se utilizó solo para extraer los datos y no se guardará como traducción/);
+});
+
+test('el texto pegado desde Lens IA se conserva como resumen visual en español', () => {
+  assert.match(app, /async function createLensAiSummaryCompanion\(text\)/);
+  assert.match(app, /Resumen en español de Lens IA/);
+  assert.match(app, /no es una fotografía traducida/);
+  assert.match(app, /kind: 'ai-summary'/);
+  assert.match(app, /pendingExpenseTicketTranslations\[prefix\] = await createLensAiSummaryCompanion\(sourceText\)/);
+  assert.match(app, /La respuesta de Lens IA se muestra en español junto al ticket original/);
+  assert.match(help, /resumen visual en español/);
+  assert.match(help, /pulsa también <em>Leer ticket<\/em>/);
 });
 
 test('la ayuda explica el flujo gratuito con Lens y el regreso a la aplicación', () => {

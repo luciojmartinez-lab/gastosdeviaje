@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#0876c9">
-  <title>Manual de Cuaderno de Bitácora - 700v312</title>
+  <title>Manual de Cuaderno de Bitácora - 700v313</title>
   <script>
     const helpParams = new URLSearchParams(location.search);
     const embeddedHelpMode = helpParams.get('embedded');
@@ -193,7 +193,7 @@
 
     <main class="manual">
       <section class="intro">
-        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 1 de septiembre de 2026</span><span><strong>Versión documentada:</strong> 700v312</span></p>
+        <p class="doc-meta"><span><strong>Fecha de creación:</strong> 17 de julio de 2026</span><span><strong>Última actualización:</strong> 1 de septiembre de 2026</span><span><strong>Versión documentada:</strong> 700v313</span></p>
         <h1>Manual de Cuaderno de Bitácora</h1>
         <p class="lead">Guía para preparar un viaje, registrar gastos y vivencias mientras sucede, conservar la ruta y obtener al final un cuaderno completo con informes, imágenes, mapas y copias de seguridad.</p>
         <div class="callout success"><strong>Cómo usar esta ayuda:</strong> empieza por el <a href="#flujo">flujo recomendado</a>. Cuando aparezca un concepto, sigue su enlace para abrir la explicación detallada de la pantalla, campo o desplegable correspondiente.</div>
@@ -381,7 +381,7 @@
           </tbody></table></div>
 
           <h4 id="idiomas-tickets">Tickets españoles y extranjeros</h4>
-          <p><em>Leer ticket</em> está preparado únicamente para tickets en español y usa también apoyo inglés para reconocer nombres comerciales. Para cualquier ticket extranjero, pulsa <em>Leer con Google Lens</em>. Un modal grande permite elegir entre <strong>Modo 1 · Traducción normal</strong> y <strong>Modo 2 · Lectura con IA</strong>. En el segundo se copia la respuesta de Lens y se pega en la aplicación, evitando capturas de pantalla. Ya no hay que configurar idiomas ni cambia el lector según el país del viaje.</p>
+          <p><em>Leer ticket</em> está preparado únicamente para tickets en español y usa también apoyo inglés para reconocer nombres comerciales. Para cualquier ticket extranjero, pulsa <em>Leer con Google Lens</em>. Un modal grande explica <strong>Modo 1 · Traducción normal</strong> y <strong>Modo 2 · Lectura con IA</strong>, pero no obliga a elegir porque los dos abren el mismo menú Compartir y la decisión se toma dentro de Lens. En el segundo se copia la respuesta de Lens y se pega en la aplicación, evitando capturas de pantalla. Ya no hay que configurar idiomas ni cambia el lector según el país del viaje.</p>
 
           <h4 id="config-backups">Backups desde Configuración</h4>
           <p>Los botones abren <a href="#backup">Exportar / backup</a>, <a href="#sincronizacion">Sincronizar</a>, <a href="#csv">Exportar CSV</a>, <a href="#informes">Imprimir / PDF</a> e <a href="#backup-importar">Importar JSON</a>. Las últimas cinco copias completas permanecen en el dispositivo.</p>
@@ -410,7 +410,7 @@
             <tr><td>Descripción</td><td>Cuadro amplio de varias líneas para identificar el movimiento y revisar el texto completo mientras se escribe. Después permite localizarlo mediante los filtros.</td></tr>
             <tr><td>Elegir archivo / Cámara</td><td>Añade un ticket como imagen o PDF. Cuando es una fotografía, se muestra inmediatamente dentro del formulario para comprobar su orientación antes de guardar.</td></tr>
             <tr><td id="ocr">Leer ticket</td><td>Lee justificantes en español y propone los datos que reconoce con claridad. Reconstruye las filas según su posición visual para asociar <em>Total</em> con su cifra. Si aparecen explícitamente un total general y otro por comensal, muestra ambos y pregunta cuál usar. Si el total no está claro, deja el importe sin completar. Para tickets extranjeros usa <em>Leer con Google Lens</em>. Al editar completa solo campos vacíos. Revisa siempre el resultado antes de guardar.</td></tr>
-            <tr><td id="traducir-ticket">Leer con Google Lens</td><td>Antes de compartir aparece un modal grande con dos alternativas. <strong>Modo 1 · Traducción normal:</strong> al abrir Lens, elige <em>Traducir</em> al español y comparte la imagen traducida de vuelta con Cuaderno de Bitácora. <strong>Modo 2 · Lectura con IA:</strong> abre el Modo IA de Lens, revisa su respuesta, pulsa el icono <em>Copiar</em>, vuelve a la aplicación y toca <em>Pegar respuesta de Lens IA</em>. Si faltan datos, pregunta antes «¿Cuál es el comercio, la fecha, la hora y el total pagado?». La aplicación intenta leer el portapapeles; si Android no lo permite, abre un cuadro grande donde pegar manualmente. Ambos modos vuelven al mismo gasto aunque aún no estuviera guardado y permiten revisar los datos antes de añadirlo. Como último recurso sigue siendo posible compartir una captura del resumen. Es un flujo gratuito para la aplicación: no llama a OpenAI ni a otra API de pago.</td></tr>
+            <tr><td id="traducir-ticket">Leer con Google Lens</td><td>Antes de compartir aparece un modal grande que explica dos formas de trabajo; no hay que seleccionar ninguna porque las dos llevan al mismo menú Compartir. <strong>Modo 1 · Traducción normal:</strong> al abrir Lens, elige <em>Traducir</em> al español y comparte la imagen traducida de vuelta con Cuaderno de Bitácora. <strong>Modo 2 · Lectura con IA:</strong> abre el Modo IA de Lens, revisa su respuesta y pulsa el icono <em>Copiar</em>. Después cierra la ventana de Lens, vuelve a la aplicación y toca <em>Pegar respuesta de Lens IA</em>. Si faltan datos, pregunta antes «¿Cuál es el comercio, la fecha, la hora y el total pagado?». La aplicación intenta leer el portapapeles; si Android no lo permite, abre un cuadro grande donde pegar manualmente. La respuesta copiada se convierte además en un resumen visual en español que se muestra y guarda junto al ticket original; no es una fotografía traducida, porque el Modo IA no devuelve esa imagen. Si los campos no quedan bien después de pegar, pulsa también <em>Leer ticket</em>. Ambos modos vuelven al mismo gasto aunque aún no estuviera guardado y permiten revisar los datos antes de añadirlo. Es un flujo gratuito para la aplicación: no llama a OpenAI ni a otra API de pago.</td></tr>
             <tr><td>Clasificación del ticket</td><td>Tipo visual independiente de la categoría económica.</td></tr>
             <tr><td>Vista previa, ajustar, ampliar, descargar, compartir y Girar</td><td>Una foto nueva tomada con Cámara o elegida como archivo aparece en el propio formulario y se puede girar antes de guardar. Al pulsarla se abre completa. El visor empieza en <em>Ajustar</em> para que el ticket entero quepa en la pantalla; los botones − y + permiten reducirlo o ampliarlo y una doble pulsación alterna entre el ajuste y el 100 %. Aunque el archivo tenga un nombre muy largo, este se recorta visualmente en la cabecera y nunca ensancha ni corta la imagen. En el formulario del Blog, usa su botón <em>Descargar con GPS</em>; mantener pulsada la miniatura abre la descarga nativa de Android, que no permite a Cuaderno controlar el nombre ni incorporar el GPS. El botón propio crea un archivo con un nombre formado por <em>descarga</em>, fecha y hora e inserta dentro del JPEG las coordenadas disponibles. <em>Compartir / Google Lens</em> envía el archivo real a otra aplicación. Al editar también se muestra el ticket ya guardado. Si se pulsa Guardar mientras el giro está terminando, la aplicación espera y conserva siempre la última orientación.</td></tr>
             <tr><td>GPS y mapa del ticket</td><td>Cuando el ticket es una fotografía con coordenadas, aparece <em>Añadir el ticket al mapa</em>. La aplicación guarda su GPS antes de compactar la imagen y lo representa como una fotografía del gasto; los PDF no ofrecen esta opción.</td></tr>
@@ -678,10 +678,10 @@
           <a class="back" href="#indice">Volver al índice</a>
         </div>
 
-        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 1 de septiembre de 2026 para Cuaderno de Bitácora 700v312.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
+        <p class="footer-note"><strong>Manual creado el 17 de julio de 2026 y actualizado el 1 de septiembre de 2026 para Cuaderno de Bitácora 700v313.</strong> Debe actualizarse cuando cambien pantallas, flujos o comportamientos.</p>
       </section>
     </main>
   </div>
-  <div class="print-footer">Cuaderno de Bitácora · Manual 700v312 · 1 de septiembre de 2026</div>
+  <div class="print-footer">Cuaderno de Bitácora · Manual 700v313 · 1 de septiembre de 2026</div>
 </body>
 </html>

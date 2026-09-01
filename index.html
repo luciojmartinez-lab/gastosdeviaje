@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v312">
+  <link rel="manifest" href="manifest.webmanifest?v=700v313">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v312">
+  <link rel="stylesheet" href="styles.css?v=700v313">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v312 · 01/09/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 700v313 · 01/09/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -39,7 +39,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v312</div>
+  <div class="app-version">700v313</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -679,20 +679,20 @@
       <h2 id="lens-mode-title">Leer con Google Lens</h2>
       <button type="button" class="ghost icon-btn" id="lens-mode-close" aria-label="Cerrar">x</button>
     </div>
-    <p id="lens-mode-intro">Elige cómo quieres tratar este ticket. Después se abrirá Compartir para que selecciones Google Lens.</p>
-    <div class="lens-mode-options" role="radiogroup" aria-label="Modo de lectura con Google Lens">
-      <label class="lens-mode-option">
-        <input type="radio" name="lens-mode" value="translation">
-        <span><strong>Modo 1 · Traducción normal</strong><small>En Lens, elige Traducir al español. Después comparte la imagen traducida de vuelta con Cuaderno de Bitácora.</small></span>
-      </label>
-      <label class="lens-mode-option">
-        <input type="radio" name="lens-mode" value="ai">
-        <span><strong>Modo 2 · Lectura con IA</strong><small>En Lens, abre Modo IA. Al terminar, pulsa Copiar, vuelve a Cuaderno de Bitácora y toca «Pegar respuesta de Lens IA».</small></span>
-      </label>
+    <p id="lens-mode-intro">Los dos modos empiezan igual: pulsa Continuar, elige Google Lens en Compartir y decide allí cuál quieres usar.</p>
+    <div class="lens-mode-options" aria-label="Formas de lectura con Google Lens">
+      <div class="lens-mode-option">
+        <span class="lens-mode-number" aria-hidden="true">1</span>
+        <span><strong>Modo 1 · Traducción normal</strong><small>En Lens, elige Traducir al español. Después comparte la imagen traducida de vuelta con Cuaderno de Bitácora para conservarla junto al ticket original.</small></span>
+      </div>
+      <div class="lens-mode-option">
+        <span class="lens-mode-number" aria-hidden="true">2</span>
+        <span><strong>Modo 2 · Lectura con IA</strong><small>En Lens, abre Modo IA y pulsa Copiar cuando termine. Después cierra la ventana de Lens, vuelve a Cuaderno de Bitácora y toca «Pegar respuesta de Lens IA». La respuesta se mostrará en español junto al ticket. Si algún dato no pasa correctamente, prueba a pulsar también «Leer ticket».</small></span>
+      </div>
     </div>
     <p class="lens-mode-tip"><strong>Consejo para el Modo 2:</strong> si Lens no muestra todos los datos, pregúntale «¿Cuál es el comercio, la fecha, la hora y el total pagado?» antes de copiar.</p>
     <div class="actions">
-      <button type="button" class="btn" id="lens-mode-continue" disabled>Continuar y compartir</button>
+      <button type="button" class="btn" id="lens-mode-continue">Continuar y compartir</button>
       <button type="button" class="ghost" id="lens-mode-cancel">Cancelar</button>
     </div>
   </form>
@@ -1258,14 +1258,14 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=700v312"></script>
-<script src="gpx-import.js?v=700v312"></script>
-<script src="timeline-routing.js?v=700v312"></script>
-<script src="map-model.js?v=700v312"></script>
-<script src="app.bundle.js?v=700v312"></script>
+<script src="timeline-import.js?v=700v313"></script>
+<script src="gpx-import.js?v=700v313"></script>
+<script src="timeline-routing.js?v=700v313"></script>
+<script src="map-model.js?v=700v313"></script>
+<script src="app.bundle.js?v=700v313"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v312';
+    const pageVersion = '700v313';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1320,7 +1320,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v312', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=700v313', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

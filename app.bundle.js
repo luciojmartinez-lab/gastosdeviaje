@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v312';
+const APP_VERSION = '700v313';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -1078,18 +1078,22 @@ function expenseTicketImageRecord(gasto) {
 
 function expenseTicketTranslationRecord(gasto) {
   if (!gasto?.ticketTranslationData) return null;
-  const kind = gasto.ticketTranslationKind === 'secondary-ticket' ? 'secondary-ticket' : 'translation';
-  return normalizeStoredImageRecord({
-    id: `expense-ticket-${gasto.id || ''}-translation`,
-    name: gasto.ticketTranslationName || (kind === 'secondary-ticket' ? 'segundo-ticket.jpg' : 'traduccion-ticket.jpg'),
-    type: gasto.ticketTranslationType || 'image/jpeg',
-    size: gasto.ticketTranslationSize || 0,
-    data: normalizeTicketDataValue(gasto.ticketTranslationData),
-    width: gasto.ticketTranslationWidth || 0,
-    height: gasto.ticketTranslationHeight || 0,
-    createdAt: gasto.updatedAt || gasto.createdAt || '',
+  const kind = normalizeTicketCompanionKind(gasto.ticketTranslationKind, true);
+  return {
+    ...normalizeStoredImageRecord({
+      id: `expense-ticket-${gasto.id || ''}-translation`,
+      name: gasto.ticketTranslationName || (kind === 'secondary-ticket'
+        ? 'segundo-ticket.jpg'
+        : kind === 'ai-summary' ? 'resumen-lens-ia.jpg' : 'traduccion-ticket.jpg'),
+      type: gasto.ticketTranslationType || 'image/jpeg',
+      size: gasto.ticketTranslationSize || 0,
+      data: normalizeTicketDataValue(gasto.ticketTranslationData),
+      width: gasto.ticketTranslationWidth || 0,
+      height: gasto.ticketTranslationHeight || 0,
+      createdAt: gasto.updatedAt || gasto.createdAt || ''
+    }),
     kind
-  });
+  };
 }
 
 function isAccommodationExpense(gasto) {
@@ -2754,7 +2758,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v312');
+    const worker = new Worker('./timeline-import-worker.js?v=700v313');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3742,7 +3746,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v312');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v313');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -3876,6 +3880,18 @@ function renderSelectedExpenseTicketPreview(prefix) {
   renderExpenseTicketTranslation(prefix);
 }
 
+function normalizeTicketCompanionKind(kind, hasData = false) {
+  if (!hasData) return '';
+  if (kind === 'secondary-ticket' || kind === 'ai-summary') return kind;
+  return 'translation';
+}
+
+function ticketCompanionLabel(kind, long = false) {
+  if (kind === 'secondary-ticket') return 'Segundo ticket';
+  if (kind === 'ai-summary') return long ? 'Resumen en español de Lens IA' : 'Resumen Lens IA';
+  return long ? 'Traducción del ticket' : 'Traducción';
+}
+
 function ticketTranslationPatch(record = null) {
   return {
     ticketTranslationName: record?.name || '',
@@ -3886,7 +3902,7 @@ function ticketTranslationPatch(record = null) {
     ticketTranslationHeight: Math.max(0, Number(record?.height) || 0),
     ticketTranslationText: String(record?.text || ''),
     ticketTranslationSourceLanguages: Array.isArray(record?.sourceLanguages) ? record.sourceLanguages.map(String) : [],
-    ticketTranslationKind: record?.kind === 'secondary-ticket' ? 'secondary-ticket' : (record?.data ? 'translation' : '')
+    ticketTranslationKind: normalizeTicketCompanionKind(record?.kind, Boolean(record?.data))
   };
 }
 
@@ -3898,13 +3914,13 @@ function ticketTranslationRecordFromExpense(gasto) {
     sourceLanguages: Array.isArray(gasto.ticketTranslationSourceLanguages)
       ? gasto.ticketTranslationSourceLanguages.map(String)
       : [],
-    kind: gasto.ticketTranslationKind === 'secondary-ticket' ? 'secondary-ticket' : 'translation'
+    kind: normalizeTicketCompanionKind(gasto.ticketTranslationKind, true)
   } : null;
 }
 
 function openTicketTranslationRecord(record) {
   if (!record?.data) throw new Error('No se encuentra la traducción del ticket');
-  openImageViewer(record, record.kind === 'secondary-ticket' ? 'Segundo ticket' : 'Traducción del ticket');
+  openImageViewer(record, ticketCompanionLabel(record.kind, true));
 }
 
 function fillTicketTranslationPreview(container, record) {
@@ -3915,8 +3931,7 @@ function fillTicketTranslationPreview(container, record) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'expense-ticket-preview-open';
-  const secondary = record.kind === 'secondary-ticket';
-  const label = secondary ? 'Segundo ticket' : 'Traducción';
+  const label = ticketCompanionLabel(record.kind);
   button.dataset.companionLabel = label;
   button.title = `Ampliar ${label.toLocaleLowerCase('es')}`;
   button.onclick = () => openTicketTranslationRecord(record);
@@ -4634,7 +4649,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v312');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v313');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4770,7 +4785,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v312');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v313');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4833,7 +4848,6 @@ function syncLensPasteAvailability(prefix) {
   const target = pendingLensReturnTarget || readStoredLensReturnTarget();
   const startedAt = Number(target?.startedAt || 0);
   button.hidden = !(target?.prefix === prefix
-    && target?.lensMode === 'ai'
     && Date.now() - startedAt <= 30 * 60 * 1000);
 }
 
@@ -4916,10 +4930,6 @@ async function rememberLensReturnTarget(prefix, source = null) {
   return target;
 }
 
-function lensModeSelection() {
-  return String(document.querySelector('input[name="lens-mode"]:checked')?.value || '');
-}
-
 function closeLensModeDialog({ discard = true } = {}) {
   const dialog = $('#lens-mode-dialog');
   const request = pendingLensShareRequest;
@@ -4929,11 +4939,9 @@ function closeLensModeDialog({ discard = true } = {}) {
   if (discard && request?.prefix) clearLensReturnTargetForPrefix(request.prefix);
 }
 
-async function sharePreparedTicketWithLens(request, mode) {
+async function sharePreparedTicketWithLens(request) {
   const { prefix, source, blob } = request;
-  const statusText = mode === 'ai'
-    ? 'En Lens abre Modo IA. Cuando aparezca la respuesta, pulsa Copiar, vuelve aquí y toca «Pegar respuesta de Lens IA».'
-    : 'En Lens elige Traducir al español. Después comparte la imagen traducida de vuelta con Cuaderno de Bitácora.';
+  const statusText = 'En Lens puedes traducir la imagen y compartirla de vuelta, o usar Modo IA, pulsar Copiar, cerrar Lens, volver aquí y tocar «Pegar respuesta de Lens IA».';
   const file = new File([blob], source.name || 'ticket.jpg', {
     type: source.type || blob.type || 'image/jpeg',
     lastModified: Date.now()
@@ -4967,13 +4975,12 @@ async function sharePreparedTicketWithLens(request, mode) {
 
 async function continueLensModeShare() {
   const request = pendingLensShareRequest;
-  const mode = lensModeSelection();
-  if (!request || !['translation', 'ai'].includes(mode)) return;
-  const target = { ...request.target, lensMode: mode };
+  if (!request) return;
+  const target = { ...request.target, lensMode: 'lens' };
   writeLensReturnTarget(target);
   closeLensModeDialog({ discard: false });
   try {
-    await sharePreparedTicketWithLens(request, mode);
+    await sharePreparedTicketWithLens(request);
   } catch (error) {
     console.error(error);
     clearLensReturnTargetForPrefix(request.prefix);
@@ -5001,12 +5008,10 @@ async function translateExpenseTicket(prefix) {
       : dataUrlToBlob(source.source, source.type || 'image/jpeg');
     const target = await rememberLensReturnTarget(prefix, { ...source, source: blob });
     pendingLensShareRequest = { prefix, source, blob, target };
-    document.querySelectorAll('input[name="lens-mode"]').forEach(input => { input.checked = false; });
-    $('#lens-mode-continue').disabled = true;
     const dialog = $('#lens-mode-dialog');
     if (dialog?.showModal) dialog.showModal();
     else dialog?.setAttribute('open', 'open');
-    setTicketOcrStatus(prefix, 'Elige Modo 1 o Modo 2 en la ventana de Google Lens.');
+    setTicketOcrStatus(prefix, 'Revisa las dos formas de usar Google Lens y pulsa Continuar y compartir.');
   } catch (error) {
     console.error(error);
     setTicketOcrStatus(prefix, error?.message || 'No se ha podido preparar el ticket para Google Lens.', true);
@@ -5015,6 +5020,85 @@ async function translateExpenseTicket(prefix) {
     button.textContent = 'Leer con Google Lens';
     syncTicketOcrAvailability(prefix);
   }
+}
+
+function wrapLensAiSummaryLines(context, text, maxWidth) {
+  const lines = [];
+  for (const rawLine of String(text || '').replace(/\r/g, '').split('\n')) {
+    const value = rawLine.trim();
+    if (!value) {
+      if (lines.length && lines[lines.length - 1] !== '') lines.push('');
+      continue;
+    }
+    const words = value.split(/\s+/);
+    let current = '';
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (!current || context.measureText(candidate).width <= maxWidth) {
+        current = candidate;
+      } else {
+        lines.push(current);
+        current = word;
+      }
+    }
+    if (current) lines.push(current);
+  }
+  return lines;
+}
+
+async function createLensAiSummaryCompanion(text) {
+  const sourceText = String(text || '').trim();
+  if (!sourceText) return null;
+  const width = 1080;
+  const padding = 68;
+  const headerHeight = 220;
+  const lineHeight = 48;
+  const maxLines = 72;
+  const measureCanvas = document.createElement('canvas');
+  const measureContext = measureCanvas.getContext('2d');
+  measureContext.font = '32px system-ui, sans-serif';
+  const allLines = wrapLensAiSummaryLines(measureContext, sourceText, width - padding * 2);
+  const truncated = allLines.length > maxLines;
+  const lines = allLines.slice(0, maxLines);
+  if (truncated && lines.length) lines[lines.length - 1] = '… (texto completo conservado en los datos del ticket)';
+  const height = Math.max(620, headerHeight + padding + lines.length * lineHeight + padding);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { alpha: false });
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = '#eaf4ff';
+  context.fillRect(0, 0, width, headerHeight);
+  context.fillStyle = '#0f3d66';
+  context.font = '700 49px system-ui, sans-serif';
+  context.textBaseline = 'top';
+  context.fillText('Resumen en español de Lens IA', padding, 52);
+  context.fillStyle = '#334155';
+  context.font = '28px system-ui, sans-serif';
+  context.fillText('Creado a partir del texto copiado; no es una fotografía traducida.', padding, 128);
+  context.fillStyle = '#172033';
+  context.font = '32px system-ui, sans-serif';
+  let y = headerHeight + 44;
+  for (const line of lines) {
+    if (line) context.fillText(line, padding, y);
+    y += lineHeight;
+  }
+  const blob = await canvasToJpeg(canvas, 0.86);
+  canvas.width = 1;
+  canvas.height = 1;
+  return {
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    name: 'resumen-lens-ia.jpg',
+    type: 'image/jpeg',
+    size: blob.size,
+    data: await readBlobAsDataUrl(blob),
+    width,
+    height,
+    text: sourceText,
+    sourceLanguages: TICKET_OCR_BASE_LANGUAGES.slice(),
+    kind: 'ai-summary'
+  };
 }
 
 async function applyLensAiPastedText(prefix, text) {
@@ -5027,6 +5111,17 @@ async function applyLensAiPastedText(prefix, text) {
     previousOcrDescription: target?.prefix === prefix ? target.previousOcrDescription || '' : ''
   });
   if (!result) throw new Error('No se han podido reconocer datos claros en el texto pegado.');
+  const currentCompanion = pendingExpenseTicketTranslations[prefix];
+  if (!currentCompanion?.data || currentCompanion.kind === 'ai-summary') {
+    try {
+      pendingExpenseTicketTranslations[prefix] = await createLensAiSummaryCompanion(sourceText);
+      renderExpenseTicketTranslation(prefix);
+      const status = String($(`#${prefix}-ticket-ocr-status`)?.textContent || '').trim();
+      setTicketOcrStatus(prefix, `${status} La respuesta de Lens IA se muestra en español junto al ticket original.`.trim());
+    } catch (error) {
+      console.warn('No se pudo crear la vista del resumen de Lens IA', error);
+    }
+  }
   writeLensReturnTarget(null);
   return result;
 }
@@ -5244,7 +5339,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v312');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v313');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -5760,7 +5855,7 @@ function renderExpenseFilesDialog(gasto) {
     items.push(`<li><span class="trip-document-info"><strong>Ticket principal</strong><span>${escapeHtml(gasto.ticketName || 'Ticket')} · ${escapeHtml(ticketTypeLabel || 'Sin clasificar')}</span></span><button type="button" class="ghost" data-open-ticket="${gasto.id}">Abrir</button></li>`);
   }
   if (gasto.ticketTranslationData) {
-    const companionLabel = gasto.ticketTranslationKind === 'secondary-ticket' ? 'Segundo ticket' : 'Traducción del ticket';
+    const companionLabel = ticketCompanionLabel(gasto.ticketTranslationKind, true);
     items.push(`<li><span class="trip-document-info"><strong>${companionLabel}</strong><span>${escapeHtml(gasto.ticketTranslationName || companionLabel)}</span></span><button type="button" class="ghost" data-open-ticket-translation="${gasto.id}">Abrir</button></li>`);
   }
   expenseExtraImages(gasto).forEach((image, index) => {
@@ -7253,7 +7348,7 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     ticketTranslationHeight: Math.max(0, Number(ticketTranslationHeight) || 0),
     ticketTranslationText: String(ticketTranslationText || ''),
     ticketTranslationSourceLanguages: Array.isArray(ticketTranslationSourceLanguages) ? ticketTranslationSourceLanguages.map(String) : [],
-    ticketTranslationKind: ticketTranslationData ? (ticketTranslationKind === 'secondary-ticket' ? 'secondary-ticket' : 'translation') : '',
+    ticketTranslationKind: normalizeTicketCompanionKind(ticketTranslationKind, Boolean(ticketTranslationData)),
     extraImages: storedExtraImages,
     createdAt: now,
     updatedAt: now
@@ -7292,7 +7387,7 @@ async function updateGasto(id, patch) {
   next.ticketTranslationHeight = Math.max(0, Number(next.ticketTranslationHeight) || 0);
   next.ticketTranslationText = String(next.ticketTranslationText || '');
   next.ticketTranslationSourceLanguages = Array.isArray(next.ticketTranslationSourceLanguages) ? next.ticketTranslationSourceLanguages.map(String) : [];
-  next.ticketTranslationKind = next.ticketTranslationData ? (next.ticketTranslationKind === 'secondary-ticket' ? 'secondary-ticket' : 'translation') : '';
+  next.ticketTranslationKind = normalizeTicketCompanionKind(next.ticketTranslationKind, Boolean(next.ticketTranslationData));
   next.paisId = next.paisId ? Number(next.paisId) : null;
   next.ciudadId = next.ciudadId ? Number(next.ciudadId) : null;
   next.hora = normalizeExpenseTime(next.hora) || expenseTimeValue(current) || currentLocalTime();
@@ -13736,7 +13831,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v312');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v313');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15039,8 +15134,11 @@ function syncSharedTicketAction() {
   }
   const companionExists = Boolean(target?.companionExists);
   const label = action === 'secondary' ? 'segundo ticket' : 'traducción';
+  const existingLabel = gasto?.ticketTranslationKind === 'secondary-ticket'
+    ? 'un segundo ticket'
+    : gasto?.ticketTranslationKind === 'ai-summary' ? 'un resumen de Lens IA' : 'una traducción';
   note.textContent = companionExists
-    ? `Ya existe ${gasto?.ticketTranslationKind === 'secondary-ticket' ? 'un segundo ticket' : 'una traducción'}. Esta imagen la reemplazará como ${label} cuando guardes.`
+    ? `Ya existe ${existingLabel}. Esta imagen la reemplazará como ${label} cuando guardes.`
     : `La imagen se colocará junto al ticket principal como ${label}.`;
 }
 
@@ -18006,9 +18104,6 @@ function bindEvents() {
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
   $('#edit-gasto-ticket-translate').onclick = () => translateExpenseTicket('edit-gasto');
   $('#edit-gasto-ticket-lens-paste').onclick = () => pasteLensAiResponse('edit-gasto');
-  document.querySelectorAll('input[name="lens-mode"]').forEach(input => {
-    input.onchange = () => { $('#lens-mode-continue').disabled = !lensModeSelection(); };
-  });
   $('#lens-mode-continue').onclick = continueLensModeShare;
   $('#lens-mode-close').onclick = () => closeLensModeDialog();
   $('#lens-mode-cancel').onclick = () => closeLensModeDialog();
@@ -19426,7 +19521,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v312');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v313');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

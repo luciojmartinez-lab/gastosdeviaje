@@ -2548,19 +2548,18 @@ input[type="checkbox"] {
   border: 2px solid #bfdbfe;
   border-radius: 12px;
   background: #f8fbff;
-  cursor: pointer;
 }
 
-.lens-mode-option:has(input:checked) {
-  border-color: var(--primary);
-  background: #eff6ff;
-  box-shadow: 0 0 0 2px #bfdbfe;
-}
-
-.lens-mode-option input {
-  width: 20px;
-  height: 20px;
-  margin: 2px 0 0;
+.lens-mode-number {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
 }
 
 .lens-mode-option span,
