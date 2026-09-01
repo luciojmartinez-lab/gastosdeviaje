@@ -42,8 +42,19 @@ test('un viaje puede usar cuentas de varias monedas y cada cuenta fija la moneda
   assert.match(app, /function accountsForGastoTrip\(viajeId\)[\s\S]*Number\(c\.viajeId\) === tripId/);
   assert.match(app, /\$\('#g-cuenta'\)\.onchange[\s\S]*\$\('#g-moneda'\)\.value = account\.moneda/);
   assert.match(app, /La moneda del gasto debe coincidir con la cuenta/);
-  assert.match(styles, /#tabla-cat \{[\s\S]*?width: max-content;[\s\S]*?min-width: 900px;[\s\S]*?table-layout: auto/);
-  assert.match(styles, /#tabla-cuenta \{[\s\S]*?width: max-content;[\s\S]*?min-width: 980px;[\s\S]*?table-layout: auto/);
+  assert.match(styles, /#tabla-cat \{[\s\S]*?width: max-content;[\s\S]*?min-width: 760px;[\s\S]*?table-layout: auto/);
+  assert.match(styles, /#tabla-cuenta \{[\s\S]*?width: max-content;[\s\S]*?min-width: 860px;[\s\S]*?table-layout: auto/);
+});
+
+test('las cuentas se distinguen por código y símbolo de moneda en vez de repetir el viaje', () => {
+  const functionStart = app.indexOf('function currencySymbol');
+  const functionEnd = app.indexOf('function accountKey', functionStart);
+  const context = { Intl };
+  vm.runInNewContext(`${app.slice(functionStart, functionEnd)}; this.accountLabel = accountLabel; this.accountChartLabel = accountChartLabel;`, context);
+  assert.equal(context.accountLabel({ nombre: 'Revolut', moneda: 'JPY', viajeId: 7 }), 'Revolut · JPY (¥)');
+  assert.equal(context.accountLabel({ nombre: 'Efectivo', moneda: 'KRW', viajeId: 7 }), 'Efectivo · KRW (₩)');
+  assert.equal(context.accountChartLabel({ nombre: 'Santander', moneda: 'EUR' }), 'Santander · €');
+  assert.match(app, /chartLabel: accountChartLabel\(matrix \|\| account\)/);
 });
 
 test('la leyenda del gráfico crece para mostrar todas las subcategorías', () => {
@@ -78,12 +89,12 @@ test('el resumen de cuentas conserva una tabla y agrupa gastos y saldos con sus 
   assert.match(styles, /#tabla-cuenta \{[\s\S]*?font-size: 13px/);
   assert.match(styles, /#tabla-cuenta th \{[\s\S]*?font-size: 13px;[\s\S]*?text-align: center;/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(n\) \{ text-align: center; \}/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ min-width: 190px;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ min-width: 90px;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(7\),[\s\S]*?#tabla-cuenta td:nth-child\(7\) \{ display: table-cell; min-width: 130px;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ min-width: 160px;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ min-width: 76px;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(7\),[\s\S]*?#tabla-cuenta td:nth-child\(7\) \{ display: table-cell; min-width: 110px;/);
   assert.match(styles, /#tabla-cuenta \.account-label-full \{[\s\S]*?display: inline;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ min-width: 150px;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ min-width: 100px; \}/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ min-width: 135px;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ min-width: 92px; \}/);
   assert.doesNotMatch(styles, /#tabla-cuenta td:nth-child\(7\) \{ display: none;/);
   assert.match(styles, /#resumen-desglose \.table-wrap,[\s\S]*?#resumen-cuentas \.table-wrap \{[\s\S]*?overflow-x: auto/);
   const accountMobileStart = styles.indexOf('  #resumen-desglose .table-wrap,');
@@ -100,6 +111,7 @@ test('varios viajes agrupan las cuentas parciales por su matriz global', () => {
     state: { cuentas: [] },
     normalizePlaceName: value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
     accountLabel: account => `${account.nombre} (${account.viajeId || 'global'})`,
+    accountChartLabel: account => `${account.nombre} · ${account.moneda === 'EUR' ? '€' : account.moneda}`,
     toEur: (value, currency) => Number(value) * (currency === 'PLN' ? 0.25 : 1),
     fromEur: (value, currency) => Number(value) / (currency === 'PLN' ? 0.25 : 1)
   };
@@ -126,12 +138,12 @@ test('varios viajes agrupan las cuentas parciales por su matriz global', () => {
   ];
 
   const rows = context.summaryAccountRows(parciales, gastos, true);
-  assert.equal(JSON.stringify(rows.map(row => row.chartLabel).sort()), JSON.stringify(['Efectivo', 'Revolut', 'Santander']));
-  assert.equal(rows.find(row => row.chartLabel === 'Santander').totalEur, 30);
-  assert.equal(rows.find(row => row.chartLabel === 'Santander').saldoEur, 300);
-  assert.equal(rows.find(row => row.chartLabel === 'Revolut').totalEur, 50);
-  assert.equal(rows.find(row => row.chartLabel === 'Revolut').saldoEur, 100);
-  assert.equal(rows.find(row => row.chartLabel === 'Efectivo').totalEur, 10);
+  assert.equal(JSON.stringify(rows.map(row => row.chartLabel).sort()), JSON.stringify(['Efectivo · €', 'Revolut · €', 'Santander · €']));
+  assert.equal(rows.find(row => row.chartLabel === 'Santander · €').totalEur, 30);
+  assert.equal(rows.find(row => row.chartLabel === 'Santander · €').saldoEur, 300);
+  assert.equal(rows.find(row => row.chartLabel === 'Revolut · €').totalEur, 50);
+  assert.equal(rows.find(row => row.chartLabel === 'Revolut · €').saldoEur, 100);
+  assert.equal(rows.find(row => row.chartLabel === 'Efectivo · €').totalEur, 10);
   assert.match(app, /aggregateByMatrix = !cta && selectedAccountTripIds\.size !== 1/);
 });
 
