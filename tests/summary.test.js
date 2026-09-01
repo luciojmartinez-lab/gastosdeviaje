@@ -20,6 +20,30 @@ test('los desgloses y sus subtotales muestran las divisas originales además del
   assert.match(app, /Subtotal categoría'[\s\S]*?catRow\.currencies/);
   assert.match(app, /formatForeignCurrencyTotals\(totalsByCurrency\)/);
   assert.match(app, /accountSpentCurrencies[\s\S]*?formatForeignCurrencyTotals\(accountSpentCurrencies, ''\)/);
+
+  const functionStart = app.indexOf('function addCurrencyTotal');
+  const functionEnd = app.indexOf('function byName', functionStart);
+  const context = {
+    numberValue: value => Number(value) || 0,
+    fmtCurrency: (amount, currency) => `${Number(amount).toFixed(2)} ${currency}`
+  };
+  vm.runInNewContext(`${app.slice(functionStart, functionEnd)}; this.addCurrencyTotal = addCurrencyTotal; this.formatForeignCurrencyTotals = formatForeignCurrencyTotals;`, context);
+  const totals = {};
+  context.addCurrencyTotal(totals, 'JPY', 2481);
+  context.addCurrencyTotal(totals, 'KRW', 12500);
+  context.addCurrencyTotal(totals, 'EUR', 30);
+  const formatted = context.formatForeignCurrencyTotals(totals);
+  assert.match(formatted, /2481\.00 JPY/);
+  assert.match(formatted, /12500\.00 KRW/);
+  assert.doesNotMatch(formatted, /30\.00 EUR/);
+});
+
+test('un viaje puede usar cuentas de varias monedas y cada cuenta fija la moneda del gasto', () => {
+  assert.match(app, /function accountsForGastoTrip\(viajeId\)[\s\S]*Number\(c\.viajeId\) === tripId/);
+  assert.match(app, /\$\('#g-cuenta'\)\.onchange[\s\S]*\$\('#g-moneda'\)\.value = account\.moneda/);
+  assert.match(app, /La moneda del gasto debe coincidir con la cuenta/);
+  assert.match(styles, /#tabla-cat \{[\s\S]*?min-width: 620px;[\s\S]*?table-layout: fixed/);
+  assert.match(styles, /#tabla-cuenta \{[\s\S]*?min-width: 660px;[\s\S]*?table-layout: fixed/);
 });
 
 test('la leyenda del gráfico crece para mostrar todas las subcategorías', () => {
@@ -51,8 +75,8 @@ test('el resumen de cuentas conserva una tabla y agrupa gastos y saldos con sus 
   assert.match(app, /label: row\.chartLabel/);
   assert.match(app, /account-label-mobile[^>]*>\$\{escapeHtml\(row\.chartLabel\)\}/);
   assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?width: 100%;[\s\S]*?table-layout: fixed/);
-  assert.match(styles, /#tabla-cuenta \{[\s\S]*?font-size: 8\.25px/);
-  assert.match(styles, /#tabla-cuenta th \{[\s\S]*?font-size: 9px;[\s\S]*?text-align: center;/);
+  assert.match(styles, /#tabla-cuenta \{[\s\S]*?font-size: 11px/);
+  assert.match(styles, /#tabla-cuenta th \{[\s\S]*?font-size: 10px;[\s\S]*?text-align: center;/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(n\) \{ text-align: center; \}/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ width: 21%;/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ width: 10%;/);

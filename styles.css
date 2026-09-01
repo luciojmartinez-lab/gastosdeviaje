@@ -5317,9 +5317,9 @@ footer {
   #tabla-cuenta {
     display: table;
     width: 100%;
-    min-width: 0;
+    min-width: 660px;
     table-layout: fixed;
-    font-size: 8.25px;
+    font-size: 11px;
   }
 
   #tabla-cuenta thead {
@@ -5338,13 +5338,13 @@ footer {
   #tabla-cuenta td,
   #tabla-cuenta td:nth-child(n) {
     display: table-cell;
-    padding: 7px 2px;
+    padding: 7px 5px;
     border-bottom: 1px solid var(--line);
     border-radius: 0;
     text-align: right;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: visible;
+    text-overflow: clip;
     font-variant-numeric: tabular-nums;
   }
 
@@ -5355,9 +5355,9 @@ footer {
     text-overflow: clip;
     overflow-wrap: normal;
     word-break: normal;
-    padding-left: 1px;
-    padding-right: 1px;
-    font-size: 9px;
+    padding-left: 4px;
+    padding-right: 4px;
+    font-size: 10px;
     text-align: center;
   }
 
@@ -5391,17 +5391,17 @@ footer {
   }
 
   #tabla-cat {
-    min-width: 0;
+    min-width: 620px;
     table-layout: fixed;
   }
 
   #tabla-cat th,
   #tabla-cat td {
-    padding: 6px 5px;
+    padding: 6px;
     font-size: 12px;
     line-height: 1.2;
     word-break: normal;
-    overflow-wrap: anywhere;
+    overflow-wrap: normal;
   }
 
   #tabla-cat th:nth-child(1),

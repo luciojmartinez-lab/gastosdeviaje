@@ -133,6 +133,17 @@ const lensAiStructuredShop = `## Detalles del comercio
 ## Totales y pago
 * Total pagado: 344 yenes.`;
 
+const lensAiLawsonStructured = `Este es un recibo de compra de una tienda de conveniencia japonesa Lawson.
+El total de la compra fue de ¥2.481 yenes y se pagó con un billete de ¥10.481 yenes, recibiendo ¥8.000 yenes de cambio.
+Aquí tienes el desglose detallado de toda la información del ticket:
+## Información de la Tienda
+
+* Comercio: Lawson, sucursal Nachikatsuura Tsukiji (那智勝浦築地店).
+* Dirección: Distrito de Higashimuro, Nachikatsuura, Prefectura de Wakayama.
+
+## Totales y pago
+* Total de la compra: ¥2.481 yenes.`;
+
 const milleniumReceiptOcr = `MILLENIUM
 MARTA RODRIGUEZ GAVIEIRO
 FRA SIMP: COMPROBANTE FECHA: 18/07/2026
@@ -159,11 +170,15 @@ test('interpreta el resumen de Lens IA sin confundir su interfaz con el comercio
   assert.equal(isGoogleLensAiReceiptSummary(lensAiSevenEleven), true);
   assert.equal(isGoogleLensAiReceiptSummary(lensAiLawson), true);
   assert.equal(isGoogleLensAiReceiptSummary(lensAiEconomicBreakdown), true);
+  assert.equal(isGoogleLensAiReceiptSummary(lensAiLawsonStructured), true);
   assert.equal(extractGoogleLensAiMerchant(lensAiSevenEleven), '7-Eleven, sucursal Futtsu Hamakanaya');
   assert.equal(extractGoogleLensAiMerchant(lensAiLawson), 'Lawson');
   assert.equal(extractGoogleLensAiMerchant(lensAiStructuredShop), '7-Eleven Futtsu Hama-Kanaya');
+  assert.equal(extractGoogleLensAiMerchant(lensAiLawsonStructured), 'Lawson, sucursal Nachikatsuura Tsukiji');
+  assert.equal(extractTicketMerchant(lensAiLawsonStructured), 'Lawson, sucursal Nachikatsuura Tsukiji');
   assert.equal(extractGoogleLensAiTotal(lensAiSevenElevenShort), 344);
   assert.equal(extractGoogleLensAiTotal(lensAiEconomicBreakdown), 8000);
+  assert.equal(extractGoogleLensAiTotal(lensAiLawsonStructured), 2481);
   assert.deepEqual(extractTicketFields(lensAiSevenEleven), {
     documentType: 'receipt',
     date: '2024-08-23',
