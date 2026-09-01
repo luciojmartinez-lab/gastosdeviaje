@@ -15,10 +15,9 @@ test('el gráfico de subcategorías incluye todas las filas del desglose', () =>
 });
 
 test('los desgloses y sus subtotales muestran las divisas originales además del total EUR', () => {
-  assert.match(html, /<th title="Moneda original">Original<\/th><th title="Total en euros">EUR<\/th><th title="Porcentaje del gasto">%<\/th>/);
   assert.match(app, /formatForeignCurrencyTotals\(currencies\)/);
   assert.match(app, /Subtotal categoría'[\s\S]*?catRow\.currencies/);
-  assert.match(app, /formatForeignCurrencyTotals\(totalsByCurrency\)/);
+  assert.match(app, /formatForeignCurrencyTotals\(totalsByCurrency, ''\)/);
   assert.match(app, /accountSpentCurrencies[\s\S]*?formatForeignCurrencyTotals\(accountSpentCurrencies, ''\)/);
 
   const functionStart = app.indexOf('function addCurrencyTotal');
@@ -36,6 +35,19 @@ test('los desgloses y sus subtotales muestran las divisas originales además del
   assert.match(formatted, /2481\.00 JPY/);
   assert.match(formatted, /12500\.00 KRW/);
   assert.doesNotMatch(formatted, /30\.00 EUR/);
+});
+
+test('el desglose oculta subcategoría en Categorías y Original cuando todo está en EUR', () => {
+  const initialTable = html.match(/<table id="tabla-cat"[\s\S]*?<\/table>/)?.[0] || '';
+  assert.match(initialTable, /class="without-secondary without-original"/);
+  assert.match(initialTable, /<th class="breakdown-primary">Categoría<\/th><th class="breakdown-eur"[^>]*>EUR<\/th><th class="breakdown-percent"[^>]*>%<\/th>/);
+  assert.doesNotMatch(initialTable, /Subcategoría|>Original</);
+  assert.match(app, /showSecondBreakdownColumn = breakdownMode !== 'categorias'/);
+  assert.match(app, /originalCurrencyTotalMarkup = formatForeignCurrencyTotals\(totalsByCurrency, ''\)/);
+  assert.match(app, /showOriginalBreakdownColumn = Boolean\(originalCurrencyTotalMarkup\)/);
+  assert.match(app, /if \(showSecondBreakdownColumn\) cells\.push/);
+  assert.match(app, /if \(showOriginalBreakdownColumn\) cells\.push/);
+  assert.match(styles, /#tabla-cat\.without-secondary\.without-original \{\s*min-width: 360px;/);
 });
 
 test('un viaje puede usar cuentas de varias monedas y cada cuenta fija la moneda del gasto', () => {

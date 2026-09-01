@@ -5397,6 +5397,18 @@ footer {
     table-layout: auto;
   }
 
+  #tabla-cat.without-secondary {
+    min-width: 540px;
+  }
+
+  #tabla-cat.without-original {
+    min-width: 500px;
+  }
+
+  #tabla-cat.without-secondary.without-original {
+    min-width: 360px;
+  }
+
   #tabla-cat th,
   #tabla-cat td {
     padding: 8px 9px;
@@ -5407,32 +5419,27 @@ footer {
     white-space: nowrap;
   }
 
-  #tabla-cat th:nth-child(1),
-  #tabla-cat td:nth-child(1) {
+  #tabla-cat .breakdown-primary {
     min-width: 125px;
   }
 
-  #tabla-cat th:nth-child(2),
-  #tabla-cat td:nth-child(2) {
+  #tabla-cat .breakdown-secondary {
     min-width: 140px;
   }
 
-  #tabla-cat th:nth-child(3),
-  #tabla-cat td:nth-child(3) {
+  #tabla-cat .breakdown-original {
     min-width: 170px;
     text-align: right;
     white-space: nowrap;
   }
 
-  #tabla-cat th:nth-child(4),
-  #tabla-cat td:nth-child(4) {
+  #tabla-cat .breakdown-eur {
     min-width: 110px;
     text-align: right;
     white-space: nowrap;
   }
 
-  #tabla-cat th:nth-child(5),
-  #tabla-cat td:nth-child(5) {
+  #tabla-cat .breakdown-percent {
     min-width: 70px;
     text-align: right;
     white-space: nowrap;

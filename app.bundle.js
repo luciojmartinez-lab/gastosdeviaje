@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v318';
+const APP_VERSION = '700v319';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2784,7 +2784,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v318');
+    const worker = new Worker('./timeline-import-worker.js?v=700v319');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3792,7 +3792,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v318');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v319');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4695,7 +4695,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v318');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v319');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4831,7 +4831,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v318');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v319');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5385,7 +5385,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v318');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v319');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -13017,13 +13017,39 @@ function renderResumen() {
   const categoryRows = Object.entries(byCategory)
     .map(([key, item]) => ({ cat: key.split('||')[0], sub: key.split('||')[1], total: item.total, currencies: item.currencies }))
     .sort((a, b) => b.total - a.total);
+  const breakdownMode = $('#r-desglose') ? $('#r-desglose').value : 'categorias';
+  const showSecondBreakdownColumn = breakdownMode !== 'categorias';
+  const originalCurrencyTotalMarkup = formatForeignCurrencyTotals(totalsByCurrency, '');
+  const showOriginalBreakdownColumn = Boolean(originalCurrencyTotalMarkup);
+  const breakdownTable = $('#tabla-cat');
+  const breakdownHead = $('#tabla-cat thead tr');
+  breakdownTable.classList.toggle('without-secondary', !showSecondBreakdownColumn);
+  breakdownTable.classList.toggle('without-original', !showOriginalBreakdownColumn);
   const totalShare = value => totalEur ? `${((numberValue(value) * 100) / totalEur).toFixed(1)}%` : '0.0%';
-  const breakdownRow = (firstLabel, secondLabel, value, currencies, className = '') =>
-    `<tr${className ? ` class="${className}"` : ''}><td>${escapeHtml(firstLabel)}</td><td>${escapeHtml(secondLabel)}</td><td class="original-currency-totals">${formatForeignCurrencyTotals(currencies)}</td><td>${fmtCurrency(value, 'EUR')}</td><td>${totalShare(value)}</td></tr>`;
-  const summaryTotalRow = (firstLabel = 'Total', secondLabel = '-') =>
-    `<tr class="subtotal-row summary-total-row${isOverTripBudget ? ' over-budget-row' : ''}"><td>${escapeHtml(firstLabel)}</td><td>${escapeHtml(secondLabel)}</td><td class="original-currency-totals">${formatForeignCurrencyTotals(totalsByCurrency)}</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>${totalEur ? '100.0%' : '0.0%'}</td></tr>`;
-  $('#tabla-cat tbody').innerHTML = categoryRows.map(row => breakdownRow(row.cat, row.sub, row.total, row.currencies)).join('') + summaryTotalRow('Total', '-');
-  drawPieChart($('#chart-cat'), categoryRows.slice(0, 6).map(row => ({ label: row.sub === '(sin subcat)' ? row.cat : `${row.cat} · ${row.sub}`, value: row.total })));
+  const breakdownHeadings = (firstLabel, secondLabel = '') => {
+    const cells = [`<th class="breakdown-primary">${escapeHtml(firstLabel)}</th>`];
+    if (showSecondBreakdownColumn) cells.push(`<th class="breakdown-secondary">${escapeHtml(secondLabel)}</th>`);
+    if (showOriginalBreakdownColumn) cells.push('<th class="breakdown-original" title="Moneda original">Original</th>');
+    cells.push('<th class="breakdown-eur" title="Total en euros">EUR</th>');
+    cells.push('<th class="breakdown-percent" title="Porcentaje del gasto">%</th>');
+    breakdownHead.innerHTML = cells.join('');
+  };
+  const breakdownRow = (firstLabel, secondLabel, value, currencies, className = '') => {
+    const cells = [`<td class="breakdown-primary">${escapeHtml(firstLabel)}</td>`];
+    if (showSecondBreakdownColumn) cells.push(`<td class="breakdown-secondary">${escapeHtml(secondLabel)}</td>`);
+    if (showOriginalBreakdownColumn) cells.push(`<td class="breakdown-original original-currency-totals">${formatForeignCurrencyTotals(currencies)}</td>`);
+    cells.push(`<td class="breakdown-eur">${fmtCurrency(value, 'EUR')}</td>`);
+    cells.push(`<td class="breakdown-percent">${totalShare(value)}</td>`);
+    return `<tr${className ? ` class="${className}"` : ''}>${cells.join('')}</tr>`;
+  };
+  const summaryTotalRow = (firstLabel = 'Total', secondLabel = '-') => {
+    const cells = [`<td class="breakdown-primary">${escapeHtml(firstLabel)}</td>`];
+    if (showSecondBreakdownColumn) cells.push(`<td class="breakdown-secondary">${escapeHtml(secondLabel)}</td>`);
+    if (showOriginalBreakdownColumn) cells.push(`<td class="breakdown-original original-currency-totals">${originalCurrencyTotalMarkup}</td>`);
+    cells.push(`<td class="breakdown-eur">${fmtCurrency(totalEur, 'EUR')}</td>`);
+    cells.push(`<td class="breakdown-percent">${totalEur ? '100.0%' : '0.0%'}</td>`);
+    return `<tr class="subtotal-row summary-total-row${isOverTripBudget ? ' over-budget-row' : ''}">${cells.join('')}</tr>`;
+  };
 
   const categoryTotals = categoryRows
     .reduce((items, row) => {
@@ -13035,15 +13061,14 @@ function renderResumen() {
       return items;
     }, [])
     .sort((a, b) => b.total - a.total);
-  const breakdownMode = $('#r-desglose') ? $('#r-desglose').value : 'categorias';
-  const breakdownHead = $('#tabla-cat thead tr');
-  if (breakdownHead) breakdownHead.innerHTML = '<th>Categoría</th><th>Subcategoría</th><th title="Moneda original">Original</th><th title="Total en euros">EUR</th><th title="Porcentaje del gasto">%</th>';
   if (breakdownMode === 'categorias') {
+    breakdownHeadings('Categoría');
     $('#tabla-cat tbody').innerHTML = categoryTotals
       .map(row => breakdownRow(row.cat, '-', row.total, row.currencies))
       .join('') + summaryTotalRow('Total', '-');
     drawPieChart($('#chart-cat'), categoryTotals.slice(0, 6).map(row => ({ label: row.cat, value: row.total })));
-  } else {
+  } else if (breakdownMode === 'subcategorias') {
+    breakdownHeadings('Categoría', 'Subcategoría');
     const groupedRows = [];
     const pieRows = [];
     categoryTotals.forEach(catRow => {
@@ -13075,7 +13100,7 @@ function renderResumen() {
     const cityRows = Object.entries(cityTotals)
       .map(([key, item]) => ({ ciudad: key.split('||')[0], pais: key.split('||')[1], total: item.total, currencies: item.currencies }))
       .sort((a, b) => b.total - a.total);
-    if (breakdownHead) breakdownHead.innerHTML = '<th>Ciudad</th><th>País</th><th title="Moneda original">Original</th><th title="Total en euros">EUR</th><th title="Porcentaje del gasto">%</th>';
+    breakdownHeadings('Ciudad', 'País');
     $('#tabla-cat tbody').innerHTML = cityRows
       .map(row => breakdownRow(row.ciudad, row.pais, row.total, row.currencies))
       .join('') + summaryTotalRow('Total', '-');
@@ -13890,7 +13915,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v318');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v319');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -19580,7 +19605,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v318');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v319');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
