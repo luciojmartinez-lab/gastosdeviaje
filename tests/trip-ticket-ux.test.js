@@ -46,7 +46,8 @@ test('el lector local queda fijo en español e inglés y los tickets extranjeros
   assert.match(app, /record\.sourceLanguages = TICKET_OCR_BASE_LANGUAGES\.slice\(\)/);
   assert.doesNotMatch(app, /ticketOcrLanguagesForTrip|handleExpenseTicketLanguageChange|saveTicketOcrLanguageSettings/);
   assert.match(app, /caches\.open\(TICKET_OCR_LANGUAGE_CACHE\)/);
-  assert.match(html, /Para un ticket extranjero, usa Google Lens/);
+  assert.match(html, /Modo 1 · Traducción normal/);
+  assert.match(html, /Modo 2 · Lectura con IA/);
 });
 
 test('la foto del ticket se reduce antes del OCR y sus metadatos se leen una sola vez', () => {

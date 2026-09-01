@@ -2517,13 +2517,87 @@ input[type="checkbox"] {
   grid-column: 1 / -1;
 }
 
-.ticket-translate-button {
-  width: 100%;
+.ticket-lens-actions {
+  display: grid;
+  gap: 7px;
   margin-top: 7px;
 }
 
-.ticket-translate-note {
-  margin: 5px 0 2px;
+.ticket-translate-button,
+.ticket-lens-paste-button {
+  width: 100%;
+}
+
+.lens-mode-modal {
+  width: min(620px, calc(100vw - 24px));
+}
+
+.lens-mode-options {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.lens-mode-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  border: 2px solid #bfdbfe;
+  border-radius: 12px;
+  background: #f8fbff;
+  cursor: pointer;
+}
+
+.lens-mode-option:has(input:checked) {
+  border-color: var(--primary);
+  background: #eff6ff;
+  box-shadow: 0 0 0 2px #bfdbfe;
+}
+
+.lens-mode-option input {
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+}
+
+.lens-mode-option span,
+.lens-mode-option strong,
+.lens-mode-option small {
+  display: block;
+}
+
+.lens-mode-option strong {
+  color: #0f3d66;
+  font-size: 1.05rem;
+}
+
+.lens-mode-option small {
+  margin-top: 5px;
+  color: var(--ink);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.lens-mode-tip {
+  padding: 10px 12px;
+  border-left: 4px solid #0ea5e9;
+  border-radius: 7px;
+  background: #f0f9ff;
+  line-height: 1.4;
+}
+
+.lens-mode-modal .actions,
+.lens-paste-modal .actions {
+  align-items: stretch;
+}
+
+.lens-paste-modal textarea {
+  width: 100%;
+  min-height: 190px;
+  resize: vertical;
 }
 
 .expense-ticket-preview[hidden] {

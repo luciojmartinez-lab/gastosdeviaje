@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v311';
+const APP_VERSION = '700v312';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -67,6 +67,8 @@ const DIALOG_HELP_TARGETS = {
   'edit-gasto-dialog': 'gasto-formulario',
   'image-datetime-dialog': 'gasto-formulario',
   'ticket-total-choice-dialog': 'ocr',
+  'lens-mode-dialog': 'traducir-ticket',
+  'lens-paste-dialog': 'traducir-ticket',
   'expense-files-dialog': 'gasto-archivos',
   'image-viewer-dialog': 'traducir-ticket',
   'form-dialog': 'referencia',
@@ -131,6 +133,8 @@ let blogPointLocationRequestToken = 0;
 let pendingSharedImagesPayload = null;
 let sharedImagePreviewUrls = [];
 let pendingLensReturnTarget = null;
+let pendingLensShareRequest = null;
+let pendingLensPastePrefix = '';
 let sharedContentAppReady = false;
 let pendingSharedLaunchTargets = [];
 let sharedLaunchDrainPromise = Promise.resolve();
@@ -2750,7 +2754,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v311');
+    const worker = new Worker('./timeline-import-worker.js?v=700v312');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3738,7 +3742,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v311');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v312');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4450,6 +4454,7 @@ function syncTicketOcrAvailability(prefix) {
   const unavailable = !ticketOcrSource(prefix);
   if (button && !button.dataset.busy) button.disabled = unavailable;
   if (translateButton && !translateButton.dataset.busy) translateButton.disabled = unavailable;
+  syncLensPasteAvailability(prefix);
 }
 
 function ticketOcrProgressLabel(message, languages = ['spa']) {
@@ -4629,7 +4634,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v311');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v312');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4765,7 +4770,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v311');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v312');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -4818,6 +4823,23 @@ function writeLensReturnTarget(target = null) {
   if (!target || (previous?.sourceUrl && previous.sourceUrl !== target.sourceUrl)) {
     deleteLensReturnSource(previous);
   }
+  syncLensPasteAvailability('g');
+  syncLensPasteAvailability('edit-gasto');
+}
+
+function syncLensPasteAvailability(prefix) {
+  const button = $(`#${prefix}-ticket-lens-paste`);
+  if (!button) return;
+  const target = pendingLensReturnTarget || readStoredLensReturnTarget();
+  const startedAt = Number(target?.startedAt || 0);
+  button.hidden = !(target?.prefix === prefix
+    && target?.lensMode === 'ai'
+    && Date.now() - startedAt <= 30 * 60 * 1000);
+}
+
+function clearLensReturnTargetForPrefix(prefix) {
+  const target = pendingLensReturnTarget || readStoredLensReturnTarget();
+  if (target?.prefix === prefix) writeLensReturnTarget(null);
 }
 
 function rememberRecentLensTrip(target) {
@@ -4894,6 +4916,71 @@ async function rememberLensReturnTarget(prefix, source = null) {
   return target;
 }
 
+function lensModeSelection() {
+  return String(document.querySelector('input[name="lens-mode"]:checked')?.value || '');
+}
+
+function closeLensModeDialog({ discard = true } = {}) {
+  const dialog = $('#lens-mode-dialog');
+  const request = pendingLensShareRequest;
+  pendingLensShareRequest = null;
+  if (dialog?.open && dialog.close) dialog.close();
+  else dialog?.removeAttribute('open');
+  if (discard && request?.prefix) clearLensReturnTargetForPrefix(request.prefix);
+}
+
+async function sharePreparedTicketWithLens(request, mode) {
+  const { prefix, source, blob } = request;
+  const statusText = mode === 'ai'
+    ? 'En Lens abre Modo IA. Cuando aparezca la respuesta, pulsa Copiar, vuelve aquí y toca «Pegar respuesta de Lens IA».'
+    : 'En Lens elige Traducir al español. Después comparte la imagen traducida de vuelta con Cuaderno de Bitácora.';
+  const file = new File([blob], source.name || 'ticket.jpg', {
+    type: source.type || blob.type || 'image/jpeg',
+    lastModified: Date.now()
+  });
+  const shareData = { files: [file] };
+  let supportsFileShare = typeof navigator.share === 'function';
+  if (supportsFileShare && typeof navigator.canShare === 'function') {
+    try {
+      supportsFileShare = navigator.canShare(shareData);
+    } catch {
+      supportsFileShare = false;
+    }
+  }
+  if (!supportsFileShare) {
+    downloadImageViewerFile(file);
+    setTicketOcrStatus(prefix, `El navegador no permite compartir directamente. Se ha descargado la imagen para que la abras con Google Lens. ${statusText}`);
+    return;
+  }
+  setTicketOcrStatus(prefix, statusText);
+  try {
+    await navigator.share(shareData);
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      clearLensReturnTargetForPrefix(prefix);
+      setTicketOcrStatus(prefix, 'No se ha compartido el ticket con Google Lens.');
+      return;
+    }
+    throw error;
+  }
+}
+
+async function continueLensModeShare() {
+  const request = pendingLensShareRequest;
+  const mode = lensModeSelection();
+  if (!request || !['translation', 'ai'].includes(mode)) return;
+  const target = { ...request.target, lensMode: mode };
+  writeLensReturnTarget(target);
+  closeLensModeDialog({ discard: false });
+  try {
+    await sharePreparedTicketWithLens(request, mode);
+  } catch (error) {
+    console.error(error);
+    clearLensReturnTargetForPrefix(request.prefix);
+    setTicketOcrStatus(request.prefix, error?.message || 'No se ha podido compartir el ticket con Google Lens.', true);
+  }
+}
+
 async function translateExpenseTicket(prefix) {
   const button = $(`#${prefix}-ticket-translate`);
   const source = ticketOcrSource(prefix);
@@ -4908,22 +4995,18 @@ async function translateExpenseTicket(prefix) {
   try {
     button.dataset.busy = '1';
     button.disabled = true;
-    button.textContent = 'Abriendo…';
+    button.textContent = 'Preparando…';
     const blob = source.source instanceof Blob
       ? source.source
       : dataUrlToBlob(source.source, source.type || 'image/jpeg');
-    await rememberLensReturnTarget(prefix, { ...source, source: blob });
-    openImageViewer({
-      ...source,
-      name: source.name || 'ticket.jpg',
-      type: source.type || blob.type || 'image/jpeg',
-      blob,
-      data: typeof source.source === 'string' ? source.source : ''
-    }, 'Leer ticket con Google Lens');
-    if ($('#image-viewer-status')) {
-      $('#image-viewer-status').textContent = 'Pulsa «Compartir / Google Lens» y elige Lens. Usa Modo IA; después comparte su texto o una captura desplazable del resumen con Cuaderno de Bitácora. La traducción queda como alternativa.';
-    }
-    setTicketOcrStatus(prefix, 'Ticket listo para compartir con Google Lens. La aplicación no usa ningún servicio de pago.');
+    const target = await rememberLensReturnTarget(prefix, { ...source, source: blob });
+    pendingLensShareRequest = { prefix, source, blob, target };
+    document.querySelectorAll('input[name="lens-mode"]').forEach(input => { input.checked = false; });
+    $('#lens-mode-continue').disabled = true;
+    const dialog = $('#lens-mode-dialog');
+    if (dialog?.showModal) dialog.showModal();
+    else dialog?.setAttribute('open', 'open');
+    setTicketOcrStatus(prefix, 'Elige Modo 1 o Modo 2 en la ventana de Google Lens.');
   } catch (error) {
     console.error(error);
     setTicketOcrStatus(prefix, error?.message || 'No se ha podido preparar el ticket para Google Lens.', true);
@@ -4931,6 +5014,70 @@ async function translateExpenseTicket(prefix) {
     delete button.dataset.busy;
     button.textContent = 'Leer con Google Lens';
     syncTicketOcrAvailability(prefix);
+  }
+}
+
+async function applyLensAiPastedText(prefix, text) {
+  const sourceText = cleanLensSharedText(text);
+  if (!sourceText) {
+    throw new Error('No se encontró la respuesta de Lens IA. En Lens pulsa Copiar debajo de la respuesta completa y vuelve a intentarlo.');
+  }
+  const target = pendingLensReturnTarget || readStoredLensReturnTarget();
+  const result = await readLensTicketText(prefix, sourceText, {
+    previousOcrDescription: target?.prefix === prefix ? target.previousOcrDescription || '' : ''
+  });
+  if (!result) throw new Error('No se han podido reconocer datos claros en el texto pegado.');
+  writeLensReturnTarget(null);
+  return result;
+}
+
+function openLensPasteDialog(prefix, message = '') {
+  pendingLensPastePrefix = prefix;
+  $('#lens-paste-text').value = '';
+  $('#lens-paste-status').textContent = message;
+  const dialog = $('#lens-paste-dialog');
+  if (dialog?.showModal) dialog.showModal();
+  else dialog?.setAttribute('open', 'open');
+  window.setTimeout(() => $('#lens-paste-text')?.focus(), 50);
+}
+
+function closeLensPasteDialog() {
+  const dialog = $('#lens-paste-dialog');
+  pendingLensPastePrefix = '';
+  if (dialog?.open && dialog.close) dialog.close();
+  else dialog?.removeAttribute('open');
+}
+
+async function pasteLensAiResponse(prefix) {
+  const button = $(`#${prefix}-ticket-lens-paste`);
+  try {
+    if (button) button.disabled = true;
+    if (!navigator.clipboard?.readText) {
+      openLensPasteDialog(prefix, 'Pega manualmente la respuesta copiada desde Lens IA.');
+      return;
+    }
+    const text = await navigator.clipboard.readText();
+    await applyLensAiPastedText(prefix, text);
+  } catch (error) {
+    openLensPasteDialog(prefix, error?.message || 'No se pudo leer automáticamente el portapapeles. Pega la respuesta manualmente.');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function readManualLensPaste() {
+  const prefix = pendingLensPastePrefix;
+  if (!prefix) return;
+  const button = $('#lens-paste-read');
+  try {
+    button.disabled = true;
+    $('#lens-paste-status').textContent = 'Analizando la respuesta de Lens IA…';
+    await applyLensAiPastedText(prefix, $('#lens-paste-text').value);
+    closeLensPasteDialog();
+  } catch (error) {
+    $('#lens-paste-status').textContent = error?.message || 'No se ha podido analizar la respuesta pegada.';
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -5097,7 +5244,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v311');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v312');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -13589,7 +13736,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v311');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v312');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15050,7 +15197,7 @@ async function openSharedImagesDialog(payload) {
   if (payload.fromLens && currentFormTarget && !lensReceiptText && sharedPayloadIsGoogleAiLinkOnly(payload)) {
     pendingSharedImagesPayload = null;
     setTab('gastos');
-    setTicketOcrStatus(currentFormTarget.prefix, 'Google ha compartido únicamente el enlace al análisis de IA, cuyo contenido no puede leer la aplicación. Vuelve a Lens, pulsa «Mostrar más» y haz una captura desplazable que incluya el comercio y el total. En Xiaomi: Encendido + Volumen abajo, toca enseguida la miniatura y elige «Desplazar» o «Capturar más». Si Lens no menciona el comercio, pregúntale «¿Cuál es el comercio, la fecha, la hora y el total pagado?» antes de capturar. Después comparte la captura con Cuaderno de Bitácora.');
+    setTicketOcrStatus(currentFormTarget.prefix, 'Google ha compartido únicamente el enlace al análisis de IA, no el contenido de la respuesta. Vuelve a Lens, pulsa Copiar debajo de la respuesta, regresa aquí y toca «Pegar respuesta de Lens IA».');
     return;
   }
   const preferredStoredExpense = lensTarget?.expenseId
@@ -16328,6 +16475,7 @@ function closeEditGasto({ restoreAnchor = true } = {}) {
   pendingTicketOcr['edit-gasto'] = null;
   pendingExpenseTicketPreviews['edit-gasto'] = null;
   pendingExpenseTicketTranslations['edit-gasto'] = null;
+  clearLensReturnTargetForPrefix('edit-gasto');
   renderSelectedExpenseTicketPreview('edit-gasto');
   setTicketOcrStatus('edit-gasto', '');
   if (dialog.close) dialog.close();
@@ -16405,6 +16553,7 @@ function closeAddGasto() {
   pendingTicketOcr.g = null;
   pendingExpenseTicketPreviews.g = null;
   pendingExpenseTicketTranslations.g = null;
+  clearLensReturnTargetForPrefix('g');
   renderSelectedExpenseTicketPreview('g');
   setTicketOcrStatus('g', '');
   if (dialog.close) dialog.close();
@@ -17849,12 +17998,31 @@ function bindEvents() {
   $('#g-ticket-type').onchange = () => scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
   $('#g-ticket-translate').onclick = () => translateExpenseTicket('g');
+  $('#g-ticket-lens-paste').onclick = () => pasteLensAiResponse('g');
   $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#edit-gasto-ticket').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'file'); };
   $('#edit-gasto-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'camera'); };
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
   $('#edit-gasto-ticket-translate').onclick = () => translateExpenseTicket('edit-gasto');
+  $('#edit-gasto-ticket-lens-paste').onclick = () => pasteLensAiResponse('edit-gasto');
+  document.querySelectorAll('input[name="lens-mode"]').forEach(input => {
+    input.onchange = () => { $('#lens-mode-continue').disabled = !lensModeSelection(); };
+  });
+  $('#lens-mode-continue').onclick = continueLensModeShare;
+  $('#lens-mode-close').onclick = () => closeLensModeDialog();
+  $('#lens-mode-cancel').onclick = () => closeLensModeDialog();
+  $('#lens-mode-dialog').oncancel = event => {
+    event.preventDefault();
+    closeLensModeDialog();
+  };
+  $('#lens-paste-read').onclick = readManualLensPaste;
+  $('#lens-paste-close').onclick = closeLensPasteDialog;
+  $('#lens-paste-cancel').onclick = closeLensPasteDialog;
+  $('#lens-paste-dialog').oncancel = event => {
+    event.preventDefault();
+    closeLensPasteDialog();
+  };
   $('#edit-gasto-ticket-type').onchange = () => {
     saveOpenExpenseTicketClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
@@ -19258,7 +19426,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v311');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v312');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

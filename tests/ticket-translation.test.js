@@ -14,14 +14,41 @@ const [app, html, styles, help, pkg, ticketOcr] = await Promise.all([
 test('Google Lens recibe el archivo real del ticket sin servicios de pago', async () => {
   assert.match(html, /id="g-ticket-translate"[^>]*>Leer con Google Lens/);
   assert.match(html, /id="edit-gasto-ticket-translate"[^>]*>Leer con Google Lens/);
+  assert.match(html, /id="lens-mode-dialog"/);
+  assert.match(html, /Modo 1 · Traducción normal/);
+  assert.match(html, /Modo 2 · Lectura con IA/);
   assert.match(html, /id="image-viewer-share"[^>]*>Compartir \/ Google Lens/);
   assert.match(app, /const shareData = \{ files: \[file\] \}/);
   assert.match(app, /await navigator\.share\(shareData\)/);
-  const translateFlow = app.slice(app.indexOf('async function translateExpenseTicket'), app.indexOf('function ticketLink'));
-  assert.match(translateFlow, /openImageViewer\(/);
+  const translateFlow = app.slice(app.indexOf('async function translateExpenseTicket'), app.indexOf('async function applyLensAiPastedText'));
+  assert.match(translateFlow, /await rememberLensReturnTarget/);
+  assert.match(translateFlow, /pendingLensShareRequest/);
+  assert.match(translateFlow, /showModal\(\)/);
+  assert.match(app, /async function sharePreparedTicketWithLens/);
   assert.doesNotMatch(translateFlow, /fetch\(|sourceText|OPENAI/);
   assert.doesNotMatch(pkg, /"openai"/);
   await assert.rejects(access(new URL('../netlify/functions/translate-ticket.js', import.meta.url)));
+});
+
+test('el modal ofrece los dos modos y permite pegar la respuesta de Lens IA', () => {
+  for (const id of [
+    'lens-mode-dialog',
+    'lens-mode-continue',
+    'lens-mode-cancel',
+    'g-ticket-lens-paste',
+    'edit-gasto-ticket-lens-paste',
+    'lens-paste-dialog',
+    'lens-paste-text',
+    'lens-paste-read'
+  ]) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(html, /name="lens-mode" value="translation"/);
+  assert.match(html, /name="lens-mode" value="ai"/);
+  assert.match(styles, /\.lens-mode-option:has\(input:checked\)/);
+  assert.match(app, /function syncLensPasteAvailability\(prefix\)/);
+  assert.match(app, /navigator\.clipboard\?\.readText/);
+  assert.match(app, /async function applyLensAiPastedText/);
+  assert.match(app, /async function readManualLensPaste/);
+  assert.match(app, /#lens-mode-continue/);
 });
 
 test('tickets, traducciones y fotos se amplían y pueden compartirse', () => {
@@ -132,7 +159,8 @@ test('Lens ignora enlaces y textos auxiliares antes de decidir si debe leer la i
   assert.equal(receiptText({ text: ticket }), ticket);
   assert.match(app, /function sharedPayloadIsGoogleAiLinkOnly/);
   assert.match(app, /Google ha compartido únicamente el enlace al análisis de IA/);
-  assert.match(app, /Encendido \+ Volumen abajo/);
+  assert.match(app, /Pegar respuesta de Lens IA/);
+  assert.match(app, /navigator\.clipboard\?\.readText/);
   assert.match(app, /El resumen de Lens no incluye un establecimiento claro/);
   assert.match(app, /sharedPayloadIsGoogleAiLinkOnly\(payload\)/);
 });
@@ -150,9 +178,9 @@ test('Lens en español usa los datos sin crear un segundo ticket', () => {
   assert.doesNotMatch(spanishRoute, /pendingExpenseTicketTranslations/);
 });
 
-test('el resumen de Lens IA se analiza y su captura no se guarda como traducción', () => {
-  assert.match(html, /Google Lens en Modo IA/);
-  assert.match(html, /captura desplazable del resumen/);
+test('el resumen de Lens IA se analiza y no se guarda como traducción', () => {
+  assert.match(html, /Modo 2 · Lectura con IA/);
+  assert.match(html, /Pegar respuesta de Lens IA/);
   assert.match(app, /lensAiSummary: ocr\.isGoogleLensAiReceiptSummary\(sourceText\)/);
   assert.match(ticketOcr, /lensAiSummary: isGoogleLensAiReceiptSummary\(text\)/);
   assert.match(app, /result\.lensAiSummary && pendingExpenseTicketTranslations\[prefix\] === record/);
@@ -165,6 +193,7 @@ test('la ayuda explica el flujo gratuito con Lens y el regreso a la aplicación'
   assert.match(help, /gratuit/i);
   assert.match(help, /español|otro idioma/);
   assert.match(help, /no llama a OpenAI ni a otra API de pago/);
-  assert.match(help, /Modo IA/);
-  assert.match(help, /captura desplazable/);
+  assert.match(help, /Modo 1/);
+  assert.match(help, /Modo 2/);
+  assert.match(help, /Pegar respuesta de Lens IA/);
 });
