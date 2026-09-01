@@ -50,3 +50,9 @@ test('los subtotales diarios y el total del filtro conservan las monedas origina
   assert.match(app, /totalOriginal\.innerHTML = formatForeignCurrencyTotals\(totalCurrencies\)/);
   assert.match(html, /id="tg-original" class="original-currency-totals"/);
 });
+
+test('la tabla de Gastos no repite viaje ni moneda dentro de la cuenta', () => {
+  assert.match(app, /data-label="Cuenta">\$\{escapeHtml\(cta \? cta\.nombre : '\?'\)\}<\/td><td data-label="Moneda">/);
+  assert.doesNotMatch(app, /data-label="Cuenta">\$\{escapeHtml\(cta \? accountLabel\(cta\) : '\?'\)\}/);
+  assert.match(help, /La columna Cuenta muestra solo su nombre, sin repetir el viaje ni la moneda/);
+});

@@ -15,7 +15,7 @@ test('el gráfico de subcategorías incluye todas las filas del desglose', () =>
 });
 
 test('los desgloses y sus subtotales muestran las divisas originales además del total EUR', () => {
-  assert.match(html, /<th>Moneda original<\/th><th>Total EUR<\/th><th>% gasto<\/th>/);
+  assert.match(html, /<th title="Moneda original">Original<\/th><th title="Total en euros">EUR<\/th><th title="Porcentaje del gasto">%<\/th>/);
   assert.match(app, /formatForeignCurrencyTotals\(currencies\)/);
   assert.match(app, /Subtotal categoría'[\s\S]*?catRow\.currencies/);
   assert.match(app, /formatForeignCurrencyTotals\(totalsByCurrency\)/);
@@ -42,7 +42,7 @@ test('un viaje puede usar cuentas de varias monedas y cada cuenta fija la moneda
   assert.match(app, /function accountsForGastoTrip\(viajeId\)[\s\S]*Number\(c\.viajeId\) === tripId/);
   assert.match(app, /\$\('#g-cuenta'\)\.onchange[\s\S]*\$\('#g-moneda'\)\.value = account\.moneda/);
   assert.match(app, /La moneda del gasto debe coincidir con la cuenta/);
-  assert.match(styles, /#tabla-cat \{[\s\S]*?width: max-content;[\s\S]*?min-width: 760px;[\s\S]*?table-layout: auto/);
+  assert.match(styles, /#tabla-cat \{[\s\S]*?width: max-content;[\s\S]*?min-width: 680px;[\s\S]*?table-layout: auto/);
   assert.match(styles, /#tabla-cuenta \{[\s\S]*?width: max-content;[\s\S]*?min-width: 860px;[\s\S]*?table-layout: auto/);
 });
 
@@ -54,6 +54,7 @@ test('las cuentas se distinguen por código y símbolo de moneda en vez de repet
   assert.equal(context.accountLabel({ nombre: 'Revolut', moneda: 'JPY', viajeId: 7 }), 'Revolut · JPY (¥)');
   assert.equal(context.accountLabel({ nombre: 'Efectivo', moneda: 'KRW', viajeId: 7 }), 'Efectivo · KRW (₩)');
   assert.equal(context.accountChartLabel({ nombre: 'Santander', moneda: 'EUR' }), 'Santander · €');
+  assert.match(app, /accountsForGastoTrip\(tripId\)\.map\(c => \(\{ value: String\(c\.id\), label: accountLabel\(c\) \}\)\)/);
   assert.match(app, /chartLabel: accountChartLabel\(matrix \|\| account\)/);
 });
 
