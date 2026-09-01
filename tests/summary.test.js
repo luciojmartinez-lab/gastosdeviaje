@@ -42,8 +42,8 @@ test('un viaje puede usar cuentas de varias monedas y cada cuenta fija la moneda
   assert.match(app, /function accountsForGastoTrip\(viajeId\)[\s\S]*Number\(c\.viajeId\) === tripId/);
   assert.match(app, /\$\('#g-cuenta'\)\.onchange[\s\S]*\$\('#g-moneda'\)\.value = account\.moneda/);
   assert.match(app, /La moneda del gasto debe coincidir con la cuenta/);
-  assert.match(styles, /#tabla-cat \{[\s\S]*?min-width: 620px;[\s\S]*?table-layout: fixed/);
-  assert.match(styles, /#tabla-cuenta \{[\s\S]*?min-width: 660px;[\s\S]*?table-layout: fixed/);
+  assert.match(styles, /#tabla-cat \{[\s\S]*?width: max-content;[\s\S]*?min-width: 900px;[\s\S]*?table-layout: auto/);
+  assert.match(styles, /#tabla-cuenta \{[\s\S]*?width: max-content;[\s\S]*?min-width: 980px;[\s\S]*?table-layout: auto/);
 });
 
 test('la leyenda del gráfico crece para mostrar todas las subcategorías', () => {
@@ -74,17 +74,19 @@ test('el resumen de cuentas conserva una tabla y agrupa gastos y saldos con sus 
   assert.match(app, /data-label="Gastado"[\s\S]*?data-label="% gastos"[\s\S]*?data-label="Saldo"[\s\S]*?data-label="% saldo"[\s\S]*?data-label="EUR"/);
   assert.match(app, /label: row\.chartLabel/);
   assert.match(app, /account-label-mobile[^>]*>\$\{escapeHtml\(row\.chartLabel\)\}/);
-  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?width: 100%;[\s\S]*?table-layout: fixed/);
-  assert.match(styles, /#tabla-cuenta \{[\s\S]*?font-size: 11px/);
-  assert.match(styles, /#tabla-cuenta th \{[\s\S]*?font-size: 10px;[\s\S]*?text-align: center;/);
+  assert.match(styles, /@media \(max-width: 720px\)[\s\S]*?#tabla-cuenta \{[\s\S]*?display: table;[\s\S]*?width: max-content;[\s\S]*?table-layout: auto/);
+  assert.match(styles, /#tabla-cuenta \{[\s\S]*?font-size: 13px/);
+  assert.match(styles, /#tabla-cuenta th \{[\s\S]*?font-size: 13px;[\s\S]*?text-align: center;/);
   assert.match(styles, /#tabla-cuenta th:nth-child\(n\) \{ text-align: center; \}/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ width: 21%;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ width: 10%;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ width: 18%;/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ width: 15%; \}/);
-  assert.match(styles, /#tabla-cuenta th:nth-child\(7\),[\s\S]*?#tabla-cuenta td:nth-child\(7\) \{ display: none; \}/);
-  assert.match(styles, /#resumen-cuentas \.table-wrap \{[\s\S]*?overflow-x: auto/);
-  const accountMobileStart = styles.indexOf('  #resumen-cuentas .table-wrap {');
+  assert.match(styles, /#tabla-cuenta th:nth-child\(1\),[\s\S]*?#tabla-cuenta td:nth-child\(1\) \{ min-width: 190px;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(2\),[\s\S]*?#tabla-cuenta td:nth-child\(2\) \{ min-width: 90px;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(7\),[\s\S]*?#tabla-cuenta td:nth-child\(7\) \{ display: table-cell; min-width: 130px;/);
+  assert.match(styles, /#tabla-cuenta \.account-label-full \{[\s\S]*?display: inline;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(3\),[\s\S]*?#tabla-cuenta td:nth-child\(3\) \{ min-width: 150px;/);
+  assert.match(styles, /#tabla-cuenta th:nth-child\(4\),[\s\S]*?#tabla-cuenta td:nth-child\(4\) \{ min-width: 100px; \}/);
+  assert.doesNotMatch(styles, /#tabla-cuenta td:nth-child\(7\) \{ display: none;/);
+  assert.match(styles, /#resumen-desglose \.table-wrap,[\s\S]*?#resumen-cuentas \.table-wrap \{[\s\S]*?overflow-x: auto/);
+  const accountMobileStart = styles.indexOf('  #resumen-desglose .table-wrap,');
   const accountMobileEnd = styles.indexOf('  #tabla-cat {', accountMobileStart);
   assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /grid-template-columns/);
   assert.doesNotMatch(styles.slice(accountMobileStart, accountMobileEnd), /border-right/);
