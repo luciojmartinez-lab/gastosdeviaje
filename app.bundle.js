@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v313';
+const APP_VERSION = '700v314';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -1352,6 +1352,32 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
   '"': '&quot;',
   "'": '&#39;'
 }[ch]));
+
+function addCurrencyTotal(totals, currency, amount) {
+  const code = String(currency || 'EUR').toUpperCase();
+  totals[code] = numberValue(totals[code]) + numberValue(amount);
+  return totals;
+}
+
+function mergeCurrencyTotals(target, source) {
+  Object.entries(source || {}).forEach(([currency, amount]) => addCurrencyTotal(target, currency, amount));
+  return target;
+}
+
+function expenseCurrencyTotals(expenses) {
+  return (Array.isArray(expenses) ? expenses : []).reduce(
+    (totals, expense) => addCurrencyTotal(totals, expense.moneda, expense.importe),
+    {}
+  );
+}
+
+function formatForeignCurrencyTotals(totals, empty = '—') {
+  const lines = Object.entries(totals || {})
+    .filter(([currency, amount]) => currency !== 'EUR' && Math.abs(numberValue(amount)) > 0.000001)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([currency, amount]) => `<span class="original-currency-total">${fmtCurrency(amount, currency)}</span>`);
+  return lines.length ? lines.join('') : empty;
+}
 
 function byName(a, b) {
   return collator.compare(a.nombre || a.codigo || '', b.nombre || b.codigo || '');
@@ -2758,7 +2784,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v313');
+    const worker = new Worker('./timeline-import-worker.js?v=700v314');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3746,7 +3772,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v313');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v314');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4649,7 +4675,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v313');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v314');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4785,7 +4811,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v313');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v314');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5339,7 +5365,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v313');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v314');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -8418,6 +8444,7 @@ function renderGastosTabla() {
   syncOpenExpenseGroups(groupKeys);
   const tableView = ($('#f-view') ? $('#f-view').value : 'table') === 'table';
   let totalEur = 0;
+  const totalCurrencies = {};
   groupKeys.forEach(key => {
     const [date] = key.split('|');
     const destinationCity = gastosDestinoCiudadName(byGroup[key]);
@@ -8436,6 +8463,7 @@ function renderGastosTabla() {
       : `<td colspan="10"><b>${title}</b></td>`;
     tbody.appendChild(header);
     let subtotalEur = 0;
+    const subtotalCurrencies = {};
     byGroup[key].sort(compareExpensesChronologically).forEach(g => {
       const cat = state.categorias.find(c => c.id === g.catId);
       const sub = state.categorias.find(c => c.id === g.subcatId);
@@ -8443,6 +8471,8 @@ function renderGastosTabla() {
       const eur = toEur(g.importe, g.moneda);
       subtotalEur += eur;
       totalEur += eur;
+      addCurrencyTotal(subtotalCurrencies, g.moneda, g.importe);
+      addCurrencyTotal(totalCurrencies, g.moneda, g.importe);
       const tr = document.createElement('tr');
       tr.className = 'expense-row';
       tr.dataset.gastoId = String(g.id);
@@ -8465,9 +8495,11 @@ function renderGastosTabla() {
     subtotal.className = 'subtotal-row';
     subtotal.dataset.expenseGroupEntry = key;
     subtotal.hidden = !isOpen;
-    subtotal.innerHTML = `<td colspan="7" style="text-align:right"><i>Subtotal</i></td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="2"></td>`;
+    subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td class="original-currency-totals">${formatForeignCurrencyTotals(subtotalCurrencies)}</td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="2"></td>`;
     tbody.appendChild(subtotal);
   });
+  const totalOriginal = $('#tg-original');
+  if (totalOriginal) totalOriginal.innerHTML = formatForeignCurrencyTotals(totalCurrencies);
   $('#tg-total').textContent = fmtCurrency(totalEur, 'EUR');
 }
 
@@ -12917,10 +12949,7 @@ function renderResumen() {
     .filter(g => gastoMatchesLugarFilters(g, pais, ciudad))
     .filter(gastoMatchesTripSelection);
   const totalEur = gastos.reduce((sum, g) => sum + toEur(g.importe, g.moneda), 0);
-  const totalsByCurrency = gastos.reduce((items, g) => {
-    items[g.moneda] = (items[g.moneda] || 0) + numberValue(g.importe);
-    return items;
-  }, {});
+  const totalsByCurrency = expenseCurrencyTotals(gastos);
   const totalLines = [{ currency: 'EUR', amount: totalEur, always: true }]
     .concat(Object.entries(totalsByCurrency)
       .filter(([currency]) => currency !== 'EUR')
@@ -12960,33 +12989,38 @@ function renderResumen() {
     const cat = state.categorias.find(c => c.id === g.catId);
     const sub = state.categorias.find(c => c.id === g.subcatId);
     const key = `${cat ? cat.nombre : '?'}||${sub ? sub.nombre : '(sin subcat)'}`;
-    byCategory[key] = (byCategory[key] || 0) + toEur(g.importe, g.moneda);
+    const item = byCategory[key] || { total: 0, currencies: {} };
+    item.total += toEur(g.importe, g.moneda);
+    addCurrencyTotal(item.currencies, g.moneda, g.importe);
+    byCategory[key] = item;
   });
   const categoryRows = Object.entries(byCategory)
-    .map(([key, total]) => ({ cat: key.split('||')[0], sub: key.split('||')[1], total }))
+    .map(([key, item]) => ({ cat: key.split('||')[0], sub: key.split('||')[1], total: item.total, currencies: item.currencies }))
     .sort((a, b) => b.total - a.total);
   const totalShare = value => totalEur ? `${((numberValue(value) * 100) / totalEur).toFixed(1)}%` : '0.0%';
-  const breakdownRow = (firstLabel, secondLabel, value, className = '') =>
-    `<tr${className ? ` class="${className}"` : ''}><td>${escapeHtml(firstLabel)}</td><td>${escapeHtml(secondLabel)}</td><td>${fmtCurrency(value, 'EUR')}</td><td>${totalShare(value)}</td></tr>`;
+  const breakdownRow = (firstLabel, secondLabel, value, currencies, className = '') =>
+    `<tr${className ? ` class="${className}"` : ''}><td>${escapeHtml(firstLabel)}</td><td>${escapeHtml(secondLabel)}</td><td class="original-currency-totals">${formatForeignCurrencyTotals(currencies)}</td><td>${fmtCurrency(value, 'EUR')}</td><td>${totalShare(value)}</td></tr>`;
   const summaryTotalRow = (firstLabel = 'Total', secondLabel = '-') =>
-    `<tr class="subtotal-row summary-total-row${isOverTripBudget ? ' over-budget-row' : ''}"><td>${escapeHtml(firstLabel)}</td><td>${escapeHtml(secondLabel)}</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>${totalEur ? '100.0%' : '0.0%'}</td></tr>`;
-  $('#tabla-cat tbody').innerHTML = categoryRows.map(row => breakdownRow(row.cat, row.sub, row.total)).join('') + summaryTotalRow('Total', '-');
+    `<tr class="subtotal-row summary-total-row${isOverTripBudget ? ' over-budget-row' : ''}"><td>${escapeHtml(firstLabel)}</td><td>${escapeHtml(secondLabel)}</td><td class="original-currency-totals">${formatForeignCurrencyTotals(totalsByCurrency)}</td><td>${fmtCurrency(totalEur, 'EUR')}</td><td>${totalEur ? '100.0%' : '0.0%'}</td></tr>`;
+  $('#tabla-cat tbody').innerHTML = categoryRows.map(row => breakdownRow(row.cat, row.sub, row.total, row.currencies)).join('') + summaryTotalRow('Total', '-');
   drawPieChart($('#chart-cat'), categoryRows.slice(0, 6).map(row => ({ label: row.sub === '(sin subcat)' ? row.cat : `${row.cat} · ${row.sub}`, value: row.total })));
 
   const categoryTotals = categoryRows
     .reduce((items, row) => {
       const found = items.find(item => item.cat === row.cat);
-      if (found) found.total += row.total;
-      else items.push({ cat: row.cat, total: row.total });
+      if (found) {
+        found.total += row.total;
+        mergeCurrencyTotals(found.currencies, row.currencies);
+      } else items.push({ cat: row.cat, total: row.total, currencies: { ...row.currencies } });
       return items;
     }, [])
     .sort((a, b) => b.total - a.total);
   const breakdownMode = $('#r-desglose') ? $('#r-desglose').value : 'categorias';
   const breakdownHead = $('#tabla-cat thead tr');
-  if (breakdownHead) breakdownHead.innerHTML = '<th>Categoría</th><th>Subcategoría</th><th>Total EUR</th><th>% gasto</th>';
+  if (breakdownHead) breakdownHead.innerHTML = '<th>Categoría</th><th>Subcategoría</th><th>Moneda original</th><th>Total EUR</th><th>% gasto</th>';
   if (breakdownMode === 'categorias') {
     $('#tabla-cat tbody').innerHTML = categoryTotals
-      .map(row => breakdownRow(row.cat, '-', row.total))
+      .map(row => breakdownRow(row.cat, '-', row.total, row.currencies))
       .join('') + summaryTotalRow('Total', '-');
     drawPieChart($('#chart-cat'), categoryTotals.slice(0, 6).map(row => ({ label: row.cat, value: row.total })));
   } else {
@@ -12997,10 +13031,10 @@ function renderResumen() {
         .filter(row => row.cat === catRow.cat)
         .sort((a, b) => b.total - a.total)
         .forEach(row => {
-          groupedRows.push(breakdownRow(row.cat, row.sub, row.total));
+          groupedRows.push(breakdownRow(row.cat, row.sub, row.total, row.currencies));
           pieRows.push(row);
         });
-          groupedRows.push(breakdownRow(catRow.cat, 'Subtotal categoría', catRow.total, 'subtotal-row'));
+          groupedRows.push(breakdownRow(catRow.cat, 'Subtotal categoría', catRow.total, catRow.currencies, 'subtotal-row'));
     });
     groupedRows.push(summaryTotalRow('Total', '-'));
     $('#tabla-cat tbody').innerHTML = groupedRows.join('');
@@ -13013,14 +13047,17 @@ function renderResumen() {
       const ciudad = state.lugares.find(l => l.id === Number(g.ciudadId));
       const paisLugar = state.lugares.find(l => l.id === Number(g.paisId || (ciudad && ciudad.parentId)));
       const key = `${ciudad ? ciudad.nombre : '(sin ciudad)'}||${paisLugar ? paisLugar.nombre : '-'}`;
-      cityTotals[key] = (cityTotals[key] || 0) + toEur(g.importe, g.moneda);
+      const item = cityTotals[key] || { total: 0, currencies: {} };
+      item.total += toEur(g.importe, g.moneda);
+      addCurrencyTotal(item.currencies, g.moneda, g.importe);
+      cityTotals[key] = item;
     });
     const cityRows = Object.entries(cityTotals)
-      .map(([key, total]) => ({ ciudad: key.split('||')[0], pais: key.split('||')[1], total }))
+      .map(([key, item]) => ({ ciudad: key.split('||')[0], pais: key.split('||')[1], total: item.total, currencies: item.currencies }))
       .sort((a, b) => b.total - a.total);
-    if (breakdownHead) breakdownHead.innerHTML = '<th>Ciudad</th><th>País</th><th>Total EUR</th><th>% gasto</th>';
+    if (breakdownHead) breakdownHead.innerHTML = '<th>Ciudad</th><th>País</th><th>Moneda original</th><th>Total EUR</th><th>% gasto</th>';
     $('#tabla-cat tbody').innerHTML = cityRows
-      .map(row => breakdownRow(row.ciudad, row.pais, row.total))
+      .map(row => breakdownRow(row.ciudad, row.pais, row.total, row.currencies))
       .join('') + summaryTotalRow('Total', '-');
     drawPieChart($('#chart-cat'), cityRows.slice(0, 6).map(row => ({ label: row.ciudad, value: row.total })));
   }
@@ -13040,12 +13077,14 @@ function renderResumen() {
   const accountRows = summaryAccountRows(accounts, gastos, aggregateByMatrix);
   drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.chartLabel, value: row.totalEur })));
   const accountBalanceEur = accountRows.reduce((sum, row) => sum + numberValue(row.saldoEur), 0);
+  const accountSpentCurrencies = accountRows.reduce((totals, row) => addCurrencyTotal(totals, row.moneda, row.total), {});
+  const accountBalanceCurrencies = accountRows.reduce((totals, row) => addCurrencyTotal(totals, row.moneda, row.saldo), {});
   const accountHtml = accountRows.map(row => {
     const expensePct = percentageOfTotal(row.totalEur, totalEur);
     const balancePct = percentageOfTotal(row.saldoEur, accountBalanceEur);
     return `<tr><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="% gastos">${expensePct.toFixed(1)}%</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="% saldo">${balancePct.toFixed(1)}%</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td></tr>`;
   });
-  accountHtml.push(`<tr class="subtotal-row${isOverTripBudget ? ' over-budget-row' : ''}"><td data-label="Cuenta"><span class="account-label-full">Total cuentas</span><span class="account-label-mobile">Total</span></td><td data-label="Moneda">EUR</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}</td><td data-label="% gastos">${totalEur ? '100%' : '0%'}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}</td><td data-label="% saldo">${accountBalanceEur ? '100%' : '0%'}</td><td data-label="EUR"></td></tr>`);
+  accountHtml.push(`<tr class="subtotal-row${isOverTripBudget ? ' over-budget-row' : ''}"><td data-label="Cuenta"><span class="account-label-full">Total cuentas</span><span class="account-label-mobile">Total</span></td><td data-label="Moneda">EUR + divisas</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}<span class="original-currency-totals">${formatForeignCurrencyTotals(accountSpentCurrencies, '')}</span></td><td data-label="% gastos">${totalEur ? '100%' : '0%'}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}<span class="original-currency-totals">${formatForeignCurrencyTotals(accountBalanceCurrencies, '')}</span></td><td data-label="% saldo">${accountBalanceEur ? '100%' : '0%'}</td><td data-label="EUR"></td></tr>`);
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
   if (state.activeTab === 'mapa' || tripMapState.printMode) renderTripMap();
   renderTripComparison();
@@ -13831,7 +13870,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v313');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v314');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -19521,7 +19560,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v313');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v314');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

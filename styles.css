@@ -2899,6 +2899,21 @@ tfoot td { font-weight: 700; }
   background: #fff7ed;
 }
 
+.original-currency-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+td.original-currency-totals {
+  text-align: right;
+}
+
+.original-currency-total {
+  display: block;
+}
+
 .over-budget-row td {
   background: #fee2e2;
   color: #b91c1c;
@@ -5391,12 +5406,12 @@ footer {
 
   #tabla-cat th:nth-child(1),
   #tabla-cat td:nth-child(1) {
-    width: 28%;
+    width: 22%;
   }
 
   #tabla-cat th:nth-child(2),
   #tabla-cat td:nth-child(2) {
-    width: 32%;
+    width: 24%;
   }
 
   #tabla-cat th:nth-child(3),
@@ -5408,7 +5423,14 @@ footer {
 
   #tabla-cat th:nth-child(4),
   #tabla-cat td:nth-child(4) {
-    width: 16%;
+    width: 18%;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  #tabla-cat th:nth-child(5),
+  #tabla-cat td:nth-child(5) {
+    width: 12%;
     text-align: right;
     white-space: nowrap;
   }

@@ -13,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '700v313';
+const DOCUMENT_PREPROCESSOR_VERSION = '700v314';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -28,6 +28,9 @@ export function isGoogleLensAiReceiptSummary(text) {
   const normalized = normalizeTicketText(text).replace(/\s+/g, ' ');
   const sectionSignals = [
     /\bdetalles\s+de\s+la\s+compra\b/,
+    /\bdetalles\s+del\s+comercio\b/,
+    /\binformacion\s+de\s+la\s+transaccion\b/,
+    /\bdesglose\s+de\s+productos\b/,
     /\barticulos\s+adquiridos\b/,
     /\btotales\s+y\s+pago\b/
   ].filter(pattern => pattern.test(normalized)).length;
@@ -54,7 +57,7 @@ const ticketLines = text => String(text || '').split(/\r?\n/).map(cleanLine).fil
 
 function googleLensAiSummaryBody(text) {
   const lines = ticketLines(text);
-  const start = lines.findIndex(line => /\b(?:vista\s+creada\s+con\s+(?:ia|la)|detalles\s+de\s+la\s+compra|desglose\s+economico|este\s+es\s+el\s+recibo|el\s+ticket\s+de\s+compra)\b/i.test(normalizeTicketText(line)));
+  const start = lines.findIndex(line => /\b(?:vista\s+creada\s+con\s+(?:ia|la)|detalles\s+de\s+la\s+compra|detalles\s+del\s+comercio|desglose\s+economico|este\s+es\s+el\s+recibo|el\s+ticket\s+de\s+compra)\b/i.test(normalizeTicketText(line)));
   const body = start >= 0 ? lines.slice(start) : lines;
   const end = body.findIndex(line => /\bcoincidencias\s+(?:visuales|exactas)\b/i.test(normalizeTicketText(line)));
   return (end >= 0 ? body.slice(0, end) : body).join('\n');
@@ -854,7 +857,7 @@ const ADDRESS_WORDS = /\b(calle|c\/|avenida|avda|plaza|paseo|carretera|rua|rúa|
 const BANK_BRAND_LINE = /^(?:bbva|banco\s+santander|santander|by(?:\s+\S{1,3})?\s+santander|caixabank|la\s+caixa|bankinter|banco\s+sabadell|sabadell|ing|unicaja|kutxabank|abanca|ibercaja|openbank|revolut|wise|cajamar|comercia(?:\s+global\s+payments)?|global\s+payments|redsys|servired|worldline|getnet(?:\s+by\s+santander)?)$/i;
 const PAYMENT_TERMINAL_LINE = /^(?:venta\b|compra\b|visa\b|mastercard\b|contactless\b|aut(?:orizacion)?[:.\s]|op(?:eracion)?[:.\s]|tran(?:saccion)?[:.\s]|terminal[:.\s]|app\s+(?:bbva|santander|caixabank|sabadell))/i;
 const MERCHANT_PROMOTIONAL_LINE = /\b(?:gana|acumula|canjea|ahorra|consigue|usa)\b.*\b(?:puntos?|recompensas?|descuentos?|rakuten)\b|\b(?:puntos?|recompensas?)\b.*\b(?:rakuten|ahorra|acumula)\b/i;
-const LENS_AI_INTERFACE_LINE = /\b(?:detalles\s+de\s+la\s+compra|articulos?\s+adquiridos|totales\s+y\s+pago|desglose\s+economico|vista\s+creada\s+con\s+(?:ia|la)|mostrar\s+mas|pregunta\s+(?:lo\s+que\s+quieras|sobre\s+esta\s+imagen)|coincidencias\s+(?:visuales|exactas)|busquedas?\s+relacionadas?|las\s+respuestas\s+de\s+la\s+ia|shutterstock)\b/i;
+const LENS_AI_INTERFACE_LINE = /\b(?:detalles\s+de\s+la\s+compra|detalles\s+del\s+comercio|informacion\s+de\s+la\s+transaccion|desglose\s+de\s+productos|articulos?\s+adquiridos|totales\s+y\s+pago|desglose\s+economico|vista\s+creada\s+con\s+(?:ia|la)|mostrar\s+mas|pregunta\s+(?:lo\s+que\s+quieras|sobre\s+esta\s+imagen)|coincidencias\s+(?:visuales|exactas)|busquedas?\s+relacionadas?|las\s+respuestas\s+de\s+la\s+ia|shutterstock)\b/i;
 
 function cleanMerchantCandidate(value) {
   return cleanLine(value)
@@ -870,9 +873,11 @@ export function extractGoogleLensAiMerchant(text) {
   if (!isGoogleLensAiReceiptSummary(text)) return '';
   const lines = ticketLines(text);
   for (const line of lines) {
-    const place = line.match(/^\s*(?:[•*·-]\s*)?lugar\s*:\s*(.+)$/i);
+    const place = line.match(/^\s*(?:[•*·-]\s*)?(?:tienda|comercio|establecimiento|lugar)\s*:\s*(.+)$/i);
     if (!place) continue;
-    const candidate = cleanMerchantCandidate(place[1].replace(/\s*\([^)]*$/, ''));
+    const candidate = cleanMerchantCandidate(place[1]
+      .replace(/\s*[（(][^）)]*[）)]\s*[.]?\s*$/, '')
+      .replace(/\s*\([^)]*$/, ''));
     if (isPlausibleTicketMerchant(candidate)) return candidate;
   }
   const flattened = String(text || '').replace(/\s+/g, ' ');

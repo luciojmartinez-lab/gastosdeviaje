@@ -118,6 +118,21 @@ E Desglose Económico
 • Método de pago utilizado: Efectivo / Tarjeta sin contacto / Puntos Rakuten.
 Si lo deseas, indícame si hay algún término específico del recibo que te genere dudas.`;
 
+const lensAiStructuredShop = `## Detalles del comercio
+* Tienda: 7-Eleven Futtsu Hama-Kanaya (富津浜金谷店).
+* Dirección: Prefectura de Chiba, Ciudad de Futtsu, Kanaya 2174-2.
+* Teléfono: 0439-69-8137.
+
+## Información de la transacción
+* Fecha: Viernes, 23 de agosto de 2024.
+* Hora: 17:50.
+
+## Desglose de productos
+1. Ganchos en forma de S: 100 yenes.
+
+## Totales y pago
+* Total pagado: 344 yenes.`;
+
 const milleniumReceiptOcr = `MILLENIUM
 MARTA RODRIGUEZ GAVIEIRO
 FRA SIMP: COMPROBANTE FECHA: 18/07/2026
@@ -146,6 +161,7 @@ test('interpreta el resumen de Lens IA sin confundir su interfaz con el comercio
   assert.equal(isGoogleLensAiReceiptSummary(lensAiEconomicBreakdown), true);
   assert.equal(extractGoogleLensAiMerchant(lensAiSevenEleven), '7-Eleven, sucursal Futtsu Hamakanaya');
   assert.equal(extractGoogleLensAiMerchant(lensAiLawson), 'Lawson');
+  assert.equal(extractGoogleLensAiMerchant(lensAiStructuredShop), '7-Eleven Futtsu Hama-Kanaya');
   assert.equal(extractGoogleLensAiTotal(lensAiSevenElevenShort), 344);
   assert.equal(extractGoogleLensAiTotal(lensAiEconomicBreakdown), 8000);
   assert.deepEqual(extractTicketFields(lensAiSevenEleven), {
@@ -175,6 +191,13 @@ test('interpreta el resumen de Lens IA sin confundir su interfaz con el comercio
     time: '',
     merchant: '',
     total: 8000
+  });
+  assert.deepEqual(extractTicketFields(lensAiStructuredShop), {
+    documentType: 'receipt',
+    date: '2024-08-23',
+    time: '17:50',
+    merchant: '7-Eleven Futtsu Hama-Kanaya',
+    total: 344
   });
   assert.equal(extractTicketMerchant(lensAiEconomicBreakdown), '');
 });

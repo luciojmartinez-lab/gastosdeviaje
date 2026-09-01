@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [app, styles, help] = await Promise.all([
+const [app, styles, help, html] = await Promise.all([
   readFile(new URL('../app.bundle.js', import.meta.url), 'utf8'),
   readFile(new URL('../styles.css', import.meta.url), 'utf8'),
-  readFile(new URL('../ayuda.html', import.meta.url), 'utf8')
+  readFile(new URL('../ayuda.html', import.meta.url), 'utf8'),
+  readFile(new URL('../index.html', import.meta.url), 'utf8')
 ]);
 
 test('Gastos en vista Tabla agrupa y pliega los movimientos por día', () => {
@@ -41,4 +42,11 @@ test('Tarjetas, Último gasto, retorno e impresión no pierden movimientos plega
   assert.match(app, /clone\.querySelectorAll\('\[data-expense-group-toggle\]'\)[\s\S]*button\.replaceWith\(heading\)/);
   assert.match(help, /En <strong>Tabla<\/strong>, cada día se abre con \+ y se cierra con −/);
   assert.match(help, /La impresión incluye todos los grupos filtrados/);
+});
+
+test('los subtotales diarios y el total del filtro conservan las monedas originales', () => {
+  assert.match(app, /const subtotalCurrencies = \{\}/);
+  assert.match(app, /formatForeignCurrencyTotals\(subtotalCurrencies\)/);
+  assert.match(app, /totalOriginal\.innerHTML = formatForeignCurrencyTotals\(totalCurrencies\)/);
+  assert.match(html, /id="tg-original" class="original-currency-totals"/);
 });

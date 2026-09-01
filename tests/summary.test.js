@@ -14,6 +14,14 @@ test('el gráfico de subcategorías incluye todas las filas del desglose', () =>
   assert.doesNotMatch(app, /pieRows\.slice\(0, 6\)/);
 });
 
+test('los desgloses y sus subtotales muestran las divisas originales además del total EUR', () => {
+  assert.match(html, /<th>Moneda original<\/th><th>Total EUR<\/th><th>% gasto<\/th>/);
+  assert.match(app, /formatForeignCurrencyTotals\(currencies\)/);
+  assert.match(app, /Subtotal categoría'[\s\S]*?catRow\.currencies/);
+  assert.match(app, /formatForeignCurrencyTotals\(totalsByCurrency\)/);
+  assert.match(app, /accountSpentCurrencies[\s\S]*?formatForeignCurrencyTotals\(accountSpentCurrencies, ''\)/);
+});
+
 test('la leyenda del gráfico crece para mostrar todas las subcategorías', () => {
   const functionStart = app.indexOf('function drawPieChart');
   const functionEnd = app.indexOf('function drawBarChart', functionStart);
