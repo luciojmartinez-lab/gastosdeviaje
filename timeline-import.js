@@ -10,6 +10,9 @@
   const PRECISE_LOCATION_CLUSTER_METERS = 50;
   const STILL_ACTIVITY_CONFIDENCE = 0.8;
   const STILL_ACTIVITY_MAX_GAP_MS = 5 * 60 * 1000;
+  const IMPLAUSIBLE_ACTIVITY_MIN_DURATION_MS = 24 * 60 * 60 * 1000;
+  const IMPLAUSIBLE_ACTIVITY_MAX_DIRECT_METERS = 500;
+  const IMPLAUSIBLE_ACTIVITY_MAX_SPEED_KMH = 0.5;
 
   function finiteNumber(value) {
     const number = Number(value);
@@ -104,6 +107,19 @@
       kind: point.kind || 'path',
       activityType: point.activityType || ''
     };
+  }
+
+  function isImplausibleStationaryActivity(activity, startTime, endTime, start, end) {
+    const startMs = Date.parse(startTime);
+    const endMs = Date.parse(endTime);
+    const durationMs = endMs - startMs;
+    if (!Number.isFinite(durationMs) || durationMs < IMPLAUSIBLE_ACTIVITY_MIN_DURATION_MS) return false;
+    const directMeters = start && end ? distanceMeters(start, end) : Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(directMeters) || directMeters > IMPLAUSIBLE_ACTIVITY_MAX_DIRECT_METERS) return false;
+    const declaredMeters = finiteNumber(activity && activity.distanceMeters);
+    const measuredMeters = declaredMeters == null ? directMeters : Math.max(directMeters, declaredMeters);
+    const averageSpeedKmh = measuredMeters / 1000 / (durationMs / 3600000);
+    return averageSpeedKmh <= IMPLAUSIBLE_ACTIVITY_MAX_SPEED_KMH;
   }
 
   function compactPoints(points) {
@@ -260,9 +276,9 @@
     return cleanPoint({
       latitude: anchor.point.latitude,
       longitude: anchor.point.longitude,
-      time: anchor.mode === 'transit' || anchor.mode === 'precise'
+      time: anchor.mode === 'transit'
         ? anchor.point.time || fallbackTime
-        : fallback && fallback.time || fallbackTime,
+        : fallbackTime || fallback && fallback.time || anchor.point.time,
       kind: anchor.mode === 'precise'
         ? 'overnight-precise'
         : anchor.mode === 'stable'
@@ -367,6 +383,14 @@
         const activityType = String(segment.activity.topCandidate && segment.activity.topCandidate.type || '');
         const start = coordinateFrom(segment.activity.start);
         const end = coordinateFrom(segment.activity.end);
+        const implausibleStationaryActivity = isImplausibleStationaryActivity(
+          segment.activity,
+          startTime,
+          endTime,
+          start,
+          end
+        );
+        if (implausibleStationaryActivity) return;
         const startKey = localKey(startTime);
         const endKey = localKey(endTime);
         if (startKey && endKey && endKey >= extendedStartKey && startKey <= extendedEndKey) {

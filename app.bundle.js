@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v319';
+const APP_VERSION = '700v320';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -12,6 +12,8 @@ const TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS = 25;
 const TIMELINE_SUPPLEMENT_GROUP_DISTANCE_METERS = 50;
 const TIMELINE_CITY_VISIT_MAX_DISTANCE_METERS = 3_000;
 const TIMELINE_STATIONARY_MAX_SPREAD_METERS = 300;
+const TIMELINE_STATIONARY_DAYLONG_MAX_SPREAD_METERS = 600;
+const TIMELINE_STATIONARY_DAYLONG_MIN_HOURS = 12;
 const TIMELINE_STATIONARY_EXACT_EVIDENCE_METERS = 50;
 const BACKUP_KEY = 'gastos_viaje_last_backup';
 const EXPENSE_VIEW_KEY = 'gastos_viaje_expense_view';
@@ -1950,6 +1952,15 @@ function timelineRecordMaxSpreadMeters(record) {
   return spread;
 }
 
+function timelineRecordPointSpanHours(record) {
+  const timestamps = timelineRecordPointCandidates(record)
+    .map(point => Date.parse(point && point.time || ''))
+    .filter(Number.isFinite)
+    .sort((first, second) => first - second);
+  if (timestamps.length < 2) return 0;
+  return (timestamps[timestamps.length - 1] - timestamps[0]) / 3600000;
+}
+
 function timelineRecordExactMovementPoints(record, exactRecords = []) {
   return (Array.isArray(exactRecords) ? exactRecords : [])
     .filter(item => item && (item.kind === 'photo' || item.kind === 'point') && item.timelinePoint !== true)
@@ -1979,8 +1990,13 @@ function timelineRecordIsStationaryNoise(record, exactRecords = []) {
   const activities = Array.isArray(record && record.activities) ? record.activities : [];
   if (activities.length) return false;
   const points = timelineRecordPointCandidates(record);
+  const spreadMeters = timelineRecordMaxSpreadMeters(record);
+  const visits = Array.isArray(record && record.visits) ? record.visits : [];
+  const daylongDrift = !visits.length
+    && spreadMeters <= TIMELINE_STATIONARY_DAYLONG_MAX_SPREAD_METERS
+    && timelineRecordPointSpanHours(record) >= TIMELINE_STATIONARY_DAYLONG_MIN_HOURS;
   return points.length > 1
-    && timelineRecordMaxSpreadMeters(record) <= TIMELINE_STATIONARY_MAX_SPREAD_METERS
+    && (spreadMeters <= TIMELINE_STATIONARY_MAX_SPREAD_METERS || daylongDrift)
     && !timelineRecordHasExactMovement(record, exactRecords);
 }
 
@@ -2784,7 +2800,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v319');
+    const worker = new Worker('./timeline-import-worker.js?v=700v320');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3792,7 +3808,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v319');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v320');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4695,7 +4711,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v319');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v320');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4831,7 +4847,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v319');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v320');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5385,7 +5401,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v319');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v320');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -13915,7 +13931,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v319');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v320');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -19605,7 +19621,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v319');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v320');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

@@ -76,6 +76,51 @@ test('la importación conserva solo los días del viaje y detecta salida y llega
   assert.ok(result.days[0].points.length >= 3);
 });
 
+test('descarta una falsa caminata de más de un día casi inmóvil', () => {
+  const data = {
+    semanticSegments: [{
+      startTime: '2026-09-02T11:31:59.000+02:00',
+      endTime: '2026-09-03T20:50:27.000+02:00',
+      timelinePath: [
+        { point: '40.088002°, -1.553706°', time: '2026-09-02T11:31:59.000+02:00' },
+        { point: '40.087556°, -1.553112°', time: '2026-09-03T20:50:27.000+02:00' }
+      ],
+      activity: {
+        start: { latLng: '40.088002°, -1.553706°' },
+        end: { latLng: '40.087556°, -1.553112°' },
+        distanceMeters: 8540,
+        topCandidate: { type: 'WALKING' }
+      }
+    }]
+  };
+  const result = importTrip(data, { startDate: '2026-09-02', endDate: '2026-09-03' });
+  assert.equal(result.summary.activityCount, 0);
+  assert.ok(result.days.every(day => day.activities.length === 0));
+});
+
+test('conserva una caminata nocturna real aunque cruce de día', () => {
+  const data = {
+    semanticSegments: [{
+      startTime: '2026-09-02T22:30:00.000+02:00',
+      endTime: '2026-09-03T02:30:00.000+02:00',
+      timelinePath: [
+        { point: '40.000000°, -3.000000°', time: '2026-09-02T22:30:00.000+02:00' },
+        { point: '40.050000°, -3.050000°', time: '2026-09-03T00:15:00.000+02:00' },
+        { point: '40.100000°, -3.100000°', time: '2026-09-03T02:30:00.000+02:00' }
+      ],
+      activity: {
+        start: { latLng: '40.000000°, -3.000000°' },
+        end: { latLng: '40.100000°, -3.100000°' },
+        distanceMeters: 14500,
+        topCandidate: { type: 'WALKING' }
+      }
+    }]
+  };
+  const result = importTrip(data, { startDate: '2026-09-02', endDate: '2026-09-03' });
+  assert.equal(result.summary.activityCount, 1);
+  assert.equal(result.days.find(day => day.fecha === '2026-09-02').activities[0].activityType, 'WALKING');
+});
+
 test('una pernocta estable entre las 03:00 y las 06:00 une la llegada y la salida', () => {
   const data = {
     semanticSegments: [
@@ -109,6 +154,8 @@ test('una pernocta estable entre las 03:00 y las 06:00 une la llegada y la salid
   const current = result.days.find(day => day.fecha === '2026-08-10');
   assert.equal(previous.arrivalMode, 'stable');
   assert.equal(current.departureMode, 'stable');
+  assert.equal(previous.arrival.time, '2026-08-09T23:59:00');
+  assert.equal(current.departure.time, '2026-08-10T03:00:00');
   assert.deepEqual(
     [previous.arrival.latitude, previous.arrival.longitude],
     [current.departure.latitude, current.departure.longitude]
@@ -177,6 +224,8 @@ test('la primera lectura precisa anterior al movimiento fija el alojamiento para
   const current = result.days.find(day => day.fecha === '2026-08-10');
   assert.equal(previous.arrivalMode, 'precise');
   assert.equal(current.departureMode, 'precise');
+  assert.equal(previous.arrival.time, '2026-08-09T23:59:00');
+  assert.equal(current.departure.time, '2026-08-10T03:00:00');
   assert.deepEqual([previous.arrival.latitude, previous.arrival.longitude], [40.111111, -3.111111]);
   assert.deepEqual([current.departure.latitude, current.departure.longitude], [40.111111, -3.111111]);
 });
@@ -248,7 +297,7 @@ test('Cronología avisa de la exportación previa y se procesa fuera de la inter
   assert.match(html, /selecciona <em>Cronología\.json<\/em> desde el lugar donde lo hayas descargado/);
   assert.match(html, /id="timeline-file-input"[^>]*accept="\.json,application\/json"/);
   assert.match(app, /data-map-timeline="1"/);
-  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v319'\)/);
+  assert.match(app, /new Worker\('\.\/timeline-import-worker\.js\?v=700v320'\)/);
   assert.match(worker, /GoogleTimelineImport\.importTrip/);
   assert.match(app, /adjustedTimelineRoutes: previous && previous\.adjustedTimelineRoutes \|\| \{\}/);
   assert.match(app, /const autoAdjust = tripMapState\.timelineRouteView === 'adjusted'/);
@@ -402,6 +451,8 @@ test('Cronología dibuja los puntos horarios aunque Google no reconozca una acti
   const end = app.indexOf('function timelineMapPathsWithDailyRecords', start);
   const context = {
     TIMELINE_STATIONARY_MAX_SPREAD_METERS: 300,
+    TIMELINE_STATIONARY_DAYLONG_MAX_SPREAD_METERS: 600,
+    TIMELINE_STATIONARY_DAYLONG_MIN_HOURS: 12,
     TIMELINE_STATIONARY_EXACT_EVIDENCE_METERS: 50,
     timelineAdjustedRouteCache: () => null,
     lodgingDistanceMeters: (first, second) => Math.hypot(
@@ -430,6 +481,8 @@ test('Cronología no inventa recorridos cuando Maps no detecta actividad y solo 
   const end = app.indexOf('function timelineMapPathsWithDailyRecords', start);
   const context = {
     TIMELINE_STATIONARY_MAX_SPREAD_METERS: 300,
+    TIMELINE_STATIONARY_DAYLONG_MAX_SPREAD_METERS: 600,
+    TIMELINE_STATIONARY_DAYLONG_MIN_HOURS: 12,
     TIMELINE_STATIONARY_EXACT_EVIDENCE_METERS: 50,
     timelineAdjustedRouteCache: record => record.adjustedTimelineRoutes && record.adjustedTimelineRoutes.automatic,
     lodgingDistanceMeters: (first, second) => Math.hypot(
@@ -467,6 +520,18 @@ test('Cronología no inventa recorridos cuando Maps no detecta actividad y solo 
     kind: 'photo', viajeId: 1, fecha: '2026-08-24', hora: '12:00', latitude: 40.0001, longitude: -3
   }];
   assert.equal(context.timelineRecordIsStationaryNoise(stationary, exactPhotoAtHome), true);
+
+  const daylongDrift = {
+    ...stationary,
+    departure: { latitude: 40, longitude: -3, time: '2026-08-24T00:03:00+02:00' },
+    arrival: { latitude: 40, longitude: -3, time: '2026-08-24T23:58:00+02:00' },
+    points: [
+      { latitude: 40, longitude: -3, time: '2026-08-24T00:03:00+02:00', kind: 'path' },
+      { latitude: 40.0038, longitude: -3.0012, time: '2026-08-24T12:00:00+02:00', kind: 'path' },
+      { latitude: 40, longitude: -3, time: '2026-08-24T23:58:00+02:00', kind: 'path' }
+    ]
+  };
+  assert.equal(context.timelineRecordIsStationaryNoise(daylongDrift), true);
 
   const exactPhotosShowingMovement = [
     exactPhotoAtHome[0],
