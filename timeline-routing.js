@@ -107,6 +107,16 @@
     }, 0) / sourcePoints.length;
   }
 
+  function maxDistanceToPath(source, target) {
+    const sourcePoints = cleanPoints(source);
+    const targetPoints = cleanPoints(target);
+    if (!sourcePoints.length || !targetPoints.length) return Number.POSITIVE_INFINITY;
+    return sourcePoints.reduce((maximum, point) => {
+      const nearest = targetPoints.reduce((best, candidate) => Math.min(best, distanceMeters(point, candidate)), Number.POSITIVE_INFINITY);
+      return Math.max(maximum, nearest);
+    }, 0);
+  }
+
   function matchingEndpointOrientation(first, second) {
     const firstPoints = cleanPoints(first);
     const secondPoints = cleanPoints(second);
@@ -336,6 +346,7 @@
     comparableAdjustedPath,
     comparableSourcePath,
     matchingEndpointOrientation,
+    maxDistanceToPath,
     normalizeMode,
     pathDistanceMeters,
     routeCorridorDistance,

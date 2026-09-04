@@ -8,6 +8,26 @@ await import('../timeline-routing.js');
 
 const routing = globalThis.TimelineRouting;
 
+test('detecta cuando una ruta calculada se aleja del corredor GPS real', () => {
+  const source = [
+    { latitude: 41.38, longitude: 2.13 },
+    { latitude: 41.05, longitude: 0.38 },
+    { latitude: 40.09, longitude: -1.56 }
+  ];
+  const faithful = [
+    { latitude: 41.38, longitude: 2.13 },
+    { latitude: 41.04, longitude: 0.39 },
+    { latitude: 40.09, longitude: -1.56 }
+  ];
+  const inventedValenciaDetour = [
+    { latitude: 41.38, longitude: 2.13 },
+    { latitude: 39.47, longitude: -0.38 },
+    { latitude: 40.09, longitude: -1.56 }
+  ];
+  assert.ok(routing.maxDistanceToPath(faithful, source) < 5_000);
+  assert.ok(routing.maxDistanceToPath(inventedValenciaDetour, source) > 100_000);
+});
+
 test('el modo automático distingue coche y recorrido a pie', () => {
   const car = [
     { latitude: 40.09, longitude: -1.55, time: '2026-08-18T10:00:00' },
@@ -329,6 +349,8 @@ test('la interfaz permite conservar original, ajustar un día o todo el viaje y 
   assert.match(app, /restoreTimelineRoutingPreference\(state\.selectedViajeIds\)/);
   assert.match(app, /timelineRouteView, timelineRoutingMode/);
   assert.match(app, /unifyLikelyRoundTrips\(sourcePaths, adjustedPaths\)/);
+  assert.match(app, /algorithmVersion: TIMELINE_ROUTING_ALGORITHM_VERSION/);
+  assert.match(app, /maxDistanceToPath\(adjustedPath\.points, sourcePath\)/);
 });
 
 test('el modo automático prueba el modo alternativo si Valhalla no encuentra ruta', async () => {
@@ -337,6 +359,7 @@ test('el modo automático prueba el modo alternativo si Valhalla no encuentra ru
   const end = app.indexOf('async function adjustSelectedTimelineDay', start);
   const costings = [];
   const context = {
+    adjustedTimelinePathFollowsSource: () => true,
     AbortController: class {
       constructor() { this.signal = {}; }
       abort() {}
@@ -384,6 +407,7 @@ test('si una ruta completa falla, el modo automático la ajusta por tramos', asy
     { latitude: 40, longitude: -3 }
   ];
   const context = {
+    adjustedTimelinePathFollowsSource: () => true,
     AbortController: class {
       constructor() { this.signal = {}; }
       abort() {}

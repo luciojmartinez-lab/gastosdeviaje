@@ -263,6 +263,7 @@ test('el mapa diario no repite en la ciudad una entrada que ya tiene GPS exacto'
   assert.deepEqual([...coverage.expenseIds], [17, 23]);
   assert.match(app, /dailyCityMapRecordsForScope\(scopedTripIds, paisId, tripMapState\.day, destinationTrip, unfilteredExactDailyRecords\)/);
   assert.match(app, /dailyMapRecordsNearImportedTimeline\(unfilteredExactDailyRecords, scopedTrips, tripMapState\.day\)/);
+  assert.match(app, /dailyMapRecordsNearImportedTimeline\([\s\S]*?plannedDailyMapRecordsForScope\(scopedTripIds, paisId, tripMapState\.day, destinationOnlyApplied\)/);
   assert.match(app, /!exactCoverage\.blogEntryIds\.has\(Number\(entry\.id\)\)/);
   assert.match(app, /!exactCoverage\.expenseIds\.has\(Number\(gasto\.id\)\)/);
   assert.match(app, /!entry\.expenseId \|\| !exactCoverage\.expenseIds\.has\(Number\(entry\.expenseId\)\)/);
