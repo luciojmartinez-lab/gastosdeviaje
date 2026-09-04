@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v321';
+const APP_VERSION = '700v322';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -11,6 +11,7 @@ const LODGING_FUZZY_NAME_MAX_DISTANCE_METERS = 1_500;
 const TIMELINE_SUPPLEMENT_MAX_DISTANCE_METERS = 25;
 const TIMELINE_SUPPLEMENT_GROUP_DISTANCE_METERS = 50;
 const TIMELINE_CITY_VISIT_MAX_DISTANCE_METERS = 3_000;
+const TIMELINE_DAILY_RECORD_MAX_DISTANCE_METERS = 120_000;
 const TIMELINE_STATIONARY_MAX_SPREAD_METERS = 300;
 const TIMELINE_STATIONARY_DAYLONG_MAX_SPREAD_METERS = 600;
 const TIMELINE_STATIONARY_DAYLONG_MIN_HOURS = 12;
@@ -2247,9 +2248,7 @@ async function requestAdjustedTimelinePath(path, preferredMode) {
     : [primaryCosting];
   let unavailableError = null;
 
-  for (const costing of costings) {
-    const locations = window.TimelineRouting.waypointsForPath(path, costing, 16);
-    if (locations.length < 2) continue;
+  const requestLocations = async (costing, locations) => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 22000);
     try {
@@ -2263,19 +2262,17 @@ async function requestAdjustedTimelinePath(path, preferredMode) {
       const routingCode = String(payload && payload.error || '');
       if (!response.ok) {
         const requestError = new Error(timelineRoutingErrorMessage(routingCode, response.status));
-        if (routingMode === 'automatic' && (routingCode === 'route_unavailable' || routingCode === 'empty_route')) {
-          unavailableError = requestError;
-          continue;
-        }
+        requestError.routingCode = routingCode;
+        requestError.status = response.status;
         throw requestError;
       }
       const points = (Array.isArray(payload.points) ? payload.points : [])
         .map(point => ({ latitude: Number(point.latitude), longitude: Number(point.longitude) }))
         .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
       if (points.length < 2) {
-        unavailableError = new Error('No se encontró una carretera o camino válido entre esos puntos.');
-        if (routingMode === 'automatic') continue;
-        throw unavailableError;
+        const requestError = new Error('No se encontró una carretera o camino válido entre esos puntos.');
+        requestError.routingCode = 'empty_route';
+        throw requestError;
       }
       return {
         points,
@@ -2289,6 +2286,71 @@ async function requestAdjustedTimelinePath(path, preferredMode) {
       throw error;
     } finally {
       window.clearTimeout(timeout);
+    }
+  };
+
+  for (const costing of costings) {
+    const locations = window.TimelineRouting.waypointsForPath(path, costing, 16);
+    if (locations.length < 2) continue;
+    try {
+      return await requestLocations(costing, locations);
+    } catch (error) {
+      if (routingMode === 'automatic' && (error.routingCode === 'route_unavailable' || error.routingCode === 'empty_route')) {
+        unavailableError = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  const fallbackLocations = routingMode === 'automatic'
+    ? window.TimelineRouting.waypointsForPath(path, primaryCosting, 16)
+    : [];
+  if (unavailableError && fallbackLocations.length > 2) {
+    const points = [];
+    let distanceKm = 0;
+    let durationSeconds = 0;
+    let adjustedLegs = 0;
+    let straightLegs = 0;
+    const append = point => {
+      const normalized = { latitude: Number(point.latitude), longitude: Number(point.longitude) };
+      const previous = points[points.length - 1];
+      if (!previous || Math.abs(previous.latitude - normalized.latitude) > 0.000001
+        || Math.abs(previous.longitude - normalized.longitude) > 0.000001) points.push(normalized);
+    };
+    for (let index = 1; index < fallbackLocations.length; index += 1) {
+      const legLocations = [fallbackLocations[index - 1], fallbackLocations[index]];
+      let leg = null;
+      for (const costing of costings) {
+        try {
+          leg = await requestLocations(costing, legLocations);
+          break;
+        } catch (error) {
+          if (error.routingCode !== 'route_unavailable' && error.routingCode !== 'empty_route') throw error;
+          unavailableError = error;
+        }
+      }
+      if (leg) {
+        leg.points.forEach(append);
+        distanceKm += leg.distanceKm;
+        durationSeconds += leg.durationSeconds;
+        adjustedLegs += 1;
+      } else {
+        legLocations.forEach(append);
+        straightLegs += 1;
+      }
+    }
+    if (adjustedLegs && points.length > 1) {
+      return {
+        points,
+        costing: primaryCosting,
+        adjusted: true,
+        segmented: true,
+        adjustedLegs,
+        straightLegs,
+        distanceKm,
+        durationSeconds
+      };
     }
   }
   if (unavailableError) throw unavailableError;
@@ -2822,7 +2884,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v321');
+    const worker = new Worker('./timeline-import-worker.js?v=700v322');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3830,7 +3892,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v321');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v322');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4733,7 +4795,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v321');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v322');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4869,7 +4931,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v321');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v322');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5423,7 +5485,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v321');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v322');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -9688,6 +9750,18 @@ function blogEntryMatchesMapCountry(entry, paisId) {
   return Number(entry && entry.paisId || (city && city.parentId)) === Number(paisId);
 }
 
+function dailyMapRecordsNearImportedTimeline(records = [], scopedTrips = [], day = '') {
+  if (!day || !records.length || !scopedTrips.length) return records;
+  const timelinePoints = scopedTrips
+    .flatMap(trip => timelineRecordsForTrip(trip.id))
+    .filter(record => record.fecha === day)
+    .flatMap(timelineRecordPointCandidates);
+  if (!timelinePoints.length) return records;
+  return records.filter(record => timelinePoints.some(point =>
+    lodgingDistanceMeters(point, record) <= TIMELINE_DAILY_RECORD_MAX_DISTANCE_METERS
+  ));
+}
+
 function dailyMapDatesForScope(scopedTripIds, paisId) {
   const dates = new Set();
   state.gastos
@@ -10467,11 +10541,17 @@ function tripMapItemsForCurrentScope() {
   const dailyMode = Boolean(tripMapState.day);
   let importedTimelineRecords = [];
   let timelinePaths = [];
-  const selectedExactDailyRecords = dailyMode
+  const unfilteredExactDailyRecords = dailyMode
     ? exactDailyRecords.filter(record => record.fecha === tripMapState.day)
     : [];
+  const selectedExactDailyRecords = dailyMode
+    ? dailyMapRecordsNearImportedTimeline(unfilteredExactDailyRecords, scopedTrips, tripMapState.day)
+    : [];
+  const unfilteredDailyCityRecords = dailyMode
+    ? dailyCityMapRecordsForScope(scopedTripIds, paisId, tripMapState.day, destinationTrip, unfilteredExactDailyRecords)
+    : [];
   const actualDailyCityRecords = dailyMode
-    ? dailyCityMapRecordsForScope(scopedTripIds, paisId, tripMapState.day, destinationTrip, selectedExactDailyRecords)
+    ? dailyMapRecordsNearImportedTimeline(unfilteredDailyCityRecords, scopedTrips, tripMapState.day)
     : [];
   const actualDailyCityIds = new Set([
     ...selectedExactDailyRecords.map(record => Number(record.ciudadId)),
@@ -12634,8 +12714,14 @@ function renderTripMap() {
   const canCopyDailyMap = dailyMode && scopedTrips.length === 1 && (dailyRecords.length > 0 || timelinePaths.length > 0);
   const canCopyTripOverview = !dailyMode && !cityMode && scopedTrips.length === 1 && tripCityIds(scopedTrips[0]).length > 0;
   const canCopyMapToBlog = canCopyDailyMap || canCopyTripOverview;
+  const dailyMapAlreadyInBlog = dailyMode && scopedTrips.length === 1 && state.blogEntries.some(entry =>
+    Number(entry.viajeId) === Number(scopedTrips[0].id)
+    && entry.tipo === 'imagen'
+    && entry.dailyMapDate === tripMapState.day
+  );
+  const copyMapLabel = dailyMapAlreadyInBlog ? 'Actualizar Blog' : 'Copiar al Blog';
   const copyMapTitle = dailyMode
-    ? 'Guardar el mapa al principio del día en el Blog'
+    ? `${dailyMapAlreadyInBlog ? 'Actualizar' : 'Guardar'} el mapa al principio del día en el Blog`
     : 'Crear o actualizar la primera página del Blog con el mapa completo del viaje';
   container.innerHTML = `<div class="trip-map-shell">
     <div class="map-controls" aria-label="Controles del mapa">
@@ -12643,7 +12729,7 @@ function renderTripMap() {
         <button type="button" data-map-zoom="reset" title="Volver al encuadre automático">Centrar</button>
         <label class="map-day-control" title="Mostrar solamente los puntos y fotos de un día"><span>Día</span><select data-map-day="1"><option value="">Todos los días</option>${dayOptionsHtml}</select></label>
         <label class="map-city-control" title="Mostrar los puntos y fotos de una ciudad durante todo el viaje"><span>Ciudad</span><select data-map-city="1"><option value="">Todas las ciudades</option>${cityOptionsHtml}</select></label>
-        <button type="button" data-map-copy-blog="1" class="${canCopyMapToBlog ? 'active' : ''}" title="${copyMapTitle}"${canCopyMapToBlog ? '' : ' disabled'}>Copiar al Blog</button>
+        <button type="button" data-map-copy-blog="1" class="${canCopyMapToBlog ? 'active' : ''}" title="${copyMapTitle}"${canCopyMapToBlog ? '' : ' disabled'}>${copyMapLabel}</button>
         <button type="button" data-map-planned="1" title="Mostrar u ocultar ciudades planificadas">${tripMapState.showPlanned ? 'Planificadas' : 'Solo gastos'}</button>
         <button type="button" data-map-photos="1" class="${tripMapState.showPhotos ? 'active' : ''}" aria-pressed="${tripMapState.showPhotos}" title="Mostrar u ocultar fotos geolocalizadas"${availablePhotoCount ? '' : ' disabled'}>Fotos${availablePhotoCount ? ` (${availablePhotoCount})` : ''}</button>
         <button type="button" data-map-destination="1" class="${destinationOnlyApplied ? 'active' : ''}" aria-pressed="${destinationOnlyApplied}" title="${destinationOnlyApplied ? 'Volver a mostrar todas las paradas' : (destinationOnlyAvailable ? 'Mostrar únicamente las paradas marcadas como Destino' : 'Marca alguna parada como Destino en el editor de ruta')}"${destinationOnlyAvailable ? '' : ' disabled'}>Solo destinos</button>
@@ -13953,7 +14039,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v321');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v322');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -19643,7 +19729,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v321');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v322');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

@@ -372,3 +372,54 @@ test('el modo automático prueba el modo alternativo si Valhalla no encuentra ru
   assert.deepEqual(costings, ['pedestrian', 'auto']);
   assert.equal(result.costing, 'auto');
 });
+
+test('si una ruta completa falla, el modo automático la ajusta por tramos', async () => {
+  const app = await readFile(new URL('../app.bundle.js', import.meta.url), 'utf8');
+  const start = app.indexOf('function timelineRoutingErrorMessage');
+  const end = app.indexOf('async function adjustSelectedTimelineDay', start);
+  const requests = [];
+  const locations = [
+    { latitude: 40, longitude: -3 },
+    { latitude: 40.1, longitude: -3.1, routingAnchor: true },
+    { latitude: 40, longitude: -3 }
+  ];
+  const context = {
+    AbortController: class {
+      constructor() { this.signal = {}; }
+      abort() {}
+    },
+    fetch: async (_url, options) => {
+      const request = JSON.parse(options.body);
+      requests.push(request);
+      if (request.locations.length > 2) {
+        return { ok: false, status: 422, json: async () => ({ error: 'route_unavailable' }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          points: request.locations,
+          distanceKm: 10,
+          durationSeconds: 900
+        })
+      };
+    },
+    window: {
+      TimelineRouting: {
+        normalizeMode: () => 'automatic',
+        costingForPath: () => 'pedestrian',
+        waypointsForPath: () => locations
+      },
+      setTimeout: () => 1,
+      clearTimeout: () => {}
+    }
+  };
+  vm.runInNewContext(`${app.slice(start, end)}; this.requestAdjustedTimelinePath = requestAdjustedTimelinePath;`, context);
+  const result = await context.requestAdjustedTimelinePath([], 'automatic');
+  assert.equal(result.segmented, true);
+  assert.equal(result.adjustedLegs, 2);
+  assert.equal(result.straightLegs, 0);
+  assert.equal(result.points.length, 3);
+  assert.equal(requests.filter(request => request.locations.length > 2).length, 2);
+  assert.equal(requests.filter(request => request.locations.length === 2).length, 2);
+});

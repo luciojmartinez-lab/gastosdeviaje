@@ -51,7 +51,7 @@ test('la interfaz importa, reemplaza y quita un GPX del día sin borrar Maps', (
   assert.match(html, /id="timeline-gpx-file-input"[^>]*accept="\.gpx/);
   assert.match(html, /id="timeline-select-gpx"[^>]*>Importar GPX del día</);
   assert.match(html, /id="timeline-delete-gpx"/);
-  assert.match(html, /src="gpx-import\.js\?v=700v321"/);
+  assert.match(html, /src="gpx-import\.js\?v=700v322"/);
   assert.match(app, /async function importTimelineGpxFile\(file\)/);
   assert.match(app, /gpxRoute: previous && previous\.gpxRoute \|\| null/);
   assert.match(app, /Datos de Maps eliminados\. Los recorridos GPX se conservan/);
@@ -60,7 +60,7 @@ test('la interfaz importa, reemplaza y quita un GPX del día sin borrar Maps', (
   assert.match(app, /timelineRecordHasAdjustableMaps\(dayRecord, exactRecords\)/);
   assert.match(app, /gpxSignature: gpxPaths\.length \? timelineGpxRouteSignature/);
   assert.doesNotMatch(app, /routeAdjust\.disabled = [^;]*Boolean\(dayGpx\)/);
-  assert.match(sw, /gpx-import\.js\?v=700v321/);
+  assert.match(sw, /gpx-import\.js\?v=700v322/);
 });
 
 test('el GPX queda intacto y solo deja como ajustables los intervalos de Maps que no cubre', () => {

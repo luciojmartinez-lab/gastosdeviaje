@@ -261,10 +261,34 @@ test('el mapa diario no repite en la ciudad una entrada que ya tiene GPS exacto'
   ]);
   assert.deepEqual([...coverage.blogEntryIds], [41, 52]);
   assert.deepEqual([...coverage.expenseIds], [17, 23]);
-  assert.match(app, /dailyCityMapRecordsForScope\(scopedTripIds, paisId, tripMapState\.day, destinationTrip, selectedExactDailyRecords\)/);
+  assert.match(app, /dailyCityMapRecordsForScope\(scopedTripIds, paisId, tripMapState\.day, destinationTrip, unfilteredExactDailyRecords\)/);
+  assert.match(app, /dailyMapRecordsNearImportedTimeline\(unfilteredExactDailyRecords, scopedTrips, tripMapState\.day\)/);
   assert.match(app, /!exactCoverage\.blogEntryIds\.has\(Number\(entry\.id\)\)/);
   assert.match(app, /!exactCoverage\.expenseIds\.has\(Number\(gasto\.id\)\)/);
   assert.match(app, /!entry\.expenseId \|\| !exactCoverage\.expenseIds\.has\(Number\(entry\.expenseId\)\)/);
+});
+
+test('el mapa diario descarta ciudades y fotos incompatibles con la Cronología importada', () => {
+  const start = app.indexOf('function dailyMapRecordsNearImportedTimeline');
+  const end = app.indexOf('function dailyMapDatesForScope', start);
+  const context = {
+    TIMELINE_DAILY_RECORD_MAX_DISTANCE_METERS: 120_000,
+    timelineRecordsForTrip: () => [{
+      fecha: '2026-08-30',
+      points: [{ latitude: 40.089, longitude: -1.556 }]
+    }],
+    timelineRecordPointCandidates: record => record.points,
+    lodgingDistanceMeters: (first, second) => Math.hypot(
+      Number(first.latitude) - Number(second.latitude),
+      Number(first.longitude) - Number(second.longitude)
+    ) * 111_000
+  };
+  vm.runInNewContext(`${app.slice(start, end)}; this.filterRecords = dailyMapRecordsNearImportedTimeline;`, context);
+  const records = context.filterRecords([
+    { descripcion: 'Salinas', latitude: 40.09, longitude: -1.56 },
+    { descripcion: 'Barcelona', latitude: 41.39, longitude: 2.17 }
+  ], [{ id: 1 }], '2026-08-30');
+  assert.deepEqual(records.map(record => record.descripcion), ['Salinas']);
 });
 
 test('las fotos con GPS se pueden mover y guardan la posición corregida', () => {

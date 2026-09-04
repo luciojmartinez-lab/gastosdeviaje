@@ -469,6 +469,8 @@ test('copiar el mapa diario al Blog conserva el dia seleccionado', () => {
   assert.match(copySource, /featuredImage: true/);
   assert.match(copySource, /previousFeatured[\s\S]*?featuredImage: false/);
   assert.match(help, /mantiene ese d[\s\S]*?seleccionado/);
+  assert.match(app, /const dailyMapAlreadyInBlog = dailyMode[\s\S]*?entry\.dailyMapDate === tripMapState\.day/);
+  assert.match(app, /dailyMapAlreadyInBlog \? 'Actualizar Blog' : 'Copiar al Blog'/);
 });
 
 test('el Blog permite identificar y filtrar entradas En tránsito', () => {
