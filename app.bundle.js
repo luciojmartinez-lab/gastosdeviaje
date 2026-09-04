@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v320';
+const APP_VERSION = '700v321';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2240,37 +2240,59 @@ function timelineRoutingErrorMessage(error, status) {
 
 async function requestAdjustedTimelinePath(path, preferredMode) {
   if (!window.TimelineRouting) throw new Error('No se ha cargado el ajustador de recorridos.');
-  const costing = window.TimelineRouting.costingForPath(path, preferredMode);
-  const locations = window.TimelineRouting.waypointsForPath(path, costing, 16);
-  if (locations.length < 2) return null;
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 22000);
-  try {
-    const response = await fetch('/.netlify/functions/route-adjust', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ costing, locations }),
-      signal: controller.signal
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(timelineRoutingErrorMessage(payload && payload.error, response.status));
-    const points = (Array.isArray(payload.points) ? payload.points : [])
-      .map(point => ({ latitude: Number(point.latitude), longitude: Number(point.longitude) }))
-      .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
-    if (points.length < 2) throw new Error('No se encontró una carretera o camino válido entre esos puntos.');
-    return {
-      points,
-      costing,
-      adjusted: true,
-      distanceKm: Number(payload.distanceKm || 0),
-      durationSeconds: Number(payload.durationSeconds || 0)
-    };
-  } catch (error) {
-    if (error && error.name === 'AbortError') throw new Error('El ajuste ha tardado demasiado. Prueba otra vez.');
-    throw error;
-  } finally {
-    window.clearTimeout(timeout);
+  const routingMode = window.TimelineRouting.normalizeMode(preferredMode);
+  const primaryCosting = window.TimelineRouting.costingForPath(path, routingMode);
+  const costings = routingMode === 'automatic'
+    ? [...new Set([primaryCosting, primaryCosting === 'auto' ? 'pedestrian' : 'auto'])]
+    : [primaryCosting];
+  let unavailableError = null;
+
+  for (const costing of costings) {
+    const locations = window.TimelineRouting.waypointsForPath(path, costing, 16);
+    if (locations.length < 2) continue;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 22000);
+    try {
+      const response = await fetch('/.netlify/functions/route-adjust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ costing, locations }),
+        signal: controller.signal
+      });
+      const payload = await response.json().catch(() => ({}));
+      const routingCode = String(payload && payload.error || '');
+      if (!response.ok) {
+        const requestError = new Error(timelineRoutingErrorMessage(routingCode, response.status));
+        if (routingMode === 'automatic' && (routingCode === 'route_unavailable' || routingCode === 'empty_route')) {
+          unavailableError = requestError;
+          continue;
+        }
+        throw requestError;
+      }
+      const points = (Array.isArray(payload.points) ? payload.points : [])
+        .map(point => ({ latitude: Number(point.latitude), longitude: Number(point.longitude) }))
+        .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude));
+      if (points.length < 2) {
+        unavailableError = new Error('No se encontró una carretera o camino válido entre esos puntos.');
+        if (routingMode === 'automatic') continue;
+        throw unavailableError;
+      }
+      return {
+        points,
+        costing,
+        adjusted: true,
+        distanceKm: Number(payload.distanceKm || 0),
+        durationSeconds: Number(payload.durationSeconds || 0)
+      };
+    } catch (error) {
+      if (error && error.name === 'AbortError') throw new Error('El ajuste ha tardado demasiado. Prueba otra vez.');
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
   }
+  if (unavailableError) throw unavailableError;
+  return null;
 }
 
 async function adjustSelectedTimelineDay(options = {}) {
@@ -2800,7 +2822,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v320');
+    const worker = new Worker('./timeline-import-worker.js?v=700v321');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3808,7 +3830,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v320');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v321');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4711,7 +4733,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v320');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v321');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4847,7 +4869,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v320');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v321');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5401,7 +5423,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v320');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v321');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -13931,7 +13953,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v320');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v321');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -19621,7 +19643,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v320');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v321');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

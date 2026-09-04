@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
 import { decodePolyline6, routePointsWithExactAnchors } from '../netlify/functions/route-adjust.js';
 
 await import('../timeline-routing.js');
@@ -321,10 +322,53 @@ test('la interfaz permite conservar original, ajustar un día o todo el viaje y 
   assert.match(app, /records\.filter\(record => !timelineAdjustedRouteCache\(record, mode\)\)/);
   assert.match(app, /Proceso cancelado\.[^`]+Puedes continuar cuando quieras\./);
   assert.match(app, /\.netlify\/functions\/route-adjust/);
+  assert.match(app, /routingMode === 'automatic'[\s\S]*?primaryCosting === 'auto' \? 'pedestrian' : 'auto'/);
   assert.match(app, />Cronología Maps<\/button>/);
   assert.match(app, /const adjustedTimelineRequested = tripMapState\.timelineRouteView === 'adjusted'/);
   assert.match(app, /timelineMapPaths\(importedTimelineRecords, \{[\s\S]*?adjusted: adjustedTimelineRequested/);
   assert.match(app, /restoreTimelineRoutingPreference\(state\.selectedViajeIds\)/);
   assert.match(app, /timelineRouteView, timelineRoutingMode/);
   assert.match(app, /unifyLikelyRoundTrips\(sourcePaths, adjustedPaths\)/);
+});
+
+test('el modo automático prueba el modo alternativo si Valhalla no encuentra ruta', async () => {
+  const app = await readFile(new URL('../app.bundle.js', import.meta.url), 'utf8');
+  const start = app.indexOf('function timelineRoutingErrorMessage');
+  const end = app.indexOf('async function adjustSelectedTimelineDay', start);
+  const costings = [];
+  const context = {
+    AbortController: class {
+      constructor() { this.signal = {}; }
+      abort() {}
+    },
+    fetch: async (_url, options) => {
+      const request = JSON.parse(options.body);
+      costings.push(request.costing);
+      if (costings.length === 1) {
+        return { ok: false, status: 422, json: async () => ({ error: 'route_unavailable' }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          points: [{ latitude: 40, longitude: -3 }, { latitude: 40.1, longitude: -3.1 }],
+          distanceKm: 12,
+          durationSeconds: 900
+        })
+      };
+    },
+    window: {
+      TimelineRouting: {
+        normalizeMode: () => 'automatic',
+        costingForPath: () => 'pedestrian',
+        waypointsForPath: () => [{ latitude: 40, longitude: -3 }, { latitude: 40.1, longitude: -3.1 }]
+      },
+      setTimeout: () => 1,
+      clearTimeout: () => {}
+    }
+  };
+  vm.runInNewContext(`${app.slice(start, end)}; this.requestAdjustedTimelinePath = requestAdjustedTimelinePath;`, context);
+  const result = await context.requestAdjustedTimelinePath([], 'automatic');
+  assert.deepEqual(costings, ['pedestrian', 'auto']);
+  assert.equal(result.costing, 'auto');
 });
