@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v323';
+const APP_VERSION = '700v324';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -35,6 +35,7 @@ const TICKET_OCR_LANGUAGE_CACHE = 'cuaderno-bitacora-ocr-languages-v1';
 const SYNC_ENDPOINT = '/api/travel-sync';
 const LOCAL_BACKUP_LIMIT = 5;
 const CLOUD_ATTACHMENT_CHUNK_CHARS = 2_500_000;
+const CLOUD_INLINE_DATA_LIMIT_BYTES = 5_300_000;
 const CLOUD_ATTACHMENT_CHECK_BATCH = 75;
 const BLOG_IMAGE_TARGET_BYTES = 650 * 1024;
 const BLOG_IMAGE_OUTPUT_LIMIT = 1_100_000;
@@ -2913,7 +2914,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v323');
+    const worker = new Worker('./timeline-import-worker.js?v=700v324');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3921,7 +3922,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v323');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v324');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4824,7 +4825,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v323');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v324');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4960,7 +4961,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v323');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v324');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5514,7 +5515,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v323');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v324');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -5616,6 +5617,31 @@ async function sha256Hex(blob) {
   return Array.from(new Uint8Array(digest))
     .map(byte => byte.toString(16).padStart(2, '0'))
     .join('');
+}
+
+async function cloudDataAttachment(data, name) {
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const id = await sha256Hex(blob);
+  const encoded = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('No se pudo preparar el archivo de datos'));
+    reader.readAsDataURL(blob);
+  });
+  return {
+    id,
+    name,
+    mime: 'application/json',
+    size: blob.size,
+    parts: Math.max(1, Math.ceil(encoded.length / CLOUD_ATTACHMENT_CHUNK_CHARS)),
+    encoding: 'data-url',
+    data: encoded
+  };
+}
+
+function cloudDataReference(attachment) {
+  const { data, ...reference } = attachment;
+  return reference;
 }
 
 async function prepareCloudBackupData(sourceData) {
@@ -5779,7 +5805,7 @@ async function existingCloudAttachmentIds(ids) {
   return existing;
 }
 
-async function uploadCloudAttachments(attachments) {
+async function uploadCloudAttachments(attachments, label = 'archivo') {
   const unique = Array.from(new Map(attachments.map(item => [item.id, item])).values());
   if (!unique.length) return { total: 0, uploaded: 0, reused: 0 };
   const existing = await existingCloudAttachmentIds(unique.map(item => item.id));
@@ -5788,7 +5814,7 @@ async function uploadCloudAttachments(attachments) {
     const attachment = missing[fileIndex];
     const total = Math.max(1, Math.ceil(String(attachment.data).length / CLOUD_ATTACHMENT_CHUNK_CHARS));
     for (let part = 0; part < total; part += 1) {
-      setSyncMessage(`Subiendo archivo ${fileIndex + 1} de ${missing.length}, parte ${part + 1} de ${total}`);
+      setSyncMessage(`Subiendo ${label} ${fileIndex + 1} de ${missing.length}, parte ${part + 1} de ${total}`);
       await syncAction({
         action: 'put-attachment-part',
         id: attachment.id,
@@ -5876,6 +5902,21 @@ async function downloadCloudAttachment(attachment) {
     throw new Error(`El archivo ${attachment.name || ''} no superó la comprobación de integridad`);
   }
   return dataUrl;
+}
+
+async function downloadCloudData(reference) {
+  setSyncMessage('Recuperando datos de la copia desde la nube…');
+  const dataUrl = await downloadCloudAttachment(reference);
+  let data;
+  try {
+    data = JSON.parse(await dataUrlToBlob(dataUrl, 'application/json').text());
+  } catch {
+    throw new Error('Los datos de la copia en la nube no se pudieron leer');
+  }
+  if (!data || typeof data !== 'object' || !Array.isArray(data.gastos)) {
+    throw new Error('Los datos de la copia en la nube están incompletos');
+  }
+  return data;
 }
 
 async function hydrateCloudBackupData(sourceData) {
@@ -14072,7 +14113,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v323');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v324');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -17133,7 +17174,9 @@ async function fetchCloudSnapshot() {
   });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error('No se pudo recuperar la versión de la nube');
-  return response.json();
+  const snapshot = await response.json();
+  if (snapshot.dataRef) snapshot.data = await downloadCloudData(snapshot.dataRef);
+  return snapshot;
 }
 
 async function uploadCloudSnapshot({ backupData = null, backupName = '', expectedEtag = undefined } = {}) {
@@ -17152,10 +17195,6 @@ async function uploadCloudSnapshot({ backupData = null, backupName = '', expecte
   const preparedBackup = backupData && backupData.backupScope === 'trip'
     ? await prepareCloudBackupData(backupData)
     : null;
-  const attachmentStats = await uploadCloudAttachments([
-    ...preparedFull.attachments,
-    ...(preparedBackup ? preparedBackup.attachments : [])
-  ]);
   const body = {
     data: preparedFull.data,
     updatedAt: fullData.dataUpdatedAt || ensureLocalDataUpdatedAt(),
@@ -17169,9 +17208,31 @@ async function uploadCloudSnapshot({ backupData = null, backupName = '', expecte
       filename: backupName || backupFilename(backupData)
     };
   }
+  const dataAttachments = [];
+  if (new TextEncoder().encode(JSON.stringify(body)).byteLength > CLOUD_INLINE_DATA_LIMIT_BYTES) {
+    setSyncMessage('Dividiendo los datos de la copia para subirlos a la nube…');
+    const fullDocument = await cloudDataAttachment(preparedFull.data, fullName);
+    dataAttachments.push(fullDocument);
+    body.dataRef = cloudDataReference(fullDocument);
+    delete body.data;
+    if (preparedBackup) {
+      const backupDocument = await cloudDataAttachment(preparedBackup.data, body.backup.filename);
+      dataAttachments.push(backupDocument);
+      body.backup = {
+        dataRef: cloudDataReference(backupDocument),
+        filename: body.backup.filename,
+        scope: 'trip'
+      };
+    }
+  }
+  const attachmentStats = await uploadCloudAttachments([
+    ...preparedFull.attachments,
+    ...(preparedBackup ? preparedBackup.attachments : [])
+  ]);
+  if (dataAttachments.length) await uploadCloudAttachments(dataAttachments, 'bloque de datos');
   const text = JSON.stringify(body);
-  if (new TextEncoder().encode(text).byteLength > 5_300_000) {
-    throw new Error('Los datos sin archivos adjuntos superan el tamaño permitido. Será necesario dividir también el archivo de datos.');
+  if (new TextEncoder().encode(text).byteLength > CLOUD_INLINE_DATA_LIMIT_BYTES) {
+    throw new Error('No se pudo dividir la copia en partes suficientemente pequeñas');
   }
   const response = await fetch(SYNC_ENDPOINT, {
     method: 'POST',
@@ -19762,7 +19823,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v323');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v324');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

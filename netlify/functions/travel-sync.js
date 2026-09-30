@@ -61,6 +61,23 @@ function attachmentPartKey(keyHash, id, index) {
   return `${attachmentPrefix(keyHash, id)}/parts/${String(index).padStart(6, "0")}`;
 }
 
+async function committedDataReference(store, keyHash, value) {
+  const id = validAttachmentId(value && value.id);
+  const parts = Number(value && value.parts);
+  if (!id || !Number.isInteger(parts) || parts < 1 || parts > 10_000) return null;
+  const manifest = await store.get(`${attachmentPrefix(keyHash, id)}/manifest.json`, { type: "json" });
+  if (!manifest || manifest.id !== id || manifest.parts !== parts
+    || manifest.mime !== "application/json" || manifest.encoding !== "data-url") return null;
+  return {
+    id,
+    parts,
+    name: manifest.name,
+    mime: manifest.mime,
+    encoding: manifest.encoding,
+    size: manifest.size,
+  };
+}
+
 export default async (req) => {
   if (!["GET", "POST"].includes(req.method)) return json({ error: "method_not_allowed" }, 405);
 
@@ -167,8 +184,19 @@ export default async (req) => {
     return json({ ok: true, manifest });
   }
 
-  if (!body.data || typeof body.data !== "object" || body.data.backupScope !== "all") {
+  const inlineData = body.data && typeof body.data === "object" && body.data.backupScope === "all"
+    ? body.data : null;
+  const dataRef = body.dataRef
+    ? await committedDataReference(store, keyHash, body.dataRef) : null;
+  if (!inlineData && !dataRef) {
     return json({ error: "invalid_sync_payload" }, 400);
+  }
+  const inlineBackup = body.backup && body.backup.data && typeof body.backup.data === "object"
+    ? body.backup.data : null;
+  const backupRef = body.backup && body.backup.dataRef
+    ? await committedDataReference(store, keyHash, body.backup.dataRef) : null;
+  if (body.backup && !inlineBackup && !backupRef) {
+    return json({ error: "invalid_backup_payload" }, 400);
   }
 
   const expectedEtag = typeof body.expectedEtag === "string" ? body.expectedEtag : null;
@@ -188,7 +216,7 @@ export default async (req) => {
   const savedAt = now.toISOString();
   const keyStamp = savedAt.replace(/[:.]/g, "-");
   const previous = await store.get(currentKey, { type: "json" });
-  if (previous && previous.data) {
+  if (previous && (previous.data || previous.dataRef)) {
     const previousStamp = String(previous.savedAt || savedAt).replace(/[:.]/g, "-");
     await store.setJSON(`users/${keyHash}/history/${previousStamp}.json`, previous, {
       metadata: {
@@ -199,18 +227,18 @@ export default async (req) => {
     });
   }
 
-  if (body.backup && body.backup.data && typeof body.backup.data === "object") {
+  if (body.backup && (inlineBackup || backupRef)) {
     const backupFilename = safeFilename(body.backup.filename);
     await store.setJSON(`users/${keyHash}/backups/${keyStamp}-${backupFilename}`, {
       savedAt,
       filename: backupFilename,
-      scope: body.backup.data.backupScope || "all",
-      data: body.backup.data,
+      scope: inlineBackup ? inlineBackup.backupScope || "all" : body.backup.scope || "trip",
+      ...(inlineBackup ? { data: inlineBackup } : { dataRef: backupRef }),
     }, {
       metadata: {
         savedAt,
         filename: backupFilename,
-        scope: body.backup.data.backupScope || "all",
+        scope: inlineBackup ? inlineBackup.backupScope || "all" : body.backup.scope || "trip",
       },
     });
   }
@@ -218,10 +246,10 @@ export default async (req) => {
   const payload = {
     version: 1,
     savedAt,
-    updatedAt: body.updatedAt || body.data.generatedAt || savedAt,
+    updatedAt: body.updatedAt || (inlineData && inlineData.generatedAt) || savedAt,
     filename: safeFilename(body.filename),
     appVersion: String(body.appVersion || ""),
-    data: body.data,
+    ...(inlineData ? { data: inlineData } : { dataRef }),
   };
   await store.setJSON(currentKey, payload, {
     metadata: {
