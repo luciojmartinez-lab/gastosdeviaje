@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v324';
+const APP_VERSION = '700v325';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2914,7 +2914,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v324');
+    const worker = new Worker('./timeline-import-worker.js?v=700v325');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3922,7 +3922,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v324');
+        imageLocationModulePromise ||= import('./image-location.js?v=700v325');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4825,7 +4825,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v324');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v325');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4961,7 +4961,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v324');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v325');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5515,7 +5515,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v324');
+  imageLocationModulePromise ||= import('./image-location.js?v=700v325');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -7110,6 +7110,11 @@ async function updateCuenta(id, patch) {
 }
 
 async function delCuenta(id) {
+  const accountId = Number(id);
+  const [expenses, transfers] = await Promise.all([getAll('gastos'), getAll('transferencias')]);
+  if (expenses.some(g => Number(g.cuentaId) === accountId) || transfers.some(t => Number(t.fromId) === accountId || Number(t.toId) === accountId)) {
+    throw new Error('Esta cuenta tiene gastos o transferencias. Conserva la cuenta o reasigna sus movimientos antes de eliminarla.');
+  }
   return deleteRecord('cuentas', Number(id));
 }
 
@@ -7167,16 +7172,24 @@ async function updateViaje(id, patch) {
 
 async function delViaje(id) {
   const tripId = Number(id);
+  const operations = [];
+  for (const name of ['gastos', 'cuentas']) {
+    for (const item of await getAll(name)) {
+      if (Number(item.viajeId) === tripId) operations.push({ store: name, type: 'put', data: { ...item, viajeId: null } });
+    }
+  }
   for (const document of state.viajeDocumentos.filter(item => Number(item.viajeId) === tripId)) {
-    await deleteRecord('tripDocuments', Number(document.id));
+    operations.push({ store: 'tripDocuments', type: 'delete', key: Number(document.id) });
   }
   for (const entry of state.blogEntries.filter(item => Number(item.viajeId) === tripId)) {
-    await deleteRecord('blogEntries', Number(entry.id));
+    operations.push({ store: 'blogEntries', type: 'delete', key: Number(entry.id) });
   }
   for (const record of state.timelineDays.filter(item => Number(item.viajeId) === tripId)) {
-    await deleteRecord('timelineDays', record.id);
+    operations.push({ store: 'timelineDays', type: 'delete', key: record.id });
   }
-  return deleteRecord('viajes', tripId);
+  operations.push({ store: 'viajes', type: 'delete', key: tripId });
+  await commitBackupOperations(operations);
+  return true;
 }
 
 async function addTripDocument({ viajeId, descripcion, fileName, fileType, fileSize = 0, fileData }) {
@@ -8121,7 +8134,7 @@ function renderTripSelectors() {
   fillSelect('#f-viaje', trips, '(todos)');
   fillSelect('#r-viaje', trips, '(todos)');
   fillSelect('#map-viaje', trips, '(todos)');
-  fillSelect('#c-viaje', trips, '(plantilla global)');
+  fillSelect('#c-viaje', trips, '(todas; crear plantilla global)');
   if ($('#edit-gasto-viaje')) fillSelect('#edit-gasto-viaje', trips, '(sin viaje)');
   fillSelect('#backup-export-trip', trips, '(elige viaje)');
   fillSelect('#backup-import-trip', trips, '');
@@ -8343,21 +8356,23 @@ function renderCuentas() {
         ? ` <button class="ghost" data-migrate-cuenta="${c.id}" data-migrate-viaje="${selectedTripId}">Pasar a viaje</button>`
         : '';
       const tripCell = isTripAccount ? escapeHtml(trip ? trip.nombre : 'Viaje') : `${escapeHtml(trip ? trip.nombre : 'Viaje')} <span class="badge">Global usada</span>`;
-      tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td>${tripCell}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(saldo, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button>${migrate}</td>`;
+      tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td>${tripCell}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${c.balanceUnknown ? 'Saldo pendiente de revisar' : fmtCurrencyWithEur(saldo, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button>${migrate}</td>`;
       tbody.appendChild(tr);
     });
     const tr = document.createElement('tr');
     tr.className = 'subtotal-row';
-    tr.innerHTML = `<td>Total cuentas</td><td>-</td><td>${escapeHtml(trip ? trip.nombre : 'Viaje')}</td><td><span class="badge">EUR</span></td><td>${fmtCurrency(totalSaldoEur, 'EUR')}</td><td>-</td>`;
+    tr.innerHTML = `<td>Total cuentas</td><td>-</td><td>${escapeHtml(trip ? trip.nombre : 'Viaje')}</td><td><span class="badge">EUR</span></td><td>${accounts.some(c => c.balanceUnknown) ? 'Saldo pendiente de revisar' : fmtCurrency(totalSaldoEur, 'EUR')}</td><td>-</td>`;
     tbody.appendChild(tr);
     return;
   }
-  state.cuentas.filter(c => !c.viajeId).forEach(c => {
+  state.cuentas.forEach(c => {
+    const trip = state.viajes.find(v => Number(v.id) === Number(c.viajeId));
+    const tripLabel = c.viajeId ? escapeHtml(trip ? trip.nombre : `Viaje no disponible (${c.viajeId})`) : '<span class="badge">Global</span>';
     const tr = document.createElement('tr');
     tr.dataset.editableType = 'cuenta';
     tr.dataset.editableId = String(c.id);
     if (numberValue(c.saldoActual) < 0) tr.className = 'warning-row';
-    tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td><span class="badge">Global</span></td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${fmtCurrencyWithEur(c.saldoActual, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
+    tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td>${tripLabel}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${c.balanceUnknown ? 'Saldo pendiente de revisar' : fmtCurrencyWithEur(c.saldoActual, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -13372,11 +13387,10 @@ function buildTripBackupData(tripId) {
   const blogEntries = state.blogEntries.filter(entry => Number(entry.viajeId) === id);
   const timelineDays = state.timelineDays.filter(record => Number(record.viajeId) === id);
   const usedAccountIds = new Set(gastos.map(g => Number(g.cuentaId)).filter(Boolean));
-  const cuentas = state.cuentas
-    .filter(c => Number(c.viajeId) === id || usedAccountIds.has(Number(c.id)))
-    .map(accountForBackup);
-  const accountIds = new Set(cuentas.map(c => Number(c.id)));
+  const accountIds = new Set(state.cuentas.filter(c => Number(c.viajeId) === id || usedAccountIds.has(Number(c.id))).map(c => Number(c.id)));
   const transferencias = state.transferencias.filter(t => accountIds.has(Number(t.fromId)) || accountIds.has(Number(t.toId)));
+  transferencias.forEach(t => { accountIds.add(Number(t.fromId)); accountIds.add(Number(t.toId)); });
+  const cuentas = state.cuentas.filter(c => accountIds.has(Number(c.id))).map(accountForBackup);
   return {
     version: APP_VERSION,
     generatedAt: new Date().toISOString(),
@@ -13396,17 +13410,88 @@ function buildTripBackupData(tripId) {
   };
 }
 
+// Prepare every write before opening the transaction. A failed restore must
+// leave the previous installation intact, including its photo settings.
+async function commitBackupOperations(operations) {
+  const db = await openDB();
+  const names = [...new Set(operations.map(operation => operation.store))];
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(names, 'readwrite');
+    tx.oncomplete = resolve;
+    tx.onabort = () => reject(tx.error || new Error('No se pudo restaurar la copia; se han conservado los datos anteriores.'));
+    tx.onerror = () => {}; // Request errors abort the complete transaction.
+    try {
+      for (const operation of operations) {
+        const target = tx.objectStore(operation.store);
+        if (operation.type === 'clear') target.clear();
+        else if (operation.type === 'delete') target.delete(operation.key);
+        else target[operation.type](operation.data);
+      }
+    } catch (error) {
+      tx.abort();
+      reject(error);
+    }
+  });
+  names.forEach(noteLocalDataChanged);
+}
+
+function backupExpenseEur(expense, currencies = []) {
+  if (!expense.moneda || expense.moneda === 'EUR') return numberValue(expense.importe);
+  const currency = (currencies || []).find(item => item.codigo === expense.moneda);
+  const rate = currency && (numberValue(currency.eurPorUnidad) || (1 / numberValue(currency.unidadesPorEuro)));
+  return Number.isFinite(rate) && rate > 0 ? numberValue(expense.importe) * rate : 0;
+}
+
+function recoverBackupReferences(data) {
+  const result = { ...data, cuentas: [...(data.cuentas || [])], viajes: [...(data.viajes || [])] };
+  const tripIds = new Set(result.viajes.map(trip => Number(trip.id)));
+  for (const item of [...result.cuentas, ...(data.gastos || []), ...(data.viajeDocumentos || []), ...(data.blogEntries || []), ...(data.timelineDays || [])]) {
+    const id = Number(item.viajeId);
+    if (!id || tripIds.has(id)) continue;
+    tripIds.add(id);
+    result.viajes.push({ id, nombre: `Viaje recuperado ${id}`, recovered: true,
+      nota: 'El viaje original no figura en la copia. Se conserva su identificador y sus datos asociados.' });
+  }
+  const accountIds = new Set(result.cuentas.map(account => Number(account.id)));
+  const references = new Map();
+  const remember = (id, currency, tripId) => {
+    id = Number(id);
+    if (!id || accountIds.has(id)) return;
+    if (!references.has(id)) references.set(id, { currencies: new Set(), trips: new Set() });
+    const reference = references.get(id);
+    if (currency) reference.currencies.add(String(currency).toUpperCase());
+    if (Number(tripId)) reference.trips.add(Number(tripId));
+  };
+  for (const expense of data.gastos || []) remember(expense.cuentaId, expense.moneda, expense.viajeId);
+  for (const transfer of data.transferencias || []) {
+    remember(transfer.fromId, transfer.monedaFrom);
+    remember(transfer.toId, transfer.monedaTo);
+  }
+  for (const [id, reference] of references) {
+    if (reference.currencies.size > 1) throw new Error(`La cuenta ausente ${id} tiene monedas incompatibles. La copia necesita revisión antes de importarse.`);
+    result.cuentas.push({ id, nombre: `Cuenta recuperada ${id}`, moneda: [...reference.currencies][0] || 'EUR',
+      viajeId: reference.trips.size === 1 ? [...reference.trips][0] : null,
+      saldoInicial: 0, saldoActual: 0, recovered: true, balanceUnknown: true,
+      nota: 'Cuenta ausente en la copia original. Nombre y saldo originales desconocidos; revisar antes de operar. El cero es provisional.' });
+  }
+  return result;
+}
+
 async function importAll(data) {
   if (!data || !Array.isArray(data.cuentas) || !Array.isArray(data.categorias) || !Array.isArray(data.gastos)) {
     throw new Error('Archivo no válido');
   }
-  await clearStores(['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'tripDocuments', 'blogEntries', 'timelineDays', 'monedas', 'transferencias']);
+  data = recoverBackupReferences(data);
+  const stores = ['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'tripDocuments', 'blogEntries', 'timelineDays', 'monedas', 'transferencias'];
+  const operations = stores.map(store => ({ store, type: 'clear' }));
+  const addRecord = async (store, data) => operations.push({ store, type: 'add', data });
+  const putRecord = async (store, data) => operations.push({ store, type: 'put', data });
   await putRecord('appSettings', {
     key: PHOTO_TYPES_SETTING_KEY,
     items: normalizePhotoTypes(Array.isArray(data.photoTypes) ? data.photoTypes : DEFAULT_PHOTO_TYPES),
     updatedAt: new Date().toISOString()
   });
-  await ensureBaseCurrency();
+  await putRecord('monedas', { ...DEFAULT_MONEDAS[0], updatedAt: new Date().toISOString() });
   for (const m of data.monedas || []) {
     const codigo = String(m.codigo || '').toUpperCase();
     if (!codigo || codigo === 'EUR') continue;
@@ -13420,6 +13505,7 @@ async function importAll(data) {
   }
   for (const v of data.viajes || []) {
     const obj = {
+      ...v,
       nombre: v.nombre,
       fechaInicio: v.fechaInicio,
       fechaFin: v.fechaFin,
@@ -13436,6 +13522,7 @@ async function importAll(data) {
   }
   for (const c of data.cuentas || []) {
     const obj = {
+      ...c,
       nombre: c.nombre,
       moneda: c.moneda || 'EUR',
       viajeId: c.viajeId ? Number(c.viajeId) : null,
@@ -13451,6 +13538,7 @@ async function importAll(data) {
   }
   for (const t of data.transferencias || []) {
     const obj = {
+      ...t,
       fecha: t.fecha || todayIso(),
       fromId: Number(t.fromId),
       toId: Number(t.toId),
@@ -13491,7 +13579,7 @@ async function importAll(data) {
       paisId: g.paisId || null,
       ciudadId: g.ciudadId || null,
       importe: numberValue(g.importe),
-      importeEur: toEur(g.importe, g.moneda)
+      importeEur: g.importeEur ?? backupExpenseEur(g, data.monedas)
     };
     if (g.id == null) delete obj.id;
     await addRecord('gastos', obj);
@@ -13526,12 +13614,29 @@ async function importAll(data) {
       fecha
     });
   }
+  await commitBackupOperations(operations);
 }
 
 async function importTripBackup(data, targetTripId) {
   if (!data || !Array.isArray(data.viajes) || !data.viajes.length || !Array.isArray(data.gastos)) {
     throw new Error('El archivo no contiene un viaje exportado');
   }
+  data = recoverBackupReferences(data);
+  await loadAll();
+  const operations = [];
+  const nextIds = {};
+  const addRecord = async (store, data) => {
+    if (!(store in nextIds)) {
+      const existing = await getAll(store);
+      nextIds[store] = existing.reduce((max, record) => Math.max(max, Number(record.id) || 0), 0);
+    }
+    const id = data.id == null ? ++nextIds[store] : Number(data.id);
+    nextIds[store] = Math.max(nextIds[store], id);
+    operations.push({ store, type: 'add', data: { ...data, id } });
+    return id;
+  };
+  const putRecord = async (store, data) => operations.push({ store, type: 'put', data });
+  const deleteRecord = async (store, key) => operations.push({ store, type: 'delete', key });
   const targetId = Number(targetTripId);
   const targetTrip = state.viajes.find(v => Number(v.id) === targetId);
   if (!targetTrip) throw new Error('Elige el viaje que quieres reemplazar');
@@ -13543,7 +13648,7 @@ async function importTripBackup(data, targetTripId) {
     data.photoTypes.forEach(type => {
       if (!mergedTypes.some(existing => existing.id === type.id)) mergedTypes.push(type);
     });
-    await savePhotoTypes(mergedTypes);
+    await putRecord('appSettings', { key: PHOTO_TYPES_SETTING_KEY, items: normalizePhotoTypes(mergedTypes), updatedAt: now });
   }
 
   for (const l of data.lugares || []) {
@@ -13556,10 +13661,16 @@ async function importTripBackup(data, targetTripId) {
       lng: optionalNumberValue(l.lng)
     });
   }
-  await loadAll();
+  for (const currency of data.monedas || []) {
+    if (!currency.codigo) continue;
+    await putRecord('monedas', { ...currency, codigo: String(currency.codigo).toUpperCase() });
+  }
 
   const oldTripAccounts = state.cuentas.filter(c => Number(c.viajeId) === targetId);
   const oldTripAccountIds = new Set(oldTripAccounts.map(c => Number(c.id)));
+  if (state.gastos.some(g => Number(g.viajeId) !== targetId && oldTripAccountIds.has(Number(g.cuentaId)))) {
+    throw new Error('Hay cuentas de este viaje utilizadas por otros viajes. Reasigna esos gastos antes de reemplazarlo.');
+  }
   for (const gasto of state.gastos.filter(g => Number(g.viajeId) === targetId)) {
     await deleteRecord('gastos', Number(gasto.id));
   }
@@ -13586,10 +13697,17 @@ async function importTripBackup(data, targetTripId) {
     tripPatch.ciudadIds = tripCityIds(sourceTrip);
     tripPatch.routeStops = tripRouteStops(sourceTrip);
   }
-  await updateViaje(targetId, tripPatch);
+  await putRecord('viajes', { ...targetTrip, ...tripPatch });
   const accountMap = {};
-  for (const c of (data.cuentas || []).filter(c => Number(c.viajeId) === sourceTripId)) {
+  const sourceExpenses = (data.gastos || []).filter(g => Number(g.viajeId) === sourceTripId);
+  const requiredIds = new Set(sourceExpenses.map(g => Number(g.cuentaId)));
+  (data.cuentas || []).filter(c => Number(c.viajeId) === sourceTripId).forEach(c => requiredIds.add(Number(c.id)));
+  const sourceTransfers = (data.transferencias || []).filter(t => requiredIds.has(Number(t.fromId)) || requiredIds.has(Number(t.toId)));
+  sourceTransfers.forEach(t => { requiredIds.add(Number(t.fromId)); requiredIds.add(Number(t.toId)); });
+  for (const c of (data.cuentas || []).filter(c => requiredIds.has(Number(c.id)))) {
     const obj = {
+      ...c,
+      id: undefined,
       nombre: c.nombre,
       moneda: c.moneda || 'EUR',
       viajeId: targetId,
@@ -13602,23 +13720,23 @@ async function importTripBackup(data, targetTripId) {
     };
     accountMap[Number(c.id)] = await addRecord('cuentas', obj);
   }
+  for (const transfer of sourceTransfers) {
+    if (!accountMap[Number(transfer.fromId)] || !accountMap[Number(transfer.toId)]) throw new Error('Transferencia sin cuenta recuperable.');
+    const obj = { ...transfer, fromId: accountMap[Number(transfer.fromId)], toId: accountMap[Number(transfer.toId)] };
+    delete obj.id;
+    await addRecord('transferencias', obj);
+  }
   const expenseMap = {};
-  for (const g of data.gastos || []) {
-    const sourceAccountId = Number(g.cuentaId);
-    let cuentaId = accountMap[sourceAccountId];
-    if (!cuentaId) {
-      const sourceAccount = (data.cuentas || []).find(c => Number(c.id) === sourceAccountId);
-      const global = sourceAccount && state.cuentas.find(c => !c.viajeId && accountKey(c) === accountKey(sourceAccount));
-      cuentaId = global ? global.id : null;
-    }
-    if (!cuentaId) continue;
+  for (const g of sourceExpenses) {
+    const cuentaId = accountMap[Number(g.cuentaId)];
+    if (!cuentaId) throw new Error('Hay gastos sin cuenta recuperable. No se ha reemplazado el viaje.');
     const obj = {
       ...g,
       id: undefined,
       viajeId: targetId,
       cuentaId: Number(cuentaId),
       importe: numberValue(g.importe),
-      importeEur: toEur(g.importe, g.moneda),
+      importeEur: g.importeEur ?? backupExpenseEur(g, data.monedas),
       createdAt: g.createdAt || now,
       updatedAt: now
     };
@@ -13626,7 +13744,7 @@ async function importTripBackup(data, targetTripId) {
     const newExpenseId = await addRecord('gastos', obj);
     if (g.id != null) expenseMap[Number(g.id)] = Number(newExpenseId);
   }
-  for (const document of data.viajeDocumentos || []) {
+  for (const document of (data.viajeDocumentos || []).filter(item => Number(item.viajeId) === sourceTripId)) {
     const obj = {
       ...document,
       id: undefined,
@@ -13641,13 +13759,13 @@ async function importTripBackup(data, targetTripId) {
     delete obj.id;
     await addRecord('tripDocuments', obj);
   }
-  for (const entry of data.blogEntries || []) {
+  for (const entry of (data.blogEntries || []).filter(item => Number(item.viajeId) === sourceTripId)) {
     const obj = normalizeImportedBlogEntry({ ...entry, id: undefined, viajeId: targetId });
     if (obj.sourceGastoId) obj.sourceGastoId = expenseMap[Number(obj.sourceGastoId)] || null;
     delete obj.id;
     await addRecord('blogEntries', obj);
   }
-  for (const record of data.timelineDays || []) {
+  for (const record of (data.timelineDays || []).filter(item => Number(item.viajeId) === sourceTripId)) {
     const fecha = String(record.fecha || '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) continue;
     await putRecord('timelineDays', {
@@ -13658,6 +13776,7 @@ async function importTripBackup(data, targetTripId) {
       importedAt: record.importedAt || now
     });
   }
+  await commitBackupOperations(operations);
 }
 
 function selectedBlogTrip() {
@@ -14113,7 +14232,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v324');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v325');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -19563,10 +19682,11 @@ function bindEvents() {
           fields: [
             { name: 'nombre', label: 'Nombre', value: c.nombre },
             { name: 'accountType', label: 'Tipo de cuenta', type: 'select', value: normalizeAccountType(c.accountType), options: ACCOUNT_TYPE_OPTIONS },
-            { name: 'saldoActual', label: 'Saldo actual', type: 'number', step: '0.01', value: numberValue(c.saldoActual) }
+            { name: 'saldoActual', label: c.balanceUnknown ? 'Saldo actual (pendiente de comprobar)' : 'Saldo actual', type: 'number', step: '0.01', value: c.balanceUnknown ? '' : numberValue(c.saldoActual) }
           ],
           onSubmit: async values => {
-            await updateCuenta(c.id, { nombre: values.nombre.trim() || c.nombre, accountType: normalizeAccountType(values.accountType), saldoActual: numberValue(values.saldoActual) });
+            if (c.balanceUnknown && String(values.saldoActual ?? '').trim() === '') throw new Error('Indica el saldo comprobado de la cuenta recuperada.');
+            await updateCuenta(c.id, { nombre: values.nombre.trim() || c.nombre, accountType: normalizeAccountType(values.accountType), saldoActual: numberValue(values.saldoActual), balanceUnknown: false });
           }
         });
         return;
@@ -19762,7 +19882,10 @@ function bindEvents() {
       else await importAll(data);
       await loadAll();
       setMessage('#msg-backup', 'Datos importados');
-      showBackupResult('Importación realizada', file.name);
+      const recovered = recoverBackupReferences(data);
+      const recoveryNotice = recovered.cuentas.some(c => c.balanceUnknown)
+        ? ' Hay cuentas recuperadas cuyo nombre y saldo debes revisar.' : '';
+      showBackupResult('Importación realizada', `${file.name}. Revisa las cuentas del viaje importado.${recoveryNotice}`);
     } catch (err) {
       alert(`Archivo no válido: ${err.message || err}`);
     } finally {
@@ -19823,7 +19946,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v324');
+    imageLocationModulePromise ||= import('./image-location.js?v=700v325');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

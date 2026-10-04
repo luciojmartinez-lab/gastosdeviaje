@@ -2,3 +2,4 @@ node_modules/
 .codex-remote-attachments/
 .netlify/
 tmp/
+output/recuperacion-backup/
