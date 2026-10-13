@@ -5852,3 +5852,35 @@ footer {
     padding-inline: 6px;
   }
 }
+
+/* Trip preparation: generous checkbox targets and nested concepts. */
+.preparation-section { margin: 16px 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.preparation-section > summary { padding: 14px; background: var(--soft); color: var(--soft-text); font-weight: 700; cursor: pointer; }
+.preparation-group { margin: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.preparation-group > summary, .preparation-subgroup > summary { padding: 12px; font-weight: 600; cursor: pointer; }
+.preparation-subgroup { margin: 0 8px 8px; }
+.preparation-items { list-style: none; margin: 0; padding: 0 12px; }
+.preparation-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.preparation-check { display: flex; align-items: center; gap: 10px; min-height: 44px; flex: 1; margin: 0; cursor: pointer; overflow-wrap: anywhere; }
+.preparation-check input[type="checkbox"] { width: 22px; height: 22px; flex: 0 0 22px; margin: 0; accent-color: var(--primary); }
+.preparation-check input:disabled { opacity: .5; }
+.preparation-check small { display: block; color: var(--muted); margin-top: 3px; white-space: pre-wrap; }
+.preparation-row-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+.preparation-item .ghost { font-size: 12px; padding: 8px; }
+.preparation-done .is-done strong { color: #166534; }
+.preparation-done .preparation-section > summary { background: #f0fdf4; color: #166534; }
+.preparation-copy { display: flex; gap: 12px; align-items: end; margin-top: 16px; }
+.preparation-copy > div { flex: 1; }
+#prep-progress-bar { width: 100%; height: 12px; accent-color: var(--primary); }
+#prep-catalog-form { padding: 12px; }
+#config-preparation { scroll-margin-top: 140px; }
+@media (max-width: 720px) {
+  header nav { flex-wrap: wrap; }
+  header nav button { flex: 1 1 22%; min-height: 40px; }
+  .preparation-item { gap: 8px; flex-wrap: wrap; }
+  .preparation-check { flex-basis: 65%; }
+  .preparation-row-actions { margin-left: 32px; }
+  .preparation-copy { flex-direction: column; align-items: stretch; }
+  .preparation-group { margin: 8px; }
+  #config-preparation { scroll-margin-top: 170px; }
+}

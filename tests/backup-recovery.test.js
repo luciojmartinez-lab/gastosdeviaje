@@ -4,10 +4,12 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 const app = fs.readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
 const section = (from, to) => app.slice(app.indexOf(from), app.indexOf(to, app.indexOf(from)));
+const prepContext = vm.createContext({});
+vm.runInContext(fs.readFileSync(new URL('../preparation.js', import.meta.url), 'utf8'), prepContext);
 const empty = () => ({ cuentas: [], categorias: [], gastos: [], viajes: [], monedas: [], transferencias: [], lugares: [], photoTypes: [], viajeDocumentos: [], blogEntries: [], timelineDays: [] });
 function harness(initial = empty()) {
   const state = structuredClone(initial);
-  const context = vm.createContext({ state, Date, Number, Set, Map, Promise,
+  const context = vm.createContext({ state, Date, Number, Set, Map, Promise, TravelPreparation: prepContext.TravelPreparation, PREPARATION_CATALOG_SETTING_KEY: 'preparationCatalog',
     numberValue: value => Number(value) || 0, optionalNumberValue: value => value == null ? null : Number(value),
     normalizeAccountType: value => value || '', normalizePhotoTypes: value => value || [],
     PHOTO_TYPES_SETTING_KEY: 'photoTypes', DEFAULT_PHOTO_TYPES: [], DEFAULT_MONEDAS: [{codigo:'EUR',eurPorUnidad:1,unidadesPorEuro:1}],
@@ -91,7 +93,29 @@ test('borrar un viaje conserva cuentas y gastos accesibles sin referencias al vi
 });
 test('backup de viaje incluye la cuenta contraparte de una transferencia', () => {
   const state=fixture(); state.cuentas.push({id:21,nombre:'Base',moneda:'EUR',viajeId:null});
-  const ctx=vm.createContext({ state, Number, Set, Date, APP_VERSION:'700v325',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
+  const ctx=vm.createContext({ state, Number, Set, Date, APP_VERSION:'800v001',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
   vm.runInContext(section('function buildTripBackupData', '// Prepare every write'),ctx);
   const backup=ctx.buildTripBackupData(3); assert.ok(backup.cuentas.some(c=>c.id===21)); assert.equal(backup.transferencias.length,1);
+});
+
+test('backups completos y de viaje restauran selección, notas, cantidades y progreso de preparativos', async () => {
+  const ctx=harness(); const data=fixture();
+  data.preparationCatalog=[{id:'custom-medalla',nombre:'Medalla',section:'bring',category:'Deporte'}];
+  data.viajes[0].preparationItems=[{...data.preparationCatalog[0],done:true,quantity:'1',note:'Bolsa de competición'}];
+  await ctx.importAll(data);
+  let trip=ctx.operations.find(o=>o.store==='viajes'&&o.type==='add'&&o.data.id===3).data;
+  assert.equal(trip.preparationItems[0].done,true); assert.equal(trip.preparationItems[0].note,'Bolsa de competición');
+  assert.ok(ctx.operations.some(o=>o.store==='appSettings'&&o.data?.key==='preparationCatalog'&&o.data.items[0].id==='custom-medalla'));
+  const dest=harness({...empty(),viajes:[{id:50,nombre:'Destino'}],preparationCatalog:[{id:'local',nombre:'Local',section:'bring',category:'Otros'}]});
+  await dest.importTripBackup(data,50);
+  trip=dest.operations.find(o=>o.store==='viajes'&&o.type==='put').data;
+  assert.equal(trip.preparationItems[0].done,true); assert.equal(trip.preparationItems[0].quantity,'1');
+  const setting=dest.operations.find(o=>o.store==='appSettings'&&o.data?.key==='preparationCatalog');
+  assert.deepEqual(Array.from(setting.data.items,item=>item.id),['local','custom-medalla']);
+});
+test('las copias anteriores sin preparativos siguen importándose con catálogo inicial y selección vacía', async () => {
+  const ctx=harness(); await ctx.importAll(fixture());
+  const trip=ctx.operations.find(o=>o.store==='viajes'&&o.type==='add'&&o.data.id===3).data;
+  assert.equal(trip.preparationItems.length,0);
+  assert.ok(ctx.operations.find(o=>o.data?.key==='preparationCatalog').data.items.length>50);
 });

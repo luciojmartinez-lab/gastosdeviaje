@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '700v325';
+const APP_VERSION = '800v001';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -31,6 +31,7 @@ const SYNC_KEY_STORAGE = 'gastos_viaje_sync_key';
 const SYNC_STATE_STORAGE = 'gastos_viaje_sync_state_v1';
 const BACKUP_DIRECTORY_SETTING_KEY = 'backupDirectory';
 const PHOTO_TYPES_SETTING_KEY = 'photoTypes';
+const PREPARATION_CATALOG_SETTING_KEY = 'preparationCatalog';
 const TICKET_OCR_LANGUAGE_CACHE = 'cuaderno-bitacora-ocr-languages-v1';
 const SYNC_ENDPOINT = '/api/travel-sync';
 const LOCAL_BACKUP_LIMIT = 5;
@@ -921,6 +922,7 @@ const state = {
   cuentas: [],
   categorias: [],
   photoTypes: [],
+  preparationCatalog: [],
   lugares: [],
   gastos: [],
   viajes: [],
@@ -1664,6 +1666,7 @@ async function savePhotoTypes(types) {
   state.photoTypes = normalized;
   setLocalDataUpdatedAt();
   renderPhotoTypeControls();
+  renderPreparation();
 }
 
 async function addPhotoType({ nombre, useAsDestination = false }) {
@@ -1879,6 +1882,8 @@ function syncTripSelectsFromSelection() {
   if ($('#r-viaje')) $('#r-viaje').value = value;
   if ($('#map-viaje')) $('#map-viaje').value = value;
   if ($('#c-viaje')) $('#c-viaje').value = value;
+  if ($('#prep-viaje')) $('#prep-viaje').value = value;
+  if ($('#prep-config-viaje')) $('#prep-config-viaje').value = value;
   state.selectedViajeId = ids.length === 1 ? ids[0] : null;
 }
 
@@ -1897,6 +1902,7 @@ function setSelectedTrips(ids, options = {}) {
   }
   syncTripSelectsFromSelection();
   syncBlogAvailability();
+  renderPreparation();
   if (state.activeTab === 'blog') renderBlog();
 }
 
@@ -2914,7 +2920,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=700v325');
+    const worker = new Worker('./timeline-import-worker.js?v=800v001');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3922,7 +3928,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=700v325');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v001');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4825,7 +4831,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v325');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v001');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4961,7 +4967,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=700v325');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v001');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5515,7 +5521,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=700v325');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v001');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -7848,7 +7854,7 @@ async function delTransferencia(id) {
 }
 
 async function loadAll() {
-  const [cuentas, categorias, lugares, gastos, viajes, viajeDocumentos, blogEntries, timelineDays, monedas, transferencias, photoTypeSetting] = await Promise.all([
+  const [cuentas, categorias, lugares, gastos, viajes, viajeDocumentos, blogEntries, timelineDays, monedas, transferencias, photoTypeSetting, preparationSetting] = await Promise.all([
     getAll('cuentas'),
     getAll('categorias'),
     getAll('lugares'),
@@ -7859,8 +7865,10 @@ async function loadAll() {
     getAll('timelineDays'),
     getAll('monedas'),
     getAll('transferencias'),
-    getOne('appSettings', PHOTO_TYPES_SETTING_KEY)
+    getOne('appSettings', PHOTO_TYPES_SETTING_KEY),
+    getOne('appSettings', PREPARATION_CATALOG_SETTING_KEY)
   ]);
+  state.preparationCatalog = TravelPreparation.normalizeCatalog(preparationSetting?.items);
   state.cuentas = cuentas.sort(byName);
   state.categorias = sortCategoriasHierarchical(categorias);
   state.photoTypes = normalizePhotoTypes(photoTypeSetting && photoTypeSetting.items);
@@ -8131,6 +8139,8 @@ function applyAccountTemplate() {
 function renderTripSelectors() {
   const trips = state.viajes.map(v => ({ value: String(v.id), label: v.nombre }));
   fillSelect('#g-viaje', trips, '(sin viaje)');
+  fillSelect('#prep-viaje', trips, '(elige un viaje)');
+  fillSelect('#prep-config-viaje', trips, '(elige un viaje)');
   fillSelect('#f-viaje', trips, '(todos)');
   fillSelect('#r-viaje', trips, '(todos)');
   fillSelect('#map-viaje', trips, '(todos)');
@@ -8325,6 +8335,185 @@ function renderResumenCiudades() {
   const base = gastosForSelectorTripScope('#r-viaje').filter(g => gastoMatchesLugarFilters(g, paisId, ''));
   const options = usedCiudadOptionsForGastos(base, paisId);
   fillSelect('#r-ciudad', options, '(todas)');
+}
+
+function preparationTrip(selector = '#prep-viaje') {
+  return state.viajes.find(trip => Number(trip.id) === Number($(selector)?.value)) || null;
+}
+
+let preparationWriteQueue = Promise.resolve();
+function queuePreparationChange(callback, messageSelector = '#msg-preparation-config') {
+  preparationWriteQueue = preparationWriteQueue.catch(() => {}).then(callback);
+  preparationWriteQueue.catch(error => {
+    renderPreparation();
+    setMessage(messageSelector, error.message || String(error), true);
+  });
+  return preparationWriteQueue;
+}
+
+async function savePreparationTripItems(tripId, change) {
+  const trip = await getOne('viajes', Number(tripId));
+  if (!trip) throw new Error('El viaje ya no existe.');
+  const preparationItems = TravelPreparation.normalizeItems(change(TravelPreparation.normalizeItems(trip.preparationItems)));
+  const updated = { ...trip, preparationItems, updatedAt: new Date().toISOString() };
+  await commitBackupOperations([{ store: 'viajes', type: 'put', data: updated }]);
+  state.viajes = state.viajes.map(item => Number(item.id) === Number(tripId) ? updated : item);
+  renderPreparation();
+}
+
+async function savePreparationCatalog(items) {
+  const normalized = TravelPreparation.normalizeCatalog(items);
+  await commitBackupOperations([{ store: 'appSettings', type: 'put', data: {
+    key: PREPARATION_CATALOG_SETTING_KEY, items: normalized, updatedAt: new Date().toISOString()
+  } }]);
+  state.preparationCatalog = normalized;
+  setLocalDataUpdatedAt();
+  renderPreparation();
+}
+
+function preparationGroupsHtml(items, rowHtml, config = false, scope = 'pending') {
+  const groups = TravelPreparation.groupItems(items);
+  return ['before', 'bring'].map(section => {
+    const sectionGroups = groups.filter(group => group.section === section);
+    if (!sectionGroups.length) return '';
+    const categories = [...new Set(sectionGroups.map(group => group.category))];
+    const categoryHtml = categories.map(category => {
+      const categoryGroups = sectionGroups.filter(group => group.category === category);
+      const content = categoryGroups.map(group => {
+        const rows = `<ul class="preparation-items">${group.items.map(rowHtml).join('')}</ul>`;
+        return group.subcategory ? `<details class="preparation-subgroup" data-prep-group="${escapeHtml(JSON.stringify([config ? 'catalog' : scope, section, category, group.subcategory]))}"${config ? '' : ' open'}><summary>${escapeHtml(group.subcategory)} <span class="badge">${group.items.length}</span></summary>${rows}</details>` : rows;
+      }).join('');
+      return `<details class="preparation-group" data-prep-group="${escapeHtml(JSON.stringify([config ? 'catalog' : scope, section, category]))}"${config ? '' : ' open'}><summary>${escapeHtml(category)} <span class="badge">${categoryGroups.reduce((sum, group) => sum + group.items.length, 0)}</span></summary>${content}</details>`;
+    }).join('');
+    return `<details class="preparation-section" data-prep-group="${escapeHtml(JSON.stringify([config ? 'catalog' : scope, section]))}" open><summary>${escapeHtml(TravelPreparation.sections[section])} <span class="badge">${sectionGroups.reduce((sum, group) => sum + group.items.length, 0)}</span></summary>${categoryHtml}</details>`;
+  }).join('');
+}
+
+function renderPreparation() {
+  if (!$('#prep-catalog')) return;
+  const opened = new Map($$('#view-preparar details[data-prep-group], #prep-catalog details[data-prep-group]').map(detail => [detail.dataset.prepGroup, detail.open]));
+  const configTrip = preparationTrip('#prep-config-viaje');
+  const selected = TravelPreparation.normalizeItems(configTrip?.preparationItems);
+  const selectedMap = new Map(selected.map(item => [item.id, item]));
+  const catalog = state.preparationCatalog || TravelPreparation.normalizeCatalog();
+  const displayCatalog = [...catalog.map(item => selectedMap.get(item.id) || item), ...selected.filter(item => !catalog.some(existing => existing.id === item.id))];
+  const catalogRow = item => `<li class="preparation-item"><label class="preparation-check"><input type="checkbox" data-prep-include="${escapeHtml(item.id)}" aria-label="Incluir ${escapeHtml(item.nombre)} en este viaje"${selectedMap.has(item.id) ? ' checked' : ''}${configTrip ? '' : ' disabled'}><span>${escapeHtml(item.nombre)}</span></label>${catalog.some(existing => existing.id === item.id) ? `<div class="preparation-row-actions"><button class="ghost" type="button" data-prep-catalog-edit="${escapeHtml(item.id)}" aria-label="Editar ${escapeHtml(item.nombre)} en el catálogo">Editar</button><button class="ghost" type="button" data-prep-catalog-delete="${escapeHtml(item.id)}" aria-label="Eliminar ${escapeHtml(item.nombre)} del catálogo">Eliminar</button></div>` : '<small>Conservado en este viaje</small>'}</li>`;
+  $('#prep-catalog').innerHTML = `${configTrip ? '' : '<p class="small">Elige un viaje para marcar qué elementos incluir. Puedes gestionar el catálogo común sin elegirlo.</p>'}${preparationGroupsHtml(displayCatalog, catalogRow, true) || '<p>El catálogo está vacío. Añade tus primeros elementos.</p>'}`;
+  $('#prep-category-options').innerHTML = [...new Set(catalog.filter(item => item.section === $('#prep-item-section').value).map(item => item.category))].map(category => `<option value="${escapeHtml(category)}"></option>`).join('');
+  const sourceValue = $('#prep-copy-source').value;
+  fillSelect('#prep-copy-source', state.viajes.filter(trip => Number(trip.id) !== Number(configTrip?.id)).map(trip => ({ value: String(trip.id), label: trip.nombre })), '(elige viaje de origen)');
+  if (state.viajes.some(trip => String(trip.id) === sourceValue && Number(trip.id) !== Number(configTrip?.id))) $('#prep-copy-source').value = sourceValue;
+  $('#prep-copy').disabled = !configTrip || !$('#prep-copy-source').value;
+  const trip = preparationTrip();
+  const items = TravelPreparation.normalizeItems(trip?.preparationItems);
+  const done = items.filter(item => item.done), pending = items.filter(item => !item.done);
+  $('#prep-progress').textContent = trip ? `${trip.nombre} · ${done.length} de ${items.length} preparados` : 'Elige un viaje para ver y completar sus preparativos.';
+  $('#prep-progress-bar').max = items.length || 1;
+  $('#prep-progress-bar').value = done.length;
+  $('#prep-progress-bar').hidden = !items.length;
+  $('#prep-open-config').disabled = !trip;
+  const tripRow = item => `<li class="preparation-item${item.done ? ' is-done' : ''}"><label class="preparation-check"><input type="checkbox" data-prep-done="${escapeHtml(item.id)}" aria-label="${item.done ? 'Volver a pendiente' : 'Marcar como hecho'}: ${escapeHtml(item.nombre)}"${item.done ? ' checked' : ''}><span><strong>${escapeHtml(item.nombre)}</strong>${item.quantity ? `<small>Cantidad: ${escapeHtml(item.quantity)}</small>` : ''}${item.note ? `<small>${escapeHtml(item.note)}</small>` : ''}</span></label><button class="ghost" type="button" data-prep-item-edit="${escapeHtml(item.id)}" aria-label="Cantidad y nota de ${escapeHtml(item.nombre)}">Cantidad / nota</button></li>`;
+  $('#prep-pending').innerHTML = preparationGroupsHtml(pending, tripRow) || `<p class="small">${!trip ? 'Selecciona un viaje.' : items.length ? 'Todos los preparativos están hechos.' : 'Todavía no has seleccionado elementos. Pulsa Elegir elementos.'}</p>`;
+  $('#prep-done').innerHTML = preparationGroupsHtml(done, tripRow, false, 'done') || '<p class="small">Aquí aparecerán los elementos que marques como hechos.</p>';
+  $$('#view-preparar details[data-prep-group], #prep-catalog details[data-prep-group]').forEach(detail => {
+    if (opened.has(detail.dataset.prepGroup)) detail.open = opened.get(detail.dataset.prepGroup);
+  });
+}
+
+function bindPreparationEvents() {
+  $('#tab-preparar').onclick = () => setTab('preparar');
+  ['#prep-viaje', '#prep-config-viaje'].forEach(selector => {
+    $(selector).onchange = () => {
+      applySelectedTrip($(selector).value);
+      setMessage('#msg-preparation', '');
+      setMessage('#msg-preparation-config', '');
+      renderPreparation();
+    };
+  });
+  $('#prep-open-config').onclick = () => {
+    $('#prep-config-viaje').value = $('#prep-viaje').value;
+    setTab('config');
+    renderPreparation();
+    $('#config-preparation').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  $('#prep-copy-source').onchange = () => { $('#prep-copy').disabled = !preparationTrip('#prep-config-viaje') || !$('#prep-copy-source').value; };
+  $('#prep-item-section').onchange = renderPreparation;
+  $('#prep-copy').onclick = () => {
+    const target = preparationTrip('#prep-config-viaje');
+    const source = state.viajes.find(trip => Number(trip.id) === Number($('#prep-copy-source').value));
+    if (!target || !source || Number(target.id) === Number(source.id)) return;
+    if (TravelPreparation.normalizeItems(target.preparationItems).length && !confirm(`Se reemplazará la lista de ${target.nombre} por la de ${source.nombre}, con todo pendiente. ¿Continuar?`)) return;
+    queuePreparationChange(async () => {
+      const freshSource = await getOne('viajes', Number(source.id));
+      if (!freshSource) throw new Error('El viaje de origen ya no existe.');
+      await savePreparationTripItems(target.id, () => TravelPreparation.copyItems(freshSource.preparationItems));
+      setMessage('#msg-preparation-config', `Selección copiada de ${source.nombre}, con todo pendiente.`);
+    });
+  };
+  $('#prep-catalog-form').onsubmit = event => {
+    event.preventDefault();
+    const item = { id: `custom-${crypto.randomUUID()}`, section: $('#prep-item-section').value, category: $('#prep-item-category').value.trim(), subcategory: $('#prep-item-subcategory').value.trim(), nombre: $('#prep-item-name').value.trim() };
+    if (!item.category || !item.nombre) return;
+    queuePreparationChange(async () => {
+      if (state.preparationCatalog.some(existing => existing.section === item.section && existing.category.toLocaleLowerCase('es') === item.category.toLocaleLowerCase('es') && existing.subcategory.toLocaleLowerCase('es') === item.subcategory.toLocaleLowerCase('es') && existing.nombre.toLocaleLowerCase('es') === item.nombre.toLocaleLowerCase('es'))) throw new Error('Ese elemento ya está en el catálogo.');
+      await savePreparationCatalog([...state.preparationCatalog, item]);
+      $('#prep-item-name').value = '';
+      setMessage('#msg-preparation-config', 'Elemento añadido al catálogo. Marca su check para incluirlo en el viaje.');
+    });
+  };
+  $('#prep-catalog').onchange = event => {
+    const input = event.target.closest('[data-prep-include]');
+    const trip = preparationTrip('#prep-config-viaje');
+    if (!input || !trip) return;
+    const id = input.dataset.prepInclude, included = input.checked;
+    const item = TravelPreparation.normalizeItems(trip.preparationItems).find(item => item.id === id) || state.preparationCatalog.find(item => item.id === id);
+    if (!item) return;
+    input.disabled = true;
+    queuePreparationChange(() => savePreparationTripItems(trip.id, items => TravelPreparation.includeItem(items, item, included)));
+  };
+  $('#prep-catalog').onclick = event => {
+    const edit = event.target.closest('[data-prep-catalog-edit]'), remove = event.target.closest('[data-prep-catalog-delete]');
+    const id = edit?.dataset.prepCatalogEdit || remove?.dataset.prepCatalogDelete;
+    const item = state.preparationCatalog.find(item => item.id === id);
+    if (!item) return;
+    if (remove) {
+      if (confirm(`Eliminar ${item.nombre} del catálogo común? Las listas de viaje que ya lo incluyan lo conservarán.`)) queuePreparationChange(() => savePreparationCatalog(state.preparationCatalog.filter(existing => existing.id !== id)));
+      return;
+    }
+    openFormDialog({ title: 'Editar elemento del catálogo', helpTarget: 'preparar-viaje', fields: [
+      { name: 'nombre', label: 'Elemento', value: item.nombre },
+      { name: 'section', label: 'Bloque', type: 'select', value: item.section, options: Object.entries(TravelPreparation.sections).map(([value, label]) => ({ value, label })) },
+      { name: 'category', label: 'Categoría', value: item.category },
+      { name: 'subcategory', label: 'Subapartado (opcional)', value: item.subcategory }
+    ], onSubmit: values => queuePreparationChange(async () => {
+      if (!values.nombre.trim() || !values.category.trim()) throw new Error('Indica el elemento y su categoría.');
+      await savePreparationCatalog(state.preparationCatalog.map(existing => existing.id === id ? { ...existing, ...values } : existing));
+      setMessage('#msg-preparation-config', 'Catálogo actualizado. Las listas ya seleccionadas conservan sus elementos.');
+    }) });
+  };
+  $('#view-preparar').onchange = event => {
+    const input = event.target.closest('[data-prep-done]');
+    const trip = preparationTrip();
+    if (!input || !trip) return;
+    const id = input.dataset.prepDone, done = input.checked;
+    input.disabled = true;
+    queuePreparationChange(async () => {
+      await savePreparationTripItems(trip.id, items => items.map(item => item.id === id ? { ...item, done } : item));
+      setMessage('#msg-preparation', done ? 'Elemento movido a Hecho.' : 'Elemento devuelto a Pendiente.');
+      const moved = Array.from($('#view-preparar').querySelectorAll('[data-prep-done]')).find(input => input.dataset.prepDone === id);
+      if (moved && Number(preparationTrip()?.id) === Number(trip.id)) moved.focus({ preventScroll: true });
+    }, '#msg-preparation');
+  };
+  $('#view-preparar').onclick = event => {
+    const button = event.target.closest('[data-prep-item-edit]');
+    const trip = preparationTrip();
+    const item = button && TravelPreparation.normalizeItems(trip?.preparationItems).find(item => item.id === button.dataset.prepItemEdit);
+    if (!item || !trip) return;
+    openFormDialog({ title: item.nombre, helpTarget: 'preparar-viaje', fields: [
+      { name: 'quantity', label: 'Cantidad (opcional)', value: item.quantity },
+      { name: 'note', label: 'Nota (opcional)', value: item.note }
+    ], onSubmit: values => queuePreparationChange(() => savePreparationTripItems(trip.id, items => items.map(existing => existing.id === item.id ? { ...existing, ...values } : existing)), '#msg-preparation') });
+  };
 }
 
 function renderCuentas() {
@@ -13363,6 +13552,7 @@ function buildBackupData(scope = 'all', tripId = null) {
     cuentas: state.cuentas.map(accountForBackup),
     categorias: state.categorias,
     photoTypes: state.photoTypes,
+    preparationCatalog: state.preparationCatalog,
     lugares: state.lugares,
     gastos: state.gastos,
     viajes: state.viajes,
@@ -13399,6 +13589,7 @@ function buildTripBackupData(tripId) {
     cuentas,
     categorias: state.categorias,
     photoTypes: state.photoTypes,
+    preparationCatalog: state.preparationCatalog,
     lugares: state.lugares,
     gastos,
     viajes: [trip],
@@ -13491,6 +13682,7 @@ async function importAll(data) {
     items: normalizePhotoTypes(Array.isArray(data.photoTypes) ? data.photoTypes : DEFAULT_PHOTO_TYPES),
     updatedAt: new Date().toISOString()
   });
+  await putRecord('appSettings', { key: PREPARATION_CATALOG_SETTING_KEY, items: TravelPreparation.normalizeCatalog(data.preparationCatalog), updatedAt: new Date().toISOString() });
   await putRecord('monedas', { ...DEFAULT_MONEDAS[0], updatedAt: new Date().toISOString() });
   for (const m of data.monedas || []) {
     const codigo = String(m.codigo || '').toUpperCase();
@@ -13506,6 +13698,7 @@ async function importAll(data) {
   for (const v of data.viajes || []) {
     const obj = {
       ...v,
+      preparationItems: TravelPreparation.normalizeItems(v.preparationItems),
       nombre: v.nombre,
       fechaInicio: v.fechaInicio,
       fechaFin: v.fechaFin,
@@ -13689,7 +13882,8 @@ async function importTripBackup(data, targetTripId) {
   for (const account of oldTripAccounts) {
     await deleteRecord('cuentas', Number(account.id));
   }
-  const tripPatch = { updatedAt: now };
+  await putRecord('appSettings', { key: PREPARATION_CATALOG_SETTING_KEY, items: TravelPreparation.mergeCatalog(state.preparationCatalog, data.preparationCatalog), updatedAt: now });
+  const tripPatch = { updatedAt: now, preparationItems: TravelPreparation.normalizeItems(sourceTrip.preparationItems) };
   if (sourceTrip.presupuesto != null) tripPatch.presupuesto = numberValue(sourceTrip.presupuesto);
   if (Array.isArray(sourceTrip.paisIds) || sourceTrip.paisId) tripPatch.paisIds = tripCountryIds(sourceTrip);
   if (Array.isArray(sourceTrip.lodgingLocations)) tripPatch.lodgingLocations = tripLodgingLocations(sourceTrip);
@@ -14232,7 +14426,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=700v325');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v001');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16874,12 +17068,13 @@ function setTab(id, options = {}) {
   const previousTab = state.activeTab;
   if (id !== 'mapa' && tripVectorMap) destroyTripVectorMap();
   state.activeTab = id;
-  ['viajes', 'gastos', 'blog', 'mapa', 'resumen', 'config'].forEach(tab => {
+  ['viajes', 'preparar', 'gastos', 'blog', 'mapa', 'resumen', 'config'].forEach(tab => {
     $(`#tab-${tab}`).classList.toggle('active', tab === id);
     $(`#view-${tab}`).style.display = tab === id ? 'block' : 'none';
   });
   if (id === 'mapa') renderMapPaises();
   if (id === 'resumen') renderResumen();
+  if (id === 'preparar') renderPreparation();
   if (id === 'blog') {
     renderBlog();
     if (previousTab !== 'blog') resetBlogTableHorizontalScroll();
@@ -18053,6 +18248,7 @@ async function resetDataValue(option) {
     await clearStores(stores);
     if (value === 'todo') {
       await deleteRecord('appSettings', PHOTO_TYPES_SETTING_KEY);
+      await deleteRecord('appSettings', PREPARATION_CATALOG_SETTING_KEY);
     }
     if (value === 'todo' || value === 'monedas') await ensureBaseCurrency();
     if (value === 'todo' || value === 'cuentas') await seedDefaultAccounts();
@@ -18096,6 +18292,7 @@ async function handleGastoAction(id, action) {
 }
 
 function bindEvents() {
+  bindPreparationEvents();
   $('#tab-viajes').onclick = () => setTab('viajes');
   $('#tab-gastos').onclick = () => setTab('gastos');
   $('#tab-blog').onclick = () => setTab('blog');
@@ -19946,7 +20143,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=700v325');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v001');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

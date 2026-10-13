@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=700v325">
+  <link rel="manifest" href="manifest.webmanifest?v=800v001">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=700v325">
+  <link rel="stylesheet" href="styles.css?v=800v001">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,13 +25,14 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 700v325 · 04/10/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v001 · 13/10/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
   <h1>Cuaderno de Bitácora <span>por Lucio J Martínez</span></h1>
   <nav>
     <button id="tab-viajes" class="active">Viajes</button>
+    <button id="tab-preparar"><span class="desktop-label">Preparar viaje</span><span class="mobile-label">Preparar</span></button>
     <button id="tab-gastos">Gastos</button>
     <button id="tab-blog" disabled>Blog</button>
     <button id="tab-mapa">Mapa</button>
@@ -39,7 +40,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">700v325</div>
+  <div class="app-version">800v001</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -72,6 +73,19 @@
         <table id="tabla-viajes-home"><thead><tr><th class="trip-name-col">Viaje / filtro</th><th class="trip-start-col">Inicio</th><th class="trip-end-col">Final</th><th class="trip-days-col">Días</th><th class="trip-daily-col" title="Media de gastos diarios"><span class="trip-daily-label-full">Media/día</span><span class="trip-daily-label-mobile">M/Día</span></th><th class="trip-total-col"><span class="trip-total-label-full">Total EUR</span><span class="trip-total-label-mobile">Total</span></th><th class="trip-expenses-col"><span class="trip-expenses-label-full">N. Gastos</span><span class="trip-expenses-label-mobile">N. Gastos</span></th><th class="trip-budget-col">Presupuesto</th><th class="trip-remaining-col">Restante</th><th class="trip-actions-col">Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
+  </section>
+
+  <section id="view-preparar" style="display:none">
+    <div class="card">
+      <div class="section-head"><h2>Preparar viaje</h2><button class="btn ghost" type="button" id="prep-open-config">Elegir elementos</button></div>
+      <label for="prep-viaje">Viaje que estás preparando</label><select id="prep-viaje"></select>
+      <p class="small">Marca lo preparado o realizado. Pasará a Hecho; puedes desmarcarlo para devolverlo a Pendiente.</p>
+      <p id="prep-progress" role="status" aria-live="polite"></p>
+      <progress id="prep-progress-bar" max="1" value="0" aria-label="Progreso de los preparativos"></progress>
+      <p id="msg-preparation" class="message" role="status"></p>
+    </div>
+    <div class="card"><h2>Pendiente</h2><div id="prep-pending"></div></div>
+    <div class="card preparation-done"><h2>Hecho</h2><div id="prep-done"></div></div>
   </section>
 
   <section id="view-gastos" style="display:none">
@@ -291,6 +305,7 @@
         <a class="btn ghost" href="#config-cuentas">Cuentas</a>
         <a class="btn ghost" href="#config-transferencias">Transferencias</a>
         <a class="btn ghost" href="#config-categorias">Categorías</a>
+        <a class="btn ghost" href="#config-preparation">Preparar viaje</a>
         <a class="btn ghost" href="#config-photo-types">Clasificaciones</a>
         <a class="btn ghost" href="#config-backups">Backups</a>
         <a class="btn ghost" href="#config-avanzado">Avanzado</a>
@@ -413,6 +428,22 @@
       <div id="categorias-tree" class="category-tree"></div>
     </div>
 
+    <div class="card" id="config-preparation">
+      <h2>Preparar viaje · catálogo y selección</h2>
+      <label for="prep-config-viaje">Incluir elementos en este viaje</label><select id="prep-config-viaje"></select>
+      <p class="small">Despliega los conceptos y marca qué necesitas para este viaje. Este check incluye el elemento; el check de Preparar viaje indica que ya está hecho.</p>
+      <div class="preparation-copy"><div><label for="prep-copy-source">Copiar selección de otro viaje</label><select id="prep-copy-source"></select></div><button class="btn ghost" type="button" id="prep-copy">Copiar con todo pendiente</button></div>
+      <p class="small">La copia reemplaza la selección del viaje de destino y conserva cantidades y notas.</p>
+      <p id="msg-preparation-config" class="message" role="status"></p>
+      <div id="prep-catalog"></div>
+      <details class="preparation-group"><summary>Añadir al catálogo común</summary>
+        <form id="prep-catalog-form">
+          <div class="row2"><div><label for="prep-item-section">Bloque</label><select id="prep-item-section"><option value="before">Antes de salir</option><option value="bring">Cosas que llevar</option></select></div><div><label for="prep-item-category">Categoría</label><input id="prep-item-category" list="prep-category-options" required maxlength="120" placeholder="Ej.: Ropa y material deportivo"><datalist id="prep-category-options"></datalist></div></div>
+          <div class="row2"><div><label for="prep-item-subcategory">Subapartado (opcional)</label><input id="prep-item-subcategory" maxlength="120" placeholder="Ej.: Invierno"></div><div><label for="prep-item-name">Elemento</label><input id="prep-item-name" required maxlength="120" placeholder="Ej.: Zapatillas de clavos"></div></div>
+          <button class="btn" type="submit">Añadir al catálogo</button>
+        </form>
+      </details>
+    </div>
     <div class="card compact-config-form" id="config-photo-types">
       <h2>Clasificaciones de imágenes y tickets</h2>
       <p class="small">Clasifica cada imagen o ticket y decide qué tipos pueden señalar el destino real del alojamiento.</p>
@@ -1258,14 +1289,15 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=700v325"></script>
-<script src="gpx-import.js?v=700v325"></script>
-<script src="timeline-routing.js?v=700v325"></script>
-<script src="map-model.js?v=700v325"></script>
-<script src="app.bundle.js?v=700v325"></script>
+<script src="timeline-import.js?v=800v001"></script>
+<script src="gpx-import.js?v=800v001"></script>
+<script src="timeline-routing.js?v=800v001"></script>
+<script src="map-model.js?v=800v001"></script>
+<script src="preparation.js?v=800v001"></script>
+<script src="app.bundle.js?v=800v001"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '700v325';
+    const pageVersion = '800v001';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1320,7 +1352,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=700v325', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v001', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;
