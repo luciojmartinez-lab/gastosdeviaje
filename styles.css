@@ -5894,6 +5894,11 @@ footer {
 .group-attendees, .group-shares { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 14px; }
 .group-shares[hidden], #group-content[hidden] { display: none; }
 .group-shares input { min-width: 0; width: 100%; }
+.group-shares .check-option input { width: 20px; }
+#group-ocr-progress { width: 100%; }
+#group-ocr-counter { display: block; font-variant-numeric: tabular-nums; }
+#group-parse-message { white-space: pre-wrap; padding: 8px 0; }
+#group-parse-replace[hidden], #group-ocr-progress-wrap[hidden] { display: none; }
 .group-item { padding: 14px; margin: 8px 0; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
 .group-meal-card { border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 14px; }
 .group-meal-card h3 { margin-top: 0; }

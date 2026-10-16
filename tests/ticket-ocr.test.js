@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  receiptProgressReporter,
   receiptTableColumnsConfident,
   receiptTableBounds,
   joinReceiptTableColumns,
@@ -855,4 +856,17 @@ test('no descarta una fila basura para forzar el emparejamiento de productos y p
  assert.equal(receiptTableColumnsConfident(data(40),prices),false);
  const repeated=data(45);repeated.blocks[0].paragraphs[0].lines.push({...data(95).blocks[0].paragraphs[0].lines[0],bbox:{x0:0,y0:30,x1:100,y1:50}});
  assert.equal(receiptTableColumnsConfident(repeated,prices),true);
+});
+
+
+test('el progreso del OCR completo no termina al acabar de cargar idiomas o una pasada',()=>{
+ const values=[];const report=receiptProgressReporter(value=>values.push(value));
+ report({status:'Preparando el lector local',progress:0.08});
+ report({status:'loading language traineddata',progress:1});assert.ok(values.at(-1).progress<0.15);
+ report({status:'Leyendo el ticket',progress:0.15});report({status:'recognizing text',progress:0.5});
+ assert.ok(values.at(-1).progress>0.15 && values.at(-1).progress<0.8);
+ report({status:'Comprobando conceptos',progress:0.8});report({status:'recognizing text',progress:1});
+ assert.ok(values.at(-1).progress<0.86);
+ assert.ok(values.every((value,index)=>index===0 || value.progress>=values[index-1].progress));
+ assert.ok(values.every(value=>value.progress<1));
 });

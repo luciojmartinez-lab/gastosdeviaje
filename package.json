@@ -1,7 +1,7 @@
 {
   "name": "gastosdeviaje",
   "private": true,
-  "version": "800.5.0",
+  "version": "800.6.0",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js"

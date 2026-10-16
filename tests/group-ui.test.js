@@ -130,3 +130,76 @@ test('proponer un texto incompleto conserva los conceptos anteriores si no suma 
   assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,2);
  }finally{ui.close();}
 });
+
+
+test('proponer muestra errores junto al botón y reemplaza conceptos con confirmación visible',async()=>{
+ const ui=await setup();
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.click('#group-parse-text');await ui.waitFor(()=>ui.$('#group-parse-message').classList.contains('error'));
+  assert.equal(ui.$('#group-text-panel').open,true);
+  assert.match(ui.$('#group-parse-message').textContent,/No se han reconocido/);
+  ui.input('#group-meal-text','1 Cena 300,00');ui.click('#group-parse-text');
+  await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===1);
+  ui.w.confirm=()=>{throw new Error('No debe abrir una confirmación nativa');};
+  ui.input('#group-meal-text','1 Tapas 300,00');ui.click('#group-parse-text');
+  await ui.waitFor(()=>!ui.$('#group-parse-replace').hidden);
+  assert.equal(ui.$('[data-item-field="name"]').value,'Cena');
+  ui.click('#group-parse-keep');assert.equal(ui.$('[data-item-field="name"]').value,'Cena');
+  ui.click('#group-parse-text');ui.click('#group-parse-confirm');
+  await ui.waitFor(()=>ui.$('[data-item-field="name"]').value==='Tapas');
+  assert.equal(ui.$('#group-parse-replace').hidden,true);
+  assert.match(ui.$('#group-parse-message').textContent,/Propuesta de 1 conceptos/);
+ }finally{ui.close();}
+});
+
+test('una sola tapa se comparte entre tres viajeros sin exigir tres unidades del ticket',async()=>{
+ const ui=await setup();
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.input('#group-meal-name','Tapas compartidas');ui.input('#group-meal-total','10.50');
+  ui.input('#group-meal-payer','p0');ui.input('#group-meal-account','1');ui.click('#group-add-item');
+  ui.input('[data-item-field="name"]','Mejillones');ui.input('[data-item-field="amountCents"]','10.50');
+  for(const id of ['p0','p1','p2'])ui.input('[data-item-diner="'+id+'"]',true);
+  assert.equal(ui.$('[data-item-field="quantity"]').value,'1');
+  assert.equal(ui.$('[data-item-person="p0"]').value,'1');
+  ui.input('[data-item-diner="p2"]',false);assert.equal(ui.$('[data-item-person="p2"]').value,'0');
+  ui.input('[data-item-diner="p2"]',true);
+  assert.match(ui.$('#group-meal-check').textContent,/Todo cuadra/);
+  ui.input('#group-meal-reviewed',true);ui.click('#group-close-meal');
+  await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  const meal=ui.state.viajes[0].group.meals[0],result=ui.w.TravelGroup.allocation(meal);
+  assert.equal(result.totals.p0,350);assert.equal(result.totals.p1,350);assert.equal(result.totals.p2,350);
+  assert.equal(result.totals.p3,0);assert.equal(ui.state.gastos[0].importe,3.5);
+  assert.equal(ui.state.cuentas.find(c=>c.groupClearing).saldoActual,7);
+ }finally{ui.close();}
+});
+
+test('OCR muestra progreso y tiempo, abre el texto al terminar y no deja botones bloqueados',async()=>{
+ let complete,notify;
+ const ui=await setup({recognize:async(meal,progress)=>{notify=progress;return new Promise(resolve=>complete=resolve);}});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
+  ui.click('#group-ocr');await ui.waitFor(()=>!!complete);
+  assert.equal(ui.$('#group-ocr-progress-wrap').hidden,false);
+  assert.equal(ui.$('#group-parse-text').disabled,true);
+  notify({status:'Leyendo los productos',progress:0.55});
+  assert.equal(ui.$('#group-ocr-progress').value,55);assert.match(ui.$('#group-ocr-counter').textContent,/55% · \d+ s/);
+  notify({status:'Nueva pasada',progress:0.2});assert.equal(ui.$('#group-ocr-progress').value,55);
+  complete({itemText:'1 Cena 12,00',text:'1 Cena 12,00',itemsStatus:'reconciled',fields:{total:12}});
+  await ui.waitFor(()=>ui.$('#group-ocr-progress').value===100 && !ui.$('#group-parse-text').disabled);
+  assert.equal(ui.$('#group-text-panel').open,true);assert.equal(ui.$('#group-meal-text').value,'1 Cena 12,00');
+ }finally{ui.close();}
+});
+
+test('un error del OCR informa junto al botón y permite volver a intentarlo',async()=>{
+ const ui=await setup({recognize:async()=>{throw new Error('Lectura fallida');}});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
+  ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-parse-message').textContent==='Lectura fallida');
+  assert.equal(ui.$('#group-text-panel').open,true);assert.equal(ui.$('#group-ocr').disabled,false);
+  assert.equal(ui.$('#group-parse-text').disabled,false);assert.match(ui.$('#group-ocr-counter').textContent,/interrumpida/);
+ }finally{ui.close();}
+});

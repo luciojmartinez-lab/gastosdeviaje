@@ -13,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '800v005';
+const DOCUMENT_PREPROCESSOR_VERSION = '800v006';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -1649,9 +1649,24 @@ async function recognizeReceiptTable(worker, image, onProgress) {
   return {reading,table,passes:3};
 }
 
+export function receiptProgressReporter(report){
+  let start=0,end=0.07,last=0,status='Preparando el ticket';
+  return value=>{
+    const raw=Number(value.progress);
+    const workerMessage=/^(?:loading|loaded|initializ|recognizing)/i.test(value.status||'');
+    if(!workerMessage && Number.isFinite(raw)){
+      start=raw;end=Math.min(0.99,start+(start===0.15?0.55:0.04));status=value.status;
+    }
+    const progress=workerMessage?start+(end-start)*Math.max(0,Math.min(1,Number.isFinite(raw)?raw:0)):raw;
+    if(Number.isFinite(progress))last=Math.max(last,Math.min(0.99,progress));
+    report({...value,status:workerMessage?status:value.status,progress:last});
+  };
+}
+
 async function recognizeTicketUnlocked(source, options = {}) {
   if (!source) throw new Error('Selecciona o fotografía primero un ticket.');
-  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+  const report = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+  const onProgress = options.readItems===true?receiptProgressReporter(report):report;
   const type = String(options.type || source.type || '').toLowerCase();
   const name = String(options.name || source.name || '').toLowerCase();
   const isPdf = type.includes('pdf') || name.endsWith('.pdf');

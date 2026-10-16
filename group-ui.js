@@ -11,7 +11,13 @@
   const trip = () => host.getState().viajes.find(value => Number(value.id) === Number($('#group-trip').value));
   const current = () => api().normalize(trip()?.group);
   const name = (group,id) => group.participants.find(person=>person.id===id)?.name || 'Persona no disponible';
-  const message = (text,error=false,target='#group-message') => { $(target).textContent=text;$(target).classList.toggle('error',error); };
+  const message = (text,error=false,target='#group-message') => {
+    $(target).textContent=text;$(target).classList.toggle('error',error);
+    if(target==='#group-meal-message' && $('#group-parse-message')){
+      $('#group-parse-message').textContent=text;$('#group-parse-message').classList.toggle('error',error);
+    }
+  };
+  const showParseFeedback=()=>{ $('#group-text-panel').open=true;$('#group-parse-message').scrollIntoView?.({block:'nearest'}); };
   function accounts(id) { return host.getState().cuentas.filter(account=>account.moneda==='EUR'&&!account.groupClearing&&Number(account.viajeId)===Number(id)); }
   const options = (rows,value,empty='Elige una opción') => `<option value="">${esc(empty)}</option>${rows.map(row=>`<option value="${esc(row.id)}"${String(row.id)===String(value)?' selected':''}>${esc(row.name||row.nombre)}</option>`).join('')}`;
   async function commit(group, expected = group.revision, tripId = trip()?.id) {
@@ -56,7 +62,7 @@
   }
   function renderItems() {
     const meal=editor.meal,group=editor.group;
-    $('#group-meal-items').innerHTML=meal.items.map(item=>`<fieldset class="group-item" data-group-item="${esc(item.id)}"><legend>Concepto del ticket</legend><div class="row3"><div><label>Concepto<input data-item-field="name" value="${esc(item.name)}" maxlength="160"></label></div><div><label>Unidades del ticket<input type="number" min="0.01" step="0.01" data-item-field="quantity" value="${esc(item.quantity??1)}"></label></div><div><label>Importe total de esta línea (€)<input inputmode="decimal" data-item-field="amountCents" value="${amount(item.amountCents)}"></label></div></div><label class="check-option"><input type="checkbox" data-item-field="common"${item.common?' checked':''}> Compartido por igual entre asistentes (pan / agua)</label><label>Asignación<select data-item-field="mode" aria-label="Asignación"><option value="weights"${item.mode!=='units'?' selected':''}>Por personas / pesos (1 = una parte)</option><option value="units"${item.mode==='units'?' selected':''}>Por unidades consumidas (deben sumar las del ticket)</option></select></label><div class="group-shares"${item.common?' hidden':''}>${group.participants.filter(person=>meal.attendees.includes(person.id)||Number(item.shares?.[person.id])>0).map(person=>`<label>${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE: retira su asignación'}<input type="number" min="0" max="1000000" step="0.01" data-item-person="${esc(person.id)}" value="${esc(item.shares?.[person.id]||0)}"></label>`).join('')||'<p>Selecciona los asistentes antes de asignar.</p>'}</div><button class="ghost" type="button" data-group-item-remove="${esc(item.id)}">Quitar concepto</button></fieldset>`).join('');
+    $('#group-meal-items').innerHTML=meal.items.map(item=>`<fieldset class="group-item" data-group-item="${esc(item.id)}"><legend>Concepto del ticket</legend><div class="row3"><div><label>Concepto<input data-item-field="name" value="${esc(item.name)}" maxlength="160"></label></div><div><label>Unidades del ticket<input type="number" min="0.01" step="0.01" data-item-field="quantity" value="${esc(item.quantity??1)}"></label></div><div><label>Importe total de esta línea (€)<input inputmode="decimal" data-item-field="amountCents" value="${amount(item.amountCents)}"></label></div></div><label class="check-option"><input type="checkbox" data-item-field="common"${item.common?' checked':''}> Compartir entre todos los asistentes (pan, agua o cualquier plato)</label><label>Asignación<select data-item-field="mode" aria-label="Asignación"><option value="weights"${item.mode!=='units'?' selected':''}>Compartir plato entre personas (tapas, raciones…)</option><option value="units"${item.mode==='units'?' selected':''}>Unidades individuales consumidas (bebidas, menús…)</option></select></label><p class="small">${item.mode==='units'?'Indica cuántas unidades consumió cada persona; deben sumar las del ticket.':'Un solo plato puede compartirse entre varias personas. Marca quién lo comparte: con 1 parte cada uno pagan lo mismo. Puedes cambiar las partes si alguien consume más.'}</p><div class="group-shares"${item.common?' hidden':''}>${group.participants.filter(person=>meal.attendees.includes(person.id)||Number(item.shares?.[person.id])>0).map(person=>`<div>${item.mode!=='units'?`<label class="check-option"><input type="checkbox" data-item-diner="${esc(person.id)}"${Number(item.shares?.[person.id])>0?' checked':''}> ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE'}</label>`:''}<label>${item.mode==='units'?esc(person.name):'Partes de '+esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE: retira su asignación'}<input type="number" min="0" max="1000000" step="0.01" data-item-person="${esc(person.id)}" value="${esc(item.shares?.[person.id]||0)}"></label></div>`).join('')||'<p>Selecciona los asistentes antes de asignar.</p>'}</div><button class="ghost" type="button" data-group-item-remove="${esc(item.id)}">Quitar concepto</button></fieldset>`).join('');
     preview();
   }
   function renderTicket() {
@@ -70,6 +76,7 @@
     $('#group-meal-account').innerHTML=options(accounts(editor.tripId),meal.accountId,'Cuenta real si pagaste tú');
     $('#group-meal-attendees').innerHTML=group.participants.filter(person=>person.active||meal.attendees.includes(person.id)).map(person=>`<label class="check-option"><input type="checkbox" data-group-attendee="${esc(person.id)}"${meal.attendees.includes(person.id)?' checked':''}> ${esc(person.name)}</label>`).join('');
     $('#group-meal-reviewed').checked=false;$('#group-meal-file').value='';$('#group-meal-text').value=meal.ocrText||'';
+    $('#group-text-panel').open=!!meal.ocrText;$('#group-parse-replace').hidden=true;$('#group-ocr-progress-wrap').hidden=true;
     renderTicket();
     message('El OCR propone conceptos. Comprueba cada línea, el total y la asignación antes de cerrar.',false,'#group-meal-message');renderItems();
     if(!$('#group-meal-dialog').open)$('#group-meal-dialog').showModal();
@@ -97,12 +104,23 @@
   function readCents(value) {try{return api().cents(value);}catch{return null;}}
   async function extract() {
     if(reading||!editor)return;
-    reading=true;$('#group-ocr').disabled=true;
+    reading=true;$('#group-ocr').disabled=true;$('#group-parse-text').disabled=true;
+    $('#group-ocr-progress-wrap').hidden=false;$('#group-ocr-progress').value=0;
+    const started=Date.now();let percent=0;
+    const paintProgress=()=>{$('#group-ocr-counter').textContent=`${percent}% · ${Math.floor((Date.now()-started)/1000)} s`;};
+    paintProgress();const timer=setInterval(paintProgress,500);
+    let completed=false;
     try {
       if(!editor.meal.ticketData)throw new Error('Añade una foto del ticket.');
       message('Leyendo el ticket en este dispositivo…',false,'#group-meal-message');
-      const result=await host.recognize(editor.meal,progress=>message(progress,false,'#group-meal-message'));
+      const result=await host.recognize(editor.meal,progress=>{
+        const status=typeof progress==='string'?progress:progress.status||'Leyendo…';
+        if(Number.isFinite(progress?.progress)){percent=Math.max(percent,Math.min(99,Math.round(progress.progress*100)));$('#group-ocr-progress').value=percent;paintProgress();}
+        message(status,false,'#group-meal-message');
+      });
       if(!editor)return;
+      completed=true;percent=100;$('#group-ocr-progress').value=100;paintProgress();
+      $('#group-text-panel').open=true;
       $('#group-meal-text').value=result.itemText||result.text||'';editor.meal.ocrText=$('#group-meal-text').value;
       editor.meal.ocrUnsafeText=result.itemsStatus==='review'?editor.meal.ocrText:null;
       if(!editor.meal.name&&result.fields?.merchant){editor.meal.name=result.fields.merchant;$('#group-meal-name').value=editor.meal.name;}
@@ -114,16 +132,25 @@
         return;
       }
       parseText();
-    }finally{reading=false;$('#group-ocr').disabled=false;}
+    }finally{
+      clearInterval(timer);reading=false;$('#group-ocr').disabled=false;$('#group-parse-text').disabled=false;
+      if(!completed)$('#group-ocr-counter').textContent=`Lectura interrumpida · ${Math.floor((Date.now()-started)/1000)} s`;
+      if(editor)showParseFeedback();
+    }
   }
-  function parseText(){
+  function parseText(replaceExisting=false){
     if(!editor)return;
     const text=$('#group-meal-text').value;
     if(editor.meal.ocrUnsafeText!=null && text.trim()===editor.meal.ocrUnsafeText.trim())throw new Error('Esta lectura tiene conceptos y precios sin emparejar. No se puede pasar directamente a conceptos. Vuelve a leer la foto o corrige el texto mirando el ticket.');
     const result=api().parseItems(text);
     if(!result.items.length)throw new Error('No se han reconocido conceptos fiables. Introdúcelos manualmente; no se ha cambiado la lista.');
     if(Number.isSafeInteger(editor.meal.totalCents)&&editor.meal.totalCents>0 && result.items.reduce((sum,item)=>sum+item.amountCents,0)!==editor.meal.totalCents)throw new Error('Los conceptos reconocidos no suman el total del ticket. No se ha cambiado la lista: corrige las líneas y sus precios antes de proponerlos.');
-    if(editor.meal.items.length&&!confirm('Sustituir los conceptos por esta propuesta OCR? Tendrás que revisar y asignar de nuevo las líneas.'))return;
+    if(editor.meal.items.length && replaceExisting!==true){
+      $('#group-parse-replace').hidden=false;
+      message(`Hay ${editor.meal.items.length} conceptos. La propuesta contiene ${result.items.length}. Pulsa «Sustituir conceptos» para reemplazarlos y revisar sus asignaciones, o conserva los actuales.`,false,'#group-meal-message');
+      return;
+    }
+    $('#group-parse-replace').hidden=true;
     editor.meal.ocrText=$('#group-meal-text').value;editor.meal.items=result.items.map(item=>({...item,id:uid()}));$('#group-meal-reviewed').checked=false;renderItems();stash();
     message(`Propuesta de ${result.items.length} conceptos. ${result.ignored.length} líneas no incorporadas. El total del ticket se revisa aparte.`,false,'#group-meal-message');
   }
@@ -147,10 +174,15 @@
       const item=editor.meal.items.find(item=>item.id===element.closest('[data-group-item]')?.dataset.groupItem);
       if(item&&element.dataset.itemField){const field=element.dataset.itemField;item[field]=field==='amountCents'?readCents(element.value):field==='quantity'?Number(element.value):field==='common'?element.checked:element.value;}
       if(item&&element.dataset.itemPerson){item.shares||={};item.shares[element.dataset.itemPerson]=Number(element.value);}
+      if(item&&element.dataset.itemDiner){
+        item.shares||={};item.shares[element.dataset.itemDiner]=element.checked?1:0;
+        element.closest('[data-group-item]').querySelectorAll('[data-item-person]').forEach(input=>{if(input.dataset.itemPerson===element.dataset.itemDiner)input.value=element.checked?'1':'0';});
+      }
+      if(item&&element.dataset.itemPerson)element.closest('[data-group-item]').querySelectorAll('[data-item-diner]').forEach(input=>{if(input.dataset.itemDiner===element.dataset.itemPerson)input.checked=Number(element.value)>0;});
       if(element.id!=='group-meal-reviewed')$('#group-meal-reviewed').checked=false;
       preview();stash();
     };
-    $('#group-meal-form').onchange=event=>{const element=event.target;if(element.dataset.groupAttendee){const id=element.dataset.groupAttendee;editor.meal.attendees=element.checked?[...new Set([...editor.meal.attendees,id])]:editor.meal.attendees.filter(value=>value!==id);$('#group-meal-reviewed').checked=false;renderItems();stash();}else if(element.dataset.itemField==='common')renderItems();};
+    $('#group-meal-form').onchange=event=>{const element=event.target;if(element.dataset.groupAttendee){const id=element.dataset.groupAttendee;editor.meal.attendees=element.checked?[...new Set([...editor.meal.attendees,id])]:editor.meal.attendees.filter(value=>value!==id);$('#group-meal-reviewed').checked=false;renderItems();stash();}else if(['common','mode'].includes(element.dataset.itemField))renderItems();};
     $('#group-meal-items').onclick=event=>{const id=event.target.closest('[data-group-item-remove]')?.dataset.groupItemRemove;if(!id)return;editor.meal.items=editor.meal.items.filter(item=>item.id!==id);$('#group-meal-reviewed').checked=false;renderItems();stash();};
     $('#group-meal-file').onchange=safe(async event=>{
       if(!editor||reading)return;
@@ -169,7 +201,11 @@
       }catch(error){input.value='';throw error;}
       finally{reading=false;controls.forEach(selector=>$(selector).disabled=false);}
     },'#group-meal-message');
-    $('#group-ocr').onclick=safe(extract,'#group-meal-message');$('#group-parse-text').onclick=safe(parseText,'#group-meal-message');
+    $('#group-ocr').onclick=safe(extract,'#group-meal-message');
+    const propose=replace=>async()=>{try{parseText(replace);}catch(error){message(error.message||String(error),true,'#group-meal-message');}showParseFeedback();};
+    $('#group-parse-text').onclick=propose(false);
+    $('#group-parse-confirm').onclick=propose(true);
+    $('#group-parse-keep').onclick=()=>{$('#group-parse-replace').hidden=true;message('Se conservan los conceptos actuales.',false,'#group-meal-message');showParseFeedback();};
     $('#group-content').onclick=safe(async event=>{
       const button=event.target.closest('button');if(!button)return;const group=current();
       if(button.dataset.groupEdit)return openMeal(button.dataset.groupEdit);
