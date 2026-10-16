@@ -52,6 +52,20 @@ test('lee conceptos con unidades sin sumar de nuevo total, IGIC ni pago', () => 
   assert.equal(result.items[0].name,'Ensalada');assert.equal(result.items[2].common,true);
   assert.equal(result.items.reduce((sum,row)=>sum+row.amountCents,0),5100);
 });
+
+test('anular una devolución restaura el pendiente de la comida y del resumen', () => {
+  const group = fixture();
+  group.settlements = [
+    {id:'r1',mealId:'m1',fromId:'b',toId:'a',amountCents:500,date:'2026-11-28',voided:true,voidReason:'Registro duplicado'},
+    {id:'r2',mealId:'m1',fromId:'b',toId:'a',amountCents:300,date:'2026-11-28'}
+  ];
+  api.validate(group);
+  const row = api.mealPayments(group, group.meals[0]).find(person => person.id === 'b');
+  assert.equal(row.paid, 300);
+  assert.equal(row.remaining, 1700);
+  assert.equal(api.balances(group).find(person => person.id === 'b').balance, -1700);
+  assert.match(api.summary(group, group.meals[0]), /pendiente 17,00/);
+});
 test('los importes españoles se convierten a céntimos y se rechazan fracciones de céntimo',()=>{
   assert.equal(api.cents('1.234,56 €'),123456);assert.equal(api.cents('12.34'),1234);
   assert.throws(()=>api.cents('1.2345'));assert.throws(()=>api.cents(''));

@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v001';
+const APP_VERSION = '900v001';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -78,6 +78,8 @@ const DIALOG_HELP_TARGETS = {
   'expense-files-dialog': 'gasto-archivos',
   'image-viewer-dialog': 'traducir-ticket',
   'form-dialog': 'referencia',
+  'group-meal-dialog': 'grupo-comidas',
+  'group-payment-dialog': 'grupo-comidas',
   'timeline-dialog': 'mapa-controles',
   'lodging-name-dialog': 'mapa-controles',
   'map-point-dialog': 'mapa-controles',
@@ -1667,6 +1669,7 @@ async function savePhotoTypes(types) {
   setLocalDataUpdatedAt();
   renderPhotoTypeControls();
   renderPreparation();
+  if (typeof TravelGroupUI !== 'undefined') TravelGroupUI.render();
 }
 
 async function addPhotoType({ nombre, useAsDestination = false }) {
@@ -1884,6 +1887,7 @@ function syncTripSelectsFromSelection() {
   if ($('#c-viaje')) $('#c-viaje').value = value;
   if ($('#prep-viaje')) $('#prep-viaje').value = value;
   if ($('#prep-config-viaje')) $('#prep-config-viaje').value = value;
+  if ($('#group-trip')) $('#group-trip').value = value;
   state.selectedViajeId = ids.length === 1 ? ids[0] : null;
 }
 
@@ -1903,6 +1907,7 @@ function setSelectedTrips(ids, options = {}) {
   syncTripSelectsFromSelection();
   syncBlogAvailability();
   renderPreparation();
+  if (typeof TravelGroupUI !== 'undefined') TravelGroupUI.render();
   if (state.activeTab === 'blog') renderBlog();
 }
 
@@ -2920,7 +2925,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v001');
+    const worker = new Worker('./timeline-import-worker.js?v=900v001');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3928,7 +3933,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v001');
+        imageLocationModulePromise ||= import('./image-location.js?v=900v001');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4831,7 +4836,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v001');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=900v001');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4967,7 +4972,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v001');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=900v001');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5521,7 +5526,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v001');
+  imageLocationModulePromise ||= import('./image-location.js?v=900v001');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -5766,9 +5771,24 @@ async function prepareCloudBackupData(sourceData) {
     }
     blogEntries.push(next);
   }
+  const viajes = [];
+  for (const trip of sourceData.viajes || []) {
+    if (!trip.group) { viajes.push(trip); continue; }
+    const meals = [];
+    for (const meal of trip.group.meals || []) {
+      const next = { ...meal };
+      if (meal.ticketData) {
+        next.ticketRef = await addAttachment({ data: meal.ticketData, name: meal.ticketName || 'ticket-grupo.jpg', mime: meal.ticketType || 'image/jpeg' });
+        delete next.ticketData;
+      }
+      meals.push(next);
+    }
+    viajes.push({ ...trip, group: { ...trip.group, meals } });
+  }
   return {
     data: {
       ...sourceData,
+      viajes,
       cloudFormat: 7,
       gastos,
       viajeDocumentos,
@@ -5878,6 +5898,13 @@ async function localAttachmentDataById() {
     const file = ticketDataInfo(entry.imageData, entry.imageType || 'image/jpeg');
     result.set(await sha256Hex(file.blob), file.data);
   }
+  for (const trip of state.viajes || []) {
+    for (const meal of trip.group?.meals || []) {
+      if (!meal.ticketData) continue;
+      const ticket = ticketDataInfo(meal.ticketData, meal.ticketType || 'image/jpeg');
+      result.set(await sha256Hex(ticket.blob), ticket.data);
+    }
+  }
   const blogGalleryFiles = state.blogEntries.flatMap(entry => blogGalleryImages(entry));
   for (let index = 0; index < blogGalleryFiles.length; index += 1) {
     const image = blogGalleryFiles[index];
@@ -5941,6 +5968,10 @@ async function hydrateCloudBackupData(sourceData) {
   }
   return {
     ...sourceData,
+    viajes: (sourceData.viajes || []).map(trip => !trip.group ? trip : ({ ...trip, group: { ...trip.group, meals: (trip.group.meals || []).map(meal => {
+      if (meal.ticketRef && !downloaded.has(meal.ticketRef)) throw new Error('Falta el ticket de una comida del grupo. No se ha importado la copia.');
+      return { ...meal, ticketData: meal.ticketRef ? downloaded.get(meal.ticketRef) : (meal.ticketData || '') };
+    }) } })),
     gastos: (sourceData.gastos || []).map(gasto => ({
       ...gasto,
       ticketData: gasto.ticketRef ? (downloaded.get(gasto.ticketRef) || '') : (gasto.ticketData || ''),
@@ -7112,6 +7143,7 @@ async function migrateGlobalAccountToTrip(accountId, viajeId) {
 }
 
 async function updateCuenta(id, patch) {
+  if ((await getOne('cuentas', Number(id)))?.groupClearing) throw new Error('La cuenta de compensación se gestiona desde Grupo → Comidas.');
   return updateRecord('cuentas', Number(id), patch);
 }
 
@@ -7178,6 +7210,8 @@ async function updateViaje(id, patch) {
 
 async function delViaje(id) {
   const tripId = Number(id);
+  const groupTrip = await getOne('viajes', tripId);
+  if (groupTrip?.group?.integrate && groupTrip.group.meals?.some(meal => meal.status === 'closed')) throw new Error('El viaje tiene movimientos de Grupo. Corrige sus comidas desde Grupo antes de eliminarlo.');
   const operations = [];
   for (const name of ['gastos', 'cuentas']) {
     for (const item of await getAll(name)) {
@@ -7539,6 +7573,7 @@ async function delMoneda(codigo) {
 async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', ticketSize = 0, ticketWidth = 0, ticketHeight = 0, ticketPhotoTypeId = '', ticketPhotoTypeName = '', ticketLatitude = null, ticketLongitude = null, ticketLocationSource = '', ticketCapturedDate = '', ticketCapturedTime = '', ticketMapEnabled = false, ticketTranslationName = '', ticketTranslationType = '', ticketTranslationData = '', ticketTranslationSize = 0, ticketTranslationWidth = 0, ticketTranslationHeight = 0, ticketTranslationText = '', ticketTranslationSourceLanguages = [], ticketTranslationKind = '', extraImages = [] }) {
   if (!hasValidCurrency(moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   const account = state.cuentas.find(c => c.id === Number(cuentaId));
+  if (account?.groupClearing) throw new Error('Registra el consumo de grupo desde Grupo → Comidas.');
   if (account && account.moneda !== moneda) throw new Error('La moneda del gasto debe coincidir con la cuenta');
   if (account && account.viajeId && Number(viajeId) !== Number(account.viajeId)) throw new Error('Esa cuenta pertenece a otro viaje');
   const amount = numberValue(importe);
@@ -7597,6 +7632,7 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
 async function updateGasto(id, patch) {
   const current = state.gastos.find(g => g.id === Number(id)) || await getOne('gastos', Number(id));
   if (!current) throw new Error('No existe el gasto');
+  if (current.groupTripId != null) throw new Error('Este gasto se gestiona desde Grupo → Comidas.');
   const next = { ...current, ...patch };
   next.viajeId = next.viajeId ? Number(next.viajeId) : null;
   next.cuentaId = Number(next.cuentaId);
@@ -7799,6 +7835,7 @@ async function handleOpenExpenseTicketRotation(direction) {
 async function delGasto(id) {
   const gastoId = Number(id);
   const current = state.gastos.find(g => g.id === gastoId) || await getOne('gastos', gastoId);
+  if (current?.groupTripId != null) throw new Error('Este gasto se gestiona desde Grupo → Comidas.');
   if (current) {
     const account = await getOne('cuentas', Number(current.cuentaId));
     if (account) {
@@ -7812,6 +7849,7 @@ async function addTransferencia({ fecha, fromId, toId, importe, importeTo = null
   const source = state.cuentas.find(c => c.id === Number(fromId)) || await getOne('cuentas', Number(fromId));
   const target = state.cuentas.find(c => c.id === Number(toId)) || await getOne('cuentas', Number(toId));
   if (!source || !target) throw new Error('Selecciona cuenta de origen y destino');
+  if (source.groupClearing || target.groupClearing) throw new Error('Los movimientos de compensación se gestionan desde Grupo → Comidas.');
   if (source.id === target.id) throw new Error('La cuenta de origen y destino no pueden ser la misma');
   if (!hasValidCurrency(source.moneda) || !hasValidCurrency(target.moneda)) throw new Error('Configura las monedas de las cuentas antes de transferir');
   const amountFrom = numberValue(importe);
@@ -7846,6 +7884,7 @@ async function addTransferencia({ fecha, fromId, toId, importe, importeTo = null
 async function delTransferencia(id) {
   const t = state.transferencias.find(item => item.id === Number(id)) || await getOne('transferencias', Number(id));
   if (!t) return false;
+  if (t.groupTripId != null) throw new Error('Esta transferencia se gestiona desde Grupo → Comidas.');
   const source = await getOne('cuentas', Number(t.fromId));
   const target = await getOne('cuentas', Number(t.toId));
   if (source) await updateCuenta(source.id, { saldoActual: +(numberValue(source.saldoActual) + numberValue(t.importeFrom)).toFixed(2) });
@@ -7948,7 +7987,7 @@ function renderAccountSelectors() {
 
 function accountsForGastoTrip(viajeId) {
   const tripId = Number(viajeId);
-  return state.cuentas.filter(c => tripId ? Number(c.viajeId) === tripId : !c.viajeId);
+  return state.cuentas.filter(c => !c.groupClearing && (tripId ? Number(c.viajeId) === tripId : !c.viajeId));
 }
 
 function renderGastoAccountSelector() {
@@ -13578,6 +13617,7 @@ function buildTripBackupData(tripId) {
   const timelineDays = state.timelineDays.filter(record => Number(record.viajeId) === id);
   const usedAccountIds = new Set(gastos.map(g => Number(g.cuentaId)).filter(Boolean));
   const accountIds = new Set(state.cuentas.filter(c => Number(c.viajeId) === id || usedAccountIds.has(Number(c.id))).map(c => Number(c.id)));
+  for (const accountId of [...(trip.group?.meals || []).map(meal => meal.accountId), ...(trip.group?.settlements || []).map(payment => payment.accountId)]) if (Number(accountId)) accountIds.add(Number(accountId));
   const transferencias = state.transferencias.filter(t => accountIds.has(Number(t.fromId)) || accountIds.has(Number(t.toId)));
   transferencias.forEach(t => { accountIds.add(Number(t.fromId)); accountIds.add(Number(t.toId)); });
   const cuentas = state.cuentas.filter(c => accountIds.has(Number(c.id))).map(accountForBackup);
@@ -13673,6 +13713,7 @@ async function importAll(data) {
     throw new Error('Archivo no válido');
   }
   data = recoverBackupReferences(data);
+  for (const sourceTrip of data.viajes || []) if (sourceTrip.group) TravelGroup.validate(TravelGroup.normalize(sourceTrip.group));
   const stores = ['cuentas', 'categorias', 'lugares', 'gastos', 'viajes', 'tripDocuments', 'blogEntries', 'timelineDays', 'monedas', 'transferencias'];
   const operations = stores.map(store => ({ store, type: 'clear' }));
   const addRecord = async (store, data) => operations.push({ store, type: 'add', data });
@@ -13710,6 +13751,7 @@ async function importAll(data) {
       createdAt: v.createdAt || new Date().toISOString(),
       updatedAt: v.updatedAt || new Date().toISOString()
     };
+    if (v.group) obj.group = TravelGroup.normalize(v.group);
     if (v.id != null) obj.id = v.id;
     await addRecord('viajes', obj);
   }
@@ -13815,6 +13857,7 @@ async function importTripBackup(data, targetTripId) {
     throw new Error('El archivo no contiene un viaje exportado');
   }
   data = recoverBackupReferences(data);
+  if (data.viajes[0].group) TravelGroup.validate(TravelGroup.normalize(data.viajes[0].group));
   await loadAll();
   const operations = [];
   const nextIds = {};
@@ -13883,7 +13926,7 @@ async function importTripBackup(data, targetTripId) {
     await deleteRecord('cuentas', Number(account.id));
   }
   await putRecord('appSettings', { key: PREPARATION_CATALOG_SETTING_KEY, items: TravelPreparation.mergeCatalog(state.preparationCatalog, data.preparationCatalog), updatedAt: now });
-  const tripPatch = { updatedAt: now, preparationItems: TravelPreparation.normalizeItems(sourceTrip.preparationItems) };
+  const tripPatch = { updatedAt: now, preparationItems: TravelPreparation.normalizeItems(sourceTrip.preparationItems), group: undefined };
   if (sourceTrip.presupuesto != null) tripPatch.presupuesto = numberValue(sourceTrip.presupuesto);
   if (Array.isArray(sourceTrip.paisIds) || sourceTrip.paisId) tripPatch.paisIds = tripCountryIds(sourceTrip);
   if (Array.isArray(sourceTrip.lodgingLocations)) tripPatch.lodgingLocations = tripLodgingLocations(sourceTrip);
@@ -13891,10 +13934,11 @@ async function importTripBackup(data, targetTripId) {
     tripPatch.ciudadIds = tripCityIds(sourceTrip);
     tripPatch.routeStops = tripRouteStops(sourceTrip);
   }
-  await putRecord('viajes', { ...targetTrip, ...tripPatch });
+  // Defer trip persistence until group account references can be remapped.
   const accountMap = {};
   const sourceExpenses = (data.gastos || []).filter(g => Number(g.viajeId) === sourceTripId);
   const requiredIds = new Set(sourceExpenses.map(g => Number(g.cuentaId)));
+  for (const accountId of [...(sourceTrip.group?.meals || []).map(meal => meal.accountId), ...(sourceTrip.group?.settlements || []).map(payment => payment.accountId)]) if (Number(accountId)) requiredIds.add(Number(accountId));
   (data.cuentas || []).filter(c => Number(c.viajeId) === sourceTripId).forEach(c => requiredIds.add(Number(c.id)));
   const sourceTransfers = (data.transferencias || []).filter(t => requiredIds.has(Number(t.fromId)) || requiredIds.has(Number(t.toId)));
   sourceTransfers.forEach(t => { requiredIds.add(Number(t.fromId)); requiredIds.add(Number(t.toId)); });
@@ -13914,9 +13958,12 @@ async function importTripBackup(data, targetTripId) {
     };
     accountMap[Number(c.id)] = await addRecord('cuentas', obj);
   }
+  if (sourceTrip.group) tripPatch.group = TravelGroup.remapAccounts(sourceTrip.group, accountMap);
+  await putRecord('viajes', { ...targetTrip, ...tripPatch });
   for (const transfer of sourceTransfers) {
     if (!accountMap[Number(transfer.fromId)] || !accountMap[Number(transfer.toId)]) throw new Error('Transferencia sin cuenta recuperable.');
     const obj = { ...transfer, fromId: accountMap[Number(transfer.fromId)], toId: accountMap[Number(transfer.toId)] };
+    if (transfer.groupTripId != null) obj.groupTripId = targetId;
     delete obj.id;
     await addRecord('transferencias', obj);
   }
@@ -13934,6 +13981,7 @@ async function importTripBackup(data, targetTripId) {
       createdAt: g.createdAt || now,
       updatedAt: now
     };
+    if (g.groupTripId != null) obj.groupTripId = targetId;
     delete obj.id;
     const newExpenseId = await addRecord('gastos', obj);
     if (g.id != null) expenseMap[Number(g.id)] = Number(newExpenseId);
@@ -14426,7 +14474,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v001');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=900v001');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -17068,13 +17116,14 @@ function setTab(id, options = {}) {
   const previousTab = state.activeTab;
   if (id !== 'mapa' && tripVectorMap) destroyTripVectorMap();
   state.activeTab = id;
-  ['viajes', 'preparar', 'gastos', 'blog', 'mapa', 'resumen', 'config'].forEach(tab => {
+  ['viajes', 'preparar', 'grupo', 'gastos', 'blog', 'mapa', 'resumen', 'config'].forEach(tab => {
     $(`#tab-${tab}`).classList.toggle('active', tab === id);
     $(`#view-${tab}`).style.display = tab === id ? 'block' : 'none';
   });
   if (id === 'mapa') renderMapPaises();
   if (id === 'resumen') renderResumen();
   if (id === 'preparar') renderPreparation();
+  if (id === 'grupo') TravelGroupUI.render();
   if (id === 'blog') {
     renderBlog();
     if (previousTab !== 'blog') resetBlogTableHorizontalScroll();
@@ -17118,6 +17167,7 @@ function applySelectedTrip(id) {
 }
 
 function openEditGasto(gasto) {
+  if (gasto?.groupTripId != null) { alert('Revisa o corrige esta comida desde Grupo → Comidas.'); setTab('grupo'); return; }
   const dialog = $('#edit-gasto-dialog');
   if (!dialog || !gasto) return;
   activeEditExpenseActionAnchor = captureExpenseActionAnchor(gasto.id);
@@ -18231,6 +18281,9 @@ async function resetDataValue(option) {
     transferencias: ['transferencias']
   };
   const stores = map[value];
+  if (value !== 'todo' && ['cuentas', 'gastos', 'transferencias', 'viajes', 'categorias'].includes(value) && state.viajes.some(trip => trip.group?.integrate && trip.group.meals?.some(meal => meal.status === 'closed'))) {
+    alert('Hay movimientos de Grupo vinculados. Gestiona las comidas desde Grupo antes de borrar datos por separado.'); return;
+  }
   if (!stores) {
     alert('Opción no reconocida. Usa: todo, categorías, monedas, cuentas, viajes, gastos, blog o transferencias.');
     return;
@@ -18291,7 +18344,42 @@ async function handleGastoAction(id, action) {
   }
 }
 
+function bindGroupEvents() {
+  $('#tab-grupo').onclick = () => setTab('grupo');
+  TravelGroupUI.mount({
+    getState: () => state,
+    refresh: () => loadAll(),
+    selectTrip: id => applySelectedTrip(id),
+    save: async (tripId, revision, group) => {
+      const result = await TravelGroupStore.save(await openDB(), tripId, revision, group);
+      noteLocalDataChanged('viajes');
+      await loadAll();
+      return result;
+    },
+    cacheDraft: draft => commitBackupOperations([{ store: 'appSettings', type: 'put', data: { key: 'groupMealDraft:' + draft.tripId, draft, updatedAt: new Date().toISOString() } }]),
+    readDraft: async tripId => (await getOne('appSettings', 'groupMealDraft:' + tripId))?.draft || null,
+    clearDraft: tripId => deleteRecord('appSettings', 'groupMealDraft:' + tripId),
+    readTicket: async input => {
+      const file = input.files?.[0];
+      if (!file) return null;
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error('Selecciona una fotografía JPEG, PNG o WebP.');
+      if (file.size > 20 * 1024 * 1024) throw new Error('La foto supera 20 MB. Elige una imagen más pequeña.');
+      return readFileData(input);
+    },
+    recognize: async (meal, progress) => {
+      const ocr = await import('./ticket-ocr.js?v=900v001');
+      return ocr.recognizeTicket(meal.ticketData, { type: meal.ticketType, name: meal.ticketName, languages: ['spa'], onProgress: value => progress(value.status || 'Leyendo…') });
+    },
+    share: async text => {
+      if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
+      try { await navigator.clipboard.writeText(text); }
+      catch { downloadText('reparto-comida.txt', text, 'text/plain;charset=utf-8'); }
+    }
+  });
+}
+
 function bindEvents() {
+  bindGroupEvents();
   bindPreparationEvents();
   $('#tab-viajes').onclick = () => setTab('viajes');
   $('#tab-gastos').onclick = () => setTab('gastos');
@@ -19872,6 +19960,7 @@ function bindEvents() {
       } else if (target.dataset.editCuenta) {
         const c = state.cuentas.find(item => item.id === Number(target.dataset.editCuenta));
         if (!c) return;
+        if (c.groupClearing) { setTab('grupo'); return; }
         const accountScope = c.viajeId ? (tripName(c.viajeId) || 'viaje') : 'plantilla global';
         openFormDialog({
           title: `Editar ${c.nombre} · ${accountScope}`,
@@ -20143,7 +20232,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v001');
+    imageLocationModulePromise ||= import('./image-location.js?v=900v001');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

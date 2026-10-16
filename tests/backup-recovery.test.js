@@ -5,11 +5,11 @@ import vm from 'node:vm';
 const app = fs.readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
 const section = (from, to) => app.slice(app.indexOf(from), app.indexOf(to, app.indexOf(from)));
 const prepContext = vm.createContext({});
-vm.runInContext(fs.readFileSync(new URL('../preparation.js', import.meta.url), 'utf8'), prepContext);
+for (const file of ['preparation.js','group-meals.js']) vm.runInContext(fs.readFileSync(new URL('../'+file, import.meta.url), 'utf8'), prepContext);
 const empty = () => ({ cuentas: [], categorias: [], gastos: [], viajes: [], monedas: [], transferencias: [], lugares: [], photoTypes: [], viajeDocumentos: [], blogEntries: [], timelineDays: [] });
 function harness(initial = empty()) {
   const state = structuredClone(initial);
-  const context = vm.createContext({ state, Date, Number, Set, Map, Promise, TravelPreparation: prepContext.TravelPreparation, PREPARATION_CATALOG_SETTING_KEY: 'preparationCatalog',
+  const context = vm.createContext({ state, Date, Number, Set, Map, Promise, TravelPreparation: prepContext.TravelPreparation, TravelGroup: prepContext.TravelGroup, PREPARATION_CATALOG_SETTING_KEY: 'preparationCatalog',
     numberValue: value => Number(value) || 0, optionalNumberValue: value => value == null ? null : Number(value),
     normalizeAccountType: value => value || '', normalizePhotoTypes: value => value || [],
     PHOTO_TYPES_SETTING_KEY: 'photoTypes', DEFAULT_PHOTO_TYPES: [], DEFAULT_MONEDAS: [{codigo:'EUR',eurPorUnidad:1,unidadesPorEuro:1}],
@@ -85,7 +85,7 @@ test('no permite borrar cuentas referenciadas por gastos o transferencias', asyn
 });
 test('borrar un viaje conserva cuentas y gastos accesibles sin referencias al viaje eliminado', async () => {
   const state={...empty(),viajeDocumentos:[{id:1,viajeId:3}]};
-  const ctx=vm.createContext({ Number, state, getAll:async name=>name==='gastos'?[{id:4,cuentaId:25,viajeId:3}]:[{id:25,viajeId:3,saldoActual:10}], commitBackupOperations:async operations=>{ctx.operations=operations;} });
+  const ctx=vm.createContext({ Number, state, getOne:async()=>({id:3}), getAll:async name=>name==='gastos'?[{id:4,cuentaId:25,viajeId:3}]:[{id:25,viajeId:3,saldoActual:10}], commitBackupOperations:async operations=>{ctx.operations=operations;} });
   vm.runInContext(section('async function delViaje', 'async function addTripDocument'),ctx); await ctx.delViaje(3);
   const preserved=ctx.operations.filter(o=>o.type==='put'); assert.equal(preserved.length,2); assert.ok(preserved.every(o=>o.data.viajeId===null));
   assert.equal(preserved.find(o=>o.store==='cuentas').data.saldoActual,10);
@@ -93,7 +93,7 @@ test('borrar un viaje conserva cuentas y gastos accesibles sin referencias al vi
 });
 test('backup de viaje incluye la cuenta contraparte de una transferencia', () => {
   const state=fixture(); state.cuentas.push({id:21,nombre:'Base',moneda:'EUR',viajeId:null});
-  const ctx=vm.createContext({ state, Number, Set, Date, APP_VERSION:'800v001',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
+  const ctx=vm.createContext({ state, Number, Set, Date, APP_VERSION:'900v001',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
   vm.runInContext(section('function buildTripBackupData', '// Prepare every write'),ctx);
   const backup=ctx.buildTripBackupData(3); assert.ok(backup.cuentas.some(c=>c.id===21)); assert.equal(backup.transferencias.length,1);
 });
@@ -118,4 +118,28 @@ test('las copias anteriores sin preparativos siguen importándose con catálogo 
   const trip=ctx.operations.find(o=>o.store==='viajes'&&o.type==='add'&&o.data.id===3).data;
   assert.equal(trip.preparationItems.length,0);
   assert.ok(ctx.operations.find(o=>o.data?.key==='preparationCatalog').data.items.length>50);
+});
+
+test('importar Grupo sobre otro viaje remapea cuentas y propiedad de movimientos sin duplicarlos',async()=>{
+ const ctx=harness({...empty(),viajes:[{id:50,nombre:'Destino'}]});const data=fixture();
+ data.cuentas.push({id:90,nombre:'Banco real',viajeId:null,moneda:'EUR',saldoActual:400},{id:91,nombre:'Compensación',viajeId:3,moneda:'EUR',saldoActual:0,groupClearing:true});
+ data.viajes[0].group={enabled:true,revision:4,selfId:'a',integrate:true,participants:[{id:'a',name:'A'},{id:'b',name:'B'}],meals:[{id:'m1',status:'closed',currency:'EUR',name:'Cena',date:'2026-11-28',attendees:['a','b'],payerId:'a',accountId:90,totalCents:1000,items:[{id:'i1',name:'Comida',amountCents:1000,common:true}]}],settlements:[]};
+ data.gastos.push({id:800,viajeId:3,cuentaId:91,moneda:'EUR',importe:5,groupTripId:3,groupSource:'meal:m1'});
+ data.transferencias.push({id:801,fromId:90,toId:91,importeFrom:10,importeTo:10,monedaFrom:'EUR',monedaTo:'EUR',groupTripId:3,groupSource:'advance:m1'});
+ await ctx.importTripBackup(data,50);
+ const savedTrip=ctx.operations.find(op=>op.store==='viajes'&&op.type==='put').data;
+ const real=ctx.operations.find(op=>op.store==='cuentas'&&op.data?.nombre==='Banco real').data;
+ assert.equal(savedTrip.group.meals[0].accountId,real.id);assert.equal(savedTrip.group.revision,4);
+ assert.equal(ctx.operations.find(op=>op.store==='gastos'&&op.data?.groupSource==='meal:m1').data.groupTripId,50);
+ assert.equal(ctx.operations.find(op=>op.store==='transferencias'&&op.data?.groupSource==='advance:m1').data.groupTripId,50);
+});
+
+test('una comida inválida impide reemplazar los datos al importar una copia completa o de viaje', async () => {
+  const data = fixture();
+  data.viajes[0].group = {enabled:true, participants:[{id:'a',name:'Ana'}], meals:[{id:'m1',status:'closed',currency:'EUR',name:'Cena',date:'2026-11-28',attendees:['a'],payerId:'a',totalCents:1000,items:[{name:'Comida',amountCents:900,common:true}]}]};
+  for (const mode of ['all', 'trip']) {
+    const ctx = harness({...empty(), viajes:[{id:50,nombre:'Destino'}]});
+    await assert.rejects(mode === 'all' ? ctx.importAll(data) : ctx.importTripBackup(data,50), /difieren/);
+    assert.equal(ctx.operations, undefined);
+  }
 });

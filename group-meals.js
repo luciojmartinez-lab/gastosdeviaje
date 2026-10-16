@@ -9,9 +9,11 @@
     const text = String(value ?? '').trim().replace(/\s|€/g, '');
     const normalized = text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text;
     if (!/^-?\d+(?:\.\d{1,2})?$/.test(normalized)) throw new Error('Escribe un importe con un máximo de dos decimales.');
-    const result = Math.round(Number(normalized) * 100);
-    if (!Number.isSafeInteger(result)) throw new Error('Importe demasiado grande.');
-    return result;
+    const negative = normalized.startsWith('-');
+    const [whole, decimals = ''] = normalized.replace(/^-/, '').split('.');
+    const exact = (BigInt(whole) * 100n + BigInt(decimals.padEnd(2, '0'))) * (negative ? -1n : 1n);
+    if (exact > BigInt(Number.MAX_SAFE_INTEGER) || exact < -BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Importe demasiado grande.');
+    return Number(exact);
   }
   function normalize(value = {}) {
     const group = value && typeof value === 'object' ? copy(value) : {};
@@ -22,16 +24,23 @@
   }
   function split(amount, shares) {
     if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('Importe de reparto no válido.');
+    if (Object.values(shares || {}).some(weight => !Number.isFinite(Number(weight)) || Number(weight) < 0)) throw new Error('Reparto no válido.');
     const entries = Object.entries(shares || {}).filter(([, weight]) => Number(weight) > 0);
     if (!entries.length) throw new Error('Hay un concepto sin asignar.');
     if (entries.some(([, weight]) => !Number.isFinite(Number(weight)) || Number(weight) > 1000000)) throw new Error('Reparto no válido.');
-    const weightTotal = entries.reduce((sum, [, weight]) => sum + Number(weight), 0);
-    const rows = entries.map(([id, weight], index) => {
-      const exact = amount * Number(weight) / weightTotal;
-      return { id, index, value: Math.floor(exact), remainder: exact - Math.floor(exact) };
+    const weights = entries.map(([id, weight], index) => {
+      const scaled = Math.round(Number(weight) * 1000000);
+      if (!scaled || Math.abs(Number(weight) - scaled / 1000000) > 1e-12) throw new Error('Usa como máximo seis decimales en los pesos.');
+      return { id, index, weight: BigInt(scaled) };
+    });
+    const totalWeight = weights.reduce((sum, row) => sum + row.weight, 0n);
+    const rows = weights.map(row => {
+      const numerator = BigInt(amount) * row.weight;
+      return { ...row, value: Number(numerator / totalWeight), remainder: numerator % totalWeight };
     });
     let remaining = amount - rows.reduce((sum, row) => sum + row.value, 0);
-    [...rows].sort((a, b) => b.remainder - a.remainder || a.index - b.index).forEach(row => { if (remaining-- > 0) row.value += 1; });
+    [...rows].sort((a, b) => a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1)
+      .forEach(row => { if (remaining-- > 0) row.value += 1; });
     return Object.fromEntries(rows.map(row => [row.id, row.value]));
   }
   function allocation(meal) {
@@ -44,11 +53,15 @@
       const amount = integer(item.amountCents);
       if (!item.name?.trim() || amount < 0 || !Number.isSafeInteger(item.amountCents)) { errors.push('Revisa el nombre y el importe de cada concepto.'); continue; }
       totalCents += amount;
+      if (!Number.isSafeInteger(totalCents)) errors.push('Importe demasiado grande.');
+      if (item.quantity != null && (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0)) errors.push('Revisa las unidades de cada concepto.');
       const shares = item.common ? Object.fromEntries(attendees.map(id => [id, 1])) : item.shares || {};
       const selected = Object.entries(shares).filter(([, weight]) => Number(weight) > 0);
       if (!selected.length) { unassignedCents += amount; errors.push(`Falta asignar: ${item.name}.`); continue; }
       if (selected.some(([id]) => !attendees.includes(id))) { errors.push(`Hay una persona ausente en ${item.name}.`); continue; }
       try {
+        if (Object.values(shares).some(weight => !Number.isFinite(Number(weight)) || Number(weight) < 0)) throw new Error('Reparto no válido.');
+        if (item.mode === 'units' && !item.common && Math.abs(selected.reduce((sum, [, weight]) => sum + Number(weight), 0) - Number(item.quantity)) > 0.000001) throw new Error(`Las unidades asignadas no coinciden en ${item.name}.`);
         for (const [id, value] of Object.entries(split(amount, shares))) {
           totals[id] += value;
           (item.common ? common : individual)[id] += value;
@@ -62,8 +75,11 @@
     if (differenceCents !== 0) errors.push(`Los conceptos y el ticket difieren en ${money(differenceCents)}.`);
     return { totals, common, individual, totalCents, unassignedCents, differenceCents, errors: unique(errors) };
   }
+  function validDate(value) { const date = new Date(String(value) + 'T12:00:00Z'); return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(date.getTime()) && date.toISOString().slice(0,10) === value; }
   function validate(group) {
     const ids = group.participants.map(p => p.id);
+    if (group.participants.some(p => !p.name.trim())) throw new Error('Escribe el nombre de cada viajero.');
+    if (!Number.isSafeInteger(group.revision) || group.revision < 0) throw new Error('Revisión de grupo no válida.');
     if (new Set(ids).size !== ids.length) throw new Error('Hay viajeros duplicados.');
     if (group.selfId && !ids.includes(group.selfId)) throw new Error('Selecciona quién eres en el grupo.');
     if (group.integrate && !group.selfId) throw new Error('Indica quién eres para registrar tu parte en Gastos.');
@@ -73,22 +89,28 @@
       mealIds.add(meal.id);
       if (!['draft', 'closed'].includes(meal.status)) throw new Error('Estado de comida no válido.');
       if (meal.currency !== 'EUR') throw new Error('Las comidas de grupo de esta versión se registran en euros.');
+      if (!Array.isArray(meal.attendees) || !Array.isArray(meal.items)) throw new Error('Datos de comida no válidos.');
+      if (new Set(meal.attendees).size !== meal.attendees.length) throw new Error('Asistentes duplicados.');
+      const itemIds = meal.items.map(item => item.id).filter(Boolean);
+      if (new Set(itemIds).size !== itemIds.length) throw new Error('Conceptos duplicados.');
       if (meal.attendees.some(id => !ids.includes(id))) throw new Error('Una comida contiene un viajero que no existe.');
       if (meal.status !== 'closed') continue;
       const result = allocation(meal);
       if (result.errors.length) throw new Error(result.errors[0]);
       if (!ids.includes(meal.payerId)) throw new Error('Indica quién pagó al restaurante.');
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(meal.date) || !meal.name?.trim()) throw new Error('Indica restaurante y fecha.');
+      if (!validDate(meal.date) || !meal.name?.trim()) throw new Error('Indica restaurante y fecha.');
     }
     const settlementIds = new Set();
     for (const payment of group.settlements) {
       if (!payment.id || settlementIds.has(payment.id)) throw new Error('Cobro duplicado.');
       settlementIds.add(payment.id);
+      if (payment.voided) { if (!String(payment.voidReason || '').trim()) throw new Error('Indica por qué anulas la devolución.'); continue; }
       const meal = group.meals.find(m => m.id === payment.mealId && m.status === 'closed');
-      if (!meal || !ids.includes(payment.fromId) || payment.toId !== meal.payerId || payment.fromId === payment.toId) throw new Error('El cobro no corresponde a esta comida.');
+      if (!meal || !meal.attendees.includes(payment.fromId) || payment.toId !== meal.payerId || payment.fromId === payment.toId) throw new Error('El cobro no corresponde a esta comida.');
       if (!Number.isSafeInteger(payment.amountCents) || payment.amountCents <= 0) throw new Error('El cobro debe ser mayor que cero.');
-      const paid = group.settlements.filter(p => p.mealId === meal.id && p.fromId === payment.fromId).reduce((sum, p) => sum + p.amountCents, 0);
+      const paid = group.settlements.filter(p => !p.voided && p.mealId === meal.id && p.fromId === payment.fromId).reduce((sum, p) => sum + p.amountCents, 0);
       if (paid > (allocation(meal).totals[payment.fromId] || 0)) throw new Error('El cobro supera la parte pendiente de esa persona.');
+      if (!validDate(payment.date)) throw new Error('Indica la fecha de la devolución.');
     }
     return group;
   }
@@ -96,7 +118,7 @@
     const result = allocation(meal);
     return meal.attendees.map(id => {
       const due = result.totals[id] || 0;
-      const received = group.settlements.filter(p => p.mealId === meal.id && p.fromId === id).reduce((sum, p) => sum + p.amountCents, 0);
+      const received = group.settlements.filter(p => !p.voided && p.mealId === meal.id && p.fromId === id).reduce((sum, p) => sum + p.amountCents, 0);
       return { id, due, paid: id === meal.payerId ? due : received, remaining: id === meal.payerId ? 0 : due - received };
     });
   }
@@ -106,7 +128,7 @@
       for (const [id, amount] of Object.entries(allocation(meal).totals)) rows[id].consumed += amount;
       rows[meal.payerId].advanced += meal.totalCents;
     }
-    for (const payment of group.settlements) { rows[payment.fromId].sent += payment.amountCents; rows[payment.toId].received += payment.amountCents; }
+    for (const payment of group.settlements.filter(p => !p.voided)) { rows[payment.fromId].sent += payment.amountCents; rows[payment.toId].received += payment.amountCents; }
     return Object.values(rows).map(row => ({ ...row, balance: row.advanced - row.consumed + row.sent - row.received }));
   }
   function parseItems(text) {
@@ -141,7 +163,7 @@
     const name = id => group.participants.find(p => p.id === id)?.name || '?';
     return [`${meal.name} · ${meal.date}`, `Total: ${money(meal.totalCents)} · ${meal.attendees.length} asistentes`, '',
       ...meal.attendees.map(id => `${name(id)}: ${money(result.totals[id] || 0)} (individual ${money(result.individual[id] || 0)} + compartido ${money(result.common[id] || 0)})`),
-      '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
+      '', ...mealPayments(group, meal).map(row => `${name(row.id)}: ${row.id === meal.payerId ? 'cubierto' : 'devuelto'} ${money(row.paid)} · pendiente ${money(row.remaining)}`), '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
   }
   root.TravelGroup = { normalize, validate, allocation, split, cents, money, balances, mealPayments, parseItems, remapAccounts, summary };
 })(globalThis);

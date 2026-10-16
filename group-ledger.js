@@ -23,11 +23,11 @@
     const newExpenses = [], newTransfers = [];
     const counters = Object.fromEntries(['cuentas', 'gastos', 'transferencias', 'categorias'].map(name => [name, snapshot[name].reduce((max, record) => Math.max(max, Number(record.id) || 0), 0)]));
     const idFor = (store, source, old) => old.find(record => record.groupSource === source)?.id || ++counters[store];
-    if (group.integrate && closed.length) {
+    if (group.enabled && group.integrate && closed.length) {
       let clearing = accounts.find(account => account.groupClearing === true && Number(account.viajeId) === Number(trip.id));
       if (!clearing) {
         clearing = { id: ++counters.cuentas, nombre: 'Grupo · pendiente de recuperar / pagar', moneda: 'EUR', viajeId: trip.id,
-          saldoInicial: 0, saldoActual: 0, accountType: 'normal', groupClearing: true,
+          saldoInicial: 0, saldoActual: 0, accountType: 'standard', groupClearing: true,
           nota: 'Cuenta de compensación: saldo positivo = recuperar del grupo; negativo = pagar al grupo. Los movimientos se gestionan desde Grupo.', createdAt: now, updatedAt: now };
         accounts.push(clearing);
         changes.set(clearing.id, clearing);
@@ -39,7 +39,7 @@
       }
       const realAccount = id => {
         const account = accounts.find(c => Number(c.id) === Number(id));
-        if (!account || account.groupClearing || account.moneda !== 'EUR' || (account.viajeId && Number(account.viajeId) !== Number(trip.id))) throw new Error('Elige una cuenta en euros de este viaje para tus pagos y cobros.');
+        if (!account || account.groupClearing || account.moneda !== 'EUR' || Number(account.viajeId) !== Number(trip.id)) throw new Error('Elige una cuenta en euros de este viaje para tus pagos y cobros.');
         return account;
       };
       const transfer = (source, date, fromId, toId, amount, note) => {
@@ -61,7 +61,7 @@
         }
         if (meal.payerId === group.selfId) transfer(`advance:${meal.id}`, meal.date, realAccount(meal.accountId).id, clearing.id, meal.totalCents, `${meal.name} · pago completo al restaurante`);
       }
-      for (const payment of group.settlements) {
+      for (const payment of group.settlements.filter(payment => !payment.voided)) {
         const meal = closed.find(m => m.id === payment.mealId);
         if (payment.fromId === group.selfId) transfer(`settlement:${payment.id}`, payment.date, realAccount(payment.accountId).id, clearing.id, payment.amountCents, `${meal.name} · devolución al compañero que pagó`);
         if (payment.toId === group.selfId) transfer(`settlement:${payment.id}`, payment.date, clearing.id, realAccount(payment.accountId).id, payment.amountCents, `${meal.name} · devolución recibida`);

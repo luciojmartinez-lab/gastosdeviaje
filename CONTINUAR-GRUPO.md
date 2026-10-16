@@ -1,6 +1,29 @@
 # Continuar «Grupo → Comidas» desde el proyecto local
 
-Estado: trabajo inicial, sin interfaz conectada ni cambios en producción.
+Estado actualizado a 16/10/2026: interfaz y persistencia implementadas en `feature/grupo-comidas`, versión de desarrollo 900v001. Sin despliegue ni cambios en main.
+
+## Continuación realizada en escritorio
+
+- Se comparó la carpeta local antes de integrar: main limpio en fa553a7, igual a origin/main. La rama remota añadía únicamente este documento, los dos módulos iniciales y sus pruebas. Se creó `backup/local-antes-grupo-20261016` y se conservaron los archivos locales ignorados.
+- Navegación Grupo; viajeros por viaje, altas por líneas, edición y archivo; identidad e integración personal opcional.
+- Editor de comidas con asistentes, foto, OCR local existente y texto pegado, conceptos por pesos/unidades, pan/agua compartidos, revisión obligatoria, borrador y cierre. Recuperación local del editor y revisión ante conflictos.
+- Pagador único, devoluciones parciales, anulación con motivo e historial, pendientes y resumen compartible. Las anulaciones se excluyen también del pendiente por comida.
+- `group-store.js`: transacción IndexedDB única con control de revisión, reversión y regeneración idempotente de gastos/transferencias. Integración solo con cuentas EUR del viaje. Movimientos generados protegidos frente a edición independiente.
+- Copias completas y por viaje con validación previa, remapeo de cuentas y groupTripId. Fotos de grupo incorporadas al empaquetado e hidratación de adjuntos de sincronización. Scripts incorporados a la caché offline y ayuda HTML actualizada.
+- 298 pruebas automáticas pasan: incluye reparto exacto, doce asistentes, céntimos grandes, ausentes, cierre con revisión obligatoria, pagos parciales/anulados, aborto atómico, concurrencia, importación/remapeo y fotos en copias. Las pruebas de interfaz usan JSDOM y sustituyen la lectura de la foto/OCR; no prueban reconocimiento real.
+- Prueba anterior en navegador: comida de 300 EUR entre doce (25 EUR por persona), devolución parcial de 10 y pendiente del pagador 265. Después se restringió la selección de cuentas a las del propio viaje; esa corrección está cubierta por pruebas automáticas.
+
+## Verificación manual pendiente antes de publicar
+
+La herramienta de control del navegador se bloqueó repetidamente al seleccionar un JSON para importar en localhost:8932; no llegó a mostrar una confirmación JavaScript controlable. Lucio canceló un aviso de guardar contraseña, pero al repetir la selección de archivo volvió el bloqueo. No se ha probado de extremo a extremo una foto real/OCR, ni completado la revisión móvil, la recarga y el circuito offline de esta versión final. No confundir este bloqueo de automatización con un diagnóstico confirmado de fallo de importación de la app.
+
+Continuar esas comprobaciones desde una pestaña que responda. Usar datos sintéticos y una cuenta EUR del viaje; banco inicial 500, pago 300, consumo propio 25: banco 200 y compensación 275. Tras recibir 10: banco 210 y compensación 265. Anular esos 10 debe restaurar 200/275 y el pendiente del compañero.
+
+El PDF de ayuda existente no se ha regenerado. Límites de esta entrega: EUR, un pagador por comida, sin fondo común ni edición simultánea entre dispositivos.
+
+## Especificación inicial conservada (histórica)
+
+Los apartados siguientes describen el punto de partida y el diseño acordado; las afirmaciones sobre módulos todavía no conectados corresponden al estado inicial, superado por el trabajo anterior.
 
 Carpeta indicada por Lucio: `C:\Users\lucio\Documents\Codex\Cuaderno de Bitacora`.
 Repositorio: `luciojmartinez-lab/gastosdeviaje`.
