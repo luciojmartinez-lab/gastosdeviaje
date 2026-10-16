@@ -1,6 +1,6 @@
 # Continuar «Grupo → Comidas» desde el proyecto local
 
-Estado actualizado a 16/10/2026: interfaz y persistencia implementadas en `feature/grupo-comidas`, versión 900v002 preparada para publicación en la web habitual. La 900v001 se publicó primero como vista previa de la PR #7; la web habitual seguía en 800v001. Lucio solicitó actualizarla y confirmó que la siguiente versión sería 900v002.
+Estado actualizado a 16/10/2026: Grupo → Comidas integrado en main mediante la PR #7 y publicado. Numeración corregida a 800v002 por petición de Lucio; sustituye la etiqueta 900v002 sin cambios funcionales. Continuar la serie 800.
 
 ## Continuación realizada en escritorio
 
