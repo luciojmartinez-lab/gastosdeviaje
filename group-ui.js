@@ -1,7 +1,7 @@
 (function(root) {
   'use strict';
   const api = () => root.TravelGroup;
-  let host, editor = null, saving = false, reading = false, cacheTail = Promise.resolve(), cacheTimer, paymentGroup;
+  let host, editor = null, saving = false, reading = false, cacheTail = Promise.resolve(), cacheTimer, paymentGroup, aiEnabled=false;
   const $ = selector => document.querySelector(selector);
   const all = selector => Array.from(document.querySelectorAll(selector));
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -77,6 +77,12 @@
     $('#group-meal-attendees').innerHTML=group.participants.filter(person=>person.active||meal.attendees.includes(person.id)).map(person=>`<label class="check-option"><input type="checkbox" data-group-attendee="${esc(person.id)}"${meal.attendees.includes(person.id)?' checked':''}> ${esc(person.name)}</label>`).join('');
     $('#group-meal-reviewed').checked=false;$('#group-meal-file').value='';$('#group-meal-text').value=meal.ocrText||'';
     $('#group-text-panel').open=!!meal.ocrText;$('#group-parse-replace').hidden=true;$('#group-ocr-progress-wrap').hidden=true;
+    $('#group-ai-read').disabled=true;$('#group-ai-consent').checked=false;$('#group-ai-status').textContent='Comprobando disponibilidad de la IA gratuita…';
+    const activeEditor=editor;
+    Promise.resolve(host.aiStatus?.()||{enabled:false,message:'La IA gratuita está pendiente de activación.'}).then(status=>{
+      if(editor!==activeEditor)return;aiEnabled=status.enabled===true;
+      $('#group-ai-status').textContent=status.message;$('#group-ai-read').disabled=!aiEnabled||reading;
+    }).catch(()=>{if(editor===activeEditor){aiEnabled=false;$('#group-ai-status').textContent='No se pudo comprobar el acceso a Google. Puedes usar el OCR local.';}});
     renderTicket();
     message('El OCR propone conceptos. Comprueba cada línea, el total y la asignación antes de cerrar.',false,'#group-meal-message');renderItems();
     if(!$('#group-meal-dialog').open)$('#group-meal-dialog').showModal();
@@ -102,22 +108,29 @@
     await cacheTail;await host.clearDraft(editor.tripId);$('#group-meal-dialog').close();editor=null;message(closed?'Comida cerrada y guardada.':'Borrador guardado.');
   }
   function readCents(value) {try{return api().cents(value);}catch{return null;}}
-  async function extract() {
+  async function extract(useAI=false) {
     if(reading||!editor)return;
+    const withAI=useAI===true;
+    if(withAI && !aiEnabled)throw new Error('La IA gratuita está pendiente de activación. Puedes usar el OCR local.');
+    if(withAI && !$('#group-ai-consent').checked)throw new Error('Marca que autorizas enviar esta foto a Google para leerla.');
+    if(withAI && !$('#group-ai-code').value.trim())throw new Error('Introduce el código de acceso a la lectura gratuita.');
     reading=true;$('#group-ocr').disabled=true;$('#group-parse-text').disabled=true;
+    $('#group-ai-read').disabled=true;$('#group-close-meal').disabled=true;$('#group-save-draft').disabled=true;$('#group-meal-file').disabled=true;
     $('#group-ocr-progress-wrap').hidden=false;$('#group-ocr-progress').value=0;
     const started=Date.now();let percent=0;
-    const paintProgress=()=>{$('#group-ocr-counter').textContent=`${percent}% · ${Math.floor((Date.now()-started)/1000)} s`;};
+    const paintProgress=()=>{$('#group-ocr-counter').textContent=`${withAI&&percent<100?'IA gratuita':percent+'%'} · ${Math.floor((Date.now()-started)/1000)} s`;};
     paintProgress();const timer=setInterval(paintProgress,500);
+    if(withAI)$('#group-ocr-progress').removeAttribute('value');
     let completed=false;
     try {
       if(!editor.meal.ticketData)throw new Error('Añade una foto del ticket.');
-      message('Leyendo el ticket en este dispositivo…',false,'#group-meal-message');
-      const result=await host.recognize(editor.meal,progress=>{
+      message(withAI?'Preparando la lectura gratuita con Google…':'Leyendo el ticket en este dispositivo…',false,'#group-meal-message');
+      const onProgress=progress=>{
         const status=typeof progress==='string'?progress:progress.status||'Leyendo…';
-        if(Number.isFinite(progress?.progress)){percent=Math.max(percent,Math.min(99,Math.round(progress.progress*100)));$('#group-ocr-progress').value=percent;paintProgress();}
+        if(!withAI&&Number.isFinite(progress?.progress)){percent=Math.max(percent,Math.min(99,Math.round(progress.progress*100)));$('#group-ocr-progress').value=percent;paintProgress();}
         message(status,false,'#group-meal-message');
-      });
+      };
+      const result=withAI?await host.recognizeAI(editor.meal,{accessCode:$('#group-ai-code').value,consent:$('#group-ai-consent').checked},onProgress):await host.recognize(editor.meal,onProgress);
       if(!editor)return;
       completed=true;percent=100;$('#group-ocr-progress').value=100;paintProgress();
       $('#group-text-panel').open=true;
@@ -134,6 +147,7 @@
       parseText();
     }finally{
       clearInterval(timer);reading=false;$('#group-ocr').disabled=false;$('#group-parse-text').disabled=false;
+      $('#group-ai-read').disabled=!aiEnabled;$('#group-close-meal').disabled=false;$('#group-save-draft').disabled=false;$('#group-meal-file').disabled=false;
       if(!completed)$('#group-ocr-counter').textContent=`Lectura interrumpida · ${Math.floor((Date.now()-started)/1000)} s`;
       if(editor)showParseFeedback();
     }
@@ -196,12 +210,13 @@
         if(!file){message('No se ha seleccionado una foto nueva.',false,'#group-meal-message');return;}
         if(!/^data:image\/(jpeg|png|webp);base64,/i.test(file.data||''))throw new Error('No se pudo cargar la fotografía. Selecciona una imagen JPEG, PNG o WebP.');
         editor.meal.ticketData=file.data;editor.meal.ticketName=file.name;editor.meal.ticketType=file.type;
-        $('#group-meal-reviewed').checked=false;renderTicket();stash();
+        $('#group-meal-reviewed').checked=false;$('#group-ai-consent').checked=false;renderTicket();stash();
         message(`Foto cargada: ${file.name}. Ya puedes leerla con OCR o introducir los conceptos manualmente.`,false,'#group-meal-message');
       }catch(error){input.value='';throw error;}
       finally{reading=false;controls.forEach(selector=>$(selector).disabled=false);}
     },'#group-meal-message');
     $('#group-ocr').onclick=safe(extract,'#group-meal-message');
+    $('#group-ai-read').onclick=safe(()=>extract(true),'#group-meal-message');
     const propose=replace=>async()=>{try{parseText(replace);}catch(error){message(error.message||String(error),true,'#group-meal-message');}showParseFeedback();};
     $('#group-parse-text').onclick=propose(false);
     $('#group-parse-confirm').onclick=propose(true);

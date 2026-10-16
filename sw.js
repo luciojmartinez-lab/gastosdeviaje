@@ -1,5 +1,5 @@
-const APP_VERSION = '800v006';
-const CACHE_NAME = 'gastosdeviaje-800v006-offline-start';
+const APP_VERSION = '800v007';
+const CACHE_NAME = 'gastosdeviaje-800v007-offline-start';
 const MAP_RUNTIME_CACHE = 'cuaderno-bitacora-map-runtime-v1';
 const SHARED_FILES_CACHE = 'cuaderno-bitacora-shared-files-v1';
 const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4.10.0';
@@ -7,37 +7,39 @@ const OCR_RUNTIME_ASSETS = ['./vendor/opencv/4.10.0/opencv.js'];
 const SHARE_TARGET_PATH = new URL('./share-target', self.location.href).pathname;
 const APP_SHELL_CORE = [
   './index.html',
-  './styles.css?v=800v006',
-  './timeline-import.js?v=800v006',
-  './gpx-import.js?v=800v006',
-  './timeline-routing.js?v=800v006',
-  './map-model.js?v=800v006',
-  './group-meals.js?v=800v006',
-  './group-ledger.js?v=800v006',
-  './group-store.js?v=800v006',
-  './group-ui.js?v=800v006',
-  './preparation.js?v=800v006',
-  './app.bundle.js?v=800v006',
+  './styles.css?v=800v007',
+  './timeline-import.js?v=800v007',
+  './gpx-import.js?v=800v007',
+  './timeline-routing.js?v=800v007',
+  './map-model.js?v=800v007',
+  './group-meals.js?v=800v007',
+  './group-ledger.js?v=800v007',
+  './group-store.js?v=800v007',
+  './group-ui.js?v=800v007',
+  './receipt-ai.js?v=800v007',
+  './preparation.js?v=800v007',
+  './app.bundle.js?v=800v007',
   './version.txt'
 ];
 const APP_SHELL_REQUIRED = [
   './',
   './index.html',
-  './styles.css?v=800v006',
-  './timeline-import.js?v=800v006',
-  './gpx-import.js?v=800v006',
-  './timeline-import-worker.js?v=800v006',
-  './timeline-routing.js?v=800v006',
-  './map-model.js?v=800v006',
-  './group-meals.js?v=800v006',
-  './group-ledger.js?v=800v006',
-  './group-store.js?v=800v006',
-  './group-ui.js?v=800v006',
-  './preparation.js?v=800v006',
-  './app.bundle.js?v=800v006',
+  './styles.css?v=800v007',
+  './timeline-import.js?v=800v007',
+  './gpx-import.js?v=800v007',
+  './timeline-import-worker.js?v=800v007',
+  './timeline-routing.js?v=800v007',
+  './map-model.js?v=800v007',
+  './group-meals.js?v=800v007',
+  './group-ledger.js?v=800v007',
+  './group-store.js?v=800v007',
+  './group-ui.js?v=800v007',
+  './receipt-ai.js?v=800v007',
+  './preparation.js?v=800v007',
+  './app.bundle.js?v=800v007',
   './vendor/maplibre/maplibre-gl.css?v=5.24.0',
   './vendor/maplibre/maplibre-gl.js?v=5.24.0',
-  './manifest.webmanifest?v=800v006',
+  './manifest.webmanifest?v=800v007',
   './version.txt',
   './assets/bitacora-splash.png',
   './assets/bitacora-splash-mobile.png',
@@ -47,11 +49,11 @@ const APP_SHELL_REQUIRED = [
 const APP_SHELL_OPTIONAL = [
   './assets/app-icon-192.png',
   './assets/app-icon-512.png',
-  './ticket-ocr.js?v=800v006',
-  './ticket-image-worker.js?v=800v006',
-  './ticket-image-processing.js?v=800v006',
-  './image-location.js?v=800v006',
-  './share-pdf.js?v=800v006',
+  './ticket-ocr.js?v=800v007',
+  './ticket-image-worker.js?v=800v007',
+  './ticket-image-processing.js?v=800v007',
+  './image-location.js?v=800v007',
+  './share-pdf.js?v=800v007',
   './ayuda.html',
   './assets/help/01-viajes.png',
   './assets/help/02-configuracion.png',
@@ -300,7 +302,7 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/')) return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/.netlify/functions/')) return;
   if (event.request.mode === 'navigate') {
     event.respondWith(cachedNavigationResponse(event.request));
     return;

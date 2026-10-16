@@ -140,8 +140,8 @@
       const match = line.match(/^(.*?)\s+(-?\d+(?:[.,]\d{3})*[.,]\d{2})\s*(?:€|EUR)?$/i);
       if (!match || !/[a-záéíóúüñ]/i.test(match[1])) continue;
       let label = match[1].trim(), quantity = 1;
-      const count = label.match(/^(\d{1,3})\s*(?:[x×]\s*|\s+)(.+)$/i);
-      if (count) { quantity = Number(count[1]); label = count[2]; }
+      const count = label.match(/^(\d{1,4}(?:[.,]\d+)?)\s*(?:[x×]\s*|\s+)(.+)$/i);
+      if (count) { quantity = Number(count[1].replace(',', '.')); label = count[2]; }
       // Some receipts include a unit price before the final line amount.
       label = label.replace(/\s+\d+[.,]\d{2}\s*(?:€|EUR)?$/i, '').trim();
       const amountCents = cents(match[2]);

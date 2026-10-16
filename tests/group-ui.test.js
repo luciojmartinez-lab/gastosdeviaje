@@ -17,7 +17,7 @@ async function setup(options={}){
  const state={selectedViajeIds:[1]},drafts=new Map();
  async function load(){await new Promise((resolve,reject)=>{const tx=db.transaction(stores);tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);stores.forEach(name=>{const req=tx.objectStore(name).getAll();req.onsuccess=()=>state[name]=req.result;});});}
  await load();let ocrCalls=0;
- w.TravelGroupUI.mount({getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>drafts.set(value.tripId,JSON.parse(JSON.stringify(value))),readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:options.recognize || (async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};}),share:async text=>assert.match(text,/Pendiente|pendiente/)});
+ w.TravelGroupUI.mount({aiStatus:options.aiStatus||(async()=>({enabled:true,message:'Comprobación gratuita por foto'})),recognizeAI:options.recognizeAI,getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>drafts.set(value.tripId,JSON.parse(JSON.stringify(value))),readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:options.recognize || (async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};}),share:async text=>assert.match(text,/Pendiente|pendiente/)});
  const $=selector=>w.document.querySelector(selector);
  const input=(selector,value)=>{const element=$(selector);if(element.type==='checkbox')element.checked=value;else element.value=value;element.dispatchEvent(new w.Event('input',{bubbles:true}));element.dispatchEvent(new w.Event('change',{bubbles:true}));};
  const click=selector=>$(selector).click();
@@ -201,5 +201,46 @@ test('un error del OCR informa junto al botón y permite volver a intentarlo',as
   ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-parse-message').textContent==='Lectura fallida');
   assert.equal(ui.$('#group-text-panel').open,true);assert.equal(ui.$('#group-ocr').disabled,false);
   assert.equal(ui.$('#group-parse-text').disabled,false);assert.match(ui.$('#group-ocr-counter').textContent,/interrumpida/);
+ }finally{ui.close();}
+});
+
+
+test('IA pendiente de activar muestra el estado y mantiene el OCR local disponible',async()=>{
+ const ui=await setup({aiStatus:async()=>({enabled:false,message:'Pendiente de activación'})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-ai-status').textContent==='Pendiente de activación');
+  assert.equal(ui.$('#group-ai-read').disabled,true);assert.equal(ui.$('#group-ocr').disabled,false);
+ }finally{ui.close();}
+});
+
+test('IA pide consentimiento, muestra propuesta revisable y no guarda el código en el borrador',async()=>{
+ let calls=0;
+ const ui=await setup({recognizeAI:async(meal,options)=>{calls++;assert.equal(options.consent,true);assert.equal(options.accessCode,'private-test-code');assert.ok(meal.ticketData);return {text:'1 Mejillones 10,50',itemText:'1 Mejillones 10,50',itemsStatus:'reconciled',fields:{total:10.5}};}});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
+  ui.click('#group-ai-read');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('autorizas'));
+  assert.equal(calls,0);ui.input('#group-ai-consent',true);ui.input('#group-ai-code','private-test-code');ui.click('#group-ai-read');
+  await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===1 && !ui.$('#group-ai-read').disabled);
+  assert.equal(calls,1);assert.equal(ui.$('[data-item-field="amountCents"]').value,'10.50');
+  assert.equal(ui.$('#group-meal-reviewed').checked,false);assert.equal(ui.state.gastos.length,0);
+  assert.equal(ui.$('#group-text-panel').open,true);assert.equal(ui.$('#group-ocr-progress').value,100);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
+  assert.equal(ui.$('#group-ai-consent').checked,false);
+  ui.click('#group-close-editor');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  assert.ok(!JSON.stringify([...ui.drafts.values()]).includes('private-test-code'));
+ }finally{ui.close();}
+});
+
+test('IA agotada no cambia los conceptos existentes ni dispara el OCR automáticamente',async()=>{
+ let calls=0;
+ const ui=await setup({recognizeAI:async()=>{calls++;throw new Error('Cuota gratuita agotada');}});
+ try{
+  await prepare(ui);await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
+  const before=ui.$('[data-item-field="name"]').value;
+  ui.input('#group-ai-consent',true);ui.input('#group-ai-code','test-code');ui.click('#group-ai-read');
+  await ui.waitFor(()=>ui.$('#group-parse-message').textContent==='Cuota gratuita agotada');
+  assert.equal(calls,1);assert.equal(ui.ocrCalls(),1);assert.equal(ui.$('[data-item-field="name"]').value,before);
+  assert.equal(ui.$('#group-ocr').disabled,false);assert.equal(ui.$('#group-save-draft').disabled,false);
  }finally{ui.close();}
 });

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 
 const [html, app, styles, sw, help, ticketImageWorker, updateRecovery] = await Promise.all([
@@ -53,11 +54,11 @@ test('el service worker se activa sin descargar archivos y prepara la cache desp
   assert.match(sw, /\.\/vendor\/tesseract\/tesseract\.esm\.min\.js/);
   assert.match(sw, /\.\/vendor\/tesseract\/lang\/spa\.traineddata\.gz/);
   assert.match(sw, /\.\/vendor\/tesseract\/lang\/eng\.traineddata\.gz/);
-  assert.match(sw, /\.\/ticket-image-worker\.js\?v=800v006/);
-  assert.match(sw, /\.\/ticket-image-processing\.js\?v=800v006/);
-  assert.match(sw, /\.\/timeline-import\.js\?v=800v006/);
-  assert.match(sw, /\.\/timeline-import-worker\.js\?v=800v006/);
-  assert.match(sw, /\.\/timeline-routing\.js\?v=800v006/);
+  assert.match(sw, /\.\/ticket-image-worker\.js\?v=800v007/);
+  assert.match(sw, /\.\/ticket-image-processing\.js\?v=800v007/);
+  assert.match(sw, /\.\/timeline-import\.js\?v=800v007/);
+  assert.match(sw, /\.\/timeline-import-worker\.js\?v=800v007/);
+  assert.match(sw, /\.\/timeline-routing\.js\?v=800v007/);
   assert.match(sw, /const OCR_RUNTIME_CACHE = 'cuaderno-bitacora-ocr-runtime-opencv-4\.10\.0'/);
   assert.match(sw, /\.\/vendor\/opencv\/4\.10\.0\/opencv\.js/);
   const installStart = sw.indexOf("self.addEventListener('install'");
@@ -110,7 +111,7 @@ test('una versión nueva provoca una sola recarga después de activar su service
   assert.match(html, /pendingUpdateVersion = latestVersion;[\s\S]*?registration\.update\(\)[\s\S]*?reloadForUpdate\(latestVersion\)/);
   assert.match(html, /APP_VERSION_ACTIVE[\s\S]*?reloadForUpdate\(activeVersion\)/);
   assert.match(html, /controllerchange[\s\S]*?postMessage\(\{ type: 'GET_APP_VERSION' \}\)/);
-  assert.match(sw, /const APP_VERSION = '800v006'/);
+  assert.match(sw, /const APP_VERSION = '800v007'/);
   assert.match(sw, /\.\/assets\/map-train-side\.webp/);
   assert.match(sw, /GET_APP_VERSION[\s\S]*?APP_VERSION_ACTIVE/);
   assert.doesNotMatch(html, /window\.location\.reload\(\)/);
@@ -122,4 +123,14 @@ test('hay una ruta directa para liberar una instalacion antigua atascada', () =>
   assert.match(updateRecovery, /version\.txt\?recovery=\$\{Date\.now\(\)\}/);
   assert.match(updateRecovery, /nextUrl\.searchParams\.set\('v', targetVersion/);
   assert.match(updateRecovery, /location\.replace\(nextUrl\.href\)/);
+});
+
+
+test('las funciones de IA no pasan por la caché, ni su disponibilidad ni las fotos', () => {
+  const listeners = new Map();
+  const location = new URL('https://test.netlify.app/sw.js');
+  vm.runInNewContext(sw, { URL, self: { location, addEventListener: (name, callback) => listeners.set(name, callback) } });
+  let responses = 0;
+  for (const method of ['GET', 'POST']) listeners.get('fetch')({ request: { url: 'https://test.netlify.app/.netlify/functions/receipt-ai', method }, respondWith: () => responses++ });
+  assert.equal(responses, 0);
 });
