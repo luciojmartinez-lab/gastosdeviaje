@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v001">
+  <link rel="manifest" href="manifest.webmanifest?v=900v002">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v001">
+  <link rel="stylesheet" href="styles.css?v=900v002">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v001 · 13/10/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 900v002 · 16/10/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -33,6 +33,7 @@
   <nav>
     <button id="tab-viajes" class="active">Viajes</button>
     <button id="tab-preparar"><span class="desktop-label">Preparar viaje</span><span class="mobile-label">Preparar</span></button>
+    <button id="tab-grupo">Grupo</button>
     <button id="tab-gastos">Gastos</button>
     <button id="tab-blog" disabled>Blog</button>
     <button id="tab-mapa">Mapa</button>
@@ -40,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v001</div>
+  <div class="app-version">900v002</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -86,6 +87,22 @@
     </div>
     <div class="card"><h2>Pendiente</h2><div id="prep-pending"></div></div>
     <div class="card preparation-done"><h2>Hecho</h2><div id="prep-done"></div></div>
+  </section>
+
+  <section id="view-grupo" style="display:none">
+    <div class="card"><h2>Grupo → Comidas</h2><label for="group-trip">Viaje del grupo</label><select id="group-trip"></select><p id="group-message" role="status"></p><p id="group-empty">Selecciona un único viaje para gestionar su grupo.</p></div>
+    <div id="group-content" hidden>
+      <div class="card"><h2>Viajeros</h2><p>Una persona administra las comidas y devoluciones. No se usa fondo común.</p>
+        <details><summary>Viajeros e integración con mis gastos</summary>
+          <label for="group-people">Añadir viajeros, uno por línea</label><textarea id="group-people" rows="5" placeholder="Lucio&#10;Ana&#10;Luis"></textarea><button type="button" class="btn" id="group-add-people">Añadir viajeros</button>
+          <p id="group-roster-count"></p><ul id="group-roster" class="group-roster"></ul>
+          <label for="group-self">Quién soy</label><select id="group-self"></select><label class="check-option"><input type="checkbox" id="group-integrate"> Registrar mi consumo, adelantos y devoluciones en mis cuentas</label>
+          <p class="small">La integración es opcional. Registra solo tu consumo como gasto. Los adelantos y devoluciones son transferencias. La cuenta «Grupo · pendiente de recuperar / pagar» muestra lo que debes recuperar o pagar.</p><button type="button" class="btn" id="group-settings-save">Guardar identidad e integración</button>
+        </details>
+      </div>
+      <div class="card"><div class="section-head"><h2>Comidas</h2><div class="actions"><button type="button" class="btn" id="group-new-meal">Nueva comida</button><button type="button" class="btn ghost" id="group-resume">Recuperar borrador local</button></div></div><p class="small">Importes en euros. Cada comida puede tener asistentes distintos. El reparto conserva exactamente los céntimos del ticket.</p><div id="group-meals"></div></div>
+      <div class="card"><h2>Resumen del grupo</h2><p class="small">Saldo positivo: a recuperar. Negativo: a pagar. Los borradores no intervienen.</p><div id="group-balances"></div></div>
+    </div>
   </section>
 
   <section id="view-gastos" style="display:none">
@@ -489,6 +506,25 @@
     </div>
   </section>
 </main>
+<dialog id="group-meal-dialog" class="modal group-dialog" aria-labelledby="group-meal-title">
+  <form id="group-meal-form">
+    <div class="section-head"><h2 id="group-meal-title">Revisar comida del grupo</h2><button type="button" class="ghost" id="group-close-editor">Cerrar y conservar borrador local</button></div>
+    <p id="group-meal-message" role="status"></p><button type="button" class="ghost" id="group-rebase">Revisar borrador sobre la versión actual del grupo</button>
+    <div class="row2"><div><label for="group-meal-name">Restaurante / nombre de la comida</label><input id="group-meal-name" maxlength="160"></div><div><label for="group-meal-date">Fecha</label><input type="date" id="group-meal-date"></div></div>
+    <label for="group-meal-file">Fotografía del ticket (opcional)</label><input type="file" id="group-meal-file" accept="image/jpeg,image/png,image/webp"><div id="group-meal-ticket"></div><button type="button" class="btn ghost" id="group-ocr">Leer foto con OCR local</button>
+    <details><summary>Texto del ticket / propuesta OCR</summary><label for="group-meal-text">Revisa o pega el texto reconocido</label><textarea id="group-meal-text" rows="8"></textarea><button type="button" class="ghost" id="group-parse-text">Proponer conceptos desde este texto</button></details>
+    <fieldset><legend>Asistentes a esta comida</legend><p class="small">Los compartidos se reparten entre estos asistentes. Si retiras a alguien, revisa sus asignaciones individuales: no se eliminan automáticamente.</p><div id="group-meal-attendees" class="group-attendees"></div></fieldset>
+    <div class="row3"><div><label for="group-meal-total">Total del ticket (€)</label><input id="group-meal-total" inputmode="decimal"></div><div><label for="group-meal-payer">Quién pagó al restaurante</label><select id="group-meal-payer"></select></div><div><label for="group-meal-account">Cuenta real para mi adelanto</label><select id="group-meal-account"></select></div></div>
+    <p class="small">Indica el importe total de cada línea, no el precio unitario. Pan y agua reconocidos por OCR se proponen como compartidos; puedes cambiarlo.</p>
+    <div id="group-meal-items"></div><button type="button" class="btn ghost" id="group-add-item">Añadir concepto manual</button>
+    <p id="group-meal-check" role="status"></p><div id="group-meal-totals"></div>
+    <label class="check-option"><input type="checkbox" id="group-meal-reviewed"> He comprobado foto, conceptos, importes, total y reparto</label>
+    <p class="small">Guardar como borrador retira los movimientos de una comida antes cerrada. Si tiene devoluciones activas, primero anula o corrige sus registros; no se borrarán silenciosamente.</p>
+    <div class="actions"><button type="button" class="btn ghost" id="group-save-draft">Guardar borrador</button><button type="button" class="btn" id="group-close-meal">Cerrar y guardar comida</button></div>
+  </form>
+</dialog>
+<dialog id="group-payment-dialog" class="modal" aria-labelledby="group-payment-title"><form id="group-payment-form"><h2 id="group-payment-title">Registrar devolución parcial o completa</h2><p id="group-payment-message" role="status"></p><input type="hidden" id="group-payment-meal"><p id="group-payment-to"></p><label for="group-payment-from">Quién devuelve</label><select id="group-payment-from" required></select><label for="group-payment-amount">Importe devuelto (€)</label><input id="group-payment-amount" inputmode="decimal" required><label for="group-payment-date">Fecha</label><input type="date" id="group-payment-date" required><label for="group-payment-account">Cuenta real (si yo envío o recibo)</label><select id="group-payment-account"></select><p class="small">Registra únicamente devoluciones ya realizadas. Anular un registro corrige la contabilidad; no devuelve dinero físicamente.</p><div class="actions"><button class="btn" type="submit">Guardar devolución</button><button class="ghost" type="button" id="group-payment-close">Cancelar</button></div></form></dialog>
+
 
 <footer>App PWA offline - IndexedDB - Español</footer>
 
@@ -1289,15 +1325,19 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v001"></script>
-<script src="gpx-import.js?v=800v001"></script>
-<script src="timeline-routing.js?v=800v001"></script>
-<script src="map-model.js?v=800v001"></script>
-<script src="preparation.js?v=800v001"></script>
-<script src="app.bundle.js?v=800v001"></script>
+<script src="timeline-import.js?v=900v002"></script>
+<script src="gpx-import.js?v=900v002"></script>
+<script src="timeline-routing.js?v=900v002"></script>
+<script src="map-model.js?v=900v002"></script>
+<script src="group-meals.js?v=900v002"></script>
+<script src="group-ledger.js?v=900v002"></script>
+<script src="group-store.js?v=900v002"></script>
+<script src="group-ui.js?v=900v002"></script>
+<script src="preparation.js?v=900v002"></script>
+<script src="app.bundle.js?v=900v002"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v001';
+    const pageVersion = '900v002';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1352,7 +1392,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v001', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=900v002', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;
