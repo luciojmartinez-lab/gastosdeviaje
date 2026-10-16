@@ -68,7 +68,9 @@ export function createReceiptHandler({ env, checker, fetcher = fetch, now = () =
       if (billing.billingEnabled !== false || billing.billingAccountName) fail('El proyecto tiene facturación vinculada o no se pudo confirmar que está desactivada. No se enviará la foto a Gemini.');
       const result = await googleJson(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: PROMPT }] }, contents: [{ role: 'user', parts: [{ inlineData: { mimeType: image[1], data: image[2] } }] }], generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json', responseJsonSchema: SCHEMA } })
+        // JSON mode accepts the photo with this model; its schema parameter returns INVALID_ARGUMENT.
+        // Describe the contract in the prompt and validate the response independently below and in the client.
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: `${PROMPT} Devuelve un objeto JSON que cumpla exactamente este esquema: ${JSON.stringify(SCHEMA)}` }] }, contents: [{ role: 'user', parts: [{ inlineData: { mimeType: image[1], data: image[2] } }] }], generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json' } })
       }, 30_000, true);
       const candidate = result.candidates?.[0];
       if (candidate?.finishReason !== 'STOP') fail('Google no ha completado la lectura. No se han modificado tus conceptos.');

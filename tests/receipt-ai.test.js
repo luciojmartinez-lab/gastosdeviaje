@@ -109,6 +109,12 @@ test('IA: revalida facturación en cada foto y usa un modelo fijo sin herramient
   const inference=h.inferences()[0];const body=JSON.parse(inference.init.body);
   assert.ok(inference.url.includes('gemini-3.5-flash-lite:generateContent'));
   assert.equal(body.tools,undefined);assert.equal(body.model,undefined);
+  assert.equal(body.generationConfig.responseMimeType,'application/json');
+  assert.equal(body.generationConfig.responseJsonSchema,undefined);
+  assert.equal(body.generationConfig.responseSchema,undefined);
+  const contract=JSON.parse(body.systemInstruction.parts[0].text.split('este esquema: ')[1]);
+  assert.deepEqual(contract.required,['merchant','currency','totalCents','items','warnings']);
+  assert.deepEqual(contract.properties.items.items.required,['name','quantity','amountCents','uncertain']);
   assert.deepEqual(body.contents[0].parts[0].inlineData,{mimeType:'image/jpeg',data:image.split(',')[1]});
   assert.equal((await h.handler(h.request())).status,503);assert.equal(h.inferences().length,1);
 });
