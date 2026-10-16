@@ -93,7 +93,7 @@ test('borrar un viaje conserva cuentas y gastos accesibles sin referencias al vi
 });
 test('backup de viaje incluye la cuenta contraparte de una transferencia', () => {
   const state=fixture(); state.cuentas.push({id:21,nombre:'Base',moneda:'EUR',viajeId:null});
-  const ctx=vm.createContext({ state, Number, Set, Date, APP_VERSION:'800v004',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
+  const ctx=vm.createContext({ state, Number, Set, Date, APP_VERSION:'800v005',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
   vm.runInContext(section('function buildTripBackupData', '// Prepare every write'),ctx);
   const backup=ctx.buildTripBackupData(3); assert.ok(backup.cuentas.some(c=>c.id===21)); assert.equal(backup.transferencias.length,1);
 });

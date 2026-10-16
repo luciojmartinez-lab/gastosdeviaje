@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  receiptTableColumnsConfident,
   receiptTableBounds,
   joinReceiptTableColumns,
   correctTicketMerchantFromKnown,
@@ -836,10 +837,22 @@ test('las columnas de restaurante se unen solo si las siete filas cuadran con el
 test('la región de productos queda entre el encabezado y el desglose fiscal',()=>{
  const rows=[{text:'Uds. Producto Importe',bbox:{x0:10,y0:100,x1:900,y1:130}},{text:'1 Menú 20,00',bbox:{x0:10,y0:150,x1:900,y1:180}},{text:'Base 18,18 Cuota 1,82',bbox:{x0:10,y0:400,x1:900,y1:430}}];
  const bounds=receiptTableBounds(rows,1000,600);
- assert.ok(bounds.names.y>=100 && bounds.names.y<=130);
+ assert.ok(bounds.names.y>130);
+ assert.ok(bounds.amounts.y>=100 && bounds.amounts.y<=130);
  assert.ok(bounds.names.y+bounds.names.height<400);
  assert.equal(bounds.amounts.x,bounds.names.x+bounds.names.width);
  assert.equal(bounds.amounts.x+bounds.amounts.width,1000);
  assert.equal(receiptTableBounds(rows.slice(1),1000,600),null);
  assert.ok(receiptTableBounds([{...rows[0],text:'Uds. Rrodueto O IMPOLo'},...rows.slice(1)],1000,600));
+});
+
+
+test('no descarta una fila basura para forzar el emparejamiento de productos y precios',()=>{
+ assert.equal(joinReceiptTableColumns('Mila init oruiriaia\n1 MEJILLONES\n1 SEPIA','10,50\n12,70',23.2),null);
+ const data=confidence=>({blocks:[{paragraphs:[{lines:[{text:'1 MEJILLONES',confidence,bbox:{x0:0,y0:0,x1:100,y1:20}}]}]}]});
+ const prices={blocks:[{paragraphs:[{lines:[{text:'10,50',confidence:95,bbox:{x0:0,y0:0,x1:100,y1:20}}]}]}]};
+ assert.equal(receiptTableColumnsConfident(data(90),prices),true);
+ assert.equal(receiptTableColumnsConfident(data(40),prices),false);
+ const repeated=data(45);repeated.blocks[0].paragraphs[0].lines.push({...data(95).blocks[0].paragraphs[0].lines[0],bbox:{x0:0,y0:30,x1:100,y1:50}});
+ assert.equal(receiptTableColumnsConfident(repeated,prices),true);
 });

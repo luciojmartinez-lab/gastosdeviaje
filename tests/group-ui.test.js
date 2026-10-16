@@ -98,3 +98,35 @@ test('Grupo usa la propuesta reconciliada de columnas en lugar del texto complet
   assert.equal(ui.$('#group-meal-reviewed').checked,false);
  }finally{ui.close();}
 });
+
+
+test('el botón de proponer no convierte una lectura rechazada en conceptos con precios desplazados',async()=>{
+ const raw='Mila init oruiriaia 10,50\nMEJILLONES 12,70';
+ const ui=await setup({recognize:async()=>({text:raw,fields:{total:23.2},itemsStatus:'review'})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
+  ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('no se han podido emparejar'));
+  ui.click('#group-parse-text');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('No se puede pasar directamente'));
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,0);
+  ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  ui.click('[data-group-edit]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.click('#group-parse-text');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('No se puede pasar directamente'));
+  ui.input('#group-meal-text','1 MEJILLONES 10,50\n1 SEPIA APERITIVO 12,70');
+  ui.click('#group-parse-text');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===2);
+  assert.equal(ui.$('[data-item-field="name"]').value,'MEJILLONES');
+  assert.equal(ui.$('[data-item-field="amountCents"]').value,'10.50');
+ }finally{ui.close();}
+});
+
+test('proponer un texto incompleto conserva los conceptos anteriores si no suma el ticket',async()=>{
+ const ui=await setup();
+ try{
+  await prepare(ui);
+  const before=ui.$('[data-item-field="name"]').value;
+  ui.input('#group-meal-text','1 MEJILLONES 12,70');ui.click('#group-parse-text');
+  await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('no suman el total'));
+  assert.equal(ui.$('[data-item-field="name"]').value,before);
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,2);
+ }finally{ui.close();}
+});

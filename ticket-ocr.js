@@ -13,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '800v004';
+const DOCUMENT_PREPROCESSOR_VERSION = '800v005';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -1588,8 +1588,11 @@ export function receiptTableBounds(rows, width, height) {
   const bottom=Math.min(height,Math.floor(footer.bbox.y0-rowHeight*0.15));
   if(bottom-y<rowHeight*2)return null;
   const boundary=Math.round(width*0.73);
+  // The curved header may reach the first price, while its divider still sits
+  // above the first product. Crop the two columns at different heights.
+  const namesY=Math.min(bottom,Math.ceil(header.bbox.y1+rowHeight*0.35));
   return {
-    names:{x:Math.round(width*0.035),y,width:boundary-Math.round(width*0.035),height:bottom-y},
+    names:{x:Math.round(width*0.035),y:namesY,width:boundary-Math.round(width*0.035),height:bottom-namesY},
     amounts:{x:boundary,y,width:width-boundary,height:bottom-y}
   };
 }
@@ -1600,6 +1603,7 @@ export function joinReceiptTableColumns(namesText, amountsText, total) {
     const match=line.match(/^(\d{1,3}|[IlL])\s+([\p{L}][\s\S]*)$/u);
     if(!match){
       if(names.length && /^c{1,2}[.,]\s*\p{L}/iu.test(line))names[names.length-1].name+=` · ${line}`;
+      else if(/\p{L}/u.test(line))return null;
       continue;
     }
     const quantity=/^[IlL]$/.test(match[1])?1:Number(match[1]);
@@ -1621,6 +1625,16 @@ export function joinReceiptTableColumns(namesText, amountsText, total) {
   return {items,text:[...items.map(item=>`${item.quantity} ${item.name} ${(item.amountCents/100).toFixed(2).replace('.',',')}`),`TOTAL ${total.toFixed(2).replace('.',',')}`].join('\n')};
 }
 
+export function receiptTableColumnsConfident(names,amounts){
+  const namesRows=ticketOcrLineFragments(names?.blocks).filter(row=>/^(\d{1,3}|[IlL])\s+\p{L}/u.test(row.text));
+  const amountRows=ticketOcrLineFragments(amounts?.blocks).filter(row=>/\d/.test(row.text));
+  const label=row=>normalizeTicketText(row.text.replace(/^(\d{1,3}|[IlL])\s+/,''));
+  return namesRows.length>0 && amountRows.length>0
+    && amountRows.every(row=>row.confidence>=50)
+    && namesRows.every(row=>row.confidence>=50 || (row.confidence>=40
+      && namesRows.some(other=>other!==row && other.confidence>=80 && label(other)===label(row))));
+}
+
 async function recognizeReceiptTable(worker, image, onProgress) {
   await worker.setParameters({tessedit_pageseg_mode:OCR_PSM_SINGLE_BLOCK});
   onProgress({status:'Comprobando conceptos y columna de precios',progress:0.8});
@@ -1630,7 +1644,7 @@ async function recognizeReceiptTable(worker, image, onProgress) {
   const names=await worker.recognize(cropCanvasBounds(image,bounds.names),{rotateAuto:false},OCR_TEXT_WITH_LAYOUT);
   onProgress({status:'Leyendo los importes de cada producto',progress:0.86});
   const amounts=await worker.recognize(cropCanvasBounds(image,bounds.amounts),{rotateAuto:false},OCR_TEXT_WITH_LAYOUT);
-  const table=Number(names.data?.confidence)>=35 && Number(amounts.data?.confidence)>=35
+  const table=receiptTableColumnsConfident(names.data,amounts.data)
     ? joinReceiptTableColumns(names.data.text,amounts.data.text,reading.fields.total):null;
   return {reading,table,passes:3};
 }

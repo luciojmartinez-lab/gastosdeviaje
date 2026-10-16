@@ -104,12 +104,13 @@
       const result=await host.recognize(editor.meal,progress=>message(progress,false,'#group-meal-message'));
       if(!editor)return;
       $('#group-meal-text').value=result.itemText||result.text||'';editor.meal.ocrText=$('#group-meal-text').value;
+      editor.meal.ocrUnsafeText=result.itemsStatus==='review'?editor.meal.ocrText:null;
       if(!editor.meal.name&&result.fields?.merchant){editor.meal.name=result.fields.merchant;$('#group-meal-name').value=editor.meal.name;}
       // Total remains a proposal requiring the user's independent review.
       if(Number.isFinite(result.fields?.total)&&result.fields.total>0){editor.meal.totalCents=Math.round(result.fields.total*100);$('#group-meal-total').value=amount(editor.meal.totalCents);}
       if(result.itemsStatus==='review'){
         $('#group-meal-reviewed').checked=false;stash();
-        message('Se ha leído el texto, pero no se han podido emparejar todos los conceptos y precios con el total. No se han sustituido tus conceptos. Revisa o pega el texto corregido y pulsa «Proponer conceptos desde este texto», o añade los que falten manualmente.',true,'#group-meal-message');
+        message('Se ha leído el texto, pero no se han podido emparejar todos los conceptos y precios con el total. No se han sustituido tus conceptos. No pases este texto directamente a conceptos: vuelve a leer la foto o corrige primero cada línea con su precio.',true,'#group-meal-message');
         return;
       }
       parseText();
@@ -117,8 +118,11 @@
   }
   function parseText(){
     if(!editor)return;
-    const result=api().parseItems($('#group-meal-text').value);
+    const text=$('#group-meal-text').value;
+    if(editor.meal.ocrUnsafeText!=null && text.trim()===editor.meal.ocrUnsafeText.trim())throw new Error('Esta lectura tiene conceptos y precios sin emparejar. No se puede pasar directamente a conceptos. Vuelve a leer la foto o corrige el texto mirando el ticket.');
+    const result=api().parseItems(text);
     if(!result.items.length)throw new Error('No se han reconocido conceptos fiables. Introdúcelos manualmente; no se ha cambiado la lista.');
+    if(Number.isSafeInteger(editor.meal.totalCents)&&editor.meal.totalCents>0 && result.items.reduce((sum,item)=>sum+item.amountCents,0)!==editor.meal.totalCents)throw new Error('Los conceptos reconocidos no suman el total del ticket. No se ha cambiado la lista: corrige las líneas y sus precios antes de proponerlos.');
     if(editor.meal.items.length&&!confirm('Sustituir los conceptos por esta propuesta OCR? Tendrás que revisar y asignar de nuevo las líneas.'))return;
     editor.meal.ocrText=$('#group-meal-text').value;editor.meal.items=result.items.map(item=>({...item,id:uid()}));$('#group-meal-reviewed').checked=false;renderItems();stash();
     message(`Propuesta de ${result.items.length} conceptos. ${result.ignored.length} líneas no incorporadas. El total del ticket se revisa aparte.`,false,'#group-meal-message');

@@ -26,5 +26,5 @@ test('scripts del grupo se cargan antes de la app y están en las dos listas de 
  const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8'),sw=fs.readFileSync(new URL('../sw.js',import.meta.url),'utf8');
  const core=sw.slice(sw.indexOf('const APP_SHELL_CORE'),sw.indexOf('const APP_SHELL_REQUIRED'));
  const required=sw.slice(sw.indexOf('const APP_SHELL_REQUIRED'),sw.indexOf('const APP_SHELL_OPTIONAL'));
- for(const file of ['group-meals.js','group-ledger.js','group-store.js','group-ui.js']){assert.ok(html.indexOf(file+'?v=800v004')<html.indexOf('app.bundle.js?v=800v004'));assert.ok(core.includes(file));assert.ok(required.includes(file));}
+ for(const file of ['group-meals.js','group-ledger.js','group-store.js','group-ui.js']){assert.ok(html.indexOf(file+'?v=800v005')<html.indexOf('app.bundle.js?v=800v005'));assert.ok(core.includes(file));assert.ok(required.includes(file));}
 });
