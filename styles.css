@@ -5886,7 +5886,8 @@ footer {
 }
 
 .group-dialog { width: min(1100px, 96vw); max-height: 94vh; overflow-y: auto; }
-.group-dialog form { display: grid; gap: 12px; }
+.group-dialog form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.group-dialog form > *, .group-dialog .row2 > *, .group-dialog .row3 > * { min-width: 0; }
 .group-dialog input[type="checkbox"], #view-grupo input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 20px; accent-color: var(--primary); }
 .group-roster { list-style: none; padding: 0; }
 .group-roster li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
@@ -5910,6 +5911,9 @@ footer {
 #view-grupo .error, .group-dialog .error, #group-payment-dialog .error { color: #b91c1c; font-weight: 600; }
 @media (max-width: 720px) {
   .group-dialog { width: 98vw; padding: 12px; }
+  .group-dialog .section-head { flex-wrap: wrap; }
+  .group-dialog button, .group-dialog summary { overflow-wrap: anywhere; }
+  .group-dialog button { white-space: normal; max-width: 100%; }
   .group-dialog .row3, .group-dialog .row2 { grid-template-columns: 1fr; }
   .group-shares { grid-template-columns: repeat(2, minmax(0,1fr)); }
   #group-meal-totals ul { columns: 1; }

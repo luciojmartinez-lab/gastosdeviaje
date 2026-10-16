@@ -6,6 +6,22 @@
   const all = selector => Array.from(document.querySelectorAll(selector));
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const uid = () => crypto.randomUUID();
+  const AI_CODE_KEY = 'cuaderno.receiptAccess.v1';
+  function restoreAICode() {
+    let saved='';try{saved=root.localStorage.getItem(AI_CODE_KEY)||'';}catch{}
+    if(saved)$('#group-ai-code').value=saved;
+    $('#group-ai-access-entry').hidden=!!saved;
+    $('#group-ai-access-saved').hidden=!saved;
+  }
+  function rememberAICode() {
+    try{
+      root.localStorage.setItem(AI_CODE_KEY,$('#group-ai-code').value.trim());
+      $('#group-ai-access-entry').hidden=true;$('#group-ai-access-saved').hidden=false;
+    }catch{ /* A blocked device store must not prevent reading the receipt. */ }
+  }
+  function itemShares(item,meal) {
+    return item.common?Object.fromEntries(meal.attendees.map(id=>[id,1])):(item.shares||{});
+  }
   const today = () => { const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   const amount = value => Number.isSafeInteger(value) ? (value/100).toFixed(2) : '';
   const trip = () => host.getState().viajes.find(value => Number(value.id) === Number($('#group-trip').value));
@@ -62,7 +78,11 @@
   }
   function renderItems() {
     const meal=editor.meal,group=editor.group;
-    $('#group-meal-items').innerHTML=meal.items.map(item=>`<fieldset class="group-item" data-group-item="${esc(item.id)}"><legend>Concepto del ticket</legend><div class="row3"><div><label>Concepto<input data-item-field="name" value="${esc(item.name)}" maxlength="160"></label></div><div><label>Unidades del ticket<input type="number" min="0.01" step="0.01" data-item-field="quantity" value="${esc(item.quantity??1)}"></label></div><div><label>Importe total de esta línea (€)<input inputmode="decimal" data-item-field="amountCents" value="${amount(item.amountCents)}"></label></div></div><label class="check-option"><input type="checkbox" data-item-field="common"${item.common?' checked':''}> Compartir entre todos los asistentes (pan, agua o cualquier plato)</label><label>Asignación<select data-item-field="mode" aria-label="Asignación"><option value="weights"${item.mode!=='units'?' selected':''}>Compartir plato entre personas (tapas, raciones…)</option><option value="units"${item.mode==='units'?' selected':''}>Unidades individuales consumidas (bebidas, menús…)</option></select></label><p class="small">${item.mode==='units'?'Indica cuántas unidades consumió cada persona; deben sumar las del ticket.':'Un solo plato puede compartirse entre varias personas. Marca quién lo comparte: con 1 parte cada uno pagan lo mismo. Puedes cambiar las partes si alguien consume más.'}</p><div class="group-shares"${item.common?' hidden':''}>${group.participants.filter(person=>meal.attendees.includes(person.id)||Number(item.shares?.[person.id])>0).map(person=>`<div>${item.mode!=='units'?`<label class="check-option"><input type="checkbox" data-item-diner="${esc(person.id)}"${Number(item.shares?.[person.id])>0?' checked':''}> ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE'}</label>`:''}<label>${item.mode==='units'?esc(person.name):'Partes de '+esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE: retira su asignación'}<input type="number" min="0" max="1000000" step="0.01" data-item-person="${esc(person.id)}" value="${esc(item.shares?.[person.id]||0)}"></label></div>`).join('')||'<p>Selecciona los asistentes antes de asignar.</p>'}</div><button class="ghost" type="button" data-group-item-remove="${esc(item.id)}">Quitar concepto</button></fieldset>`).join('');
+    $('#group-meal-items').innerHTML=meal.items.map(item=>{
+      const shares=itemShares(item,meal);
+      const people=group.participants.filter(person=>meal.attendees.includes(person.id)||Number(shares[person.id])>0);
+      return `<fieldset class="group-item" data-group-item="${esc(item.id)}"><legend>Concepto del ticket</legend><div class="row3"><div><label>Concepto<input data-item-field="name" value="${esc(item.name)}" maxlength="160"></label></div><div><label>Unidades del ticket<input type="number" min="0.01" step="0.01" data-item-field="quantity" value="${esc(item.quantity??1)}"></label></div><div><label>Importe total de esta línea (€)<input inputmode="decimal" data-item-field="amountCents" value="${amount(item.amountCents)}"></label></div></div><p class="small">Marca quién consume este plato. Si marcas varias personas, se reparte por igual entre ellas.</p><div class="group-shares">${people.map(person=>`<label class="check-option"><input type="checkbox" data-item-diner="${esc(person.id)}"${Number(shares[person.id])>0?' checked':''}> ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE: retira su asignación'}</label>`).join('')||'<p>Selecciona los asistentes antes de asignar.</p>'}</div><details><summary>Ajustar partes (opcional)</summary><p class="small">Una parte por persona reparte por igual. Aumenta las partes de quien consuma más.</p><div class="group-shares">${people.map(person=>`<label>Partes de ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE'}<input type="number" min="0" max="1000000" step="0.01" data-item-person="${esc(person.id)}" value="${esc(shares[person.id]||0)}"></label>`).join('')}</div></details><button class="ghost" type="button" data-group-item-expand="${esc(item.id)}"${Number.isSafeInteger(Number(item.quantity))&&Number(item.quantity)>1?'':' hidden'}>Desglosar unidades</button><button class="ghost" type="button" data-group-item-remove="${esc(item.id)}">Quitar concepto</button></fieldset>`;
+    }).join('');
     preview();
   }
   function renderTicket() {
@@ -71,6 +91,8 @@
   }
   function mountMeal() {
     const meal=editor.meal,group=editor.group;
+    meal.items.forEach(item=>{item.mode='weights';});
+    restoreAICode();
     $('#group-meal-name').value=meal.name||'';$('#group-meal-date').value=meal.date||today();$('#group-meal-total').value=amount(meal.totalCents);
     $('#group-meal-payer').innerHTML=options(group.participants,meal.payerId,'Quién pagó al restaurante');
     $('#group-meal-account').innerHTML=options(accounts(editor.tripId),meal.accountId,'Cuenta real si pagaste tú');
@@ -132,6 +154,7 @@
       };
       const result=withAI?await host.recognizeAI(editor.meal,{accessCode:$('#group-ai-code').value,consent:$('#group-ai-consent').checked},onProgress):await host.recognize(editor.meal,onProgress);
       if(!editor)return;
+      if(withAI)rememberAICode();
       completed=true;percent=100;$('#group-ocr-progress').value=100;paintProgress();
       $('#group-text-panel').open=true;
       $('#group-meal-text').value=result.itemText||result.text||'';editor.meal.ocrText=$('#group-meal-text').value;
@@ -145,6 +168,12 @@
         return;
       }
       parseText();
+    }catch(error){
+      if(withAI && /código de acceso incorrecto/i.test(error.message||'')){
+        $('#group-ai-access-entry').hidden=false;$('#group-ai-access-saved').hidden=true;
+        try{root.localStorage.removeItem(AI_CODE_KEY);}catch{}
+      }
+      throw error;
     }finally{
       clearInterval(timer);reading=false;$('#group-ocr').disabled=false;$('#group-parse-text').disabled=false;
       $('#group-ai-read').disabled=!aiEnabled;$('#group-close-meal').disabled=false;$('#group-save-draft').disabled=false;$('#group-meal-file').disabled=false;
@@ -159,14 +188,15 @@
     const result=api().parseItems(text);
     if(!result.items.length)throw new Error('No se han reconocido conceptos fiables. Introdúcelos manualmente; no se ha cambiado la lista.');
     if(Number.isSafeInteger(editor.meal.totalCents)&&editor.meal.totalCents>0 && result.items.reduce((sum,item)=>sum+item.amountCents,0)!==editor.meal.totalCents)throw new Error('Los conceptos reconocidos no suman el total del ticket. No se ha cambiado la lista: corrige las líneas y sus precios antes de proponerlos.');
+    const proposed=api().expandUnits(result.items);
     if(editor.meal.items.length && replaceExisting!==true){
       $('#group-parse-replace').hidden=false;
-      message(`Hay ${editor.meal.items.length} conceptos. La propuesta contiene ${result.items.length}. Pulsa «Sustituir conceptos» para reemplazarlos y revisar sus asignaciones, o conserva los actuales.`,false,'#group-meal-message');
+      message(`Hay ${editor.meal.items.length} conceptos. La propuesta contiene ${proposed.length}. Pulsa «Sustituir conceptos» para reemplazarlos y revisar sus asignaciones, o conserva los actuales.`,false,'#group-meal-message');
       return;
     }
     $('#group-parse-replace').hidden=true;
-    editor.meal.ocrText=$('#group-meal-text').value;editor.meal.items=result.items.map(item=>({...item,id:uid()}));$('#group-meal-reviewed').checked=false;renderItems();stash();
-    message(`Propuesta de ${result.items.length} conceptos. ${result.ignored.length} líneas no incorporadas. El total del ticket se revisa aparte.`,false,'#group-meal-message');
+    editor.meal.ocrText=$('#group-meal-text').value;editor.meal.items=proposed.map(item=>({...item,id:uid(),mode:'weights'}));$('#group-meal-reviewed').checked=false;renderItems();stash();
+    message(`Propuesta de ${proposed.length} conceptos. ${result.ignored.length} líneas no incorporadas. El total del ticket se revisa aparte.`,false,'#group-meal-message');
   }
   function safe(action,target='#group-message'){return async event=>{try{await action(event);}catch(error){message(error.message||String(error),true,target);}};}
   function mount(callbacks) {
@@ -187,6 +217,7 @@
       if(fields[element.id])editor.meal[fields[element.id]]=element.id==='group-meal-total'?readCents(element.value):element.id==='group-meal-account'?(Number(element.value)||null):element.value;
       const item=editor.meal.items.find(item=>item.id===element.closest('[data-group-item]')?.dataset.groupItem);
       if(item&&element.dataset.itemField){const field=element.dataset.itemField;item[field]=field==='amountCents'?readCents(element.value):field==='quantity'?Number(element.value):field==='common'?element.checked:element.value;}
+      if(item&&(element.dataset.itemPerson||element.dataset.itemDiner)){item.shares={...itemShares(item,editor.meal)};item.common=false;item.mode='weights';}
       if(item&&element.dataset.itemPerson){item.shares||={};item.shares[element.dataset.itemPerson]=Number(element.value);}
       if(item&&element.dataset.itemDiner){
         item.shares||={};item.shares[element.dataset.itemDiner]=element.checked?1:0;
@@ -196,8 +227,19 @@
       if(element.id!=='group-meal-reviewed')$('#group-meal-reviewed').checked=false;
       preview();stash();
     };
-    $('#group-meal-form').onchange=event=>{const element=event.target;if(element.dataset.groupAttendee){const id=element.dataset.groupAttendee;editor.meal.attendees=element.checked?[...new Set([...editor.meal.attendees,id])]:editor.meal.attendees.filter(value=>value!==id);$('#group-meal-reviewed').checked=false;renderItems();stash();}else if(['common','mode'].includes(element.dataset.itemField))renderItems();};
-    $('#group-meal-items').onclick=event=>{const id=event.target.closest('[data-group-item-remove]')?.dataset.groupItemRemove;if(!id)return;editor.meal.items=editor.meal.items.filter(item=>item.id!==id);$('#group-meal-reviewed').checked=false;renderItems();stash();};
+    $('#group-meal-form').onchange=event=>{const element=event.target;if(element.dataset.groupAttendee){const id=element.dataset.groupAttendee;editor.meal.attendees=element.checked?[...new Set([...editor.meal.attendees,id])]:editor.meal.attendees.filter(value=>value!==id);$('#group-meal-reviewed').checked=false;renderItems();stash();}else if(element.dataset.itemField==='quantity')renderItems();};
+    $('#group-meal-items').onclick=safe(event=>{
+      const button=event.target.closest('button');if(!button)return;
+      const id=button.dataset.groupItemRemove||button.dataset.groupItemExpand;
+      const index=editor.meal.items.findIndex(item=>item.id===id);if(index<0)return;
+      if(button.dataset.groupItemExpand){
+        const expanded=api().expandUnits([editor.meal.items[index]]).map(item=>({...item,id:uid()}));
+        if(editor.meal.items.length-1+expanded.length>150)throw new Error('No se pueden superar 150 platos o unidades en una comida.');
+        editor.meal.items.splice(index,1,...expanded);
+        message('Unidades desglosadas sin cambiar el total. Revisa los comensales de cada plato.',false,'#group-meal-message');
+      }else editor.meal.items.splice(index,1);
+      $('#group-meal-reviewed').checked=false;renderItems();stash();
+    },'#group-meal-message');
     $('#group-meal-file').onchange=safe(async event=>{
       if(!editor||reading)return;
       const input=event.target;
@@ -216,6 +258,8 @@
       finally{reading=false;controls.forEach(selector=>$(selector).disabled=false);}
     },'#group-meal-message');
     $('#group-ocr').onclick=safe(extract,'#group-meal-message');
+    $('#group-ai-change-code').onclick=()=>{$('#group-ai-access-entry').hidden=false;$('#group-ai-access-saved').hidden=true;$('#group-ai-code').focus();};
+    $('#group-ai-forget-code').onclick=()=>{try{root.localStorage.removeItem(AI_CODE_KEY);}catch{}$('#group-ai-code').value='';restoreAICode();};
     $('#group-ai-read').onclick=safe(()=>extract(true),'#group-meal-message');
     const propose=replace=>async()=>{try{parseText(replace);}catch(error){message(error.message||String(error),true,'#group-meal-message');}showParseFeedback();};
     $('#group-parse-text').onclick=propose(false);

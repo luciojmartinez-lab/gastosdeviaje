@@ -6,6 +6,20 @@ const context = vm.createContext({});
 for (const name of ['group-meals.js', 'group-ledger.js']) vm.runInContext(fs.readFileSync(new URL(`../${name}`, import.meta.url), 'utf8'), context);
 const api = context.TravelGroup;
 const plain = value => JSON.parse(JSON.stringify(value));
+test('desglosar unidades conserva nombres y céntimos y permite un plato individual y otro compartido',()=>{
+  const original={id:'line',name:'Paella',quantity:2,amountCents:2400,shares:{}};
+  const items=api.expandUnits([original]);
+  assert.equal(items.length,2);assert.deepEqual(plain(items.map(i=>[i.name,i.quantity,i.amountCents])),[['Paella',1,1200],['Paella',1,1200]]);
+  items[0].shares={a:1};items[1].shares={b:1,c:1};
+  const result=api.allocation({attendees:['a','b','c'],totalCents:2400,items});
+  assert.deepEqual(plain(result.totals),{a:1200,b:600,c:600});assert.equal(result.errors.length,0);
+  assert.deepEqual(original.shares,{});
+  const odd=api.expandUnits([{...original,quantity:3,amountCents:1000}]);
+  assert.deepEqual(plain(odd.map(i=>i.amountCents)),[334,333,333]);
+  assert.equal(odd.reduce((s,i)=>s+i.amountCents,0),1000);
+  assert.equal(api.expandUnits([{...original,quantity:1.5}])[0].quantity,1.5);
+  assert.throws(()=>api.expandUnits([{...original,quantity:151}]),/150/);
+});
 function fixture() {
   return api.normalize({ enabled: true, selfId: 'a', integrate: true,
     participants: [{id:'a',name:'Lucio'}, {id:'b',name:'Ana'}, {id:'c',name:'Luis'}],

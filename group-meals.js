@@ -15,6 +15,17 @@
     if (exact > BigInt(Number.MAX_SAFE_INTEGER) || exact < -BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Importe demasiado grande.');
     return Number(exact);
   }
+  function expandUnits(items) {
+    const count = item => Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 1 ? Number(item.quantity) : 1;
+    if (items.reduce((sum,item)=>sum+count(item),0)>150) throw new Error('La propuesta supera 150 platos o unidades. Revisa el texto antes de incorporarlo.');
+    return items.flatMap(item => {
+      const quantity=count(item);
+      if(quantity===1)return [copy(item)];
+      if(!Number.isSafeInteger(item.amountCents)||item.amountCents<0)throw new Error('Revisa el importe de la línea antes de desglosar las unidades.');
+      const base=Math.floor(item.amountCents/quantity),remainder=item.amountCents%quantity;
+      return Array.from({length:quantity},(_,index)=>({...copy(item),quantity:1,amountCents:base+(index<remainder?1:0)}));
+    });
+  }
   function normalize(value = {}) {
     const group = value && typeof value === 'object' ? copy(value) : {};
     return { ...group, version: 1, enabled: group.enabled === true, selfId: String(group.selfId || ''),
@@ -165,5 +176,5 @@
       ...meal.attendees.map(id => `${name(id)}: ${money(result.totals[id] || 0)} (individual ${money(result.individual[id] || 0)} + compartido ${money(result.common[id] || 0)})`),
       '', ...mealPayments(group, meal).map(row => `${name(row.id)}: ${row.id === meal.payerId ? 'cubierto' : 'devuelto'} ${money(row.paid)} · pendiente ${money(row.remaining)}`), '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
   }
-  root.TravelGroup = { normalize, validate, allocation, split, cents, money, balances, mealPayments, parseItems, remapAccounts, summary };
+  root.TravelGroup = { normalize, validate, allocation, split, expandUnits, cents, money, balances, mealPayments, parseItems, remapAccounts, summary };
 })(globalThis);

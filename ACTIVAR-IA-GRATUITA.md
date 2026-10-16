@@ -1,6 +1,6 @@
 # Activar la lectura gratuita de tickets
 
-Estado a 16/10/2026: Google y Netlify configurados en modo free-only. El proyecto de la clave y la ausencia de facturación se han comprobado con llamadas reales. El código de acceso incorrecto devuelve 401. Gemini ha respondido temporalmente 503 por alta demanda: la lectura de la foto real todavía no se ha podido validar. La aplicación informa de saturación sin cambiar de proveedor ni reintentar automáticamente. El código de uso se conserva localmente en .netlify/receipt-access.txt, ignorado por Git; no es la clave privada de Google.
+Estado a 16/10/2026: activado y comprobado en producción con el ticket autorizado: siete líneas cobradas y total 75,90 EUR (800v009). La 800v010 desglosa sus nueve unidades en platos independientes, conserva la suma y recuerda el código solo en el navegador tras una lectura correcta. No se guarda el código en viajes ni copias. La clave de Google sigue siendo privada del servidor.
 
 ## Condición de Lucio: coste cero
 
@@ -46,7 +46,7 @@ No usar `--debug`, no imprimir el Blob y no subirlo como archivo estático. Los 
 | `RECEIPT_ACCESS_SHA256` | SHA-256 hexadecimal de un código de acceso independiente |
 | `RECEIPT_AI_ENABLED` | `free-only`, configurar al final |
 
-Elegir un código de acceso largo y distinto de la clave de Google. Compartirlo solo con los usuarios autorizados. Se introduce en Comidas y permanece en memoria de esa pestaña; no se incluye en borradores ni copias. En Netlify se almacena únicamente su hash. No poner los valores en `netlify.toml` ni en el historial del terminal. Tras cambiar variables, volver a desplegar para aplicarlas.
+Elegir un código de acceso largo y distinto de la clave de Google. Compartirlo solo con los usuarios autorizados. Se introduce una vez por navegador en Comidas y se recuerda localmente tras una lectura correcta; no se incluye en borradores ni copias. Puede cambiarse u olvidarse desde la misma pantalla. No incrustarlo en el código público. En Netlify se almacena únicamente su hash. No poner los valores en `netlify.toml` ni en el historial del terminal. Tras cambiar variables, volver a desplegar para aplicarlas.
 
 Para desactivar, quitar `RECEIPT_AI_ENABLED` y desplegar de nuevo. Revocar las claves en Google impide inmediatamente nuevas lecturas aunque quede una versión antigua desplegada. No modificar ni eliminar las copias de viajes.
 

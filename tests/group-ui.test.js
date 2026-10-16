@@ -7,6 +7,7 @@ const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const sources=['group-meals.js','group-ledger.js','group-store.js','group-ui.js'].map(file=>fs.readFileSync(new URL('../'+file,import.meta.url),'utf8'));
 async function setup(options={}){
  const dom=new JSDOM(html,{url:'http://localhost.test/',runScripts:'outside-only'}),w=dom.window;
+ if(options.rememberedCode)w.localStorage.setItem('cuaderno.receiptAccess.v1',options.rememberedCode);
  w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};w.confirm=()=>true;
  for(const source of sources)w.eval(source);
  const factory=new IDBFactory();const stores=['viajes','cuentas','gastos','transferencias','categorias'];
@@ -24,7 +25,7 @@ async function setup(options={}){
  async function waitFor(predicate){const end=Date.now()+2500;while(!predicate()){if(Date.now()>end)throw new Error('La interfaz no alcanzó el estado esperado: '+$('#group-meal-message').textContent+' / '+$('#group-payment-message').textContent);await new Promise(resolve=>setTimeout(resolve,5));}}
  return {dom,w,db,state,drafts,$,input,click,waitFor,load,ocrCalls:()=>ocrCalls,close:()=>{db.close();w.close();}};
 }
-async function prepare(ui){ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket').innerHTML.includes('ticket.jpg')||ui.$('#group-meal-ticket').innerHTML.includes('data:image'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===2);ui.input('#group-meal-payer','p0');ui.input('#group-meal-account','1');ui.input('#group-meal-items fieldset:first-child [data-item-field="mode"]','units');for(let i=0;i<12;i++)ui.input('#group-meal-items fieldset:first-child [data-item-person="p'+i+'"]','1');}
+async function prepare(ui){ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket').innerHTML.includes('ticket.jpg')||ui.$('#group-meal-ticket').innerHTML.includes('data:image'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===13);ui.input('#group-meal-payer','p0');ui.input('#group-meal-account','1');for(let i=0;i<12;i++)ui.input('#group-meal-items fieldset:nth-child('+(i+1)+') [data-item-diner="p'+i+'"]',true);}
 test('interfaz: foto/OCR propuesto, revisión obligatoria, cierre de doce y cobro parcial',async()=>{const ui=await setup();try{await prepare(ui);assert.equal(ui.ocrCalls(),1);assert.match(ui.$('#group-meal-check').textContent,/Todo cuadra/);ui.click('#group-close-meal');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('Confirma'));assert.equal(ui.state.gastos.length,0);ui.input('#group-meal-reviewed',true);ui.click('#group-close-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);assert.equal(ui.state.gastos.length,1);assert.equal(ui.state.gastos[0].importe,25);assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,200);assert.equal(ui.state.viajes[0].group.meals[0].ticketData,'data:image/jpeg;base64,dGVzdA==');ui.click('[data-group-collect]');ui.input('#group-payment-from','p1');ui.input('#group-payment-amount','26');ui.input('#group-payment-account','1');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>ui.$('#group-payment-message').textContent.includes('supera'));assert.equal(ui.state.transferencias.length,1);ui.input('#group-payment-amount','10');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,210);assert.equal(ui.state.cuentas.find(c=>c.groupClearing).saldoActual,265);assert.equal(ui.state.gastos.length,1);ui.click('[data-group-archive="p11"]');await ui.waitFor(()=>ui.state.viajes[0].group.participants.find(p=>p.id==='p11').active===false);assert.equal(ui.state.viajes[0].group.meals[0].attendees.length,12);}finally{ui.close();}});
 test('interfaz: retirar un asistente no borra su consumo y deja visible el error',async()=>{const ui=await setup();try{await prepare(ui);ui.input('[data-group-attendee="p11"]',false);assert.match(ui.$('#group-meal-check').textContent,/ausente/);assert.ok(ui.$('[data-item-person="p11"]'));ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);assert.equal(ui.state.viajes[0].group.meals[0].status,'draft');assert.equal(ui.state.gastos.length,0);}finally{ui.close();}});
 
@@ -90,10 +91,10 @@ test('Grupo usa la propuesta reconciliada de columnas en lugar del texto complet
  try{
   ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
   ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
-  ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===1);
+  ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===2);
   assert.equal(ui.$('[data-item-field="name"]').value,'FIDEUA');
-  assert.equal(ui.$('[data-item-field="quantity"]').value,'2');
-  assert.equal(ui.$('[data-item-field="amountCents"]').value,'33.90');
+  assert.equal(ui.$('[data-item-field="quantity"]').value,'1');
+  assert.equal(ui.$('[data-item-field="amountCents"]').value,'16.95');
   assert.equal(ui.$('#group-meal-total').value,'33.90');
   assert.equal(ui.$('#group-meal-reviewed').checked,false);
  }finally{ui.close();}
@@ -127,7 +128,7 @@ test('proponer un texto incompleto conserva los conceptos anteriores si no suma 
   ui.input('#group-meal-text','1 MEJILLONES 12,70');ui.click('#group-parse-text');
   await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('no suman el total'));
   assert.equal(ui.$('[data-item-field="name"]').value,before);
-  assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,2);
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,13);
  }finally{ui.close();}
 });
 
@@ -243,4 +244,71 @@ test('IA agotada no cambia los conceptos existentes ni dispara el OCR automátic
   assert.equal(calls,1);assert.equal(ui.ocrCalls(),1);assert.equal(ui.$('[data-item-field="name"]').value,before);
   assert.equal(ui.$('#group-ocr').disabled,false);assert.equal(ui.$('#group-save-draft').disabled,false);
  }finally{ui.close();}
+});
+
+test('dos platos iguales aparecen separados y se guardan uno individual y otro compartido',async()=>{
+ const ui=await setup({recognize:async()=>({text:'2 Paella 24,00',fields:{total:24,merchant:'Restaurante prueba'}})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));
+  ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===2);
+  const rows=[...ui.$('#group-meal-items').querySelectorAll('fieldset')];
+  for(const row of rows){assert.equal(row.querySelector('[data-item-field="name"]').value,'Paella');assert.equal(row.querySelector('[data-item-field="quantity"]').value,'1');assert.equal(row.querySelector('[data-item-field="amountCents"]').value,'12.00');}
+  assert.notEqual(rows[0].dataset.groupItem,rows[1].dataset.groupItem);
+  assert.equal(ui.$('[data-item-field="mode"]'),null);assert.equal(ui.$('[data-item-field="common"]'),null);
+  ui.input('fieldset:nth-child(1) [data-item-diner="p0"]',true);
+  ui.input('fieldset:nth-child(2) [data-item-diner="p1"]',true);ui.input('fieldset:nth-child(2) [data-item-diner="p2"]',true);
+  ui.input('#group-meal-payer','p0');ui.input('#group-meal-account','1');ui.input('#group-meal-reviewed',true);
+  ui.click('#group-close-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  const meal=ui.state.viajes[0].group.meals[0],result=ui.w.TravelGroup.allocation(meal);
+  assert.equal(result.totals.p0,1200);assert.equal(result.totals.p1,600);assert.equal(result.totals.p2,600);
+  assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,476);
+  assert.equal(ui.state.cuentas.find(c=>c.groupClearing).saldoActual,12);
+  ui.click('[data-group-edit]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,2);
+  assert.equal(ui.$('fieldset:nth-child(2) [data-item-diner="p2"]').checked,true);
+ }finally{ui.close();}
+});
+
+test('el código correcto se recuerda tras reabrir la aplicación y puede olvidarse sin tocar viajes',async()=>{
+ let saved;
+ const ui=await setup({recognizeAI:async()=>({text:'1 Cena 12,00',fields:{total:12}})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));
+  ui.input('#group-ai-consent',true);ui.input('#group-ai-code','remember-this-code');ui.click('#group-ai-read');
+  await ui.waitFor(()=>!ui.$('#group-ai-access-saved').hidden);
+  saved=ui.w.localStorage.getItem('cuaderno.receiptAccess.v1');assert.equal(saved,'remember-this-code');
+  assert.equal(ui.$('#group-ai-access-entry').hidden,true);
+  ui.click('#group-close-editor');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  assert.ok(!JSON.stringify([...ui.drafts.values()]).includes(saved));assert.ok(!JSON.stringify(ui.state).includes(saved));
+ }finally{ui.close();}
+ const reopened=await setup({rememberedCode:saved});
+ try{
+  reopened.click('#group-new-meal');await reopened.waitFor(()=>!reopened.$('#group-ai-read').disabled);
+  assert.equal(reopened.$('#group-ai-code').value,saved);assert.equal(reopened.$('#group-ai-access-entry').hidden,true);
+  assert.equal(reopened.$('#group-ai-consent').checked,false);
+  reopened.click('#group-ai-change-code');assert.equal(reopened.$('#group-ai-access-entry').hidden,false);
+  reopened.click('#group-ai-forget-code');assert.equal(reopened.w.localStorage.getItem('cuaderno.receiptAccess.v1'),null);
+  assert.equal(reopened.$('#group-ai-code').value,'');assert.equal(reopened.state.viajes.length,1);
+ }finally{reopened.close();}
+});
+
+test('un código recordado que ya no sirve vuelve a pedir corrección; bloquear almacenamiento no bloquea la lectura',async()=>{
+ const ui=await setup({rememberedCode:'old-code',recognizeAI:async()=>{throw new Error('Código de acceso incorrecto.');}});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.input('#group-ai-consent',true);ui.click('#group-ai-read');
+  await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('incorrecto'));
+  assert.equal(ui.$('#group-ai-access-entry').hidden,false);assert.equal(ui.w.localStorage.getItem('cuaderno.receiptAccess.v1'),null);
+ }finally{ui.close();}
+ const blocked=await setup({recognizeAI:async()=>({text:'1 Cena 12,00',fields:{total:12}})});
+ try{
+  Object.defineProperty(blocked.w,'localStorage',{get(){throw new Error('Blocked');}});
+  blocked.click('#group-new-meal');await blocked.waitFor(()=>!blocked.$('#group-ai-read').disabled);
+  blocked.input('#group-meal-file','');await blocked.waitFor(()=>blocked.$('#group-meal-ticket img'));
+  blocked.input('#group-ai-code','session-code');blocked.input('#group-ai-consent',true);blocked.click('#group-ai-read');
+  await blocked.waitFor(()=>blocked.$('#group-meal-items').querySelectorAll('fieldset').length===1);
+  assert.equal(blocked.$('#group-ai-access-entry').hidden,false);
+ }finally{blocked.close();}
 });
