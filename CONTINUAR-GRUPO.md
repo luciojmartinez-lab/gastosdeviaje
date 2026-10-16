@@ -76,3 +76,5 @@ La función plan revierte los efectos previos de los movimientos de ese grupo y 
 La copia de trabajo en nube descargó solo archivos de texto del repositorio. La ejecución inicial de la suite completa tuvo fallos por imágenes/PDF ausentes en ese entorno; no interpretar esas ausencias como cambios necesarios al repositorio.
 
 No se ha desplegado ni modificado main. Continuar en rama de desarrollo y no publicar sin verificar el resultado.
+
+Actualización 800v003: la selección de foto en Grupo conserva el selector, muestra nombre e imagen directamente y avisa durante la carga; fallos de lectura permiten reintentar sin perder la foto previa. Pruebas con File y FileReader, guardado/reapertura y error/reintento añadidas.
