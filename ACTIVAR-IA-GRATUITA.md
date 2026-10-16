@@ -1,6 +1,6 @@
 # Activar la lectura gratuita de tickets
 
-Estado: integración preparada; requiere configurar Google y Netlify antes de usarla. La publicación por sí sola NO activa Gemini. Las pruebas automáticas sustituyen las respuestas de Google; falta una prueba real con el proyecto configurado.
+Estado a 16/10/2026: Google y Netlify configurados en modo free-only. El proyecto de la clave y la ausencia de facturación se han comprobado con llamadas reales. El código de acceso incorrecto devuelve 401. Gemini ha respondido temporalmente 503 por alta demanda: la lectura de la foto real todavía no se ha podido validar. La aplicación informa de saturación sin cambiar de proveedor ni reintentar automáticamente. El código de uso se conserva localmente en .netlify/receipt-access.txt, ignorado por Git; no es la clave privada de Google.
 
 ## Condición de Lucio: coste cero
 
@@ -12,7 +12,7 @@ Antes de cada imagen, la función consulta el proyecto propietario de la clave y
 
 En [Google AI Studio](https://aistudio.google.com/projects), crear un proyecto dedicado: **Bitacora Tickets Gratis**. Ya se ha iniciado este paso en la cuenta de Lucio. Revisar que figure como Free y sin facturación. Si Google exige condiciones legales o crear credenciales, completar ese paso con Lucio.
 
-Crear una clave de API del mismo proyecto y restringirla a **Generative Language API**. Guardarla directamente en la variable privada de Netlify `RECEIPT_GEMINI_API_KEY`, contexto Production y ámbito Functions. No introducirla en la página de Comidas, el repositorio, archivos publicados, una captura o este chat. Conservar el número numérico del proyecto para `RECEIPT_GOOGLE_PROJECT_NUMBER`.
+Crear una clave de API del mismo proyecto y restringirla a **Generative Language API**. Guardarla directamente en la variable privada de Netlify `RECEIPT_GEMINI_API_KEY`, contexto Production y con Functions incluido en sus ámbitos. Si el plan gratuito no permite limitar ámbitos, mantenerla como secreto solo de Production, sin ampliar el plan. No introducirla en la página de Comidas, el repositorio, archivos publicados, una captura o este chat. Conservar el número numérico del proyecto para `RECEIPT_GOOGLE_PROJECT_NUMBER`.
 
 ## 2. Verificador de solo lectura
 

@@ -87,3 +87,6 @@ Actualización 800v006: avisos junto a Proponer conceptos y confirmación de sus
 
 
 Actualización 800v007: lectura opcional con Gemini gratuita, inicialmente desactivada. Antes de enviar una foto comprueba que la clave pertenece al proyecto configurado y que este no tiene facturación vinculada; cualquier fallo o cuota agotada detiene la lectura sin reintentos ni cambio a pago. Credenciales privadas en Functions/Blobs, consentimiento por foto, código independiente, progreso y revisión obligatoria. No se guardan claves en los borradores. Las funciones quedan fuera de la caché. Activación y prueba real pendientes: ver ACTIVAR-IA-GRATUITA.md. No confundir las pruebas simuladas con una lectura real de Google.
+
+
+Actualización 800v008: Google y Netlify configurados sin facturación vinculada y con código de acceso independiente. Verificador limitado a apikeys.keys.lookup y resourcemanager.projects.get. Consulta real de proyecto y facturación: ambas correctas. Gemini ha respondido 503 por saturación; se distingue ese aviso de los errores de verificación y no se reintenta ni cambia de proveedor. Prueba real de reconocimiento pendiente de disponibilidad de Google; no afirmar precisión validada por las pruebas simuladas.

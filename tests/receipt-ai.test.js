@@ -31,6 +31,7 @@ function harness(options={}){
       if(url.includes('billingInfo')){billingCalls++;return Response.json(typeof options.billing==='function'?options.billing(billingCalls):options.billing||{billingEnabled:false});}
       if(url.includes(':generateContent')){
         if(options.quota)return Response.json({error:'quota'},{status:429});
+        if(options.modelStatus)return Response.json({error:'private-provider-error'},{status:options.modelStatus});
         return Response.json({candidates:[{finishReason:options.truncated?'MAX_TOKENS':'STOP',content:{parts:[{text:options.badJSON?'not-json':JSON.stringify(options.receipt||receipt)}]}}]});
       }
       throw new Error('Destino no esperado');
@@ -127,4 +128,17 @@ test('IA: los siete productos del ticket llegan a conceptos con sus precios sin 
   assert.equal(parsed.reduce((sum, item) => sum + item.amountCents, 0), 7590);
   const fractional = copy(receipt); fractional.items[0].quantity = 2.5;
   assert.equal(globalThis.TravelGroup.parseItems(normalizeReceiptProposal(fractional).itemText).items[0].quantity, 2.5);
+});
+
+
+test('IA: Google saturado no se confunde con una verificación de gratuidad fallida', async () => {
+  for (const modelStatus of [500, 503]) {
+    const h=harness({modelStatus}); const response=await h.handler(h.request()); const body=await response.json();
+    assert.equal(response.status,503); assert.match(body.message,/ocupado o temporalmente no disponible/);
+    assert.doesNotMatch(body.message,/autorizado la comprobación|private-provider-error/);
+    assert.equal(h.inferences().length,1);
+  }
+  const h=harness({modelStatus:403}); const response=await h.handler(h.request());
+  assert.match((await response.json()).message,/no ha aceptado esta lectura/);
+  assert.equal(h.inferences().length,1);
 });

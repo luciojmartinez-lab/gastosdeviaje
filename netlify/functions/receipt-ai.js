@@ -21,12 +21,13 @@ const json = (body, status = 200) => Response.json(body, { status, headers: { 'C
 const fail = message => { throw new ReceiptError(message); };
 
 export function createReceiptHandler({ env, checker, fetcher = fetch, now = () => Date.now() }) {
-  async function googleJson(url, options = {}, timeout = 6000) {
+  async function googleJson(url, options = {}, timeout = 6000, reading = false) {
     let response;
     try { response = await fetcher(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(timeout) }); }
-    catch { fail('No se pudo verificar el acceso gratuito con Google. La lectura se ha bloqueado.'); }
+    catch { fail(reading ? 'No se pudo conectar con Google para leer el ticket. No se reintentará automáticamente. Puedes usar el OCR local.' : 'No se pudo verificar el acceso gratuito con Google. La lectura se ha bloqueado.'); }
     if (response.status === 429) throw new ReceiptError('Cuota gratuita agotada. No se usará ningún servicio de pago. Prueba más tarde o usa el OCR local.', 429);
-    if (!response.ok) fail('Google no ha autorizado la comprobación gratuita. La lectura se ha bloqueado.');
+    if (reading && response.status >= 500) fail('Google está ocupado o temporalmente no disponible. No se han modificado tus conceptos. Prueba más tarde o usa el OCR local.');
+    if (!response.ok) fail(reading ? 'Google no ha aceptado esta lectura gratuita. No se han modificado tus conceptos. Puedes usar el OCR local.' : 'Google no ha autorizado la comprobación gratuita. La lectura se ha bloqueado.');
     try { return await response.json(); } catch { fail('Respuesta de Google no válida. No se ha aceptado la lectura.'); }
   }
   return async request => {
@@ -68,7 +69,7 @@ export function createReceiptHandler({ env, checker, fetcher = fetch, now = () =
       const result = await googleJson(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({ systemInstruction: { parts: [{ text: PROMPT }] }, contents: [{ role: 'user', parts: [{ inlineData: { mimeType: image[1], data: image[2] } }] }], generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json', responseJsonSchema: SCHEMA } })
-      }, 30_000);
+      }, 30_000, true);
       const candidate = result.candidates?.[0];
       if (candidate?.finishReason !== 'STOP') fail('Google no ha completado la lectura. No se han modificado tus conceptos.');
       let receipt;
