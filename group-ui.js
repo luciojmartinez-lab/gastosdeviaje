@@ -103,10 +103,15 @@
       message('Leyendo el ticket en este dispositivo…',false,'#group-meal-message');
       const result=await host.recognize(editor.meal,progress=>message(progress,false,'#group-meal-message'));
       if(!editor)return;
-      $('#group-meal-text').value=result.text||'';editor.meal.ocrText=result.text||'';
+      $('#group-meal-text').value=result.itemText||result.text||'';editor.meal.ocrText=$('#group-meal-text').value;
       if(!editor.meal.name&&result.fields?.merchant){editor.meal.name=result.fields.merchant;$('#group-meal-name').value=editor.meal.name;}
       // Total remains a proposal requiring the user's independent review.
       if(Number.isFinite(result.fields?.total)&&result.fields.total>0){editor.meal.totalCents=Math.round(result.fields.total*100);$('#group-meal-total').value=amount(editor.meal.totalCents);}
+      if(result.itemsStatus==='review'){
+        $('#group-meal-reviewed').checked=false;stash();
+        message('Se ha leído el texto, pero no se han podido emparejar todos los conceptos y precios con el total. No se han sustituido tus conceptos. Revisa o pega el texto corregido y pulsa «Proponer conceptos desde este texto», o añade los que falten manualmente.',true,'#group-meal-message');
+        return;
+      }
       parseText();
     }finally{reading=false;$('#group-ocr').disabled=false;}
   }

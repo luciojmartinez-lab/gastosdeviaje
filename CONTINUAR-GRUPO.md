@@ -78,3 +78,5 @@ La copia de trabajo en nube descargó solo archivos de texto del repositorio. La
 No se ha desplegado ni modificado main. Continuar en rama de desarrollo y no publicar sin verificar el resultado.
 
 Actualización 800v003: la selección de foto en Grupo conserva el selector, muestra nombre e imagen directamente y avisa durante la carga; fallos de lectura permiten reintentar sin perder la foto previa. Pruebas con File y FileReader, guardado/reapertura y error/reintento añadidas.
+
+Actualización 800v004: se amplía la detección del papel bajo luz cálida para no recortar la columna de precios. Grupo solicita lectura específica de columnas; solo propone su unión si cantidades de filas y suma coinciden con el total. Se prioriza el total con impuestos sobre la base/cuota. Foto 63077.jpg probada localmente con Tesseract español, preprocesado real y copia recomprimida: siete líneas, 75,90 EUR. La foto privada y los resultados experimentales permanecen en rutas ignoradas; no se publican. 306 pruebas automáticas correctas.

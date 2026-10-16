@@ -13,7 +13,7 @@ const cleanLine = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const DOCUMENT_PREPROCESSOR_VERSION = '800v003';
+const DOCUMENT_PREPROCESSOR_VERSION = '800v004';
 
 export const normalizeTicketText = value => String(value || '')
   .normalize('NFD')
@@ -498,6 +498,7 @@ export function reconstructTicketLayoutText(blocks = []) {
 function ticketTotalRowScore(line) {
   const normalized = normalizeTicketConcepts(line);
   if (ticketTotalLineExcluded(normalized)) return 0;
+  if (GENERIC_TOTAL_LABEL.test(normalized) && TOTAL_TAX_INCLUDED.test(normalized)) return 170;
   if (isBareTicketTotalLine(line)) return 150;
   if (BEST_TOTAL_LABEL.test(normalized) || LENS_MISTRANSLATED_TOTAL_LABEL.test(normalized)
     || EAST_ASIAN_BEST_TOTAL_LABEL.test(line)) return 130;
@@ -754,7 +755,7 @@ export function extractTicketTotal(text) {
       }
     }
     const bareTotal = isBareTicketTotalLine(line);
-    let labelScore = bareTotal ? 150 : hasBestLabel ? 130 : hasTotalLabel ? 115 : hasPaymentDueLabel ? 105 : hasAmountLabel ? 95 : 0;
+    let labelScore = hasTotalLabel && TOTAL_TAX_INCLUDED.test(normalized) ? 170 : bareTotal ? 150 : hasBestLabel ? 130 : hasTotalLabel ? 115 : hasPaymentDueLabel ? 105 : hasAmountLabel ? 95 : 0;
     if (tableHeader && !hasTotalLabel) labelScore = 0;
     if (hasAmountLabel && !hasTotalLabel && !hasPaymentDueLabel && amounts.length > 1) labelScore = 0;
     if (excluded) labelScore = 0;
@@ -1577,6 +1578,63 @@ async function recognizeMissingTicketTitle(worker, recognition, onProgress) {
     : '';
 }
 
+export function receiptTableBounds(rows, width, height) {
+  const header=rows.find(row=>/\b[pr]rodu[ce]tos?\b/.test(normalizeTicketText(row.text)) && /\buds\b|\bunidades\b|\bimporte\b/.test(normalizeTicketText(row.text)));
+  if(!header)return null;
+  const footer=rows.find(row=>row.bbox.y0>header.bbox.y1 && /\b(?:base|subtotal|total|iva|igic|cuota)\b/.test(normalizeTicketText(row.text)));
+  if(!footer)return null;
+  const rowHeight=median(rows.filter(row=>row.bbox.y0>=header.bbox.y0 && row.bbox.y0<=footer.bbox.y0).map(row=>row.bbox.y1-row.bbox.y0))||20;
+  const y=Math.max(0,Math.floor(header.bbox.y1-rowHeight*0.2));
+  const bottom=Math.min(height,Math.floor(footer.bbox.y0-rowHeight*0.15));
+  if(bottom-y<rowHeight*2)return null;
+  const boundary=Math.round(width*0.73);
+  return {
+    names:{x:Math.round(width*0.035),y,width:boundary-Math.round(width*0.035),height:bottom-y},
+    amounts:{x:boundary,y,width:width-boundary,height:bottom-y}
+  };
+}
+
+export function joinReceiptTableColumns(namesText, amountsText, total) {
+  const names=[];
+  for(const line of ticketLines(namesText)){
+    const match=line.match(/^(\d{1,3}|[IlL])\s+([\p{L}][\s\S]*)$/u);
+    if(!match){
+      if(names.length && /^c{1,2}[.,]\s*\p{L}/iu.test(line))names[names.length-1].name+=` · ${line}`;
+      continue;
+    }
+    const quantity=/^[IlL]$/.test(match[1])?1:Number(match[1]);
+    if(quantity<=0 || /\b(?:total|base|cuota|iva|igic)\b/.test(normalizeTicketText(match[2])))continue;
+    names.push({quantity,name:match[2].trim()});
+  }
+  const amounts=[];
+  for(const line of ticketLines(amountsText)){
+    const match=line.match(/^(\d+(?:[.,]\d{3})*[.,]\s*\d{2})\s*(?:€|EUR)?$/i);
+    if(!match)return null;
+    const value=parseTicketAmount(match[1].replace(/\s/g,''));
+    if(!Number.isFinite(value)||value<0)return null;
+    amounts.push(Math.round(value*100));
+  }
+  // Column order alone is insufficient: require every row and the exact ticket total.
+  if(!names.length || names.length!==amounts.length || !Number.isFinite(total)
+    || amounts.reduce((sum,value)=>sum+value,0)!==Math.round(total*100))return null;
+  const items=names.map((item,index)=>({...item,amountCents:amounts[index]}));
+  return {items,text:[...items.map(item=>`${item.quantity} ${item.name} ${(item.amountCents/100).toFixed(2).replace('.',',')}`),`TOTAL ${total.toFixed(2).replace('.',',')}`].join('\n')};
+}
+
+async function recognizeReceiptTable(worker, image, onProgress) {
+  await worker.setParameters({tessedit_pageseg_mode:OCR_PSM_SINGLE_BLOCK});
+  onProgress({status:'Comprobando conceptos y columna de precios',progress:0.8});
+  const reading=await recognizeTicketLayoutPass(worker,image,false);
+  const bounds=receiptTableBounds(reading.rows,image.width,image.height);
+  if(!bounds)return {reading,table:null,passes:1};
+  const names=await worker.recognize(cropCanvasBounds(image,bounds.names),{rotateAuto:false},OCR_TEXT_WITH_LAYOUT);
+  onProgress({status:'Leyendo los importes de cada producto',progress:0.86});
+  const amounts=await worker.recognize(cropCanvasBounds(image,bounds.amounts),{rotateAuto:false},OCR_TEXT_WITH_LAYOUT);
+  const table=Number(names.data?.confidence)>=35 && Number(amounts.data?.confidence)>=35
+    ? joinReceiptTableColumns(names.data.text,amounts.data.text,reading.fields.total):null;
+  return {reading,table,passes:3};
+}
+
 async function recognizeTicketUnlocked(source, options = {}) {
   if (!source) throw new Error('Selecciona o fotografía primero un ticket.');
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
@@ -1598,6 +1656,7 @@ async function recognizeTicketUnlocked(source, options = {}) {
     onProgress({ status: reviewTranslatedReceipt ? 'Leyendo la traducción de Google Lens' : 'Leyendo el ticket', progress: 0.15 });
     const primary = await recognizeTicketLayoutPass(worker, primaryImage, !preparedResult.documentDetected);
     let selected = primary;
+    let itemText='',itemsStatus='';
 
     if (!reviewTranslatedReceipt
       && preparedResult.original
@@ -1614,6 +1673,23 @@ async function recognizeTicketUnlocked(source, options = {}) {
       const contrast = await recognizeTicketLayoutPass(worker, preparedResult.binary, false);
       additionalPasses += 1;
       if (ticketRecognitionQuality(contrast) > ticketRecognitionQuality(selected)) selected = contrast;
+    }
+
+    if(options.readItems===true && selected.fields.documentType!=='card_payment'){
+      const itemReading=await recognizeReceiptTable(worker,preparedResult.primary,onProgress);
+      additionalPasses+=itemReading.passes;
+      itemText=itemReading.table?.text||'';
+      itemsStatus=itemText?'reconciled':'review';
+      if(itemText){
+        const priorMerchant=selected.fields.merchant;
+        selected=itemReading.reading;
+        selected.fields.merchant=priorMerchant||selected.fields.merchant;
+      }else{
+        // An unreconciled product pass must not suggest a subtotal as the amount due.
+        const explicitIncluded=itemReading.reading.rows.find(row=>GENERIC_TOTAL_LABEL.test(normalizeTicketText(row.text)) && TOTAL_TAX_INCLUDED.test(normalizeTicketText(row.text)));
+        selected.fields.total=explicitIncluded?extractTicketTotal(explicitIncluded.text):null;
+        selected.layoutTotalRow=null;
+      }
     }
 
     const cardAmount = await recognizeMissingCardPaymentAmount(worker, selected, onProgress);
@@ -1645,6 +1721,8 @@ async function recognizeTicketUnlocked(source, options = {}) {
     const classificationText = text;
     return {
       text,
+      itemText,
+      itemsStatus,
       classificationText,
       confidence: selected.confidence,
       fields: selected.fields,

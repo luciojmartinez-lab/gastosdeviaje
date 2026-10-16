@@ -113,8 +113,10 @@ export function detectReceiptCorners(cv, source) {
     cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
     cv.cvtColor(analysis, gray, cv.COLOR_RGBA2GRAY);
     cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0, 0, cv.BORDER_DEFAULT);
-    lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), new cv.Scalar(0, 0, 155, 0));
-    upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), new cv.Scalar(180, 62, 255, 255));
+    // Warm lighting and shadows tint receipt paper, especially the amount column.
+    // A strict near-white mask can cut that whole column off before OCR runs.
+    lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), new cv.Scalar(0, 0, 120, 0));
+    upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), new cv.Scalar(180, 100, 255, 255));
     cv.inRange(hsv, lower, upper, mask);
     cv.morphologyEx(mask, opened, cv.MORPH_OPEN, openKernel);
     cv.morphologyEx(opened, closed, cv.MORPH_CLOSE, closeKernel);

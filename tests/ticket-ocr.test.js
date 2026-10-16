@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  receiptTableBounds,
+  joinReceiptTableColumns,
   correctTicketMerchantFromKnown,
   detectTicketDocumentType,
   extractTicketDate,
@@ -808,4 +810,36 @@ test('la ayuda separa el lector español del flujo extranjero con Lens', () => {
   assert.match(section, /deja el importe sin completar/);
   assert.ok(section.length < 600, `La explicación de Leer ticket vuelve a ser demasiado larga (${section.length})`);
   assert.doesNotMatch(section, /japonés|coreano|idioma de lectura/i);
+});
+
+
+test('el total con impuestos prevalece sobre las columnas Total de base y cuota',()=>{
+ const text='10,00 %: Base: 69,00 € Cuota: 6,90 €\nTotal: 69,00 € Total: 6,90 €\nTotal (Impuestos Incl.) 75,90 €';
+ assert.equal(extractTicketTotal(text),75.9);
+});
+
+test('las columnas de restaurante se unen solo si las siete filas cuadran con el total',()=>{
+ const names='1 MEJILLONES\nL SEPIA APERITIVO\n2 FIDEUA\n1 JARRA\n2 COCACOLA ZERO 350\n1 TARRINA\nc. CHOCOLATE BELGA\nc. LIMON\n1 TARRINA\nc. AVELLANA\nc. LIMON';
+ const amounts='10,50 €\n12,70 €\n33,90 €\n3,40 €\n5,40 €\n5,00 €\n5,00 €';
+ const result=joinReceiptTableColumns(names,amounts,75.9);
+ assert.equal(result.items.length,7);
+ assert.deepEqual(result.items.map(item=>item.amountCents),[1050,1270,3390,340,540,500,500]);
+ assert.equal(result.items[2].quantity,2);assert.equal(result.items[4].quantity,2);
+ assert.match(result.items[5].name,/CHOCOLATE BELGA.*LIMON/);
+ assert.match(result.items[6].name,/AVELLANA.*LIMON/);
+ assert.match(result.text,/TOTAL 75,90/);
+ assert.equal(joinReceiptTableColumns(names,amounts,69),null);
+ assert.equal(joinReceiptTableColumns(names,amounts.replace('12,70 €\n',''),75.9),null);
+ assert.equal(joinReceiptTableColumns(names,amounts.replace('10,50','1050'),75.9),null);
+});
+
+test('la región de productos queda entre el encabezado y el desglose fiscal',()=>{
+ const rows=[{text:'Uds. Producto Importe',bbox:{x0:10,y0:100,x1:900,y1:130}},{text:'1 Menú 20,00',bbox:{x0:10,y0:150,x1:900,y1:180}},{text:'Base 18,18 Cuota 1,82',bbox:{x0:10,y0:400,x1:900,y1:430}}];
+ const bounds=receiptTableBounds(rows,1000,600);
+ assert.ok(bounds.names.y>=100 && bounds.names.y<=130);
+ assert.ok(bounds.names.y+bounds.names.height<400);
+ assert.equal(bounds.amounts.x,bounds.names.x+bounds.names.width);
+ assert.equal(bounds.amounts.x+bounds.amounts.width,1000);
+ assert.equal(receiptTableBounds(rows.slice(1),1000,600),null);
+ assert.ok(receiptTableBounds([{...rows[0],text:'Uds. Rrodueto O IMPOLo'},...rows.slice(1)],1000,600));
 });

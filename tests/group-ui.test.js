@@ -17,7 +17,7 @@ async function setup(options={}){
  const state={selectedViajeIds:[1]},drafts=new Map();
  async function load(){await new Promise((resolve,reject)=>{const tx=db.transaction(stores);tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);stores.forEach(name=>{const req=tx.objectStore(name).getAll();req.onsuccess=()=>state[name]=req.result;});});}
  await load();let ocrCalls=0;
- w.TravelGroupUI.mount({getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>drafts.set(value.tripId,JSON.parse(JSON.stringify(value))),readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};},share:async text=>assert.match(text,/Pendiente|pendiente/)});
+ w.TravelGroupUI.mount({getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>drafts.set(value.tripId,JSON.parse(JSON.stringify(value))),readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:options.recognize || (async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};}),share:async text=>assert.match(text,/Pendiente|pendiente/)});
  const $=selector=>w.document.querySelector(selector);
  const input=(selector,value)=>{const element=$(selector);if(element.type==='checkbox')element.checked=value;else element.value=value;element.dispatchEvent(new w.Event('input',{bubbles:true}));element.dispatchEvent(new w.Event('change',{bubbles:true}));};
  const click=selector=>$(selector).click();
@@ -67,5 +67,34 @@ test('una lectura fallida informa del error y permite elegir otra foto sin perde
   assert.equal(ui.$('#group-meal-file').disabled,false);assert.equal(ui.$('#group-ocr').disabled,false);
   ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
   assert.equal(attempts,3);
+ }finally{ui.close();}
+});
+
+
+test('OCR sin precios reconciliados conserva los conceptos existentes y pide revisión',async()=>{
+ const ui=await setup({recognize:async()=>({text:'MEJILLONES\nTotal: 69,00',fields:{total:null},itemsStatus:'review'})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
+  ui.click('#group-add-item');ui.input('[data-item-field="name"]','Concepto revisado');
+  ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('no se han podido emparejar'));
+  assert.equal(ui.$('[data-item-field="name"]').value,'Concepto revisado');
+  assert.equal(ui.$('#group-meal-reviewed').checked,false);
+  assert.equal(ui.state.gastos.length,0);
+ }finally{ui.close();}
+});
+
+
+test('Grupo usa la propuesta reconciliada de columnas en lugar del texto completo desalineado',async()=>{
+ const ui=await setup({recognize:async()=>({text:'MEJILLONES 12,70\nTotal 6,90',itemText:'2 FIDEUA 33,90\nTOTAL 33,90',itemsStatus:'reconciled',fields:{total:33.9}})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
+  ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===1);
+  assert.equal(ui.$('[data-item-field="name"]').value,'FIDEUA');
+  assert.equal(ui.$('[data-item-field="quantity"]').value,'2');
+  assert.equal(ui.$('[data-item-field="amountCents"]').value,'33.90');
+  assert.equal(ui.$('#group-meal-total').value,'33.90');
+  assert.equal(ui.$('#group-meal-reviewed').checked,false);
  }finally{ui.close();}
 });
