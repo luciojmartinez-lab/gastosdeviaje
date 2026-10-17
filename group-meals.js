@@ -181,6 +181,21 @@
     next.settlements.forEach(payment => { payment.accountId = accountMap[Number(payment.accountId)] || null; });
     return next;
   }
+  function personalReceipt(group, meal, participantId) {
+    if(meal?.status!=='closed')throw new Error('Cierra y revisa la comida antes de generar justificantes.');
+    validate(group);
+    const person=group.participants.find(person=>person.id===participantId);
+    if(!person||!meal.attendees.includes(participantId))throw new Error('Selecciona un asistente de esta comida.');
+    const rows=[];
+    for(const item of meal.items){
+      const shares=item.common?Object.fromEntries(meal.attendees.map(id=>[id,1])):item.shares||{};
+      if(!(Number(shares[participantId])>0))continue;
+      const shared=Object.values(shares).filter(weight=>Number(weight)>0).length>1;
+      rows.push({name:item.name,label:item.name+(item.common?' (común)':shared?' (compartido)':''),amountCents:split(item.amountCents,shares)[participantId]});
+    }
+    const payment=mealPayments(group,meal).find(row=>row.id===participantId);
+    return {participantName:person.name,mealName:meal.name,date:meal.date,payerName:group.participants.find(person=>person.id===meal.payerId)?.name||'',isPayer:participantId===meal.payerId,rows,totalCents:payment.due,paidCents:payment.paid,remainingCents:payment.remaining};
+  }
   function summary(group, meal) {
     const result = allocation(meal);
     const name = id => group.participants.find(p => p.id === id)?.name || '?';
@@ -188,5 +203,5 @@
       ...meal.attendees.map(id => `${name(id)}: ${money(result.totals[id] || 0)} (individual ${money(result.individual[id] || 0)} + compartido ${money(result.common[id] || 0)})`),
       '', ...mealPayments(group, meal).map(row => `${name(row.id)}: ${row.id === meal.payerId ? 'cubierto' : 'devuelto'} ${money(row.paid)} · pendiente ${money(row.remaining)}`), '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
   }
-  root.TravelGroup = { normalize, validate, allocation, split, expandUnits, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, parseItems, remapAccounts, summary };
+  root.TravelGroup = { normalize, validate, allocation, split, expandUnits, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, parseItems, remapAccounts, personalReceipt, summary };
 })(globalThis);

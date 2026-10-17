@@ -27,6 +27,29 @@ function fixture() {
       items: [{id:'i1',name:'Platos',amountCents:5400,shares:{a:1,b:1,c:1}}, {id:'i2',name:'Pan y agua',amountCents:600,common:true}]}] });
 }
 const snapshot = () => ({ cuentas:[{id:1,nombre:'Revolut',moneda:'EUR',viajeId:5,saldoActual:500}], gastos:[], transferencias:[], categorias:[{id:1,nombre:'Comidas',parentId:null}] });
+
+test('justificante personal desglosa solo su consumo, conserva céntimos y descuenta devoluciones activas',()=>{
+  const group=fixture(),meal=group.meals[0];
+  group.settlements=[{id:'s',mealId:'m1',fromId:'b',toId:'a',amountCents:1000,date:'2026-11-28'}, {id:'v',mealId:'m1',fromId:'b',toId:'a',amountCents:500,voided:true,voidReason:'Error'}];
+  const before=JSON.stringify(group),receipt=api.personalReceipt(group,meal,'b');
+  assert.deepEqual(plain(receipt.rows),[{name:'Platos',label:'Platos (compartido)',amountCents:1800},{name:'Pan y agua',label:'Pan y agua (común)',amountCents:200}]);
+  assert.equal(receipt.totalCents,2000);assert.equal(receipt.paidCents,1000);assert.equal(receipt.remainingCents,1000);
+  assert.equal(receipt.participantName,'Ana');assert.equal(JSON.stringify(group),before);
+  assert.doesNotMatch(JSON.stringify(receipt),/accountId|ticketData|participants|settlements/);
+  const payer=api.personalReceipt(group,meal,'a');assert.equal(payer.isPayer,true);assert.equal(payer.remainingCents,0);assert.equal(payer.paidCents,2000);
+  assert.throws(()=>api.personalReceipt(group,meal,'missing'),/asistente/);
+  assert.throws(()=>api.personalReceipt(group,{...meal,status:'draft'},'b'),/Cierra/);
+});
+
+test('los justificantes usan el mismo reparto con pesos y céntimos sobrantes, sin agrupar platos repetidos',()=>{
+ const group=fixture(),meal=group.meals[0];
+ meal.totalCents=1001;meal.items=[{id:'x',name:'Tapa',amountCents:501,shares:{b:1,c:2}},{id:'y',name:'Tapa',amountCents:500,common:true}];
+ const receipts=meal.attendees.map(id=>api.personalReceipt(group,meal,id));
+ for(const receipt of receipts)assert.equal(receipt.rows.reduce((s,row)=>s+row.amountCents,0),receipt.totalCents);
+ assert.equal(receipts.reduce((s,r)=>s+r.totalCents,0),1001);
+ assert.deepEqual(plain(receipts[1].rows.map(row=>row.amountCents)),[167,167]);
+ assert.equal(receipts[0].rows.length,1);assert.equal(receipts[1].rows.length,2);
+});
 test('los céntimos de un importe indivisible entre doce cuadran exactamente', () => {
   const result = api.split(1000, Object.fromEntries(Array.from({length:12},(_,i)=>[`p${i}`,1])));
   assert.equal(Object.values(result).reduce((sum,value)=>sum+value,0),1000);

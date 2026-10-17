@@ -5919,6 +5919,10 @@ footer {
 .group-ticket-card:not(:only-child) .group-ticket { max-height: 42vh; }
 .group-payment { padding: 8px; background: var(--soft); border-radius: 8px; }
 .group-payment-actions { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.group-receipt-table { min-width: 0; width: 100%; table-layout: fixed; }
+.group-receipt-table th:first-child, .group-receipt-table td:first-child { overflow-wrap: anywhere; }
+.group-receipt-table th:last-child, .group-receipt-table td:last-child { width: 110px; text-align: right; font-variant-numeric: tabular-nums; }
+#group-receipt-message { white-space: pre-wrap; }
 #view-grupo details > summary, .group-dialog details > summary { padding: 12px 0; cursor: pointer; font-weight: 600; }
 #group-meal-totals ul { columns: 2; }
 #group-message, #group-meal-message, #group-payment-message, #group-meal-check { white-space: pre-wrap; }

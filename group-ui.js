@@ -7,6 +7,27 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const uid = () => crypto.randomUUID();
   const AI_CODE_KEY = 'cuaderno.receiptAccess.v1';
+  let receiptGroup,receiptMeal,receiptFiles=[],receiptSequence=0;
+  async function renderReceipt(){
+    const sequence=++receiptSequence;receiptFiles=[];
+    $('#group-receipt-share').disabled=true;$('#group-receipt-download').disabled=true;
+    $('#group-receipt-content').innerHTML='';$('#group-receipt-message').textContent='';$('#group-receipt-message').classList.remove('error');
+    const id=$('#group-receipt-person').value;if(!id)return;
+    const receipt=api().personalReceipt(receiptGroup,receiptMeal,id);
+    $('#group-receipt-content').innerHTML=`<h3>${esc(receipt.participantName)} · ${esc(receipt.mealName)}</h3><p>${esc(receipt.date.split('-').reverse().join('/'))} · Pagó: ${esc(receipt.payerName)}</p><table class="group-receipt-table"><thead><tr><th>Concepto</th><th>Tu importe</th></tr></thead><tbody>${receipt.rows.map(row=>`<tr><td>${esc(row.label)}</td><td>${api().money(row.amountCents)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total consumido</th><td>${api().money(receipt.totalCents)}</td></tr><tr><th scope="row">${receipt.isPayer?'Cubierto por ti':'Ya devuelto'}</th><td>${api().money(receipt.paidCents)}</td></tr><tr><th scope="row">Pendiente</th><td>${api().money(receipt.remainingCents)}</td></tr></tfoot></table><p class="small">Los importes compartidos muestran solo su parte. Desglose del reparto de la comida.</p>`;
+    $('#group-receipt-message').textContent='Preparando imagen…';
+    try{
+      const files=await (host.prepareReceipt||root.TravelGroupReceipt.createFiles)(receipt);
+      if(sequence!==receiptSequence||!$('#group-receipt-dialog').open)return;
+      receiptFiles=files;$('#group-receipt-share').disabled=false;$('#group-receipt-download').disabled=false;
+      $('#group-receipt-message').textContent=files.length>1?`Justificante preparado en ${files.length} imágenes. Al compartir, elige WhatsApp y el destinatario.`:'Imagen preparada. Al compartir, elige WhatsApp y el destinatario.';
+    }catch(error){if(sequence===receiptSequence)message(error.message,true,'#group-receipt-message');}
+  }
+  function openReceipt(group,meal){
+    receiptGroup=JSON.parse(JSON.stringify(group));receiptMeal=receiptGroup.meals.find(value=>value.id===meal.id);
+    $('#group-receipt-person').innerHTML=options(group.participants.filter(person=>meal.attendees.includes(person.id)),'','Elige una persona');
+    $('#group-receipt-dialog').showModal();return renderReceipt();
+  }
   function showAICode(visible) {
     $('#group-ai-code').type=visible?'text':'password';
     const button=$('#group-ai-toggle-code'),label=visible?'Ocultar código':'Mostrar código';
@@ -89,7 +110,7 @@
     $('#group-meals').innerHTML=group.meals.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(meal=>{
       const closed=meal.status==='closed';
       const payments=closed?api().mealPayments(group,meal):[];
-      return `<article class="group-meal-card"><h3>${esc(meal.name||'Comida sin nombre')} <span class="badge">${closed?'Cerrada':'Borrador'}</span></h3><p>${esc(meal.date)} · ${meal.attendees.length} asistentes · ${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Total por revisar'}${closed?` · Pagó ${esc(name(group,meal.payerId))}`:''}</p><div class="actions"><button class="btn ghost" type="button" data-group-edit="${esc(meal.id)}">${closed?'Revisar / corregir':'Continuar'}</button>${closed?`<button class="btn ghost" type="button" data-group-share="${esc(meal.id)}">Compartir resumen</button><button class="btn ghost" type="button" data-group-collect="${esc(meal.id)}">Registrar devolución</button>`:`<button class="ghost" type="button" data-group-delete="${esc(meal.id)}">Eliminar borrador</button>`}</div>${closed?`<div class="table-wrap"><table><thead><tr><th>Asistente</th><th>Consumo</th><th>Devuelto / cubierto</th><th>Pendiente</th></tr></thead><tbody>${payments.map(row=>`<tr><td>${esc(name(group,row.id))}</td><td>${api().money(row.due)}</td><td>${api().money(row.paid)}</td><td>${api().money(row.remaining)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['due','paid','remaining'].map(key=>`<td>${api().money(sum(payments,key))}</td>`).join('')}</tr></tfoot></table></div>`:''}${group.settlements.filter(payment=>payment.mealId===meal.id).map(payment=>`<p class="group-payment">${esc(payment.date||'')} · ${esc(name(group,payment.fromId))} → ${esc(name(group,payment.toId))}: ${api().money(payment.amountCents)} ${payment.voided?`<strong>Anulada: ${esc(payment.voidReason)}</strong>`:`<span class="group-payment-actions"><button type="button" class="ghost" data-group-payment-edit="${esc(payment.id)}" aria-label="Editar devolución de ${esc(name(group,payment.fromId))}">Editar</button><button type="button" class="ghost" data-group-void="${esc(payment.id)}">Anular registro</button></span>`}</p>`).join('')}</article>`;
+      return `<article class="group-meal-card"><h3>${esc(meal.name||'Comida sin nombre')} <span class="badge">${closed?'Cerrada':'Borrador'}</span></h3><p>${esc(meal.date)} · ${meal.attendees.length} asistentes · ${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Total por revisar'}${closed?` · Pagó ${esc(name(group,meal.payerId))}`:''}</p><div class="actions"><button class="btn ghost" type="button" data-group-edit="${esc(meal.id)}">${closed?'Revisar / corregir':'Continuar'}</button>${closed?`<button class="btn ghost" type="button" data-group-share="${esc(meal.id)}">Compartir resumen</button><button class="btn ghost" type="button" data-group-receipt="${esc(meal.id)}">Justificante individual</button><button class="btn ghost" type="button" data-group-collect="${esc(meal.id)}">Registrar devolución</button>`:`<button class="ghost" type="button" data-group-delete="${esc(meal.id)}">Eliminar borrador</button>`}</div>${closed?`<div class="table-wrap"><table><thead><tr><th>Asistente</th><th>Consumo</th><th>Devuelto / cubierto</th><th>Pendiente</th></tr></thead><tbody>${payments.map(row=>`<tr><td>${esc(name(group,row.id))}</td><td>${api().money(row.due)}</td><td>${api().money(row.paid)}</td><td>${api().money(row.remaining)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['due','paid','remaining'].map(key=>`<td>${api().money(sum(payments,key))}</td>`).join('')}</tr></tfoot></table></div>`:''}${group.settlements.filter(payment=>payment.mealId===meal.id).map(payment=>`<p class="group-payment">${esc(payment.date||'')} · ${esc(name(group,payment.fromId))} → ${esc(name(group,payment.toId))}: ${api().money(payment.amountCents)} ${payment.voided?`<strong>Anulada: ${esc(payment.voidReason)}</strong>`:`<span class="group-payment-actions"><button type="button" class="ghost" data-group-payment-edit="${esc(payment.id)}" aria-label="Editar devolución de ${esc(name(group,payment.fromId))}">Editar</button><button type="button" class="ghost" data-group-void="${esc(payment.id)}">Anular registro</button></span>`}</p>`).join('')}</article>`;
     }).join('')||'<p class="small">Todavía no hay comidas. Añade viajeros y pulsa Nueva comida.</p>';
     $('#group-new-meal').disabled=group.participants.filter(person=>person.active).length===0;
   }
@@ -327,10 +348,16 @@
       if(button.dataset.groupDelete){if(!confirm('Eliminar este borrador de comida?'))return;group.meals=group.meals.filter(meal=>meal.id!==button.dataset.groupDelete);return commit(group);}
       if(button.dataset.groupVoid){const payment=group.settlements.find(payment=>payment.id===button.dataset.groupVoid);const reason=prompt('Motivo de la anulación (se conserva el registro):');if(!reason?.trim())return;payment.voided=true;payment.voidReason=reason.trim();return commit(group);}
       if(button.dataset.groupShare){const meal=group.meals.find(meal=>meal.id===button.dataset.groupShare);await host.share(api().summary(group,meal));message('Resumen preparado para compartir.');return;}
+      if(button.dataset.groupReceipt){const meal=group.meals.find(meal=>meal.id===button.dataset.groupReceipt);return openReceipt(group,meal);}
       if(button.dataset.groupPaymentEdit){const payment=group.settlements.find(payment=>payment.id===button.dataset.groupPaymentEdit);const meal=group.meals.find(meal=>meal.id===payment?.mealId);if(!meal)throw new Error('La comida ya no existe.');return openPayment(group,meal,payment.id);}
       if(button.dataset.groupCollect){const meal=group.meals.find(meal=>meal.id===button.dataset.groupCollect);return openPayment(group,meal);}
     });
     $('#group-payment-from').onchange=paymentAmount;
+    $('#group-receipt-person').onchange=safe(renderReceipt,'#group-receipt-message');
+    $('#group-receipt-close').onclick=()=>$('#group-receipt-dialog').close();
+    $('#group-receipt-dialog').onclose=()=>{receiptSequence++;receiptFiles=[];};
+    $('#group-receipt-share').onclick=safe(async()=>{if(receiptFiles.length)message(await (host.shareReceipt||root.TravelGroupReceipt.share)(receiptFiles),false,'#group-receipt-message');},'#group-receipt-message');
+    $('#group-receipt-download').onclick=safe(()=>{if(receiptFiles.length){(host.downloadReceipt||root.TravelGroupReceipt.download)(receiptFiles);message('Imagen descargada. Puedes adjuntarla en WhatsApp.',false,'#group-receipt-message');}},'#group-receipt-message');
     $('#group-payment-close').onclick=()=>$('#group-payment-dialog').close();
     $('#group-payment-form').onsubmit=safe(async event=>{
       event.preventDefault();

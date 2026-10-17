@@ -18,7 +18,7 @@ async function setup(options={}){
  const state={selectedViajeIds:[1]},drafts=new Map();
  async function load(){await new Promise((resolve,reject)=>{const tx=db.transaction(stores);tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);stores.forEach(name=>{const req=tx.objectStore(name).getAll();req.onsuccess=()=>state[name]=req.result;});});}
  await load();let ocrCalls=0;
- w.TravelGroupUI.mount({aiStatus:options.aiStatus||(async()=>({enabled:true,message:'Comprobación gratuita por foto'})),recognizeAI:options.recognizeAI,getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>drafts.set(value.tripId,JSON.parse(JSON.stringify(value))),readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:options.recognize || (async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};}),share:async text=>assert.match(text,/Pendiente|pendiente/)});
+ w.TravelGroupUI.mount({prepareReceipt:options.prepareReceipt,shareReceipt:options.shareReceipt,downloadReceipt:options.downloadReceipt,aiStatus:options.aiStatus||(async()=>({enabled:true,message:'Comprobación gratuita por foto'})),recognizeAI:options.recognizeAI,getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>drafts.set(value.tripId,JSON.parse(JSON.stringify(value))),readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:options.recognize || (async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};}),share:async text=>assert.match(text,/Pendiente|pendiente/)});
  const $=selector=>w.document.querySelector(selector);
  const input=(selector,value)=>{const element=$(selector);if(element.type==='checkbox')element.checked=value;else element.value=value;element.dispatchEvent(new w.Event('input',{bubbles:true}));element.dispatchEvent(new w.Event('change',{bubbles:true}));};
  const click=selector=>$(selector).click();
@@ -35,6 +35,32 @@ async function seedPayments(ui){
  group.settlements=[{id:'s1',mealId:'comida1',fromId:'p1',toId:'p0',amountCents:1000,date:'2026-10-17'}, {id:'s2',mealId:'comida2',fromId:'p0',toId:'p1',amountCents:500,date:'2026-10-17'}, {id:'s3',mealId:'comida1',fromId:'p2',toId:'p0',amountCents:500,date:'2026-10-17',voided:true,voidReason:'Registro erróneo'}];
  await ui.w.TravelGroupStore.save(ui.db,1,0,group);await ui.load();ui.w.TravelGroupUI.render();
 }
+
+test('justificante individual muestra solo esa persona, comparte archivo preparado y no cambia la contabilidad',async()=>{
+ let prepared,shared=0,downloaded=0;
+ const ui=await setup({prepareReceipt:async value=>{prepared=value;return[{name:value.participantName+'.png'}];},shareReceipt:async files=>{shared++;assert.equal(files[0].name,'Atleta 1.png');return 'Menú de compartir abierto';},downloadReceipt:files=>{downloaded++;assert.equal(files[0].name,'Atleta 1.png');}});
+ try{
+  await seedPayments(ui);const before=JSON.stringify(ui.state);
+  ui.click('[data-group-receipt="comida1"]');assert.equal(ui.$('#group-receipt-share').disabled,true);
+  ui.input('#group-receipt-person','p1');await ui.waitFor(()=>!ui.$('#group-receipt-share').disabled);
+  assert.equal(prepared.participantName,'Atleta 1');assert.equal(prepared.totalCents,3001);assert.equal(prepared.paidCents,1000);assert.equal(prepared.remainingCents,2001);
+  assert.equal(ui.$('#group-receipt-content tbody').rows.length,1);assert.match(ui.$('#group-receipt-content').textContent,/Plato 1/);assert.doesNotMatch(ui.$('#group-receipt-content').textContent,/Plato 0|Plato 2/);
+  assert.equal(shared,0);ui.click('#group-receipt-share');await ui.waitFor(()=>shared===1);
+  ui.click('#group-receipt-download');assert.equal(downloaded,1);assert.equal(JSON.stringify(ui.state),before);
+  ui.input('#group-receipt-person','p0');await ui.waitFor(()=>!ui.$('#group-receipt-share').disabled);
+  assert.match(ui.$('#group-receipt-content').textContent,/Cubierto por ti/);assert.equal(prepared.remainingCents,0);
+  ui.click('#group-receipt-close');ui.click('[data-group-receipt="comida2"]');assert.equal(ui.$('#group-receipt-person').value,'');assert.equal(ui.$('#group-receipt-content').innerHTML,'');assert.equal(ui.$('#group-receipt-share').disabled,true);
+ }finally{ui.close();}
+});
+
+test('cambiar de persona mientras se prepara una imagen no comparte el justificante anterior',async()=>{
+ const pending=[],sent=[];const ui=await setup({prepareReceipt:receipt=>new Promise(resolve=>pending.push(()=>resolve([{name:receipt.participantName+'.png'}]))),shareReceipt:async files=>{sent.push(files[0].name);return 'Preparado';}});
+ try{
+  await seedPayments(ui);ui.click('[data-group-receipt="comida1"]');ui.input('#group-receipt-person','p1');ui.input('#group-receipt-person','p2');
+  pending[0]();await new Promise(resolve=>setTimeout(resolve,5));assert.equal(ui.$('#group-receipt-share').disabled,true);
+  pending[1]();await ui.waitFor(()=>!ui.$('#group-receipt-share').disabled);ui.click('#group-receipt-share');await ui.waitFor(()=>sent.length===1);assert.deepEqual(sent,['Atleta 2.png']);
+ }finally{ui.close();}
+});
 
 test('totales por comida y grupo: céntimos, varios pagadores, archivados, borradores y devoluciones anuladas',async()=>{
  const ui=await setup();try{
