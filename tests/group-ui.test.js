@@ -429,6 +429,19 @@ test('el código correcto se recuerda tras reabrir la aplicación y puede olvida
  }finally{reopened.close();}
 });
 
+test('Grupo recupera el código recordado si el campo se vacía antes de leer',async()=>{
+ let received;
+ const ui=await setup({rememberedCode:'saved-group-code',recognizeAI:async(meal,options)=>{received=options.accessCode;return {text:'1 Cena 12,00',fields:{total:12}};}});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));
+  ui.$('#group-ai-code').value='';ui.input('#group-ai-consent',true);ui.click('#group-ai-read');
+  await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===1);
+  assert.equal(received,'saved-group-code');assert.equal(ui.$('#group-ai-code').value,'saved-group-code');
+  assert.equal(ui.w.localStorage.getItem('cuaderno.receiptAccess.v1'),'saved-group-code');
+ }finally{ui.close();}
+});
+
 test('un código recordado que ya no sirve vuelve a pedir corrección; bloquear almacenamiento no bloquea la lectura',async()=>{
  const ui=await setup({rememberedCode:'old-code',recognizeAI:async()=>{throw new Error('Código de acceso incorrecto.');}});
  try{

@@ -189,10 +189,11 @@
   async function extract(useAI=false) {
     if(reading||!editor)return;
     const withAI=useAI===true;
-    const code=$('#group-ai-code').value.trim();if(withAI&&code)access.save(code);
+    const code=$('#group-ai-code').value.trim()||access.get();
+    if(withAI&&code){$('#group-ai-code').value=code;access.save(code);}
     if(withAI && !aiEnabled)throw new Error('La IA gratuita está pendiente de activación. Puedes usar el OCR local.');
     if(withAI && !$('#group-ai-consent').checked)throw new Error('Marca que autorizas enviar las fotos de este ticket a Google para leerlo.');
-    if(withAI && !$('#group-ai-code').value.trim())throw new Error('Introduce el código de acceso a la lectura gratuita.');
+    if(withAI && !code)throw new Error('Introduce el código de acceso a la lectura gratuita.');
     reading=true;$('#group-ocr').disabled=true;$('#group-parse-text').disabled=true;
     $('#group-ai-read').disabled=true;$('#group-close-meal').disabled=true;$('#group-save-draft').disabled=true;$('#group-meal-file').disabled=true;
     all('#group-meal-ticket button').forEach(button=>button.disabled=true);

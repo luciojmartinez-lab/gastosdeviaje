@@ -38,6 +38,8 @@
   async function status(prefix){const value=await host.status($(prefix+'-ticket-ai-code').value.trim());const usage=$(prefix+'-ticket-ai-usage');usage.textContent=value.usageText||value.message;usage.parentElement.querySelector('summary').textContent=value.usage?.available?`Registro hoy: ${value.usage.requests} / ${value.limits.daily} · ${Math.max(0,value.limits.daily-value.usage.requests)} restantes estimados*`:'Cuota gratuita y uso registrado';}
   function sync(prefix){
     if(!host||!$(prefix+'-ticket-ai-read'))return;
+    const codeInput=$(prefix+'-ticket-ai-code');
+    if(!codeInput.value.trim()&&access.get()&&document.activeElement!==codeInput)restore(prefix);
     const source=host.source(prefix),value=state[prefix];
     const context=host.context(prefix);
     if(value.source!==source?.source||value.context!==context){value.source=source?.source;value.context=context;value.sequence++;value.proposal=null;$(prefix+'-ticket-ai-proposal').innerHTML='';$(prefix+'-ticket-ai-consent').checked=false;$(prefix+'-ticket-ai-applied').hidden=true;message(prefix,'');}
@@ -45,7 +47,8 @@
   }
   async function read(prefix){
     const value=state[prefix];if(value.busy)return;
-    const code=$(prefix+'-ticket-ai-code').value.trim();if(code)access.save(code);
+    const input=$(prefix+'-ticket-ai-code'),code=input.value.trim()||access.get();
+    if(code){input.value=code;access.save(code);}
     if(host.localBusy(prefix))throw new Error('Espera a que termine la lectura local.');
     if(!$(prefix+'-ticket-ai-consent').checked)throw new Error('Autoriza enviar esta foto y las categorías a Google para leerla.');
     if(!code){$(prefix+'-ticket-ai-access').hidden=false;throw new Error('Introduce el código de acceso que usas en Grupo.');}
@@ -93,6 +96,7 @@
   };
   function mount(config){host=config;for(const prefix of ['g','edit-gasto']){
     state[prefix]={sequence:0,busy:false,proposal:null};restore(prefix);
+    $(prefix==='g'?'add-gasto-form':'edit-gasto-form').addEventListener('reset',event=>root.queueMicrotask(()=>{if(!event.defaultPrevented)restore(prefix);}));
     $(prefix+'-ticket-ai-panel').ontoggle=()=>{if($(prefix+'-ticket-ai-panel').open){if($(prefix+'-ticket-ai-access').hidden||!$(prefix+'-ticket-ai-code').value)restore(prefix);else $(prefix+'-ticket-ai-code').type='password';status(prefix).catch(()=>{});sync(prefix);}};
     $(prefix+'-ticket-ai-read').onclick=safe(prefix,()=>read(prefix));
     $(prefix+'-ticket-ai-code').oninput=$(prefix+'-ticket-ai-code').onchange=()=>{access.save($(prefix+'-ticket-ai-code').value);};

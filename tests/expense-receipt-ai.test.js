@@ -107,6 +107,44 @@ test('una respuesta tardía no sustituye ni borra el código nuevo introducido m
  }
 });
 
+test('reiniciar el formulario de un gasto recupera el código guardado aunque Gemini siga desplegado',async()=>{
+ const ui=await setup({rememberedCode:'saved-after-update'});try{
+  for(const prefix of ['g','edit-gasto']){
+   const panel=ui.$(prefix+'-ticket-ai-panel');panel.open=true;
+   const form=ui.$(prefix==='g'?'add-gasto-form':'edit-gasto-form');
+   form.reset();
+   await Promise.resolve();
+   ui.w.ExpenseReceiptAIUI.sync(prefix);
+   assert.equal(ui.$(prefix+'-ticket-ai-code').value,'saved-after-update');
+   assert.equal(ui.$(prefix+'-ticket-ai-access').hidden,true);
+   ui.$(prefix+'-ticket-ai-consent').checked=true;ui.click(prefix+'-ticket-ai-read');
+   await ui.wait(()=>!!ui.$(prefix+'-ticket-ai-apply'));assert.equal(ui.last()[1],'saved-after-update');
+   assert.equal(ui.w.localStorage.getItem('cuaderno.receiptAccess.v1'),'saved-after-update');
+  }
+ }finally{ui.close();}
+});
+
+test('un campo de código vaciado por el formulario reutiliza el guardado al leer sin reemplazar uno nuevo escrito',async()=>{
+ const ui=await setup({rememberedCode:'saved-code'});try{
+  ui.$('g-ticket-ai-code').value='';ui.$('g-ticket-ai-consent').checked=true;ui.click('g-ticket-ai-read');
+  await ui.wait(()=>!!ui.$('g-ticket-ai-apply'));assert.equal(ui.last()[1],'saved-code');
+  ui.$('g-ticket-ai-code').value='replacement-code';ui.click('g-ticket-ai-read');
+  await ui.wait(()=>ui.reads()===2&&!ui.$('g-ticket-ai-read').disabled);assert.equal(ui.last()[1],'replacement-code');
+ }finally{ui.close();}
+});
+
+test('Olvidar código sigue siendo definitivo tras reiniciar formularios y no lee sin un código nuevo',async()=>{
+ const ui=await setup({rememberedCode:'forget-me'});try{
+  ui.w.ReceiptAccess.forget();
+  for(const prefix of ['g','edit-gasto']){
+   ui.$(prefix==='g'?'add-gasto-form':'edit-gasto-form').reset();await Promise.resolve();ui.w.ExpenseReceiptAIUI.sync(prefix);
+   assert.equal(ui.$(prefix+'-ticket-ai-code').value,'');assert.equal(ui.$(prefix+'-ticket-ai-access').hidden,false);
+  }
+  ui.$('g-ticket-ai-consent').checked=true;ui.click('g-ticket-ai-read');await ui.wait(()=>ui.$('expense-ai-error-dialog').open);
+  assert.match(ui.$('expense-ai-error-message').textContent,/Introduce el código/);assert.equal(ui.reads(),0);assert.equal(ui.w.ReceiptAccess.get(),'');
+ }finally{ui.close();}
+});
+
 test('error al aplicar: el aviso emergente conserva la propuesta y permite corregir sin otra lectura',async()=>{
  let missingAccount=true;const ui=await setup({apply:async()=>{if(missingAccount)throw Object.assign(new Error('Selecciona la cuenta del gasto.'),{focusTarget:'g-cuenta'});return 'Aplicado';}});try{
   ui.$('add-gasto-dialog').setAttribute('open','');let scrolled=false;ui.$('g-cuenta').scrollIntoView=()=>{scrolled=true;};
