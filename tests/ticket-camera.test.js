@@ -14,7 +14,9 @@ async function setup(options={}){
  w.URL.createObjectURL=()=> 'blob:fixture';w.URL.revokeObjectURL=()=>revoked++;
  const stream=()=>({getTracks:()=>[{stop(){stopped++;}}]});
  Object.defineProperty(w.navigator,'mediaDevices',{value:{getUserMedia:async constraints=>{requested++;assert.equal(constraints.audio,false);assert.equal(constraints.video.facingMode.ideal,'environment');assert.ok(constraints.video.width.max*constraints.video.height.max<12_000_000);return options.media?options.media(stream):stream();}}});
- w.eval(source);w.TicketCameraUI.mount({before:async()=>{},isOpen:()=>options.isOpen?.()??true,accept:async(prefix,file,current)=>{assert.ok(current());accepted++;assert.equal(file.type,'image/jpeg');if(options.accept)await options.accept();},native:()=>native++});
+ if(options.geo)Object.defineProperty(w.navigator,'geolocation',{value:options.geo});
+ if(options.noGps)$('gps').checked=false;
+ w.eval(source);w.TicketCameraUI.mount({before:async()=>{},isOpen:()=>options.isOpen?.()??true,accept:async(prefix,file,current,metadata)=>{assert.ok(current());accepted++;assert.equal(file.type,'image/jpeg');if(options.accept)await options.accept(file,metadata);},native:()=>native++});
  const wait=async predicate=>{for(let i=0;i<100&&!predicate();i++)await new Promise(resolve=>setTimeout(resolve,3));assert.ok(predicate());};
  return{w,$,open:()=>w.TicketCameraUI.open('g'),click:id=>$(id).click(),wait,canvases,requested:()=>requested,stopped:()=>stopped,accepted:()=>accepted,native:()=>native,revoked:()=>revoked,close:()=>{w.dispatchEvent(new w.Event('pagehide'));w.close();}};
 }
@@ -84,5 +86,76 @@ test('si falla la preparación al usar una foto, el formulario recupera el adjun
   w.syncExpenseTicketSelection=async()=>{w.pendingExpenseTicketPreviews['edit-gasto']=null;w.pendingExpenseTicketTranslations['edit-gasto']=null;throw new Error('Sin memoria de ejemplo');};
   w.eval(sourceOf('acceptTicketCameraPhoto'));await assert.rejects(w.acceptTicketCameraPhoto('edit-gasto',next,()=>true),/Sin memoria/);
   assert.equal(input.files[0],previous);assert.equal(w.pendingExpenseTicketPreviews['edit-gasto'].data,'old-photo');assert.equal(w.pendingExpenseTicketTranslations['edit-gasto'].data,'old-translation');await w.pendingExpenseTicketLocationChecks['edit-gasto'];
+ }finally{w.close();}
+});
+
+test('GPS de cámara se entrega como metadato separado, sin modificar los bytes JPEG, y detiene la búsqueda',async()=>{
+ let success,requested=0;const cleared=[];
+ const ui=await setup({geo:{watchPosition(ok,fail,options){requested++;success=ok;assert.equal(options.maximumAge,0);return 42;},clearWatch:id=>cleared.push(id)},accept:async(file,metadata)=>{
+  assert.equal(metadata.point.latitude,41.38);assert.equal(metadata.point.longitude,2.17);assert.equal(metadata.point.source,'device');
+  const bytes=await new Promise(resolve=>{const reader=new ui.w.FileReader();reader.onload=()=>resolve(reader.result);reader.readAsText(file);});assert.equal(bytes,'jpeg');
+ }});try{
+  assert.equal(requested,0);await ui.open();assert.equal(requested,1);
+  success({coords:{latitude:41.38,longitude:2.17,accuracy:12},timestamp:Date.now()});assert.deepEqual(cleared,[42]);assert.match(ui.$('gps-status').textContent,/12 m/);
+  ui.click('take');await ui.wait(()=>!ui.$('use').hidden);ui.click('use');await ui.wait(()=>!ui.$('dialog').open);assert.equal(ui.accepted(),1);
+ }finally{ui.close();}
+});
+
+test('ubicación denegada o no disponible nunca impide hacer y usar la foto',async()=>{
+ for(const mode of ['denied','unsupported']){
+  let reject;const ui=await setup({geo:mode==='denied'?{watchPosition(ok,fail){reject=fail;return 8;},clearWatch(){}}:undefined,accept:async(file,metadata)=>assert.equal(metadata.point,null)});try{
+   await ui.open();if(reject)reject({code:1});assert.match(ui.$('gps-status').textContent,/Sin ubicación|no disponible/);
+   ui.click('take');await ui.wait(()=>!ui.$('use').hidden);ui.click('use');await ui.wait(()=>!ui.$('dialog').open);
+  }finally{ui.close();}
+ }
+});
+
+test('desmarcar GPS elimina la posición y cancelar descarta respuestas tardías, también tras repetir foto',async()=>{
+ let success,requested=0;const cleared=[];
+ const ui=await setup({geo:{watchPosition(ok){requested++;success=ok;return requested;},clearWatch:id=>cleared.push(id)},accept:async(file,metadata)=>assert.equal(metadata.point,null)});try{
+  await ui.open();success({coords:{latitude:40,longitude:-3,accuracy:30},timestamp:Date.now()});
+  ui.$('gps').click();assert.equal(requested,1);assert.match(ui.$('gps-status').textContent,/sin ubicación/);
+  ui.click('take');await ui.wait(()=>!ui.$('use').hidden);ui.click('repeat');await ui.wait(()=>!ui.$('take').disabled);assert.equal(requested,1);
+  ui.$('gps').click();assert.equal(requested,2);const late=success;ui.click('cancel');assert.ok(cleared.includes(2));late({coords:{latitude:41,longitude:2,accuracy:5},timestamp:Date.now()});
+  ui.$('gps').checked=false;await ui.open();ui.click('take');await ui.wait(()=>!ui.$('use').hidden);ui.click('use');await ui.wait(()=>!ui.$('dialog').open);
+ }finally{ui.close();}
+});
+
+test('GPS rechaza posiciones antiguas o inválidas, mejora precisión y no bloquea Usar foto mientras espera',async()=>{
+ let success;const cleared=[];
+ const ui=await setup({geo:{watchPosition(ok){success=ok;return 7;},clearWatch:id=>cleared.push(id)},accept:async(file,metadata)=>assert.equal(metadata.point.accuracy,150)});try{
+  await ui.open();
+  success({coords:{latitude:41,longitude:2,accuracy:5},timestamp:Date.now()-60000});success({coords:{latitude:141,longitude:2,accuracy:5},timestamp:Date.now()});assert.match(ui.$('gps-status').textContent,/Buscando/);
+  success({coords:{latitude:41,longitude:2,accuracy:300},timestamp:Date.now()});success({coords:{latitude:41,longitude:2,accuracy:150},timestamp:Date.now()});success({coords:{latitude:42,longitude:3,accuracy:500},timestamp:Date.now()});
+  ui.click('take');await ui.wait(()=>!ui.$('use').hidden);ui.click('use');await ui.wait(()=>!ui.$('dialog').open);assert.deepEqual(cleared,[7]);
+ }finally{ui.close();}
+});
+
+test('búsqueda GPS termina a los diez segundos sin bloquear ni añadir coordenadas inventadas',async()=>{
+ let success;const cleared=[];
+ const ui=await setup({fastTimeout:true,geo:{watchPosition(ok){success=ok;return 6;},clearWatch:id=>cleared.push(id)},accept:async(file,metadata)=>assert.equal(metadata.point,null)});try{
+  await ui.open();await ui.wait(()=>cleared.length===1);success({coords:{latitude:41,longitude:2,accuracy:5},timestamp:Date.now()});assert.match(ui.$('gps-status').textContent,/Sin ubicación/);
+  ui.click('take');await ui.wait(()=>!ui.$('use').hidden);ui.click('use');await ui.wait(()=>!ui.$('dialog').open);
+ }finally{ui.close();}
+});
+
+test('los metadatos de cámara atraviesan la preparación y el guardado sin heredar GPS del ticket sustituido',async()=>{
+ const dom=new JSDOM(html,{url:'https://test.local',runScripts:'outside-only'}),w=dom.window;
+ try{
+  const app=fs.readFileSync(new URL('../app.bundle.js',import.meta.url),'utf8'),sourceOf=name=>app.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`))[0];
+  w.$=selector=>w.document.querySelector(selector);w.imageMetadataPromiseCache=new WeakMap();w.imageGpsCache=new WeakMap();w.imageDateTimeCache=new WeakMap();
+  w.pendingExpenseTicketPreviews={g:null};w.pendingExpenseTicketTranslations={g:null};w.pendingExpenseTicketLocations={g:null};w.pendingExpenseTicketLocationChecks={};w.pendingTicketOcr={};
+  w.ticketOcrRunIds={g:0};
+  w.DataTransfer=class{files=[];items={add:value=>this.files.push(value)};};for(const id of ['g-ticket-camera','g-ticket'])Object.defineProperty(w.document.getElementById(id),'files',{value:[],writable:true});
+  for(const name of ['renderSelectedExpenseTicketPreview','syncExpenseTicketMapOption','syncExpenseTicketTypeAvailability','syncTicketOcrAvailability','setTicketOcrStatus'])w[name]=()=>{};
+  w.fileLooksLikeImage=()=>true;w.queueExpenseMediaSave=task=>task();w.compressBlogImage=async()=>({data:'data:image/jpeg;base64,anBlZw=='});
+  w.storedImageCoordinates=value=>value?.latitude!=null?value:null;w.expenseTicketImageRecord=value=>({latitude:value.ticketLatitude,longitude:value.ticketLongitude,locationSource:value.ticketLocationSource});
+  for(const name of ['fileModifiedDateTime','selectedFileInput','readImageMetadataForFile','syncExpenseTicketSelection','acceptTicketCameraPhoto','expenseTicketLocationPatch'])w.eval(sourceOf(name));
+  const file=new w.File(['jpeg'],'camera.jpg',{type:'image/jpeg'}),old={ticketLatitude:30,ticketLongitude:40,ticketLocationSource:'exif'};
+  await w.acceptTicketCameraPhoto('g',file,()=>true,{point:{latitude:41.38,longitude:2.17,source:'device'}});
+  w.document.getElementById('g-ticket-map').checked=true;let saved=w.expenseTicketLocationPatch('g',old);
+  assert.equal(saved.ticketLatitude,41.38);assert.equal(saved.ticketLongitude,2.17);assert.equal(saved.ticketLocationSource,'device');assert.equal(saved.ticketMapEnabled,true);assert.match(saved.ticketCapturedDate,/^\d{4}-\d{2}-\d{2}$/);
+  assert.match(w.document.getElementById('g-ticket-selected').textContent,/ubicación de la foto/);
+  await w.acceptTicketCameraPhoto('g',new w.File(['next'],'next.jpg',{type:'image/jpeg'}),()=>true,{point:null});saved=w.expenseTicketLocationPatch('g',old);assert.equal(saved.ticketLatitude,null);assert.equal(saved.ticketLongitude,null);assert.equal(saved.ticketMapEnabled,false);
  }finally{w.close();}
 });

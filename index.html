@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v027">
+  <link rel="manifest" href="manifest.webmanifest?v=800v028">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v027">
+  <link rel="stylesheet" href="styles.css?v=800v028">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v027 · 17/10/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v028 · 17/10/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v027</div>
+  <div class="app-version">800v028</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -512,6 +512,9 @@
 <p id="ticket-camera-status" role="status"></p>
 <video id="ticket-camera-video" autoplay playsinline muted aria-label="Vista previa de la cámara"></video>
 <img id="ticket-camera-preview" alt="Foto del ticket para revisar" hidden>
+<label class="check-option"><input id="ticket-camera-gps" type="checkbox" checked> Guardar ubicación de la foto</label>
+<p class="small">Es donde haces la foto, que puede ser distinto del lugar de compra. No se envía a Gemini.</p>
+<p id="ticket-camera-gps-status" role="status" aria-live="polite"></p>
 <div class="actions"><button type="button" class="btn" id="ticket-camera-take">Hacer foto</button><button type="button" class="btn" id="ticket-camera-use" hidden>Usar foto</button><button type="button" class="ghost" id="ticket-camera-repeat" hidden>Repetir foto</button><button type="button" class="ghost" id="ticket-camera-native">Cámara del móvil</button><button type="button" class="ghost" id="ticket-camera-cancel">Cancelar</button></div>
 </dialog>
 <dialog id="group-meal-dialog" class="modal group-dialog" aria-labelledby="group-meal-title">
@@ -1344,23 +1347,23 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v027"></script>
-<script src="gpx-import.js?v=800v027"></script>
-<script src="timeline-routing.js?v=800v027"></script>
-<script src="map-model.js?v=800v027"></script>
-<script src="ticket-camera.js?v=800v027"></script>
-<script src="receipt-access.js?v=800v027"></script>
-<script src="expense-receipt-ai.js?v=800v027"></script>
-<script src="group-meals.js?v=800v027"></script>
-<script src="group-ledger.js?v=800v027"></script>
-<script src="group-store.js?v=800v027"></script>
-<script src="group-receipt.js?v=800v027"></script>
-<script src="group-ui.js?v=800v027"></script>
-<script src="preparation.js?v=800v027"></script>
-<script src="app.bundle.js?v=800v027"></script>
+<script src="timeline-import.js?v=800v028"></script>
+<script src="gpx-import.js?v=800v028"></script>
+<script src="timeline-routing.js?v=800v028"></script>
+<script src="map-model.js?v=800v028"></script>
+<script src="ticket-camera.js?v=800v028"></script>
+<script src="receipt-access.js?v=800v028"></script>
+<script src="expense-receipt-ai.js?v=800v028"></script>
+<script src="group-meals.js?v=800v028"></script>
+<script src="group-ledger.js?v=800v028"></script>
+<script src="group-store.js?v=800v028"></script>
+<script src="group-receipt.js?v=800v028"></script>
+<script src="group-ui.js?v=800v028"></script>
+<script src="preparation.js?v=800v028"></script>
+<script src="app.bundle.js?v=800v028"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v027';
+    const pageVersion = '800v028';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1415,7 +1418,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v027', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v028', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;
