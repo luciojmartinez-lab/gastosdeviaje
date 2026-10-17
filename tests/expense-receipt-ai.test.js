@@ -165,19 +165,38 @@ test('aplicar una categoría confirmada respeta padre/hija, no guarda el gasto y
  const dom=new JSDOM(html,{url:'https://test.local',runScripts:'outside-only'}),w=dom.window;
  try{
   w.$=selector=>w.document.querySelector(selector);w.state={cuentas:[{id:1,moneda:'JPY'}],categorias:[{id:10,nombre:'Comida',parentId:null},{id:11,nombre:'Restaurantes',parentId:10},{id:20,nombre:'Transporte',parentId:null},{id:21,nombre:'Tren',parentId:20}]};
+  w.state.photoTypes=[{id:'comida',nombre:'Comida'},{id:'paisaje',nombre:'Paisaje'}];
   w.pendingTicketOcr={};w.pendingExpenseTicketTranslations={};w.scheduleFormDraftSave=()=>{};w.addExpenseDraftKey=()=>'';w.ADD_EXPENSE_DRAFT_FIELDS=[];
-  for(const name of ['fillSelect','renderSubcategories','renderEditSubcategories','expenseAICategoryOptions','validateExpenseAICategory','applyExpenseAIProposal'])w.eval(sourceOf(name));
+  for(const name of ['normalizePlaceName','expenseAIPhotoType','fillSelect','renderSubcategories','renderEditSubcategories','expenseAICategoryOptions','validateExpenseAICategory','applyExpenseAIProposal'])w.eval(sourceOf(name));
   assert.equal(w.expenseAICategoryOptions().length,4);assert.deepEqual(Object.keys(w.expenseAICategoryOptions()[0]).sort(),['id','name','parentId']);
   const proposal={...result,classification:{categoryId:'10',categoryName:'Comida',subcategoryId:'11',subcategoryName:'Restaurantes',reason:'Menú'}};
   for(const prefix of ['g','edit-gasto']){
    const $=id=>w.document.getElementById(prefix+'-'+id);
+   $('ticket-type').innerHTML='<option value="">Sin clasificar</option><option value="comida">Comida</option><option value="paisaje">Paisaje</option>';$('ticket-type').value='paisaje';
+   let changes=0;$('ticket-type').onchange=()=>changes++;
    $('cuenta').innerHTML='<option value="1">JPY</option>';
    if(prefix==='g')$('moneda').innerHTML='<option>JPY</option>';else $('moneda').value='JPY';
    $('cat').innerHTML='<option value="10">Comida</option><option value="20">Transporte</option>';$('cat').value='20';(prefix==='g'?w.renderSubcategories:w.renderEditSubcategories)();$('subcat').value='21';$('fecha').value='2026-10-17';$('hora').value='12:00';
-   await w.applyExpenseAIProposal(prefix,proposal,false,()=>true,false);assert.equal($('cat').value,'20');assert.equal($('subcat').value,'21');
-   await w.applyExpenseAIProposal(prefix,proposal,false,()=>true,true);assert.equal($('cat').value,'10');assert.equal($('subcat').value,'11');assert.equal($('fecha').value,'2026-10-17');assert.equal($('hora').value,'12:00');
-   $('desc').value='Conservar';$('importe').value='99';w.state.categorias[1].parentId=20;await assert.rejects(w.applyExpenseAIProposal(prefix,proposal,false,()=>true,true),/categorías han cambiado/);assert.equal($('desc').value,'Conservar');assert.equal($('importe').value,'99');w.state.categorias[1].parentId=10;
+   await w.applyExpenseAIProposal(prefix,proposal,false,()=>true,false);assert.equal($('cat').value,'20');assert.equal($('subcat').value,'21');assert.equal($('ticket-type').value,'paisaje');
+   const applied=await w.applyExpenseAIProposal(prefix,proposal,false,()=>true,true);assert.equal($('cat').value,'10');assert.equal($('subcat').value,'11');assert.equal($('fecha').value,'2026-10-17');assert.equal($('hora').value,'12:00');assert.equal($('ticket-type').value,'comida');assert.match(applied,/Clasificación del ticket: Comida/);assert.equal(changes,0);
+   w.state.photoTypes=[];$('ticket-type').value='paisaje';await w.applyExpenseAIProposal(prefix,proposal,false,()=>true,true);assert.equal($('ticket-type').value,'paisaje');w.state.photoTypes=[{id:'comida',nombre:'Comida'},{id:'paisaje',nombre:'Paisaje'}];
+   $('desc').value='Conservar';$('importe').value='99';w.state.categorias[1].parentId=20;await assert.rejects(w.applyExpenseAIProposal(prefix,proposal,false,()=>true,true),/categorías han cambiado/);assert.equal($('desc').value,'Conservar');assert.equal($('importe').value,'99');assert.equal($('ticket-type').value,'paisaje');w.state.categorias[1].parentId=10;
   }
   w.createLensAiSummaryCompanion=async()=>{w.state.categorias[1].nombre='Renombrada';return {data:'new'};};await assert.rejects(w.applyExpenseAIProposal('g',proposal,true,()=>true,true),/categorías han cambiado/);assert.equal(w.$('#g-desc').value,'Conservar');assert.equal(w.pendingExpenseTicketTranslations.g,undefined);
+ }finally{w.close();}
+});
+
+test('la clasificación de imagen usa el nombre configurado más específico, normaliza acentos y evita coincidencias ambiguas',()=>{
+ const dom=new JSDOM('',{runScripts:'outside-only'}),w=dom.window;
+ try{
+  w.state={photoTypes:[{id:'meal-photo',nombre:'COMÍDA'},{id:'restaurant-photo',nombre:'  Restaurantes  '}]};
+  for(const name of ['normalizePlaceName','expenseAIPhotoType'])w.eval(sourceOf(name));
+  const choice={categoryName:'Comida',subcategoryName:'Restaurantes'};
+  assert.equal(w.expenseAIPhotoType(choice).id,'restaurant-photo');
+  w.state.photoTypes.pop();assert.equal(w.expenseAIPhotoType(choice).id,'meal-photo');
+  assert.equal(w.expenseAIPhotoType({...choice,subcategoryName:null}).id,'meal-photo');
+  w.state.photoTypes.push({id:'duplicate',nombre:'comida'});assert.equal(w.expenseAIPhotoType(choice),null);
+  w.state.photoTypes=[{id:'unrelated',nombre:'Transporte'}];assert.equal(w.expenseAIPhotoType(choice),null);
+  w.state.photoTypes=[{id:'custom',nombre:' Material   deportivo '}];assert.equal(w.expenseAIPhotoType({categoryName:'Material deportivo'}).id,'custom');
  }finally{w.close();}
 });

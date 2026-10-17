@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v022';
+const APP_VERSION = '800v023';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2927,7 +2927,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v022');
+    const worker = new Worker('./timeline-import-worker.js?v=800v023');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3935,7 +3935,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v022');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v023');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4842,7 +4842,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v022');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v023');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4978,7 +4978,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v022');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v023');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5532,7 +5532,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v022');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v023');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -14496,7 +14496,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v022');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v023');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -18420,6 +18420,16 @@ function validateExpenseAICategory(result) {
   return choice;
 }
 
+function expenseAIPhotoType(classification) {
+  const normalize=value=>normalizePlaceName(value).replace(/\s+/g,' ');
+  for(const name of [classification.subcategoryName,classification.categoryName]){
+    if(!normalize(name))continue;
+    const matches=state.photoTypes.filter(type=>normalize(type.nombre)===normalize(name));
+    if(matches.length===1)return matches[0];
+  }
+  return null;
+}
+
 async function applyExpenseAIProposal(prefix,result,saveTranslation,stillCurrent=()=>true,applyClassification=false) {
   const {merchant,total,currency}=result.fields;
   const selectedCurrency=$(`#${prefix}-moneda`)?.value;
@@ -18437,18 +18447,24 @@ async function applyExpenseAIProposal(prefix,result,saveTranslation,stillCurrent
   if(!stillCurrent())throw new Error('El ticket ha cambiado. Vuelve a leerlo con Gemini.');
   if(total!==null&&($(`#${prefix}-moneda`)?.value!==currency||state.cuentas.find(account=>Number(account.id)===Number($(`#${prefix}-cuenta`)?.value))?.moneda!==currency))throw accountError('La cuenta o la moneda han cambiado. Revisa la cuenta antes de aplicar el total.');
   const classification=applyClassification?validateExpenseAICategory(result):null;
+  let appliedPhotoType=null;
   if(classification){
     $(`#${prefix}-cat`).value=classification.categoryId;
     $(`#${prefix}-cat`).dataset.lastValidValue=classification.categoryId;
     if(prefix==='g')renderSubcategories();else renderEditSubcategories();
     $(`#${prefix}-subcat`).value=classification.subcategoryId||'';
+    const photoType=expenseAIPhotoType(classification),ticketType=$(`#${prefix}-ticket-type`);
+    if(photoType&&ticketType&&Array.from(ticketType.options).some(option=>option.value===String(photoType.id))){
+      ticketType.value=photoType.id;
+      appliedPhotoType=photoType;
+    }
   }
   if(merchant)$(`#${prefix}-desc`).value=merchant;
   if(total!==null)$(`#${prefix}-importe`).value=total.toFixed(2);
   pendingTicketOcr[prefix]=null;
   if(companion){pendingExpenseTicketTranslations[prefix]=companion;renderExpenseTicketTranslation(prefix);}
   if(prefix==='g')scheduleFormDraftSave(addExpenseDraftKey(),ADD_EXPENSE_DRAFT_FIELDS);
-  return `Emisor y total aplicados donde eran legibles.${classification?' Clasificación propuesta aplicada.':' Se conserva tu clasificación.'} Fecha, hora y cuenta se conservan. Revisa el gasto antes de guardarlo.`;
+  return `Emisor y total aplicados donde eran legibles.${classification?' Clasificación propuesta aplicada.':' Se conserva tu clasificación.'}${appliedPhotoType?` Clasificación del ticket: ${appliedPhotoType.nombre}.`:''} Fecha, hora y cuenta se conservan. Revisa el gasto antes de guardarlo.`;
 }
 
 function bindExpenseAIEvents() {
@@ -18459,7 +18475,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v022')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v023')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -18467,7 +18483,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v022')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v023')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -18499,11 +18515,11 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      const ocr = await import('./ticket-ocr.js?v=800v022');
+      const ocr = await import('./ticket-ocr.js?v=800v023');
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v022')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v022')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v023')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v023')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -20367,7 +20383,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v022');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v023');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
