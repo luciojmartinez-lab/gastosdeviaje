@@ -17,7 +17,7 @@ test('arranque de la app conecta Gemini, comparte el código de Grupo y sincroni
   w.eval(accessSource);w.eval(source);let finish,receivedCode,mounted=0;
   const mount=w.ExpenseReceiptAIUI.mount;
   w.ExpenseReceiptAIUI.mount=config=>{mounted++;mount({...config,status:async()=>({usageText:'Uso consultado'}),prepare:async()=>({data:'prepared'}),read:async(photo,access,report)=>{receivedCode=access;report({status:'Comprobando gratuidad y leyendo…'});return new Promise(resolve=>{finish=resolve;});}});};
-  for(const name of ['rootExpenseAIBusy','syncTicketOcrAvailability','bindExpenseAIEvents'])w.eval(sourceOf(name));
+  for(const name of ['rootExpenseAIBusy','applyExpenseAIProposal','syncTicketOcrAvailability','bindExpenseAIEvents'])w.eval(sourceOf(name));
   w.bindGroupEvents=()=>{};w.bindPreparationEvents=()=>{};
   // Execute the real startup block, stopping before unrelated navigation wiring.
   const start=app.indexOf('function bindEvents() {'),end=app.indexOf("  $('#tab-viajes')",start);
@@ -145,5 +145,39 @@ test('imagen de Gemini conserva su identidad al crearse, guardarse y reabrirse; 
   const legacy=w.ticketTranslationRecordFromExpense({...saved,id:2,ticketTranslationKind:'ai-summary'});assert.equal(legacy.kind,'gemini-translation');assert.equal(w.ticketTranslationPatch(legacy).ticketTranslationKind,'gemini-translation');
   const lens=await w.createLensAiSummaryCompanion('Texto de Lens');assert.equal(lens.kind,'ai-summary');assert.equal(w.ticketTranslationRecordFromExpense(w.ticketTranslationPatch(lens)).kind,'ai-summary');w.fillTicketTranslationPreview(preview,lens);assert.equal(preview.querySelector('button').dataset.companionLabel,'Resumen Lens IA');
   assert.equal(w.normalizeTicketCompanionKind('ai-summary',true,'foto-gemini-usuario.jpg'),'ai-summary');
+ }finally{w.close();}
+});
+
+test('la categoría es una sugerencia escapada y solo se aplica al marcarla; una lectura dudosa no ofrece aplicar categoría',async()=>{
+ const classified={...result,classification:{categoryId:'1',categoryName:'Comida <local>',subcategoryId:'2',subcategoryName:'Restaurantes',reason:'Menú <img src=x onerror=alert(1)>'}};
+ const ui=await setup({read:async()=>classified});try{
+  ui.$('g-ticket-ai-code').value='test';ui.$('g-ticket-ai-consent').checked=true;ui.click('g-ticket-ai-read');await ui.wait(()=>!!ui.$('g-ticket-ai-apply'));
+  assert.equal(ui.$('g-ticket-ai-category').checked,false);assert.match(ui.$('g-ticket-ai-proposal').textContent,/Comida <local> → Restaurantes/);assert.equal(ui.$('g-ticket-ai-proposal').querySelector('img'),null);
+  ui.click('g-ticket-ai-apply');await ui.wait(()=>ui.applied()===1&&!ui.$('g-ticket-ai-apply').disabled);assert.equal(ui.state.args[4],false);
+  ui.$('g-ticket-ai-category').checked=true;ui.click('g-ticket-ai-apply');await ui.wait(()=>ui.applied()===2&&!ui.$('g-ticket-ai-apply').disabled);assert.equal(ui.state.args[4],true);assert.match(ui.$('g-ticket-ai-applied').textContent,/Comida <local> → Restaurantes/);
+ }finally{ui.close();}
+ const mixed=await setup({read:async()=>({...result,classification:null,classificationReason:'Ticket mixto de comida y ropa.'})});try{
+  mixed.$('g-ticket-ai-code').value='test';mixed.$('g-ticket-ai-consent').checked=true;mixed.click('g-ticket-ai-read');await mixed.wait(()=>!!mixed.$('g-ticket-ai-apply'));assert.equal(mixed.$('g-ticket-ai-category'),null);assert.match(mixed.$('g-ticket-ai-proposal').textContent,/Ticket mixto/);
+ }finally{mixed.close();}
+});
+
+test('aplicar una categoría confirmada respeta padre/hija, no guarda el gasto y rechaza cambios del catálogo sin mutar campos',async()=>{
+ const dom=new JSDOM(html,{url:'https://test.local',runScripts:'outside-only'}),w=dom.window;
+ try{
+  w.$=selector=>w.document.querySelector(selector);w.state={cuentas:[{id:1,moneda:'JPY'}],categorias:[{id:10,nombre:'Comida',parentId:null},{id:11,nombre:'Restaurantes',parentId:10},{id:20,nombre:'Transporte',parentId:null},{id:21,nombre:'Tren',parentId:20}]};
+  w.pendingTicketOcr={};w.pendingExpenseTicketTranslations={};w.scheduleFormDraftSave=()=>{};w.addExpenseDraftKey=()=>'';w.ADD_EXPENSE_DRAFT_FIELDS=[];
+  for(const name of ['fillSelect','renderSubcategories','renderEditSubcategories','expenseAICategoryOptions','validateExpenseAICategory','applyExpenseAIProposal'])w.eval(sourceOf(name));
+  assert.equal(w.expenseAICategoryOptions().length,4);assert.deepEqual(Object.keys(w.expenseAICategoryOptions()[0]).sort(),['id','name','parentId']);
+  const proposal={...result,classification:{categoryId:'10',categoryName:'Comida',subcategoryId:'11',subcategoryName:'Restaurantes',reason:'Menú'}};
+  for(const prefix of ['g','edit-gasto']){
+   const $=id=>w.document.getElementById(prefix+'-'+id);
+   $('cuenta').innerHTML='<option value="1">JPY</option>';
+   if(prefix==='g')$('moneda').innerHTML='<option>JPY</option>';else $('moneda').value='JPY';
+   $('cat').innerHTML='<option value="10">Comida</option><option value="20">Transporte</option>';$('cat').value='20';(prefix==='g'?w.renderSubcategories:w.renderEditSubcategories)();$('subcat').value='21';$('fecha').value='2026-10-17';$('hora').value='12:00';
+   await w.applyExpenseAIProposal(prefix,proposal,false,()=>true,false);assert.equal($('cat').value,'20');assert.equal($('subcat').value,'21');
+   await w.applyExpenseAIProposal(prefix,proposal,false,()=>true,true);assert.equal($('cat').value,'10');assert.equal($('subcat').value,'11');assert.equal($('fecha').value,'2026-10-17');assert.equal($('hora').value,'12:00');
+   $('desc').value='Conservar';$('importe').value='99';w.state.categorias[1].parentId=20;await assert.rejects(w.applyExpenseAIProposal(prefix,proposal,false,()=>true,true),/categorías han cambiado/);assert.equal($('desc').value,'Conservar');assert.equal($('importe').value,'99');w.state.categorias[1].parentId=10;
+  }
+  w.createLensAiSummaryCompanion=async()=>{w.state.categorias[1].nombre='Renombrada';return {data:'new'};};await assert.rejects(w.applyExpenseAIProposal('g',proposal,true,()=>true,true),/categorías han cambiado/);assert.equal(w.$('#g-desc').value,'Conservar');assert.equal(w.pendingExpenseTicketTranslations.g,undefined);
  }finally{w.close();}
 });

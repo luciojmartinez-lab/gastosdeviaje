@@ -16,7 +16,20 @@ export function receiptUsageText({limits,usage}={}) {
   return base+`\nRegistro de la app hoy: ${usage.requests} intentos · Restante orientativo: ${Math.max(0,limits.daily-usage.requests)} según este registro.\nÚltimo minuto: ${usage.minuteRequests} intentos y ${Number(usage.minuteInputTokens).toLocaleString('es-ES')} tokens de entrada registrados. Reinicio diario: ${new Date(usage.resetsAt).toLocaleString('es-ES')}.\nEstimación compartida entre dispositivos: no incluye uso anterior a este contador ni uso fuera de la app; cuenta también intentos fallidos. El saldo oficial puede ser distinto. Google puede cambiar las cuotas o saturarse antes.`;
 }
 
-export function normalizeExpenseReceipt(value) {
+export function normalizeReceiptCategories(value=[]) {
+  if(!Array.isArray(value)||value.length>500)throw new Error('La lista de categorías del ticket no es válida (máximo 500 categorías y subcategorías).');
+  const ids=new Set();
+  const categories=value.map(item=>{
+    if(!item||typeof item!=='object')throw new Error('La lista de categorías del ticket no es válida.');
+    const id=typeof item.id==='string'?item.id:'',name=typeof item.name==='string'?item.name.trim().replace(/\s+/g,' '):'',parentId=item.parentId==null?null:item.parentId;
+    if(!/^[A-Za-z0-9_-]{1,48}$/.test(id)||ids.has(id)||!name||name.length>160||(parentId!==null&&typeof parentId!=='string'))throw new Error('La lista de categorías del ticket no es válida.');
+    ids.add(id);return {id,name,parentId};
+  });
+  if(categories.some(item=>item.parentId!==null&&!categories.some(parent=>parent.id===item.parentId&&parent.parentId===null)))throw new Error('Una subcategoría del ticket no tiene una categoría válida.');
+  return categories;
+}
+
+export function normalizeExpenseReceipt(value,{categories=[]}={}) {
   if(!value||typeof value!=='object'||!value.uncertain||typeof value.sourceLanguage!=='string')throw new Error('Google no ha devuelto una lectura válida.');
   const clean=(text,max)=>typeof text==='string'?text.trim().slice(0,max):'';
   const merchantOriginal=value.uncertain.merchant===false?clean(value.merchant,160).replace(/[\r\n\t]+/g,' '):'';
@@ -33,7 +46,16 @@ export function normalizeExpenseReceipt(value) {
   const warnings=Array.isArray(value.warnings)?value.warnings.slice(0,12).map(text=>clean(text,250)).filter(Boolean):[];
   if(String(value.spanishText||'').length>16000||String(value.originalText||'').length>16000)warnings.push('El texto es demasiado largo y se muestra solo una parte. Conserva y revisa la foto original.');
   if(foreign&&!spanishText)warnings.push('No se pudo completar la traducción al español. Se conservan las traducciones anteriores.');
-  return {fields:{merchant,total,currency},merchantOriginal,sourceLanguage,originalText,spanishText,warnings,provider:'google'};
+  const options=normalizeReceiptCategories(categories),choice=value.classification;
+  let classification=null;
+  const classificationReason=clean(choice?.reason,300);
+  if(choice?.uncertain===false&&choice?.mixed===false){
+    const category=options.find(item=>item.parentId===null&&item.id===choice.categoryId);
+    const subcategory=choice.subcategoryId==null?null:options.find(item=>item.id===choice.subcategoryId&&item.parentId===category?.id);
+    if(category&&(choice.subcategoryId==null||subcategory))classification={categoryId:category.id,categoryName:category.name,subcategoryId:subcategory?.id||null,subcategoryName:subcategory?.name||'',reason:classificationReason};
+    else if(options.length)warnings.push('La categoría propuesta no corresponde a tus categorías configuradas; elige la clasificación manualmente.');
+  }
+  return {fields:{merchant,total,currency},classification,classificationReason,merchantOriginal,sourceLanguage,originalText,spanishText,warnings,provider:'google'};
 }
 
 export function normalizeReceiptProposal(value, {photoCount=1} = {}) {
@@ -59,7 +81,7 @@ export function normalizeReceiptProposal(value, {photoCount=1} = {}) {
   };
 }
 
-export async function readReceiptWithAI(meal, { accessCode, consent, mode='group' }, onProgress = () => {}, fetcher = fetch) {
+export async function readReceiptWithAI(meal, { accessCode, consent, mode='group', categories=[] }, onProgress = () => {}, fetcher = fetch) {
   if(!['group','expense'].includes(mode))throw new Error('Modo de lectura no válido.');
   if (consent !== true) throw new Error('Marca que autorizas enviar las fotos de este ticket a Google para leerlo.');
   if (!String(accessCode || '').trim()) throw new Error('Introduce el código de acceso a la lectura gratuita.');
@@ -67,6 +89,7 @@ export async function readReceiptWithAI(meal, { accessCode, consent, mode='group
   if(!images.length||images.length>8||images.some(image=>typeof image!=='string'||!/^data:image\/(jpeg|png|webp);base64,/i.test(image)))throw new Error('Añade entre una y ocho fotos JPEG, PNG o WebP del ticket.');
   if(images.reduce((sum,image)=>sum+image.length,0)>4_000_000)throw new Error('Las fotos juntas son demasiado grandes. Recorta el fondo o elige fotos más pequeñas; no se ha enviado ninguna.');
   if(new Set(images).size!==images.length)throw new Error('Hay una foto repetida. Quita la copia antes de leer el ticket.');
+  const categoryOptions=mode==='expense'?normalizeReceiptCategories(categories):[];
   onProgress({ status: 'Comprobando acceso gratuito y leyendo con Google…', progress: 0.1 });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 55_000);
@@ -74,12 +97,12 @@ export async function readReceiptWithAI(meal, { accessCode, consent, mode='group
     const response = await fetcher(ENDPOINT, {
       method: 'POST', cache: 'no-store', credentials: 'omit', signal: controller.signal,
       headers: { 'Content-Type': 'application/json', 'X-Receipt-Access': String(accessCode).trim() },
-      body: JSON.stringify({...(images.length===1?{image:images[0]}:{images}),...(mode==='expense'?{mode}:{})})
+      body: JSON.stringify({...(images.length===1?{image:images[0]}:{images}),...(mode==='expense'?{mode,...(categoryOptions.length?{categories:categoryOptions}:{})}:{})})
     });
     let result;
     try { result = await response.json(); } catch { throw new Error('El servicio no ha respondido correctamente. No se reintentará automáticamente.'); }
     if (!response.ok) throw new Error(result.message || 'No se ha podido usar la lectura gratuita. Puedes usar el OCR local.');
-    return mode==='expense'?normalizeExpenseReceipt(result.expense):normalizeReceiptProposal(result.receipt,{photoCount:images.length});
+    return mode==='expense'?normalizeExpenseReceipt(result.expense,{categories:categoryOptions}):normalizeReceiptProposal(result.receipt,{photoCount:images.length});
   } catch (error) {
     if (error.name === 'AbortError') throw new Error('La lectura con Google ha tardado demasiado. No se reintentará automáticamente.');
     if (error instanceof TypeError) throw new Error('No se pudo conectar con la lectura de Google. Comprueba la conexión o usa el OCR local.');

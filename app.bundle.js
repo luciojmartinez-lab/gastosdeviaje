@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v021';
+const APP_VERSION = '800v022';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2927,7 +2927,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v021');
+    const worker = new Worker('./timeline-import-worker.js?v=800v022');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3935,7 +3935,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v021');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v022');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4842,7 +4842,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v021');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v022');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4978,7 +4978,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v021');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v022');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5532,7 +5532,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v021');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v022');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -14496,7 +14496,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v021');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v022');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -18403,15 +18403,31 @@ async function recognizeGroupTicket(meal,onProgress,recognize) {
   return{text:readings.map((result,index)=>`FOTO ${index+1}\n${result.text||''}`).join('\n\n'),itemsStatus:'review',fields:{merchant:readings.find(result=>result.fields?.merchant)?.fields.merchant,total:null},reviewMessage:'El OCR local ha leído todas las fotos por separado. Revisa y une el texto, quitando solo las líneas del solapamiento; no se han sustituido tus conceptos ni propuesto un total parcial. Para una propuesta conjunta puedes usar Leer con IA gratuita.'};
 }
 
-function rootExpenseAIBusy(prefix) { return globalThis.ExpenseReceiptAIUI?.isBusy(prefix)===true; }
+function rootExpenseAIBusy(prefix) {
+  return globalThis.ExpenseReceiptAIUI?.isBusy(prefix)===true;
+}
 
-async function applyExpenseAIProposal(prefix,result,saveTranslation,stillCurrent=()=>true) {
+function expenseAICategoryOptions() {
+  const roots=state.categorias.filter(category=>!category.parentId),ids=new Set(roots.map(category=>Number(category.id)));
+  return state.categorias.filter(category=>!category.parentId||ids.has(Number(category.parentId))).map(category=>({id:String(category.id),name:category.nombre,parentId:category.parentId?String(category.parentId):null}));
+}
+
+function validateExpenseAICategory(result) {
+  const choice=result.classification,clean=value=>String(value||'').trim().replace(/\s+/g,' ');
+  const category=state.categorias.find(item=>String(item.id)===choice?.categoryId&&!item.parentId);
+  const subcategory=choice?.subcategoryId==null?null:state.categorias.find(item=>String(item.id)===choice.subcategoryId&&String(item.parentId)===choice.categoryId);
+  if(!category||clean(category.nombre)!==choice.categoryName||(choice.subcategoryId!==null&&(!subcategory||clean(subcategory.nombre)!==choice.subcategoryName)))throw new Error('Las categorías han cambiado desde la lectura. Revisa la clasificación del gasto; no se han aplicado los datos.');
+  return choice;
+}
+
+async function applyExpenseAIProposal(prefix,result,saveTranslation,stillCurrent=()=>true,applyClassification=false) {
   const {merchant,total,currency}=result.fields;
   const selectedCurrency=$(`#${prefix}-moneda`)?.value;
   const account=state.cuentas.find(account=>Number(account.id)===Number($(`#${prefix}-cuenta`)?.value));
   const accountError=text=>Object.assign(new Error(text),{focusTarget:prefix+'-cuenta'});
   if(total!==null&&!account)throw accountError('Selecciona la cuenta que usarás para este gasto antes de aplicar el total. La propuesta se conserva; no necesitas volver a leer el ticket.');
   if(total!==null&&(currency!==selectedCurrency||(account&&account.moneda!==currency)))throw accountError(`El total está en ${currency}. Selecciona una cuenta y una moneda ${currency} antes de aplicarlo; no se ha cambiado el importe.`);
+  if(applyClassification)validateExpenseAICategory(result);
   let companion;
   if(saveTranslation&&result.spanishText){
     companion=await createLensAiSummaryCompanion(result.spanishText,{gemini:true});
@@ -18420,12 +18436,19 @@ async function applyExpenseAIProposal(prefix,result,saveTranslation,stillCurrent
   }
   if(!stillCurrent())throw new Error('El ticket ha cambiado. Vuelve a leerlo con Gemini.');
   if(total!==null&&($(`#${prefix}-moneda`)?.value!==currency||state.cuentas.find(account=>Number(account.id)===Number($(`#${prefix}-cuenta`)?.value))?.moneda!==currency))throw accountError('La cuenta o la moneda han cambiado. Revisa la cuenta antes de aplicar el total.');
+  const classification=applyClassification?validateExpenseAICategory(result):null;
+  if(classification){
+    $(`#${prefix}-cat`).value=classification.categoryId;
+    $(`#${prefix}-cat`).dataset.lastValidValue=classification.categoryId;
+    if(prefix==='g')renderSubcategories();else renderEditSubcategories();
+    $(`#${prefix}-subcat`).value=classification.subcategoryId||'';
+  }
   if(merchant)$(`#${prefix}-desc`).value=merchant;
   if(total!==null)$(`#${prefix}-importe`).value=total.toFixed(2);
   pendingTicketOcr[prefix]=null;
   if(companion){pendingExpenseTicketTranslations[prefix]=companion;renderExpenseTicketTranslation(prefix);}
   if(prefix==='g')scheduleFormDraftSave(addExpenseDraftKey(),ADD_EXPENSE_DRAFT_FIELDS);
-  return 'Emisor y total aplicados donde eran legibles. Fecha, hora y categorías se conservan. Revisa el gasto antes de guardarlo.';
+  return `Emisor y total aplicados donde eran legibles.${classification?' Clasificación propuesta aplicada.':' Se conserva tu clasificación.'} Fecha, hora y cuenta se conservan. Revisa el gasto antes de guardarlo.`;
 }
 
 function bindExpenseAIEvents() {
@@ -18436,7 +18459,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v021')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v022')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -18444,7 +18467,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v021')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense'},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v022')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -18476,11 +18499,11 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      const ocr = await import('./ticket-ocr.js?v=800v021');
+      const ocr = await import('./ticket-ocr.js?v=800v022');
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v021')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v021')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v022')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v022')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -20344,7 +20367,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v021');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v022');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

@@ -4,7 +4,7 @@ import { createHash, generateKeyPairSync } from 'node:crypto';
 import { normalizeReceiptProposal, readReceiptWithAI, getReceiptAIStatus } from '../receipt-ai.js';
 import '../group-meals.js';
 import { createReceiptHandler } from '../netlify/functions/receipt-ai.js';
-import { normalizeExpenseReceipt, receiptUsageText } from '../receipt-ai.js';
+import { normalizeExpenseReceipt, normalizeReceiptCategories, receiptUsageText } from '../receipt-ai.js';
 
 const receipt = {
   merchant:'A la Fresca',currency:'EUR',totalCents:7590,warnings:[],
@@ -51,6 +51,31 @@ test('IA: conserva cantidades e importes de línea, total y revisión obligatori
 
 const foreignReceipt={merchant:'Sakura Restaurant',currency:'JPY',total:'1850',sourceLanguage:'en',originalText:'TOTAL JPY 1850',spanishText:'TOTAL JPY 1850',uncertain:{merchant:false,total:false,currency:false},warnings:[]};
 const japaneseReceipt={...foreignReceipt,merchant:'ダイコクドラッグ',merchantReadable:'Daikoku Drug',sourceLanguage:'ja',total:'8000',originalText:'ダイコクドラッグ 合計 ¥8,000',spanishText:'Daikoku Drug Total 8000 JPY',uncertain:{...foreignReceipt.uncertain,merchantReadable:false}};
+const categories=[{id:'1',name:'Comida',parentId:null},{id:'2',name:'Restaurantes',parentId:'1'},{id:'3',name:'Transporte',parentId:null},{id:'4',name:'Tren',parentId:'3'}];
+const classification={categoryId:'1',subcategoryId:'2',uncertain:false,mixed:false,reason:'Se lee un menú y bebidas.'};
+test('categorías Gemini: solo admite opciones existentes, con su padre correcto, y deja las dudas y tickets mixtos para revisión',()=>{
+ const read=change=>normalizeExpenseReceipt({...foreignReceipt,classification:{...classification,...change}},{categories});
+ assert.deepEqual(read({}).classification,{categoryId:'1',categoryName:'Comida',subcategoryId:'2',subcategoryName:'Restaurantes',reason:classification.reason});
+ assert.equal(read({subcategoryId:null}).classification.subcategoryId,null);
+ for(const change of [{categoryId:'unknown'},{categoryId:'2'},{subcategoryId:'4'},{uncertain:true},{mixed:true},{categoryId:1}]){const result=read(change);assert.equal(result.classification,null);assert.equal(result.fields.total,1850);}
+ assert.equal(normalizeExpenseReceipt({...foreignReceipt,classification}).classification,null);
+ assert.equal(read({reason:'<img src=x onerror=alert(1)>'}).classification.reason,'<img src=x onerror=alert(1)>');
+ assert.deepEqual(normalizeReceiptCategories([{...categories[0],account:'private'}]),[categories[0]]);
+});
+
+test('clasificación viaja en la misma petición con la foto y solo nombres/IDs de categorías; Google sigue verificándose una sola vez',async()=>{
+ const h=harness({receipt:{...foreignReceipt,classification}});let sent;
+ const result=await readReceiptWithAI({ticketData:image,accountId:42,trip:'private'},{accessCode:'test-access-code',consent:true,mode:'expense',categories:categories.map(item=>({...item,account:'private'}))},()=>{},(url,init)=>{sent=JSON.parse(init.body);return h.handler(new Request('https://test.netlify.app'+url,init));});
+ assert.deepEqual(sent,{image,mode:'expense',categories});assert.equal(result.classification.subcategoryName,'Restaurantes');assert.equal(h.inferences().length,1);
+ const payload=JSON.parse(h.inferences()[0].init.body);assert.ok(payload.contents[0].parts.some(part=>part.text?.includes(JSON.stringify(categories))));assert.match(payload.systemInstruction.parts[0].text,/mixta/);assert.equal(h.calls.filter(call=>call.url.includes('billingInfo')).length,1);
+ const invalid=harness({receipt:{...foreignReceipt,classification:{...classification,subcategoryId:'4'}}});const rejected=await (await invalid.handler(invalid.request({image,mode:'expense',categories}))).json();assert.equal(rejected.expense.classification.categoryId,null);assert.equal(rejected.expense.classification.subcategoryId,null);assert.equal(rejected.expense.classification.uncertain,true);
+});
+
+test('catálogo inválido se rechaza antes de llamar a Google y no afecta al modo Grupo',async()=>{
+ const invalid=[[categories[0],categories[0]],[{...categories[1],parentId:'missing'}],[{...categories[0],name:''}],Array.from({length:501},(_,i)=>({id:String(i),name:'Cat',parentId:null}))];
+ for(const options of invalid){const h=harness();const response=await h.handler(h.request({image,mode:'expense',categories:options}));assert.equal(response.status,400);assert.equal(h.calls.length,0);}
+ const h=harness();assert.equal((await h.handler(h.request({image,categories:'ignored'}))).status,200);assert.equal(h.inferences().length,1);
+});
 test('emisor extranjero: aplica el nombre legible y conserva la marca original, sin inventar ante dudas',async()=>{
  const proposal=normalizeExpenseReceipt(japaneseReceipt);
  assert.equal(proposal.fields.merchant,'Daikoku Drug');assert.equal(proposal.merchantOriginal,'ダイコクドラッグ');assert.equal(proposal.fields.total,8000);assert.equal(proposal.fields.currency,'JPY');

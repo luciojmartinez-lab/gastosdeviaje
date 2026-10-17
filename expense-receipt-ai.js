@@ -19,10 +19,11 @@
     };
     if(!dialog.open)dialog.showModal();
   }
-  function reviewApplied(prefix,result){
+  function reviewApplied(prefix,result,applyClassification){
     const notice=$(prefix+'-ticket-ai-applied'),fields=result.fields;
     const applied=[fields.merchant,fields.total===null?'':`${fields.total.toLocaleString('es-ES',{maximumFractionDigits:2})} ${fields.currency}`].filter(Boolean).join(' · ');
-    notice.textContent=`Aplicado: ${applied}. Revisa los datos antes de guardar.`;notice.hidden=false;
+    const classification=applyClassification&&result.classification?` · ${result.classification.categoryName}${result.classification.subcategoryName?' → '+result.classification.subcategoryName:''}`:'';
+    notice.textContent=`Aplicado: ${applied}${classification}. Revisa los datos antes de guardar.`;notice.hidden=false;
     const form=$(prefix==='g'?'add-gasto-form':'edit-gasto-form'),dialog=form.closest('dialog'),heading=form.querySelector('h2');
     heading.tabIndex=-1;heading.focus({preventScroll:true});
     form.scrollTop=0;dialog.scrollTop=0;
@@ -46,7 +47,7 @@
     const value=state[prefix];if(value.busy)return;
     const code=$(prefix+'-ticket-ai-code').value.trim();if(code)access.save(code);
     if(host.localBusy(prefix))throw new Error('Espera a que termine la lectura local.');
-    if(!$(prefix+'-ticket-ai-consent').checked)throw new Error('Autoriza enviar esta foto a Google para leerla.');
+    if(!$(prefix+'-ticket-ai-consent').checked)throw new Error('Autoriza enviar esta foto y las categorías a Google para leerla.');
     if(!code){$(prefix+'-ticket-ai-access').hidden=false;throw new Error('Introduce el código de acceso que usas en Grupo.');}
     value.busy=true;value.proposal=null;$(prefix+'-ticket-ai-proposal').innerHTML='';host.sync(prefix);sync(prefix);
     const sequence=++value.sequence,source=host.source(prefix)?.source,context=host.context(prefix);
@@ -62,20 +63,23 @@
       restore(prefix);
       const fields=result.fields,total=fields.total===null?'No legible':`${fields.total.toLocaleString('es-ES',{maximumFractionDigits:2})} ${fields.currency}`;
       const previous=host.hasTranslation(prefix);
+      const category=result.classification;
+      const classification=category?`<p><strong>Categoría propuesta:</strong> ${esc(category.categoryName)}${category.subcategoryName?' → '+esc(category.subcategoryName):''}</p>${category.reason?`<p class="small">${esc(category.reason)}</p>`:''}<label class="check-option"><input type="checkbox" id="${prefix}-ticket-ai-category"> Aplicar también esta categoría${category.subcategoryId?' y subcategoría':''}</label>`:`<p class="small"><strong>Categoría:</strong> Sin sugerencia fiable. Elige la clasificación manualmente.${result.classificationReason?' '+esc(result.classificationReason):''}</p>`;
       const originalMerchant=result.merchantOriginal&&result.merchantOriginal!==fields.merchant?`<br><small>Nombre original: ${esc(result.merchantOriginal)}</small>`:'';
-      $(prefix+'-ticket-ai-proposal').innerHTML=`<p><strong>Emisor:</strong> ${esc(fields.merchant||'No legible')}${originalMerchant}<br><strong>Total:</strong> ${esc(total)}</p>${result.spanishText?`<details open><summary>Traducción al español</summary><pre>${esc(result.spanishText)}</pre></details><label class="check-option"><input type="checkbox" id="${prefix}-ticket-ai-save-translation"${previous?'':' checked'}> ${previous?'Sustituir la traducción anterior por esta':'Guardar traducción junto al ticket original'}</label>`:''}${result.originalText?`<details><summary>Texto original</summary><pre>${esc(result.originalText)}</pre></details>`:''}<button type="button" class="btn" id="${prefix}-ticket-ai-apply">Aplicar emisor y total</button>`;
+      $(prefix+'-ticket-ai-proposal').innerHTML=`<p><strong>Emisor:</strong> ${esc(fields.merchant||'No legible')}${originalMerchant}<br><strong>Total:</strong> ${esc(total)}</p>${classification}${result.spanishText?`<details open><summary>Traducción al español</summary><pre>${esc(result.spanishText)}</pre></details><label class="check-option"><input type="checkbox" id="${prefix}-ticket-ai-save-translation"${previous?'':' checked'}> ${previous?'Sustituir la traducción anterior por esta':'Guardar traducción junto al ticket original'}</label>`:''}${result.originalText?`<details><summary>Texto original</summary><pre>${esc(result.originalText)}</pre></details>`:''}<button type="button" class="btn" id="${prefix}-ticket-ai-apply">Aplicar datos revisados</button>`;
       $(prefix+'-ticket-ai-apply').onclick=safe(prefix,()=>apply(prefix));
-      message(prefix,'Propuesta preparada. Revisa emisor, total y moneda antes de aplicarla.'+(result.warnings.length?' '+result.warnings.join(' '):''));
+      message(prefix,'Propuesta preparada. Revisa emisor, total, moneda y categoría antes de aplicarla.'+(result.warnings.length?' '+result.warnings.join(' '):''));
     }finally{root.clearInterval(timer);progress(prefix,false,started,!!value.proposal);$(prefix+'-ticket-ai-read').textContent='Leer con Gemini gratis';value.busy=false;host.sync(prefix);sync(prefix);status(prefix).catch(()=>{});}
   }
   async function apply(prefix){
     const value=state[prefix],result=value.proposal;
     if(!result||value.proposalSource!==host.source(prefix)?.source||value.proposalContext!==host.context(prefix))throw new Error('El ticket ha cambiado. Vuelve a leerlo con Gemini.');
     $(prefix+'-ticket-ai-apply').disabled=true;
+    const applyClassification=$(prefix+'-ticket-ai-category')?.checked===true;
     try{
-      const text=await host.apply(prefix,result,$(prefix+'-ticket-ai-save-translation')?.checked===true,()=>value.proposal===result&&value.proposalSource===host.source(prefix)?.source&&value.proposalContext===host.context(prefix)&&host.isOpen(prefix));
+      const text=await host.apply(prefix,result,$(prefix+'-ticket-ai-save-translation')?.checked===true,()=>value.proposal===result&&value.proposalSource===host.source(prefix)?.source&&value.proposalContext===host.context(prefix)&&host.isOpen(prefix),applyClassification);
       message(prefix,text);
-      reviewApplied(prefix,result);
+      reviewApplied(prefix,result,applyClassification);
     }finally{if($(prefix+'-ticket-ai-apply'))$(prefix+'-ticket-ai-apply').disabled=false;}
   }
   const safe=(prefix,action)=>async()=>{
