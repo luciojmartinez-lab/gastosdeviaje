@@ -368,6 +368,28 @@ test('IA pide consentimiento, muestra propuesta revisable y no guarda el código
  }finally{ui.close();}
 });
 
+test('Gemini en Grupo aplica fecha/hora impresas, las conserva al reabrir y las usa en el gasto integrado',async()=>{
+ const ui=await setup({rememberedCode:'fixture-code',recognizeAI:async()=>({text:'1 Cena 12,00\nTOTAL 12,00',itemText:'1 Cena 12,00\nTOTAL 12,00',itemsStatus:'reconciled',fields:{merchant:'Cena del ticket',total:12,date:'2026-09-05',time:'23:44'}})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));
+  ui.input('#group-ai-consent',true);ui.click('#group-ai-read');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled&&ui.$('#group-meal-items fieldset'));
+  assert.equal(ui.$('#group-meal-date').value,'2026-09-05');assert.equal(ui.$('#group-meal-time').value,'23:44');assert.match(ui.$('#group-ticket-datetime').textContent,/05\/09\/2026/);assert.match(ui.$('#group-ticket-datetime').textContent,/23:44/);
+  assert.equal(ui.$('#group-meal-reviewed').checked,false);assert.equal(ui.state.gastos.length,0);
+  ui.input('#group-meal-payer','p0');ui.input('#group-meal-account','1');ui.input('[data-item-diner="p0"]',true);ui.input('#group-meal-reviewed',true);ui.click('#group-close-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  assert.equal(ui.state.gastos[0].fecha,'2026-09-05');assert.equal(ui.state.gastos[0].hora,'23:44');assert.equal(ui.state.gastos[0].importe,12);
+  ui.click('[data-group-edit]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);assert.equal(ui.$('#group-meal-date').value,'2026-09-05');assert.equal(ui.$('#group-meal-time').value,'23:44');
+  const restored=ui.w.TravelGroup.normalize(JSON.parse(JSON.stringify(ui.state.viajes[0].group)));assert.equal(restored.meals[0].time,'23:44');
+ }finally{ui.close();}
+});
+
+test('Grupo conserva fecha/hora existentes si faltan en la lectura',async()=>{
+ let finish;const ui=await setup({rememberedCode:'fixture-code',recognizeAI:()=>new Promise(resolve=>finish=resolve)});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);ui.input('#group-meal-date','2026-08-03');ui.input('#group-meal-time','13:20');ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.input('#group-ai-consent',true);ui.click('#group-ai-read');await ui.waitFor(()=>!!finish);
+  finish({text:'1 Cena 12,00',itemsStatus:'reconciled',fields:{total:12}});await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);assert.equal(ui.$('#group-meal-date').value,'2026-08-03');assert.equal(ui.$('#group-meal-time').value,'13:20');
+ }finally{ui.close();}
+});
+
 test('IA agotada no cambia los conceptos existentes ni dispara el OCR automáticamente',async()=>{
  let calls=0;
  const ui=await setup({recognizeAI:async()=>{calls++;throw new Error('Cuota gratuita agotada');}});

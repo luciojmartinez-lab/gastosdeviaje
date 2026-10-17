@@ -55,7 +55,7 @@
           const source = `meal:${meal.id}`;
           const previous = oldExpenses.find(g => g.groupSource === source);
           newExpenses.push({ ...previous, id: idFor('gastos', source, oldExpenses), groupTripId: trip.id, groupSource: source,
-            viajeId: trip.id, fecha: meal.date, hora: '00:00', cuentaId: clearing.id, moneda: 'EUR', importe: own / 100, importeEur: own / 100,
+            viajeId: trip.id, fecha: meal.date, hora: meal.time || '00:00', cuentaId: clearing.id, moneda: 'EUR', importe: own / 100, importeEur: own / 100,
             catId: category.id, subcatId: null, desc: `${meal.name} · mi parte de la comida del grupo`, extraImages: [], createdAt: previous?.createdAt || now, updatedAt: now });
           adjust(clearing.id, -own);
         }

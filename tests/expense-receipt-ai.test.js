@@ -14,10 +14,10 @@ test('arranque de la app conecta Gemini, comparte el código de Grupo y sincroni
   const code='CODIGO-COMPARTIDO-DE-GRUPO';w.localStorage.setItem('cuaderno.receiptAccess.v1',code);
   w.$=selector=>w.document.querySelector(selector);w.pendingExpenseTicketTranslations={};
   const sources={};w.ticketOcrSource=prefix=>sources[prefix]||null;w.syncLensPasteAvailability=()=>{};
-  w.eval(accessSource);w.eval(source);let finish,receivedCode,mounted=0;
+  w.eval(accessSource);w.eval(source);w.eval(fs.readFileSync(new URL('../ticket-camera.js',import.meta.url),'utf8'));let finish,receivedCode,mounted=0;
   const mount=w.ExpenseReceiptAIUI.mount;
   w.ExpenseReceiptAIUI.mount=config=>{mounted++;mount({...config,status:async()=>({usageText:'Uso consultado'}),prepare:async()=>({data:'prepared'}),read:async(photo,access,report)=>{receivedCode=access;report({status:'Comprobando gratuidad y leyendo…'});return new Promise(resolve=>{finish=resolve;});}});};
-  for(const name of ['rootExpenseAIBusy','applyExpenseAIProposal','syncTicketOcrAvailability','bindExpenseAIEvents'])w.eval(sourceOf(name));
+  for(const name of ['rootExpenseAIBusy','applyExpenseAIProposal','syncTicketOcrAvailability','bindExpenseAIEvents','acceptTicketCameraPhoto','bindTicketCameraEvents'])w.eval(sourceOf(name));
   w.bindGroupEvents=()=>{};w.bindPreparationEvents=()=>{};
   // Execute the real startup block, stopping before unrelated navigation wiring.
   const start=app.indexOf('function bindEvents() {'),end=app.indexOf("  $('#tab-viajes')",start);

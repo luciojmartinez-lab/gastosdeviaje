@@ -49,6 +49,17 @@ test('IA: conserva cantidades e importes de línea, total y revisión obligatori
   assert.match(proposal.itemText,/2 Fideuá 33,90/);assert.match(proposal.itemText,/1 Mejillones 10,50/);
 });
 
+test('Grupo recibe fecha/hora impresas con confianza y descarta fechas imposibles o uniones dudosas',async()=>{
+ const dated={...receipt,date:'2026-09-05',time:'23:44',uncertain:{date:false,time:false}};
+ const read=normalizeReceiptProposal(dated);assert.equal(read.fields.date,'2026-09-05');assert.equal(read.fields.time,'23:44');
+ assert.equal(normalizeReceiptProposal({...dated,date:'2026-02-31'}).fields.date,undefined);
+ assert.equal(normalizeReceiptProposal({...dated,time:'24:00'}).fields.time,undefined);
+ assert.equal(normalizeReceiptProposal({...dated,uncertain:{date:true,time:false}}).fields.date,undefined);
+ assert.equal(normalizeReceiptProposal({...dated,assembly:{photoCount:2,complete:false,overlapUncertain:true}},{photoCount:2}).fields.date,undefined);
+ const h=harness({receipt:dated});const result=await readReceiptWithAI({ticketData:image},{consent:true,accessCode:'test-access-code'},()=>{},(url,init)=>h.handler(new Request('https://test.netlify.app'+url,init)));
+ assert.equal(result.fields.date,'2026-09-05');assert.equal(result.fields.time,'23:44');assert.equal(h.inferences().length,1);assert.match(JSON.parse(h.inferences()[0].init.body).systemInstruction.parts[0].text,/Nunca uses la fecha actual/);
+});
+
 const foreignReceipt={merchant:'Sakura Restaurant',currency:'JPY',total:'1850',sourceLanguage:'en',originalText:'TOTAL JPY 1850',spanishText:'TOTAL JPY 1850',uncertain:{merchant:false,total:false,currency:false},warnings:[]};
 const japaneseReceipt={...foreignReceipt,merchant:'ダイコクドラッグ',merchantReadable:'Daikoku Drug',sourceLanguage:'ja',total:'8000',originalText:'ダイコクドラッグ 合計 ¥8,000',spanishText:'Daikoku Drug Total 8000 JPY',uncertain:{...foreignReceipt.uncertain,merchantReadable:false}};
 const categories=[{id:'1',name:'Comida',parentId:null},{id:'2',name:'Restaurantes',parentId:'1'},{id:'3',name:'Transporte',parentId:null},{id:'4',name:'Tren',parentId:'3'}];
@@ -191,7 +202,7 @@ test('IA: facturación vinculada, activada, desconocida o error bloquean siempre
 test('IA: revalida facturación en cada foto y usa un modelo fijo sin herramientas ni pagos',async()=>{
   const h=harness({billing:count=>({billingEnabled:count>1})});
   const response=await h.handler(h.request({image,model:'paid-model'}));assert.equal(response.status,200);
-  assert.deepEqual((await response.json()).receipt,receipt);
+  assert.deepEqual((await response.json()).receipt,{...receipt,date:null,time:null,uncertain:{date:true,time:true}});
   const inference=h.inferences()[0];const body=JSON.parse(inference.init.body);
   assert.ok(inference.url.includes('gemini-3.5-flash-lite:generateContent'));
   assert.equal(body.tools,undefined);assert.equal(body.model,undefined);
@@ -199,7 +210,7 @@ test('IA: revalida facturación en cada foto y usa un modelo fijo sin herramient
   assert.equal(body.generationConfig.responseJsonSchema,undefined);
   assert.equal(body.generationConfig.responseSchema,undefined);
   const contract=JSON.parse(body.systemInstruction.parts[0].text.split('este esquema: ')[1]);
-  assert.deepEqual(contract.required,['merchant','currency','totalCents','items','warnings']);
+  assert.deepEqual(contract.required,['merchant','currency','totalCents','items','warnings','date','time','uncertain']);
   assert.deepEqual(contract.properties.items.items.required,['name','quantity','amountCents','uncertain']);
   assert.deepEqual(body.contents[0].parts[0].inlineData,{mimeType:'image/jpeg',data:image.split(',')[1]});
   assert.equal((await h.handler(h.request())).status,503);assert.equal(h.inferences().length,1);

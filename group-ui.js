@@ -106,7 +106,7 @@
     $('#group-meals').innerHTML=group.meals.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(meal=>{
       const closed=meal.status==='closed';
       const payments=closed?api().mealPayments(group,meal):[];
-      return `<article class="group-meal-card"><h3>${esc(meal.name||'Comida sin nombre')} <span class="badge">${closed?'Cerrada':'Borrador'}</span></h3><p>${esc(meal.date)} · ${meal.attendees.length} asistentes · ${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Total por revisar'}${closed?` · Pagó ${esc(name(group,meal.payerId))}`:''}</p><div class="actions"><button class="btn ghost" type="button" data-group-edit="${esc(meal.id)}">${closed?'Revisar / corregir':'Continuar'}</button>${closed?`<button class="btn ghost" type="button" data-group-share="${esc(meal.id)}">Compartir resumen</button><button class="btn ghost" type="button" data-group-receipt="${esc(meal.id)}">Justificante individual</button><button class="btn ghost" type="button" data-group-collect="${esc(meal.id)}">Registrar devolución</button>`:`<button class="ghost" type="button" data-group-delete="${esc(meal.id)}">Eliminar borrador</button>`}</div>${closed?`<div class="table-wrap"><table><thead><tr><th>Asistente</th><th>Consumo</th><th>Devuelto / cubierto</th><th>Pendiente</th></tr></thead><tbody>${payments.map(row=>`<tr><td>${esc(name(group,row.id))}</td><td>${api().money(row.due)}</td><td>${api().money(row.paid)}</td><td>${api().money(row.remaining)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['due','paid','remaining'].map(key=>`<td>${api().money(sum(payments,key))}</td>`).join('')}</tr></tfoot></table></div>`:''}${group.settlements.filter(payment=>payment.mealId===meal.id).map(payment=>`<p class="group-payment">${esc(payment.date||'')} · ${esc(name(group,payment.fromId))} → ${esc(name(group,payment.toId))}: ${api().money(payment.amountCents)} ${payment.voided?`<strong>Anulada: ${esc(payment.voidReason)}</strong>`:`<span class="group-payment-actions"><button type="button" class="ghost" data-group-payment-edit="${esc(payment.id)}" aria-label="Editar devolución de ${esc(name(group,payment.fromId))}">Editar</button><button type="button" class="ghost" data-group-void="${esc(payment.id)}">Anular registro</button></span>`}</p>`).join('')}</article>`;
+      return `<article class="group-meal-card"><h3>${esc(meal.name||'Comida sin nombre')} <span class="badge">${closed?'Cerrada':'Borrador'}</span></h3><p>${esc(meal.date)}${meal.time?' · '+esc(meal.time):''} · ${meal.attendees.length} asistentes · ${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Total por revisar'}${closed?` · Pagó ${esc(name(group,meal.payerId))}`:''}</p><div class="actions"><button class="btn ghost" type="button" data-group-edit="${esc(meal.id)}">${closed?'Revisar / corregir':'Continuar'}</button>${closed?`<button class="btn ghost" type="button" data-group-share="${esc(meal.id)}">Compartir resumen</button><button class="btn ghost" type="button" data-group-receipt="${esc(meal.id)}">Justificante individual</button><button class="btn ghost" type="button" data-group-collect="${esc(meal.id)}">Registrar devolución</button>`:`<button class="ghost" type="button" data-group-delete="${esc(meal.id)}">Eliminar borrador</button>`}</div>${closed?`<div class="table-wrap"><table><thead><tr><th>Asistente</th><th>Consumo</th><th>Devuelto / cubierto</th><th>Pendiente</th></tr></thead><tbody>${payments.map(row=>`<tr><td>${esc(name(group,row.id))}</td><td>${api().money(row.due)}</td><td>${api().money(row.paid)}</td><td>${api().money(row.remaining)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['due','paid','remaining'].map(key=>`<td>${api().money(sum(payments,key))}</td>`).join('')}</tr></tfoot></table></div>`:''}${group.settlements.filter(payment=>payment.mealId===meal.id).map(payment=>`<p class="group-payment">${esc(payment.date||'')} · ${esc(name(group,payment.fromId))} → ${esc(name(group,payment.toId))}: ${api().money(payment.amountCents)} ${payment.voided?`<strong>Anulada: ${esc(payment.voidReason)}</strong>`:`<span class="group-payment-actions"><button type="button" class="ghost" data-group-payment-edit="${esc(payment.id)}" aria-label="Editar devolución de ${esc(name(group,payment.fromId))}">Editar</button><button type="button" class="ghost" data-group-void="${esc(payment.id)}">Anular registro</button></span>`}</p>`).join('')}</article>`;
     }).join('')||'<p class="small">Todavía no hay comidas. Añade viajeros y pulsa Nueva comida.</p>';
     $('#group-new-meal').disabled=group.participants.filter(person=>person.active).length===0;
   }
@@ -140,7 +140,7 @@
   }
   function updatePhotos(photos) {
     api().setTicketPhotos(editor.meal,photos);
-    editor.meal.ocrPhotoChangeText=editor.meal.ocrText||null;
+    editor.meal.ocrPhotoChangeText=editor.meal.ocrText||null;$('#group-ticket-datetime').textContent='';
     $('#group-meal-reviewed').checked=false;$('#group-ai-consent').checked=false;
     renderTicket();stash();
   }
@@ -148,7 +148,7 @@
     const meal=editor.meal,group=editor.group;
     meal.items.forEach(item=>{item.mode='weights';});
     restoreAICode();
-    $('#group-meal-name').value=meal.name||'';$('#group-meal-date').value=meal.date||today();$('#group-meal-total').value=amount(meal.totalCents);
+    $('#group-meal-name').value=meal.name||'';$('#group-meal-date').value=meal.date||today();$('#group-meal-time').value=meal.time||'';$('#group-ticket-datetime').textContent='';$('#group-meal-total').value=amount(meal.totalCents);
     $('#group-meal-payer').innerHTML=options(group.participants,meal.payerId,'Quién pagó al restaurante');
     $('#group-meal-account').innerHTML=options(accounts(editor.tripId),meal.accountId,'Cuenta real si pagaste tú');
     $('#group-meal-attendees').innerHTML=group.participants.filter(person=>person.active||meal.attendees.includes(person.id)).map(person=>`<label class="check-option"><input type="checkbox" data-group-attendee="${esc(person.id)}"${meal.attendees.includes(person.id)?' checked':''}> ${esc(person.name)}</label>`).join('');
@@ -188,6 +188,7 @@
   function readCents(value) {try{return api().cents(value);}catch{return null;}}
   async function extract(useAI=false) {
     if(reading||!editor)return;
+    const activeEditor=editor;
     const withAI=useAI===true;
     const code=$('#group-ai-code').value.trim()||access.get();
     if(withAI&&code){$('#group-ai-code').value=code;access.save(code);}
@@ -212,7 +213,7 @@
         message(status,false,'#group-meal-message');
       };
       const result=withAI?await host.recognizeAI(editor.meal,{accessCode:code,consent:$('#group-ai-consent').checked},onProgress):await host.recognize(editor.meal,onProgress);
-      if(!editor)return;
+      if(editor!==activeEditor)return;
       if(withAI)rememberAICode();
       completed=true;percent=100;$('#group-ocr-progress').value=100;paintProgress();
       $('#group-text-panel').open=true;
@@ -222,12 +223,21 @@
       if(!editor.meal.name&&result.fields?.merchant){editor.meal.name=result.fields.merchant;$('#group-meal-name').value=editor.meal.name;}
       // Total remains a proposal requiring the user's independent review.
       if(Number.isFinite(result.fields?.total)&&result.fields.total>0){editor.meal.totalCents=Math.round(result.fields.total*100);$('#group-meal-total').value=amount(editor.meal.totalCents);}
+      if(withAI){
+        const date=result.fields?.date,time=result.fields?.time;
+        if(date){editor.meal.date=date;$('#group-meal-date').value=date;}
+        if(time){editor.meal.time=time;$('#group-meal-time').value=time;}
+        $('#group-ticket-datetime').textContent=`Fecha del ticket: ${date?date.split('-').reverse().join('/'):'no legible; se conserva la fecha de la comida'}. Hora: ${time||'no legible; se conserva la hora de la comida'}. Revisa estos datos antes de guardar.`;
+      }
       if(result.itemsStatus==='review'){
         $('#group-meal-reviewed').checked=false;stash();
         message(result.reviewMessage||((result.warnings||[]).join(' ')+' Se ha leído el texto, pero no se han podido emparejar todos los conceptos y precios con el total. No se han sustituido tus conceptos. No pases este texto directamente a conceptos: vuelve a leer las fotos o corrige primero cada línea con su precio.').trim(),true,'#group-meal-message');
         return;
       }
       parseText();
+      if(withAI&&(result.fields?.date||result.fields?.time)){
+        const title=$('#group-meal-title');title.tabIndex=-1;title.focus({preventScroll:true});$('#group-meal-form').scrollTop=0;$('#group-meal-dialog').scrollTop=0;
+      }
     }catch(error){
       if(withAI && /código de acceso incorrecto/i.test(error.message||'')){
         $('#group-ai-access-entry').hidden=false;$('#group-ai-access-saved').hidden=true;
@@ -274,7 +284,7 @@
     $('#group-meal-form').onsubmit=event=>event.preventDefault();
     $('#group-meal-form').oninput=event=>{
       if(!editor)return;const element=event.target;
-      const fields={'group-meal-name':'name','group-meal-date':'date','group-meal-total':'totalCents','group-meal-payer':'payerId','group-meal-account':'accountId','group-meal-text':'ocrText'};
+      const fields={'group-meal-name':'name','group-meal-date':'date','group-meal-time':'time','group-meal-total':'totalCents','group-meal-payer':'payerId','group-meal-account':'accountId','group-meal-text':'ocrText'};
       if(fields[element.id])editor.meal[fields[element.id]]=element.id==='group-meal-total'?readCents(element.value):element.id==='group-meal-account'?(Number(element.value)||null):element.value;
       const item=editor.meal.items.find(item=>item.id===element.closest('[data-group-item]')?.dataset.groupItem);
       if(item&&element.dataset.itemField){const field=element.dataset.itemField;item[field]=field==='amountCents'?readCents(element.value):field==='quantity'?Number(element.value):field==='common'?element.checked:element.value;}

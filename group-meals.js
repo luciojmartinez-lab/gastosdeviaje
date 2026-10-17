@@ -117,6 +117,7 @@
       const itemIds = meal.items.map(item => item.id).filter(Boolean);
       if (new Set(itemIds).size !== itemIds.length) throw new Error('Conceptos duplicados.');
       if (meal.attendees.some(id => !ids.includes(id))) throw new Error('Una comida contiene un viajero que no existe.');
+      if (meal.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(meal.time)) throw new Error('Indica una hora válida para la comida.');
       if (meal.status !== 'closed') continue;
       const result = allocation(meal);
       if (result.errors.length) throw new Error(result.errors[0]);
@@ -199,7 +200,7 @@
   function summary(group, meal) {
     const result = allocation(meal);
     const name = id => group.participants.find(p => p.id === id)?.name || '?';
-    return [`${meal.name} · ${meal.date}`, `Total: ${money(meal.totalCents)} · ${meal.attendees.length} asistentes`, '',
+    return [`${meal.name} · ${meal.date}${meal.time?' · '+meal.time:''}`, `Total: ${money(meal.totalCents)} · ${meal.attendees.length} asistentes`, '',
       ...meal.attendees.map(id => `${name(id)}: ${money(result.totals[id] || 0)} (individual ${money(result.individual[id] || 0)} + compartido ${money(result.common[id] || 0)})`),
       '', ...mealPayments(group, meal).map(row => `${name(row.id)}: ${row.id === meal.payerId ? 'cubierto' : 'devuelto'} ${money(row.paid)} · pendiente ${money(row.remaining)}`), '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
   }

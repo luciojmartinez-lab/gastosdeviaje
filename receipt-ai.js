@@ -84,10 +84,11 @@ export function normalizeReceiptProposal(value, {photoCount=1} = {}) {
   if(!assemblyValid)warnings.unshift('No se ha podido confirmar la unión de todas las fotos sin omitir o repetir líneas. Revisa el orden, los solapamientos y el total final.');
   const reconciled = valid && assemblyValid && total !== null && items.reduce((sum, item) => sum + item.amountCents, 0) === total;
   const amount = cents => validAmount(cents) ? (cents / 100).toFixed(2).replace('.', ',') : '?';
+  const date=assemblyValid?receiptCalendarDate(value.date,value.uncertain?.date):null,time=assemblyValid?receiptClockTime(value.time,value.uncertain?.time):null;
   const proposal = [...items.map(item => `${Number.isFinite(item.quantity) ? item.quantity : '?'} ${item.name || 'Concepto ilegible'} ${amount(item.amountCents)}`), `TOTAL ${amount(total)}`].join('\n');
   return {
     text: proposal, itemText: reconciled ? proposal : '', itemsStatus: reconciled ? 'reconciled' : 'review',
-    fields: { merchant: text(value.merchant, 160), total: total === null ? null : total / 100 },
+    fields: { merchant: text(value.merchant, 160), total: total === null ? null : total / 100, ...(date?{date}:{}), ...(time?{time}:{}) },
     provider: 'google', warnings
   };
 }
