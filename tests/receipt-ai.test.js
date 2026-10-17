@@ -89,7 +89,7 @@ test('emisor extranjero: aplica el nombre legible y conserva la marca original, 
  assert.equal(result.fields.merchant,'Daikoku Drug');assert.equal(result.merchantOriginal,'ダイコクドラッグ');assert.equal(h.inferences().length,1);
  const prompt=JSON.parse(h.inferences()[0].init.body).systemInstruction.parts[0].text;assert.match(prompt,/transliteración fiel/);assert.match(prompt,/merchantReadable/);assert.match(prompt,/No sustituyas una marca/);
 });
-test('gastos Gemini: solo emisor y total con moneda original, traducción aparte, sin fecha ni categorías',()=>{
+test('gastos Gemini: emisor y total con moneda original; fechas antiguas sin confianza explícita no se aplican',()=>{
  const result=normalizeExpenseReceipt({...foreignReceipt,date:'2026-01-01',category:'Comidas',items:[{name:'No contabilizar'}]});
  assert.deepEqual(result.fields,{merchant:'Sakura Restaurant',total:1850,currency:'JPY'});assert.equal(result.spanishText,'TOTAL JPY 1850');assert.equal(result.fields.date,undefined);
  const es=normalizeExpenseReceipt({...foreignReceipt,sourceLanguage:'es',currency:'EUR',total:'75.90',spanishText:'No usar',originalText:'No usar'});assert.equal(es.spanishText,'');assert.equal(es.originalText,'');assert.equal(es.fields.total,75.9);
@@ -97,11 +97,25 @@ test('gastos Gemini: solo emisor y total con moneda original, traducción aparte
  assert.equal(normalizeExpenseReceipt({...foreignReceipt,uncertain:{...foreignReceipt.uncertain,total:true}}).fields.total,null);
  assert.equal(normalizeExpenseReceipt({...foreignReceipt,currency:'$'}).fields.total,null);
 });
+
+test('fecha y hora impresas requieren confianza independiente y calendario real, sin usar la fecha del dispositivo',async()=>{
+ const dated={...foreignReceipt,date:'2024-02-29',time:'23:44',uncertain:{...foreignReceipt.uncertain,date:false,time:false}};
+ assert.equal(normalizeExpenseReceipt(dated).fields.date,'2024-02-29');assert.equal(normalizeExpenseReceipt(dated).fields.time,'23:44');
+ for(const date of ['2023-02-29','2026-04-31','2026-13-01','2026-00-12','26-10-17','17/10/2026','2026-10-17T12:00:00Z','today',null])assert.equal(normalizeExpenseReceipt({...dated,date}).fields.date,undefined);
+ for(const time of ['24:00','12:60','9:30','12:30:45','09:30 PM',null])assert.equal(normalizeExpenseReceipt({...dated,time}).fields.time,undefined);
+ assert.equal(normalizeExpenseReceipt({...dated,uncertain:{...dated.uncertain,date:true}}).fields.date,undefined);
+ assert.equal(normalizeExpenseReceipt({...dated,uncertain:{...dated.uncertain,time:true}}).fields.time,undefined);
+ assert.equal(normalizeExpenseReceipt({...dated,date:null}).fields.time,'23:44');
+ const h=harness({receipt:dated});const result=await readReceiptWithAI({ticketData:image},{consent:true,accessCode:'test-access-code',mode:'expense'},()=>{},(url,init)=>h.handler(new Request('https://test.netlify.app'+url,init)));
+ assert.equal(result.fields.date,'2024-02-29');assert.equal(result.fields.time,'23:44');assert.equal(h.inferences().length,1);
+ const prompt=JSON.parse(h.inferences()[0].init.body).systemInstruction.parts[0].text;assert.match(prompt,/No uses la fecha actual/);assert.match(prompt,/YYYY-MM-DD/);assert.match(prompt,/HH:mm/);
+ const invalid=harness({receipt:{...dated,date:'2026-02-31',time:'99:00'}});const rejected=await (await invalid.handler(invalid.request({image,mode:'expense'}))).json();assert.equal(rejected.expense.date,null);assert.equal(rejected.expense.time,null);assert.equal(rejected.expense.uncertain.date,true);
+});
 test('gastos Gemini: la petición no transmite cuentas y verifica el modo antes de llamar a Google',async()=>{
  let sent;const result=await readReceiptWithAI({ticketData:image,accountId:42},{consent:true,accessCode:'code',mode:'expense'},()=>{},async(url,init)=>{sent=JSON.parse(init.body);return Response.json({expense:foreignReceipt});});
  assert.deepEqual(sent,{image,mode:'expense'});assert.equal(result.fields.currency,'JPY');
  const h=harness({receipt:foreignReceipt});assert.equal((await h.handler(h.request({image,mode:'expense'}))).status,200);
- const prompt=JSON.parse(h.inferences()[0].init.body).systemInstruction.parts[0].text;assert.match(prompt,/SOLO emisor/);assert.match(prompt,/No conviertas monedas/);
+ const prompt=JSON.parse(h.inferences()[0].init.body).systemInstruction.parts[0].text;assert.match(prompt,/emisor \(merchant\)/);assert.match(prompt,/No conviertas monedas/);
  const invalid=harness();assert.equal((await invalid.handler(invalid.request({image,mode:'paid'}))).status,400);assert.equal(invalid.calls.length,0);
 });
 test('gastos Gemini: facturación, saturación y cuota mantienen bloqueos y no reintentan',async()=>{

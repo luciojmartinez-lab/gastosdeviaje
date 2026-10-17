@@ -186,6 +186,34 @@ test('imagen de Gemini conserva su identidad al crearse, guardarse y reabrirse; 
  }finally{w.close();}
 });
 
+test('fecha y hora del ticket aparecen en la propuesta y en la confirmación de alta y edición',async()=>{
+ const dated={...result,fields:{...result.fields,date:'2024-09-05',time:'23:44'}};
+ const ui=await setup({read:async()=>dated});try{
+  for(const prefix of ['g','edit-gasto']){
+   ui.$(prefix+'-ticket-ai-code').value='test';ui.$(prefix+'-ticket-ai-consent').checked=true;ui.click(prefix+'-ticket-ai-read');await ui.wait(()=>!!ui.$(prefix+'-ticket-ai-apply'));
+   assert.match(ui.$(prefix+'-ticket-ai-proposal').textContent,/Fecha del ticket: 05\/09\/2024/);assert.match(ui.$(prefix+'-ticket-ai-proposal').textContent,/Hora del ticket: 23:44/);
+   ui.click(prefix+'-ticket-ai-apply');await ui.wait(()=>!ui.$(prefix+'-ticket-ai-applied').hidden);assert.match(ui.$(prefix+'-ticket-ai-applied').textContent,/05\/09\/2024 · 23:44/);
+  }
+ }finally{ui.close();}
+});
+
+test('aplicar usa la fecha y hora impresas por separado y conserva campos ante error de cuenta o traducción',async()=>{
+ const dom=new JSDOM(html,{url:'https://test.local',runScripts:'outside-only'}),w=dom.window;
+ try{
+  w.$=selector=>w.document.querySelector(selector);w.state={cuentas:[{id:1,moneda:'JPY'}]};w.pendingTicketOcr={};w.pendingExpenseTicketTranslations={};w.scheduleFormDraftSave=()=>{};w.addExpenseDraftKey=()=>'';w.ADD_EXPENSE_DRAFT_FIELDS=[];
+  w.eval(sourceOf('applyExpenseAIProposal'));
+  for(const prefix of ['g','edit-gasto']){
+   const $=id=>w.document.getElementById(prefix+'-'+id);$('cuenta').innerHTML='<option value="">Sin cuenta</option><option value="1">JPY</option>';$('cuenta').value='1';if(prefix==='g')$('moneda').innerHTML='<option>JPY</option>';else $('moneda').value='JPY';
+   $('fecha').value='2026-10-17';$('hora').value='18:00';
+   await w.applyExpenseAIProposal(prefix,{...result,fields:{...result.fields,date:'2024-09-05'}},false);assert.equal($('fecha').value,'2024-09-05');assert.equal($('hora').value,'18:00');
+   await w.applyExpenseAIProposal(prefix,{...result,fields:{...result.fields,time:'23:44'}},false);assert.equal($('fecha').value,'2024-09-05');assert.equal($('hora').value,'23:44');
+   await w.applyExpenseAIProposal(prefix,result,false);assert.equal($('fecha').value,'2024-09-05');assert.equal($('hora').value,'23:44');
+   const dated={...result,fields:{...result.fields,date:'2025-01-01',time:'01:00'}};$('cuenta').value='';await assert.rejects(w.applyExpenseAIProposal(prefix,dated,false),/cuenta/);assert.equal($('fecha').value,'2024-09-05');assert.equal($('hora').value,'23:44');
+   $('cuenta').value='1';w.createLensAiSummaryCompanion=async()=>{throw new Error('No se pudo preparar');};await assert.rejects(w.applyExpenseAIProposal(prefix,dated,true),/No se pudo preparar/);assert.equal($('fecha').value,'2024-09-05');assert.equal($('hora').value,'23:44');
+  }
+ }finally{w.close();}
+});
+
 test('la categoría es una sugerencia escapada y solo se aplica al marcarla; una lectura dudosa no ofrece aplicar categoría',async()=>{
  const classified={...result,classification:{categoryId:'1',categoryName:'Comida <local>',subcategoryId:'2',subcategoryName:'Restaurantes',reason:'Menú <img src=x onerror=alert(1)>'}};
  const ui=await setup({read:async()=>classified});try{

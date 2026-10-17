@@ -55,7 +55,18 @@ export function normalizeExpenseReceipt(value,{categories=[]}={}) {
     if(category&&(choice.subcategoryId==null||subcategory))classification={categoryId:category.id,categoryName:category.name,subcategoryId:subcategory?.id||null,subcategoryName:subcategory?.name||'',reason:classificationReason};
     else if(options.length)warnings.push('La categoría propuesta no corresponde a tus categorías configuradas; elige la clasificación manualmente.');
   }
-  return {fields:{merchant,total,currency},classification,classificationReason,merchantOriginal,sourceLanguage,originalText,spanishText,warnings,provider:'google'};
+  const date=receiptCalendarDate(value.date,value.uncertain.date),time=receiptClockTime(value.time,value.uncertain.time);
+  return {fields:{merchant,total,currency,...(date?{date}:{}),...(time?{time}:{})},classification,classificationReason,merchantOriginal,sourceLanguage,originalText,spanishText,warnings,provider:'google'};
+}
+
+export function receiptCalendarDate(value,uncertain) {
+  if(uncertain!==false||typeof value!=='string'||!/^(19|20|21)\d{2}-\d{2}-\d{2}$/.test(value))return null;
+  const parsed=new Date(value+'T00:00:00Z');
+  return Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===value?value:null;
+}
+
+export function receiptClockTime(value,uncertain) {
+  return uncertain===false&&typeof value==='string'&&/^([01]\d|2[0-3]):[0-5]\d$/.test(value)?value:null;
 }
 
 export function normalizeReceiptProposal(value, {photoCount=1} = {}) {

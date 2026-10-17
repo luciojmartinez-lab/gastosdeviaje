@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v025';
+const APP_VERSION = '800v026';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2927,7 +2927,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v025');
+    const worker = new Worker('./timeline-import-worker.js?v=800v026');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3935,7 +3935,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v025');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v026');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4378,7 +4378,11 @@ async function syncExpenseTicketSelection(prefix, source) {
   syncExpenseTicketTypeAvailability(prefix);
   if (!fileLooksLikeImage(selectedFile)) return;
   const { point, captured } = await readImageMetadataForFile(selectedFile);
-  const preview = await compressBlogImage(selectedFile, { skipMetadata: true });
+  const preview = await queueExpenseMediaSave(async()=>{
+    if(selectedFileInput(`#${prefix}-ticket`, `#${prefix}-ticket-camera`)?.files?.[0]!==selectedFile)return null;
+    return compressBlogImage(selectedFile, { skipMetadata: true });
+  });
+  if(!preview)return;
   if (selectedFileInput(`#${prefix}-ticket`, `#${prefix}-ticket-camera`)?.files?.[0] !== selectedFile) return;
   pendingExpenseTicketPreviews[prefix] = preview;
   renderSelectedExpenseTicketPreview(prefix);
@@ -4399,6 +4403,18 @@ async function syncExpenseTicketSelection(prefix, source) {
   if (status) status.textContent = point
     ? `${selectedName} · con GPS del archivo. Puedes añadirlo al mapa.`
     : `${selectedName} · sin GPS.`;
+}
+
+function prepareExpenseTicketSelection(prefix, source) {
+  const selected=selectedFileInput(`#${prefix}-ticket`, `#${prefix}-ticket-camera`)?.files?.[0];
+  return syncExpenseTicketSelection(prefix,source).catch(error=>{
+    if(selectedFileInput(`#${prefix}-ticket`, `#${prefix}-ticket-camera`)?.files?.[0]!==selected)return;
+    clearExpenseTicketSelection(prefix);
+    const text=error?.message||'No se pudo preparar la foto. Prueba con una foto en resolución normal o selecciónala desde Archivos.';
+    $(`#${prefix}-ticket-selected`).textContent=text;
+    setMessage(prefix==='g'?'#msg-gasto':'#msg-edit-gasto',text,true);
+    alert(text);
+  });
 }
 
 function normalizeTicketMerchantKey(value) {
@@ -4842,7 +4858,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v025');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v026');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4978,7 +4994,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v025');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v026');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5532,7 +5548,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v025');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v026');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -14496,7 +14512,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v025');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v026');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15484,7 +15500,8 @@ function readBlobAsDataUrl(blob) {
   });
 }
 
-function loadImageFile(file) {
+function loadImageFile(file, options = {}) {
+  if(options.maxDimension)return import('./image-decode.js?v=800v026').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -15519,7 +15536,7 @@ async function compressBlogImage(file, options = {}) {
       imageDateTimeForFile(file)
     ]);
   }
-  const image = await loadImageFile(file);
+  const image = await loadImageFile(file, { maxDimension: BLOG_IMAGE_MAX_DIMENSION });
   try {
     let width = image.naturalWidth || image.width;
     let height = image.naturalHeight || image.height;
@@ -15536,16 +15553,17 @@ async function compressBlogImage(file, options = {}) {
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
-      const context = canvas.getContext('2d', { alpha: false });
-      context.fillStyle = '#fff';
-      context.fillRect(0, 0, width, height);
-      context.drawImage(image, 0, 0, width, height);
-      for (const quality of [0.86, 0.78, 0.68, 0.58]) {
-        blob = await canvasToJpeg(canvas, quality);
-        if (blob.size <= BLOG_IMAGE_TARGET_BYTES) break;
-      }
-      canvas.width = 1;
-      canvas.height = 1;
+      try {
+        const context = canvas.getContext('2d', { alpha: false });
+        if(!context)throw new Error('El navegador no puede preparar la foto.');
+        context.fillStyle = '#fff';
+        context.fillRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+        for (const quality of [0.86, 0.78, 0.68, 0.58]) {
+          blob = await canvasToJpeg(canvas, quality);
+          if (blob.size <= BLOG_IMAGE_TARGET_BYTES) break;
+        }
+      } finally { canvas.width = 1; canvas.height = 1; }
       if (blob.size <= BLOG_IMAGE_TARGET_BYTES) break;
       const longestEdge = Math.max(width, height);
       if (longestEdge <= 640) break;
@@ -15572,7 +15590,7 @@ async function compressBlogImage(file, options = {}) {
       capturedTime: captured ? captured.time : ''
     };
   } finally {
-    image.src = '';
+    if(typeof image.close==='function')image.close();else image.src = '';
   }
 }
 
@@ -18368,7 +18386,7 @@ async function handleGastoAction(id, action) {
 }
 
 async function compressGroupTicketPhoto(file) {
-  const image=await loadImageFile(file);
+  const image=await loadImageFile(file,{maxDimension:2200});
   try{
     const originalWidth=image.naturalWidth||image.width,originalHeight=image.naturalHeight||image.height;
     if(!originalWidth||!originalHeight)throw new Error('La foto no tiene dimensiones válidas.');
@@ -18376,17 +18394,19 @@ async function compressGroupTicketPhoto(file) {
     let width=Math.max(1,Math.round(originalWidth*scale)),height=Math.max(1,Math.round(originalHeight*scale));
     for(let round=0;round<4;round++){
       const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
-      const context=canvas.getContext('2d',{alpha:false});if(!context)throw new Error('El navegador no puede preparar la foto.');
-      context.fillStyle='#fff';context.fillRect(0,0,width,height);context.drawImage(image,0,0,width,height);
       let blob;
-      try{for(const quality of [0.90,0.84,0.76,0.68]){blob=await canvasToJpeg(canvas,quality);if(blob.size<=360*1024)break;}}
+      try{
+        const context=canvas.getContext('2d',{alpha:false});if(!context)throw new Error('El navegador no puede preparar la foto.');
+        context.fillStyle='#fff';context.fillRect(0,0,width,height);context.drawImage(image,0,0,width,height);
+        for(const quality of [0.90,0.84,0.76,0.68]){blob=await canvasToJpeg(canvas,quality);if(blob.size<=360*1024)break;}
+      }
       finally{canvas.width=1;canvas.height=1;}
       if(blob.size<=360*1024)return{name:String(file.name||'ticket').replace(/\.[^.]+$/,'')+'.jpg',type:'image/jpeg',data:await readBlobAsDataUrl(blob),width,height};
       const longest=Math.max(width,height);if(longest<=1200)break;
       const shrink=Math.max(1200/longest,0.84);width=Math.max(1,Math.round(width*shrink));height=Math.max(1,Math.round(height*shrink));
     }
     throw new Error('No se pudo preparar la foto conservando detalle suficiente. Recorta el fondo y fotografía solo el papel.');
-  }finally{image.src='';}
+  }finally{if(typeof image.close==='function')image.close();else image.src='';}
 }
 
 async function recognizeGroupTicket(meal,onProgress,recognize) {
@@ -18405,6 +18425,11 @@ async function recognizeGroupTicket(meal,onProgress,recognize) {
 
 function rootExpenseAIBusy(prefix) {
   return globalThis.ExpenseReceiptAIUI?.isBusy(prefix)===true;
+}
+
+function releaseIdleTicketOcr() {
+  if($('#group-meal-file')?.disabled||['g','edit-gasto'].some(prefix=>$(`#${prefix}-ticket-read`)?.dataset.busy||rootExpenseAIBusy(prefix)))return;
+  if(ticketOcrModulePromise)void ticketOcrModulePromise.then(module=>module.resetTicketOcrWorker?.()).catch(()=>{});
 }
 
 function expenseAICategoryOptions() {
@@ -18431,7 +18456,7 @@ function expenseAIPhotoType(classification) {
 }
 
 async function applyExpenseAIProposal(prefix,result,saveTranslation,stillCurrent=()=>true,applyClassification=false) {
-  const {merchant,total,currency}=result.fields;
+  const {merchant,total,currency,date,time}=result.fields;
   const selectedCurrency=$(`#${prefix}-moneda`)?.value;
   const account=state.cuentas.find(account=>Number(account.id)===Number($(`#${prefix}-cuenta`)?.value));
   const accountError=text=>Object.assign(new Error(text),{focusTarget:prefix+'-cuenta'});
@@ -18461,10 +18486,12 @@ async function applyExpenseAIProposal(prefix,result,saveTranslation,stillCurrent
   }
   if(merchant)$(`#${prefix}-desc`).value=merchant;
   if(total!==null)$(`#${prefix}-importe`).value=total.toFixed(2);
+  if(date)$(`#${prefix}-fecha`).value=date;
+  if(time)$(`#${prefix}-hora`).value=time;
   pendingTicketOcr[prefix]=null;
   if(companion){pendingExpenseTicketTranslations[prefix]=companion;renderExpenseTicketTranslation(prefix);}
   if(prefix==='g')scheduleFormDraftSave(addExpenseDraftKey(),ADD_EXPENSE_DRAFT_FIELDS);
-  return `Emisor y total aplicados donde eran legibles.${classification?' Clasificación propuesta aplicada.':' Se conserva tu clasificación.'}${appliedPhotoType?` Clasificación del ticket: ${appliedPhotoType.nombre}.`:''} Fecha, hora y cuenta se conservan. Revisa el gasto antes de guardarlo.`;
+  return `Datos del ticket aplicados donde eran legibles.${classification?' Clasificación propuesta aplicada.':' Se conserva tu clasificación.'}${appliedPhotoType?` Clasificación del ticket: ${appliedPhotoType.nombre}.`:''}${date||time?' Fecha y hora actualizadas solo donde se han reconocido con claridad.':' Se conservan fecha y hora al no haberse reconocido con claridad.'} La cuenta se conserva. Revisa el gasto antes de guardarlo.`;
 }
 
 function bindExpenseAIEvents() {
@@ -18475,7 +18502,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v025')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v026')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -18483,7 +18510,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v025')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v026')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -18515,11 +18542,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      const ocr = await import('./ticket-ocr.js?v=800v025');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v026');
+      const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v025')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v025')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v026')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v026')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -18947,17 +18975,18 @@ function bindEvents() {
     handleExpenseSubcategoryChange('edit-gasto');
     saveOpenExpenseCategoryClassification().catch(err => setMessage('#msg-edit-gasto', err.message || String(err), true));
   };
-  $('#g-ticket').onchange = () => { pendingExpenseTicketLocationChecks.g = syncExpenseTicketSelection('g', 'file'); };
+  for(const selector of ['#g-ticket','#g-ticket-camera','#edit-gasto-ticket','#edit-gasto-ticket-camera','#group-meal-file'])$(selector).addEventListener('click',releaseIdleTicketOcr);
+  $('#g-ticket').onchange = () => { pendingExpenseTicketLocationChecks.g = prepareExpenseTicketSelection('g', 'file'); };
   $('#g-ticket-camera').onclick = () => saveFormDraft(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
-  $('#g-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks.g = syncExpenseTicketSelection('g', 'camera'); };
+  $('#g-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks.g = prepareExpenseTicketSelection('g', 'camera'); };
   $('#g-ticket-type').onchange = () => scheduleFormDraftSave(addExpenseDraftKey(), ADD_EXPENSE_DRAFT_FIELDS);
   $('#g-ticket-read').onclick = () => readExpenseTicket('g');
   $('#g-ticket-translate').onclick = () => translateExpenseTicket('g');
   $('#g-ticket-lens-paste').onclick = () => pasteLensAiResponse('g');
   $('#g-extra-images').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
   $('#g-extra-images-camera').onchange = () => syncExpenseExtraImageSelection('g', { applyDateTime: true, resetClassifications: true });
-  $('#edit-gasto-ticket').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'file'); };
-  $('#edit-gasto-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = syncExpenseTicketSelection('edit-gasto', 'camera'); };
+  $('#edit-gasto-ticket').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = prepareExpenseTicketSelection('edit-gasto', 'file'); };
+  $('#edit-gasto-ticket-camera').onchange = () => { pendingExpenseTicketLocationChecks['edit-gasto'] = prepareExpenseTicketSelection('edit-gasto', 'camera'); };
   $('#edit-gasto-ticket-read').onclick = () => readExpenseTicket('edit-gasto');
   $('#edit-gasto-ticket-translate').onclick = () => translateExpenseTicket('edit-gasto');
   $('#edit-gasto-ticket-lens-paste').onclick = () => pasteLensAiResponse('edit-gasto');
@@ -20383,7 +20412,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v025');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v026');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
