@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v012';
+const APP_VERSION = '800v013';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2925,7 +2925,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v012');
+    const worker = new Worker('./timeline-import-worker.js?v=800v013');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3933,7 +3933,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v012');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v013');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4836,7 +4836,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v012');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v013');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4972,7 +4972,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v012');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v013');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5526,7 +5526,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v012');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v013');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -5781,6 +5781,14 @@ async function prepareCloudBackupData(sourceData) {
         next.ticketRef = await addAttachment({ data: meal.ticketData, name: meal.ticketName || 'ticket-grupo.jpg', mime: meal.ticketType || 'image/jpeg' });
         delete next.ticketData;
       }
+      if(Array.isArray(meal.ticketPhotos)){
+        next.ticketPhotos=[];
+        for(const photo of meal.ticketPhotos){
+          const nextPhoto={...photo};
+          if(photo.data){nextPhoto.dataRef=await addAttachment({data:photo.data,name:photo.name||'ticket-grupo.jpg',mime:photo.type||'image/jpeg'});delete nextPhoto.data;}
+          next.ticketPhotos.push(nextPhoto);
+        }
+      }
       meals.push(next);
     }
     viajes.push({ ...trip, group: { ...trip.group, meals } });
@@ -5900,9 +5908,12 @@ async function localAttachmentDataById() {
   }
   for (const trip of state.viajes || []) {
     for (const meal of trip.group?.meals || []) {
-      if (!meal.ticketData) continue;
-      const ticket = ticketDataInfo(meal.ticketData, meal.ticketType || 'image/jpeg');
-      result.set(await sha256Hex(ticket.blob), ticket.data);
+      const photos=[...(meal.ticketData?[{data:meal.ticketData,type:meal.ticketType}]:[]),...(Array.isArray(meal.ticketPhotos)?meal.ticketPhotos:[])];
+      for(const photo of photos){
+        if(!photo.data)continue;
+        const ticket=ticketDataInfo(photo.data,photo.type||'image/jpeg');
+        result.set(await sha256Hex(ticket.blob),ticket.data);
+      }
     }
   }
   const blogGalleryFiles = state.blogEntries.flatMap(entry => blogGalleryImages(entry));
@@ -5970,7 +5981,12 @@ async function hydrateCloudBackupData(sourceData) {
     ...sourceData,
     viajes: (sourceData.viajes || []).map(trip => !trip.group ? trip : ({ ...trip, group: { ...trip.group, meals: (trip.group.meals || []).map(meal => {
       if (meal.ticketRef && !downloaded.has(meal.ticketRef)) throw new Error('Falta el ticket de una comida del grupo. No se ha importado la copia.');
-      return { ...meal, ticketData: meal.ticketRef ? downloaded.get(meal.ticketRef) : (meal.ticketData || '') };
+      const restored={...meal,ticketData:meal.ticketRef?downloaded.get(meal.ticketRef):(meal.ticketData||'')};
+      if(Array.isArray(meal.ticketPhotos))restored.ticketPhotos=meal.ticketPhotos.map(photo=>{
+        if(photo.dataRef&&!downloaded.has(photo.dataRef))throw new Error('Falta una foto del ticket de una comida del grupo. No se ha importado la copia.');
+        return {...photo,data:photo.dataRef?downloaded.get(photo.dataRef):photo.data};
+      });
+      return restored;
     }) } })),
     gastos: (sourceData.gastos || []).map(gasto => ({
       ...gasto,
@@ -14474,7 +14490,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v012');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v013');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -18344,6 +18360,42 @@ async function handleGastoAction(id, action) {
   }
 }
 
+async function compressGroupTicketPhoto(file) {
+  const image=await loadImageFile(file);
+  try{
+    const originalWidth=image.naturalWidth||image.width,originalHeight=image.naturalHeight||image.height;
+    if(!originalWidth||!originalHeight)throw new Error('La foto no tiene dimensiones válidas.');
+    const scale=Math.min(1,2200/Math.max(originalWidth,originalHeight));
+    let width=Math.max(1,Math.round(originalWidth*scale)),height=Math.max(1,Math.round(originalHeight*scale));
+    for(let round=0;round<4;round++){
+      const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+      const context=canvas.getContext('2d',{alpha:false});if(!context)throw new Error('El navegador no puede preparar la foto.');
+      context.fillStyle='#fff';context.fillRect(0,0,width,height);context.drawImage(image,0,0,width,height);
+      let blob;
+      try{for(const quality of [0.90,0.84,0.76,0.68]){blob=await canvasToJpeg(canvas,quality);if(blob.size<=360*1024)break;}}
+      finally{canvas.width=1;canvas.height=1;}
+      if(blob.size<=360*1024)return{name:String(file.name||'ticket').replace(/\.[^.]+$/,'')+'.jpg',type:'image/jpeg',data:await readBlobAsDataUrl(blob),width,height};
+      const longest=Math.max(width,height);if(longest<=1200)break;
+      const shrink=Math.max(1200/longest,0.84);width=Math.max(1,Math.round(width*shrink));height=Math.max(1,Math.round(height*shrink));
+    }
+    throw new Error('No se pudo preparar la foto conservando detalle suficiente. Recorta el fondo y fotografía solo el papel.');
+  }finally{image.src='';}
+}
+
+async function recognizeGroupTicket(meal,onProgress,recognize) {
+  const photos=TravelGroup.ticketPhotos(meal);
+  if(!photos.length)throw new Error('Añade una foto del ticket.');
+  if(photos.length===1)return recognize(photos[0].data,{type:photos[0].type,name:photos[0].name,languages:['spa'],readItems:true,onProgress});
+  const readings=[];
+  for(let index=0;index<photos.length;index++){
+    const photo=photos[index];
+    onProgress({status:`Leyendo foto ${index+1} de ${photos.length}`,progress:index/photos.length});
+    readings.push(await recognize(photo.data,{type:photo.type,name:photo.name,languages:['spa'],readItems:false,onProgress:progress=>onProgress({status:`Foto ${index+1} de ${photos.length}: ${typeof progress==='string'?progress:progress.status||'Leyendo'}`,progress:(index+Math.max(0,Math.min(1,Number(progress?.progress)||0)))/photos.length})}));
+  }
+  // Text-only OCR cannot reliably distinguish overlap from two identical orders.
+  return{text:readings.map((result,index)=>`FOTO ${index+1}\n${result.text||''}`).join('\n\n'),itemsStatus:'review',fields:{merchant:readings.find(result=>result.fields?.merchant)?.fields.merchant,total:null},reviewMessage:'El OCR local ha leído todas las fotos por separado. Revisa y une el texto, quitando solo las líneas del solapamiento; no se han sustituido tus conceptos ni propuesto un total parcial. Para una propuesta conjunta puedes usar Leer con IA gratuita.'};
+}
+
 function bindGroupEvents() {
   $('#tab-grupo').onclick = () => setTab('grupo');
   TravelGroupUI.mount({
@@ -18360,18 +18412,22 @@ function bindGroupEvents() {
     readDraft: async tripId => (await getOne('appSettings', 'groupMealDraft:' + tripId))?.draft || null,
     clearDraft: tripId => deleteRecord('appSettings', 'groupMealDraft:' + tripId),
     readTicket: async input => {
-      const file = input.files?.[0];
-      if (!file) return null;
-      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error('Selecciona una fotografía JPEG, PNG o WebP.');
-      if (file.size > 20 * 1024 * 1024) throw new Error('La foto supera 20 MB. Elige una imagen más pequeña.');
-      return readFileData(input);
+      const files=Array.from(input.files||[]);
+      if(files.length>8)throw new Error('Selecciona como máximo 8 fotos del mismo ticket.');
+      const photos=[];
+      for(const file of files){
+        if(!/^image\/(jpeg|png|webp)$/.test(file.type))throw new Error('Selecciona fotografías JPEG, PNG o WebP.');
+        if(file.size>20*1024*1024)throw new Error('Una foto supera 20 MB. Elige una imagen más pequeña.');
+        photos.push(await compressGroupTicketPhoto(file));
+      }
+      return photos;
     },
     recognize: async (meal, progress) => {
-      const ocr = await import('./ticket-ocr.js?v=800v012');
-      return ocr.recognizeTicket(meal.ticketData, { type: meal.ticketType, name: meal.ticketName, languages: ['spa'], readItems: true, onProgress: progress });
+      const ocr = await import('./ticket-ocr.js?v=800v013');
+      return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v012')).getReceiptAIStatus(),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v012')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v013')).getReceiptAIStatus(),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v013')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -20234,7 +20290,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v012');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v013');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

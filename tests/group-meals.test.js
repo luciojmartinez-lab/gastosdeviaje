@@ -18,7 +18,7 @@ test('desglosar unidades conserva nombres y céntimos y permite un plato individ
   assert.deepEqual(plain(odd.map(i=>i.amountCents)),[334,333,333]);
   assert.equal(odd.reduce((s,i)=>s+i.amountCents,0),1000);
   assert.equal(api.expandUnits([{...original,quantity:1.5}])[0].quantity,1.5);
-  assert.throws(()=>api.expandUnits([{...original,quantity:151}]),/150/);
+  assert.throws(()=>api.expandUnits([{...original,quantity:501}]),/500/);
 });
 function fixture() {
   return api.normalize({ enabled: true, selfId: 'a', integrate: true,

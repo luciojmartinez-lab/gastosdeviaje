@@ -93,8 +93,15 @@
     preview();
   }
   function renderTicket() {
-    const meal=editor.meal;
-    $('#group-meal-ticket').innerHTML=/^data:image\/(jpeg|png|webp);base64,/i.test(meal.ticketData||'')?`<p class="small" role="status">Foto cargada: <strong>${esc(meal.ticketName||'ticket')}</strong>. Pulsa «Leer foto con OCR local» para proponer los conceptos.</p><img class="group-ticket" src="${esc(meal.ticketData)}" alt="Ticket de ${esc(meal.name||'la comida')}">`:'';
+    const meal=editor.meal,photos=api().ticketPhotos(meal);
+    $('#group-ocr').textContent=photos.length>1?'Leer todas las fotos con OCR local':'Leer foto con OCR local';
+    $('#group-meal-ticket').innerHTML=photos.length?`<p class="small" role="status">${photos.length===1?'Foto cargada':'Fotos cargadas'}: ${photos.length}. Se leerán de arriba abajo como un único ticket.</p><div class="group-ticket-photos" role="list">${photos.map((photo,index)=>`<article class="group-ticket-card" role="listitem"><h4>Foto ${index+1} de ${photos.length}: ${esc(photo.name||'ticket')}</h4>${/^data:image\/(jpeg|png|webp);base64,/i.test(photo.data||'')?`<img class="group-ticket" src="${esc(photo.data)}" alt="Ticket de ${esc(meal.name||'la comida')}, foto ${index+1}">`:'<p class="error">Foto no válida; vuelve a seleccionarla.</p>'}<div class="actions"><button type="button" class="ghost" data-group-ticket-action="up" data-ticket-index="${index}" aria-label="Subir foto ${index+1}"${reading||index===0?' disabled':''}>Subir</button><button type="button" class="ghost" data-group-ticket-action="down" data-ticket-index="${index}" aria-label="Bajar foto ${index+1}"${reading||index===photos.length-1?' disabled':''}>Bajar</button><button type="button" class="ghost" data-group-ticket-action="remove" data-ticket-index="${index}" aria-label="Quitar foto ${index+1}"${reading?' disabled':''}>Quitar foto</button></div></article>`).join('')}</div>`:'';
+  }
+  function updatePhotos(photos) {
+    api().setTicketPhotos(editor.meal,photos);
+    editor.meal.ocrPhotoChangeText=editor.meal.ocrText||null;
+    $('#group-meal-reviewed').checked=false;$('#group-ai-consent').checked=false;
+    renderTicket();stash();
   }
   function mountMeal() {
     const meal=editor.meal,group=editor.group;
@@ -141,10 +148,11 @@
     if(reading||!editor)return;
     const withAI=useAI===true;
     if(withAI && !aiEnabled)throw new Error('La IA gratuita está pendiente de activación. Puedes usar el OCR local.');
-    if(withAI && !$('#group-ai-consent').checked)throw new Error('Marca que autorizas enviar esta foto a Google para leerla.');
+    if(withAI && !$('#group-ai-consent').checked)throw new Error('Marca que autorizas enviar las fotos de este ticket a Google para leerlo.');
     if(withAI && !$('#group-ai-code').value.trim())throw new Error('Introduce el código de acceso a la lectura gratuita.');
     reading=true;$('#group-ocr').disabled=true;$('#group-parse-text').disabled=true;
     $('#group-ai-read').disabled=true;$('#group-close-meal').disabled=true;$('#group-save-draft').disabled=true;$('#group-meal-file').disabled=true;
+    all('#group-meal-ticket button').forEach(button=>button.disabled=true);
     $('#group-ocr-progress-wrap').hidden=false;$('#group-ocr-progress').value=0;
     const started=Date.now();let percent=0;
     const paintProgress=()=>{$('#group-ocr-counter').textContent=`${withAI&&percent<100?'IA gratuita':percent+'%'} · ${Math.floor((Date.now()-started)/1000)} s`;};
@@ -152,7 +160,7 @@
     if(withAI)$('#group-ocr-progress').removeAttribute('value');
     let completed=false;
     try {
-      if(!editor.meal.ticketData)throw new Error('Añade una foto del ticket.');
+      if(!api().ticketPhotos(editor.meal).length)throw new Error('Añade una foto del ticket.');
       message(withAI?'Preparando la lectura gratuita con Google…':'Leyendo el ticket en este dispositivo…',false,'#group-meal-message');
       const onProgress=progress=>{
         const status=typeof progress==='string'?progress:progress.status||'Leyendo…';
@@ -166,12 +174,13 @@
       $('#group-text-panel').open=true;
       $('#group-meal-text').value=result.itemText||result.text||'';editor.meal.ocrText=$('#group-meal-text').value;
       editor.meal.ocrUnsafeText=result.itemsStatus==='review'?editor.meal.ocrText:null;
+      editor.meal.ocrPhotoChangeText=null;
       if(!editor.meal.name&&result.fields?.merchant){editor.meal.name=result.fields.merchant;$('#group-meal-name').value=editor.meal.name;}
       // Total remains a proposal requiring the user's independent review.
       if(Number.isFinite(result.fields?.total)&&result.fields.total>0){editor.meal.totalCents=Math.round(result.fields.total*100);$('#group-meal-total').value=amount(editor.meal.totalCents);}
       if(result.itemsStatus==='review'){
         $('#group-meal-reviewed').checked=false;stash();
-        message('Se ha leído el texto, pero no se han podido emparejar todos los conceptos y precios con el total. No se han sustituido tus conceptos. No pases este texto directamente a conceptos: vuelve a leer la foto o corrige primero cada línea con su precio.',true,'#group-meal-message');
+        message(result.reviewMessage||((result.warnings||[]).join(' ')+' Se ha leído el texto, pero no se han podido emparejar todos los conceptos y precios con el total. No se han sustituido tus conceptos. No pases este texto directamente a conceptos: vuelve a leer las fotos o corrige primero cada línea con su precio.').trim(),true,'#group-meal-message');
         return;
       }
       parseText();
@@ -185,12 +194,13 @@
       clearInterval(timer);reading=false;$('#group-ocr').disabled=false;$('#group-parse-text').disabled=false;
       $('#group-ai-read').disabled=!aiEnabled;$('#group-close-meal').disabled=false;$('#group-save-draft').disabled=false;$('#group-meal-file').disabled=false;
       if(!completed)$('#group-ocr-counter').textContent=`Lectura interrumpida · ${Math.floor((Date.now()-started)/1000)} s`;
-      if(editor)showParseFeedback();
+      if(editor){renderTicket();showParseFeedback();}
     }
   }
   function parseText(replaceExisting=false){
     if(!editor)return;
     const text=$('#group-meal-text').value;
+    if(editor.meal.ocrPhotoChangeText && text.trim()===editor.meal.ocrPhotoChangeText.trim())throw new Error('Las fotos o su orden han cambiado desde esta lectura. Vuelve a leer el ticket completo o corrige el texto mirando todas las fotos.');
     if(editor.meal.ocrUnsafeText!=null && text.trim()===editor.meal.ocrUnsafeText.trim())throw new Error('Esta lectura tiene conceptos y precios sin emparejar. No se puede pasar directamente a conceptos. Vuelve a leer la foto o corrige el texto mirando el ticket.');
     const result=api().parseItems(text);
     if(!result.items.length)throw new Error('No se han reconocido conceptos fiables. Introdúcelos manualmente; no se ha cambiado la lista.');
@@ -241,28 +251,40 @@
       const index=editor.meal.items.findIndex(item=>item.id===id);if(index<0)return;
       if(button.dataset.groupItemExpand){
         const expanded=api().expandUnits([editor.meal.items[index]]).map(item=>({...item,id:uid()}));
-        if(editor.meal.items.length-1+expanded.length>150)throw new Error('No se pueden superar 150 platos o unidades en una comida.');
+        if(editor.meal.items.length-1+expanded.length>500)throw new Error('No se pueden superar 500 platos o unidades en una comida.');
         editor.meal.items.splice(index,1,...expanded);
         message('Unidades desglosadas sin cambiar el total. Revisa los comensales de cada plato.',false,'#group-meal-message');
       }else editor.meal.items.splice(index,1);
       $('#group-meal-reviewed').checked=false;renderItems();stash();
     },'#group-meal-message');
+    $('#group-meal-ticket').onclick=safe(event=>{
+      const button=event.target.closest('[data-group-ticket-action]');if(!button||!editor)return;
+      if(reading)throw new Error('Espera a que termine la lectura.');
+      const photos=api().ticketPhotos(editor.meal).slice(),index=Number(button.dataset.ticketIndex),action=button.dataset.groupTicketAction;
+      if(!Number.isInteger(index)||!photos[index])return;
+      if(action==='remove')photos.splice(index,1);
+      else{const destination=index+(action==='up'?-1:1);if(destination<0||destination>=photos.length)return;[photos[index],photos[destination]]=[photos[destination],photos[index]];}
+      updatePhotos(photos);message('Fotos actualizadas. Revisa el orden y vuelve a leer el ticket si ya habías obtenido una propuesta.',false,'#group-meal-message');
+    },'#group-meal-message');
     $('#group-meal-file').onchange=safe(async event=>{
       if(!editor||reading)return;
       const input=event.target;
       reading=true;
-      const controls=['#group-meal-file','#group-ocr','#group-save-draft','#group-close-meal'];
-      controls.forEach(selector=>$(selector).disabled=true);
-      message('Cargando la foto del ticket…',false,'#group-meal-message');
+      const controls=['#group-meal-file','#group-ocr','#group-ai-read','#group-save-draft','#group-close-meal'];
+      controls.forEach(selector=>$(selector).disabled=true);all('#group-meal-ticket button').forEach(button=>button.disabled=true);
+      message('Cargando las fotos del ticket…',false,'#group-meal-message');
       try{
-        const file=await host.readTicket(input);
-        if(!file){message('No se ha seleccionado una foto nueva.',false,'#group-meal-message');return;}
-        if(!/^data:image\/(jpeg|png|webp);base64,/i.test(file.data||''))throw new Error('No se pudo cargar la fotografía. Selecciona una imagen JPEG, PNG o WebP.');
-        editor.meal.ticketData=file.data;editor.meal.ticketName=file.name;editor.meal.ticketType=file.type;
-        $('#group-meal-reviewed').checked=false;$('#group-ai-consent').checked=false;renderTicket();stash();
-        message(`Foto cargada: ${file.name}. Ya puedes leerla con OCR o introducir los conceptos manualmente.`,false,'#group-meal-message');
-      }catch(error){input.value='';throw error;}
-      finally{reading=false;controls.forEach(selector=>$(selector).disabled=false);}
+        const old=api().ticketPhotos(editor.meal),selected=Number(input.files?.length||0);
+        if(selected>8)throw new Error('Selecciona como máximo 8 fotos del mismo ticket.');
+        const loaded=await host.readTicket(input),files=Array.isArray(loaded)?loaded:loaded?[loaded]:[];
+        if(!files.length){message('No se ha seleccionado una foto nueva.',false,'#group-meal-message');return;}
+        if(files.some(file=>!/^data:image\/(jpeg|png|webp);base64,/i.test(file?.data||'')))throw new Error('No se pudo cargar una fotografía. Selecciona imágenes JPEG, PNG o WebP.');
+        const photos=old.slice();let repeated=0;
+        for(const file of files){if(photos.some(photo=>photo.data===file.data)){repeated++;continue;}photos.push({data:file.data,name:file.name,type:file.type});}
+        if(photos.length>8)throw new Error('Se admiten hasta 8 fotos del mismo ticket. Quita alguna antes de añadir más.');
+        updatePhotos(photos);
+        message(`${photos.length===1?'Foto cargada':'Fotos cargadas'}: ${photos.length===1?photos[0].name:photos.length+' fotos del mismo ticket'}.${repeated?' Se han omitido '+repeated+' fotos idénticas.':''} Revisa el orden de arriba abajo y lee el ticket completo.`,false,'#group-meal-message');
+      }finally{input.value='';reading=false;controls.forEach(selector=>$(selector).disabled=false);$('#group-ai-read').disabled=!aiEnabled;renderTicket();}
     },'#group-meal-message');
     $('#group-ocr').onclick=safe(extract,'#group-meal-message');
     $('#group-ai-toggle-code').onclick=()=>showAICode($('#group-ai-code').type==='password');

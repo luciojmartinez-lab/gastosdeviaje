@@ -5910,6 +5910,11 @@ footer {
 .group-meal-card { border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 14px; }
 .group-meal-card h3 { margin-top: 0; }
 .group-ticket { display: block; max-width: 100%; max-height: 65vh; object-fit: contain; }
+.group-ticket-photos { display: grid; gap: 12px; }
+.group-ticket-card { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.group-ticket-card h4 { margin: 0 0 10px; overflow-wrap: anywhere; }
+.group-ticket-card .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.group-ticket-card:not(:only-child) .group-ticket { max-height: 42vh; }
 .group-payment { padding: 8px; background: var(--soft); border-radius: 8px; }
 #view-grupo details > summary, .group-dialog details > summary { padding: 12px 0; cursor: pointer; font-weight: 600; }
 #group-meal-totals ul { columns: 2; }

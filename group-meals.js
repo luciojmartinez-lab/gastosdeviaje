@@ -17,7 +17,7 @@
   }
   function expandUnits(items) {
     const count = item => Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 1 ? Number(item.quantity) : 1;
-    if (items.reduce((sum,item)=>sum+count(item),0)>150) throw new Error('La propuesta supera 150 platos o unidades. Revisa el texto antes de incorporarlo.');
+    if (items.reduce((sum,item)=>sum+count(item),0)>500) throw new Error('La propuesta supera 500 platos o unidades. Revisa el texto antes de incorporarlo.');
     return items.flatMap(item => {
       const quantity=count(item);
       if(quantity===1)return [copy(item)];
@@ -25,6 +25,17 @@
       const base=Math.floor(item.amountCents/quantity),remainder=item.amountCents%quantity;
       return Array.from({length:quantity},(_,index)=>({...copy(item),quantity:1,amountCents:base+(index<remainder?1:0)}));
     });
+  }
+  function ticketPhotos(meal) {
+    if(Array.isArray(meal.ticketPhotos)&&meal.ticketPhotos.length)return meal.ticketPhotos;
+    return meal.ticketData?[{data:meal.ticketData,name:meal.ticketName||'ticket.jpg',type:meal.ticketType||'image/jpeg'}]:[];
+  }
+  function setTicketPhotos(meal, photos) {
+    if(!Array.isArray(photos)||photos.length>8)throw new Error('Se admiten hasta 8 fotos del mismo ticket.');
+    if(photos.some(photo=>!photo||typeof photo.data!=='string'||!/^data:image\/(jpeg|png|webp);base64,/i.test(photo.data)))throw new Error('Una foto del ticket no es válida.');
+    delete meal.ticketPhotos;delete meal.ticketData;delete meal.ticketName;delete meal.ticketType;delete meal.ticketRef;
+    if(photos.length===1){meal.ticketData=photos[0].data;meal.ticketName=photos[0].name;meal.ticketType=photos[0].type;}
+    else if(photos.length)meal.ticketPhotos=photos.map(photo=>({data:photo.data,name:photo.name||'ticket.jpg',type:photo.type||'image/jpeg'}));
   }
   function normalize(value = {}) {
     const group = value && typeof value === 'object' ? copy(value) : {};
@@ -101,6 +112,7 @@
       if (!['draft', 'closed'].includes(meal.status)) throw new Error('Estado de comida no válido.');
       if (meal.currency !== 'EUR') throw new Error('Las comidas de grupo de esta versión se registran en euros.');
       if (!Array.isArray(meal.attendees) || !Array.isArray(meal.items)) throw new Error('Datos de comida no válidos.');
+      if(meal.ticketPhotos!=null && (!Array.isArray(meal.ticketPhotos)||meal.ticketPhotos.length>8||meal.ticketPhotos.some(photo=>!photo||typeof photo.data!=='string'||!/^data:image\/(jpeg|png|webp);base64,/i.test(photo.data))))throw new Error('Las fotos de una comida no son válidas. No se ha guardado el grupo.');
       if (new Set(meal.attendees).size !== meal.attendees.length) throw new Error('Asistentes duplicados.');
       const itemIds = meal.items.map(item => item.id).filter(Boolean);
       if (new Set(itemIds).size !== itemIds.length) throw new Error('Conceptos duplicados.');
@@ -176,5 +188,5 @@
       ...meal.attendees.map(id => `${name(id)}: ${money(result.totals[id] || 0)} (individual ${money(result.individual[id] || 0)} + compartido ${money(result.common[id] || 0)})`),
       '', ...mealPayments(group, meal).map(row => `${name(row.id)}: ${row.id === meal.payerId ? 'cubierto' : 'devuelto'} ${money(row.paid)} · pendiente ${money(row.remaining)}`), '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
   }
-  root.TravelGroup = { normalize, validate, allocation, split, expandUnits, cents, money, balances, mealPayments, parseItems, remapAccounts, summary };
+  root.TravelGroup = { normalize, validate, allocation, split, expandUnits, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, parseItems, remapAccounts, summary };
 })(globalThis);

@@ -10,7 +10,7 @@ const nullable = type => ({ type: [type, 'null'] });
 const SCHEMA = {
   type: 'object', properties: {
     merchant: { type: 'string' }, currency: { type: 'string' }, totalCents: nullable('integer'),
-    items: { type: 'array', minItems: 1, maxItems: 150, items: { type: 'object', properties: {
+    items: { type: 'array', minItems: 1, maxItems: 250, items: { type: 'object', properties: {
       name: { type: 'string' }, quantity: nullable('number'), amountCents: nullable('integer'), uncertain: { type: 'boolean' }
     }, required: ['name', 'quantity', 'amountCents', 'uncertain'], additionalProperties: false } },
     warnings: { type: 'array', items: { type: 'string' } }
@@ -48,8 +48,12 @@ export function createReceiptHandler({ env, checker, fetcher = fetch, now = () =
       if (Buffer.byteLength(raw) > MAX_BODY) throw new ReceiptError('La foto es demasiado grande.', 413);
       let body;
       try { body = JSON.parse(raw); } catch { throw new ReceiptError('Solicitud no válida.', 400); }
-      const image = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(body.image || '');
-      if (!image || image[2].length % 4 !== 0 || Buffer.from(image[2], 'base64').length < 16) throw new ReceiptError('Selecciona una fotografía válida del ticket.', 400);
+      if(body.image!=null&&body.images!=null)throw new ReceiptError('Envía una foto o una lista ordenada de fotos.',400);
+      const sources=body.images!=null?body.images:[body.image];
+      if(!Array.isArray(sources)||!sources.length||sources.length>8||sources.some(value=>typeof value!=='string'))throw new ReceiptError('Se admiten entre una y ocho fotos del mismo ticket.',400);
+      if(new Set(sources).size!==sources.length)throw new ReceiptError('Hay una foto repetida. Quita la copia antes de leer.',400);
+      const images=sources.map(value=>/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value));
+      if(images.some(image=>!image||image[2].length%4!==0||Buffer.from(image[2],'base64').length<16))throw new ReceiptError('Selecciona fotografías válidas del ticket.',400);
 
       // Credentials stay in a private Blob, not in the page, repository or logs.
       const credentials = await checker();
@@ -66,16 +70,20 @@ export function createReceiptHandler({ env, checker, fetcher = fetch, now = () =
       const billing = await googleJson(`https://cloudbilling.googleapis.com/v1/projects/${project}/billingInfo`, { headers });
       // Do not cache a successful check. Any linked account, even suspended, blocks inference.
       if (billing.billingEnabled !== false || billing.billingAccountName) fail('El proyecto tiene facturación vinculada o no se pudo confirmar que está desactivada. No se enviará la foto a Gemini.');
+      const multiple=images.length>1;
+      const schema=multiple?{...SCHEMA,properties:{...SCHEMA.properties,assembly:{type:'object',properties:{photoCount:{type:'integer'},complete:{type:'boolean'},overlapUncertain:{type:'boolean'}},required:['photoCount','complete','overlapUncertain'],additionalProperties:false}},required:[...SCHEMA.required,'assembly']}:SCHEMA;
+      const instructions=multiple?' Las fotos están ordenadas de arriba abajo y son tramos de UN ÚNICO ticket, no tickets independientes. Une los tramos siguiendo su continuidad visual. Elimina solo las líneas que aparecen en el solapamiento físico entre fotos consecutivas. Conserva pedidos repetidos reales aunque tengan idénticos nombre y precio. No dedupliques por nombre e importe ni inventes líneas para cuadrar. Usa solo el total FINAL del ticket completo, nunca sumes subtotales o totales parciales. Si falta un tramo, las fotos pertenecen a tickets distintos, el orden no es claro, o no puedes distinguir solapamiento de pedidos repetidos, marca assembly.complete:false o assembly.overlapUncertain:true y explica la duda en warnings. assembly.photoCount debe ser el número de fotos examinadas. Solo marca complete:true y overlapUncertain:false si puedes confirmar toda la unión.':'';
+      const parts=images.flatMap((image,index)=>[...(multiple?[{text:`Foto ${index+1} de ${images.length}; tramo ${index===0?'inicial':index===images.length-1?'final':'intermedio'} del mismo ticket.`}]:[]),{inlineData:{mimeType:image[1],data:image[2]}}]);
       const result = await googleJson(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         // JSON mode accepts the photo with this model; its schema parameter returns INVALID_ARGUMENT.
         // Describe the contract in the prompt and validate the response independently below and in the client.
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: `${PROMPT} Devuelve un objeto JSON que cumpla exactamente este esquema: ${JSON.stringify(SCHEMA)}` }] }, contents: [{ role: 'user', parts: [{ inlineData: { mimeType: image[1], data: image[2] } }] }], generationConfig: { temperature: 0, maxOutputTokens: 8192, responseMimeType: 'application/json' } })
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: `${PROMPT}${instructions} Devuelve un objeto JSON que cumpla exactamente este esquema: ${JSON.stringify(schema)}` }] }, contents: [{ role: 'user', parts }], generationConfig: { temperature: 0, maxOutputTokens: 16384, responseMimeType: 'application/json' } })
       }, 30_000, true);
       const candidate = result.candidates?.[0];
       if (candidate?.finishReason !== 'STOP') fail('Google no ha completado la lectura. No se han modificado tus conceptos.');
       let receipt;
-      try { receipt = JSON.parse(candidate.content.parts.filter(part => !part.thought).map(part => part.text || '').join('')); normalizeReceiptProposal(receipt); }
+      try { receipt = JSON.parse(candidate.content.parts.filter(part => !part.thought).map(part => part.text || '').join('')); normalizeReceiptProposal(receipt,{photoCount:images.length}); }
       catch { fail('Google no ha devuelto una propuesta válida. No se han modificado tus conceptos.'); }
       return json({ receipt });
     } catch (error) {

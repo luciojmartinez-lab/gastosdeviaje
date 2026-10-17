@@ -148,3 +148,39 @@ test('IA: Google saturado no se confunde con una verificación de gratuidad fall
   assert.match((await response.json()).message,/no ha aceptado esta lectura/);
   assert.equal(h.inferences().length,1);
 });
+
+test('IA multifoto: envía todas las imágenes ordenadas en una única lectura y mantiene la comprobación gratuita',async()=>{
+ const image2='data:image/jpeg;base64,'+Buffer.alloc(48,11).toString('base64');
+ const multi={...copy(receipt),assembly:{photoCount:2,complete:true,overlapUncertain:false}};
+ let sent;
+ const proposal=await readReceiptWithAI({ticketPhotos:[{data:image,name:'PRIVATE1'},{data:image2,name:'PRIVATE2'}],participants:['PRIVATE PERSON']},{accessCode:'test',consent:true},()=>{},async(url,init)=>{sent=JSON.parse(init.body);return Response.json({receipt:multi});});
+ assert.deepEqual(sent,{images:[image,image2]});assert.equal(proposal.itemsStatus,'reconciled');
+ const h=harness({receipt:multi});const response=await h.handler(h.request(sent));assert.equal(response.status,200);
+ assert.equal(h.inferences().length,1);
+ const payload=JSON.parse(h.inferences()[0].init.body);
+ assert.deepEqual(payload.contents[0].parts.filter(p=>p.inlineData).map(p=>p.inlineData.data),[image,image2].map(i=>i.split(',')[1]));
+ assert.match(payload.systemInstruction.parts[0].text,/No dedupliques por nombre e importe/);
+ assert.equal(h.calls.filter(call=>call.url.includes('billingInfo')).length,1);
+ const blocked=harness({billing:{billingEnabled:true}});assert.equal((await blocked.handler(blocked.request(sent))).status,503);assert.equal(blocked.inferences().length,0);
+});
+
+test('IA multifoto: una unión incompleta, dudosa o con fotos omitidas no pasa a conceptos aunque sume',()=>{
+ const multi={...copy(receipt),assembly:{photoCount:2,complete:true,overlapUncertain:false}};
+ for(const change of [v=>delete v.assembly,v=>v.assembly.complete=false,v=>v.assembly.overlapUncertain=true,v=>v.assembly.photoCount=1,v=>v.warnings=['Duda en el solapamiento']]){
+  const value=copy(multi);change(value);const proposal=normalizeReceiptProposal(value,{photoCount:2});
+  assert.equal(proposal.itemsStatus,'review');assert.equal(proposal.itemText,'');assert.match(proposal.warnings.join(' '),/unión/);
+ }
+ const repeated=copy(multi);repeated.items[6].name=repeated.items[5].name;
+ const proposal=normalizeReceiptProposal(repeated,{photoCount:2});assert.equal(proposal.itemsStatus,'reconciled');
+ assert.equal(proposal.itemText.split('\n').filter(line=>line.includes('Tarrina chocolate')).length,2);
+});
+
+test('IA multifoto: rechaza exceso, repetición y fotos inválidas antes de enviar o verificar nada',async()=>{
+ const h=harness(),photo='data:image/png;base64,'+Buffer.alloc(48,12).toString('base64');
+ for(const images of [[],[image,image],Array(9).fill(image),[image,'data:application/pdf;base64,dGVzdA=='],[image,42]])assert.equal((await h.handler(h.request({images}))).status,400);
+ assert.equal((await h.handler(h.request({images:[image,photo],image}))).status,400);assert.equal(h.calls.length,0);
+ let calls=0;
+ await assert.rejects(readReceiptWithAI({ticketPhotos:[{data:image},{data:image}]},{accessCode:'x',consent:true},()=>{},async()=>{calls++;}),/repetida/);
+ await assert.rejects(readReceiptWithAI({ticketPhotos:[{data:image},{data:'data:image/jpeg;base64,'+'A'.repeat(4_000_000)}]},{accessCode:'x',consent:true},()=>{},async()=>{calls++;}),/demasiado grandes/);
+ assert.equal(calls,0);
+});

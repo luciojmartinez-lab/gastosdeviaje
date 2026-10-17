@@ -312,3 +312,62 @@ test('un código recordado que ya no sirve vuelve a pedir corrección; bloquear 
   assert.equal(blocked.$('#group-ai-access-entry').hidden,false);
  }finally{blocked.close();}
 });
+
+const ticketPhoto=name=>({name,type:'image/jpeg',data:'data:image/jpeg;base64,'+Buffer.from(name.repeat(8)).toString('base64')});
+test('multifoto: añade tandas, evita copias idénticas, ordena, quita y recupera las imágenes al reabrir',async()=>{
+ const photos=['inicio.jpg','centro.jpg','final.jpg'].map(ticketPhoto);let batch=0;
+ const ui=await setup({readTicket:async()=>batch++===0?photos.slice(0,2):[photos[1],photos[2]]});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  assert.equal(ui.$('#group-meal-file').multiple,true);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket').querySelectorAll('img').length===2);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket').querySelectorAll('img').length===3);
+  assert.match(ui.$('#group-meal-message').textContent,/omitido 1 fotos idénticas/);
+  ui.input('#group-ai-consent',true);ui.input('#group-meal-reviewed',true);
+  ui.click('[data-group-ticket-action="up"][data-ticket-index="2"]');
+  assert.equal(ui.$('#group-ai-consent').checked,false);assert.equal(ui.$('#group-meal-reviewed').checked,false);
+  const expected=[photos[0],photos[2],photos[1]];
+  assert.deepEqual([...ui.$('#group-meal-ticket').querySelectorAll('img')].map(img=>img.src),expected.map(p=>p.data));
+  ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  assert.deepEqual(ui.state.viajes[0].group.meals[0].ticketPhotos.map(p=>p.data),expected.map(p=>p.data));
+  assert.equal(ui.state.viajes[0].group.meals[0].ticketData,undefined);
+  ui.click('[data-group-edit]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  assert.deepEqual([...ui.$('#group-meal-ticket').querySelectorAll('img')].map(img=>img.src),expected.map(p=>p.data));
+  ui.click('[data-group-ticket-action="remove"][data-ticket-index="1"]');assert.equal(ui.$('#group-meal-ticket').querySelectorAll('img').length,2);
+  ui.click('[data-group-ticket-action="remove"][data-ticket-index="0"]');assert.equal(ui.$('#group-meal-ticket').querySelectorAll('img').length,1);
+  ui.click('[data-group-ticket-action="remove"][data-ticket-index="0"]');assert.equal(ui.$('#group-meal-ticket').querySelectorAll('img').length,0);
+ }finally{ui.close();}
+});
+
+test('multifoto: una tanda inválida o que supera ocho fotos conserva íntegros los adjuntos y conceptos anteriores',async()=>{
+ const photos=Array.from({length:8},(_,i)=>ticketPhoto('foto'+i));let batch=0;
+ const ui=await setup({readTicket:async()=>{batch++;if(batch===1)return photos;if(batch===2)return[ticketPhoto('nueva'),{data:'data:application/pdf;base64,dGVzdA=='}];return[ticketPhoto('novena')];}});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.click('#group-add-item');ui.input('[data-item-field="name"]','Plato revisado');
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket').querySelectorAll('img').length===8);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('No se pudo cargar'));
+  assert.equal(ui.$('#group-meal-ticket').querySelectorAll('img').length,8);assert.equal(ui.$('[data-item-field="name"]').value,'Plato revisado');
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('hasta 8 fotos'));
+  assert.deepEqual([...ui.$('#group-meal-ticket').querySelectorAll('img')].map(img=>img.src),photos.map(p=>p.data));
+  assert.equal(ui.$('#group-meal-file').disabled,false);assert.equal(ui.$('#group-save-draft').disabled,false);
+ }finally{ui.close();}
+});
+
+test('multifoto: lee el conjunto ordenado y una unión dudosa conserva conceptos; cambiar las fotos invalida el texto anterior',async()=>{
+ let calls=0;
+ const ui=await setup({readTicket:async()=>[ticketPhoto('inicio'),ticketPhoto('final')],recognizeAI:async(meal)=>{
+  calls++;assert.equal(meal.ticketPhotos.length,2);assert.equal(meal.ticketPhotos[0].name,'inicio');
+  return{text:'1 Cena 24,00\nTOTAL 24,00',itemsStatus:'review',fields:{total:24},warnings:['Unión de fotos dudosa']};
+ }});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
+  ui.click('#group-add-item');ui.input('[data-item-field="name"]','Plato revisado');
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket').querySelectorAll('img').length===2);
+  ui.input('#group-ai-code','test');ui.input('#group-ai-consent',true);ui.click('#group-ai-read');
+  await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('Unión de fotos dudosa'));
+  assert.equal(ui.$('[data-item-field="name"]').value,'Plato revisado');assert.equal(calls,1);
+  ui.click('[data-group-ticket-action="up"][data-ticket-index="1"]');ui.click('#group-parse-text');
+  await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('fotos o su orden han cambiado'));
+  assert.equal(ui.$('[data-item-field="name"]').value,'Plato revisado');assert.equal(ui.$('#group-ai-consent').checked,false);
+ }finally{ui.close();}
+});

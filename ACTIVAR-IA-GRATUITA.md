@@ -4,6 +4,8 @@ Estado a 16/10/2026: activado y comprobado en producción con el ticket autoriza
 
 ## Condición de Lucio: coste cero
 
+Desde 800v013 se admiten hasta ocho fotos ordenadas del mismo ticket en una única petición. No se envían nombres de archivos, viajeros ni cuentas. Las fotos preparadas por la aplicación ocupan como máximo 360 KiB cada una; si el conjunto supera el límite de envío se bloquea antes de transmitirlo. En varias fotos se exige además una comprobación de unión completa y sin solapamientos dudosos, y que la suma coincida con el total final. Una lectura incierta queda para revisión y conserva los conceptos previos. No hay reintentos automáticos de inferencia ni ampliación de planes o facturación.
+
 Usar un proyecto dedicado de Google AI Studio en nivel **Free**, sin ninguna cuenta de facturación vinculada. No activar pruebas con créditos, planes de pago, recargas ni tarjetas. El modelo fijo es `gemini-3.5-flash-lite`, con entrada de imagen y salida de texto gratuitas a fecha de 16/10/2026. Las cuotas pueden cambiar y no se promete disponibilidad ilimitada.
 
 Antes de cada imagen, la función consulta el proyecto propietario de la clave y el estado de facturación de ese mismo proyecto. Si hay una cuenta vinculada, falta un permiso, la respuesta es desconocida o la cuota se agota, se bloquea. No hay cambio de modelo, reintento automático ni proveedor de pago. Estas comprobaciones no sustituyen mantener el proyecto sin facturación: un administrador podría modificarlo fuera de la aplicación. También hay que comprobar que el equipo de Netlify conserve su plan gratuito sin recarga automática; la aplicación usa sus cuotas de funciones y Blobs.
