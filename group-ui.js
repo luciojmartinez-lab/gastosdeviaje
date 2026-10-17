@@ -1,7 +1,7 @@
 (function(root) {
   'use strict';
   const api = () => root.TravelGroup;
-  let host, editor = null, saving = false, reading = false, cacheTail = Promise.resolve(), cacheTimer, paymentGroup, aiEnabled=false;
+  let host, editor = null, saving = false, reading = false, cacheTail = Promise.resolve(), cacheTimer, paymentGroup, paymentId=null, aiEnabled=false;
   const $ = selector => document.querySelector(selector);
   const all = selector => Array.from(document.querySelectorAll(selector));
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -32,10 +32,28 @@
   const today = () => { const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   const amount = value => Number.isSafeInteger(value) ? (value/100).toFixed(2) : '';
   const sum = (rows,key) => rows.reduce((total,row)=>total+row[key],0);
+  function paymentRows(meal) {
+    // Editing replaces this payment; exclude its previous amount from the pending calculation.
+    return api().mealPayments({...paymentGroup,settlements:paymentGroup.settlements.filter(payment=>payment.id!==paymentId)},meal);
+  }
   function paymentAmount() {
     const meal=paymentGroup?.meals.find(meal=>meal.id===$('#group-payment-meal').value);
-    const row=meal && api().mealPayments(paymentGroup,meal).find(row=>row.id===$('#group-payment-from').value);
+    const row=meal && paymentRows(meal).find(row=>row.id===$('#group-payment-from').value);
     $('#group-payment-amount').value=row?.remaining>0?amount(row.remaining):'';
+  }
+  function openPayment(group,meal,id=null) {
+    const payment=id && group.settlements.find(payment=>payment.id===id&&!payment.voided&&payment.mealId===meal.id);
+    if(id&&!payment)throw new Error('Esta devolución ya no se puede editar.');
+    paymentGroup=JSON.parse(JSON.stringify(group));paymentId=payment?.id||null;
+    $('#group-payment-title').textContent=payment?'Editar devolución':'Registrar devolución parcial o completa';
+    $('#group-payment-save').textContent=payment?'Guardar cambios':'Guardar devolución';
+    $('#group-payment-message').textContent='';$('#group-payment-meal').value=meal.id;
+    $('#group-payment-from').innerHTML=options(paymentRows(meal).filter(row=>row.remaining>0).map(row=>({id:row.id,name:`${name(group,row.id)} · ${payment?'máximo':'pendiente'} ${api().money(row.remaining)}`})),payment?.fromId||'','Quién devuelve');
+    $('#group-payment-account').innerHTML=options(accounts(trip().id),payment?.accountId||'','Cuenta real si te afecta');
+    $('#group-payment-date').value=payment?.date||today();$('#group-payment-amount').value=payment?amount(payment.amountCents):'';
+    $('#group-payment-to').textContent=`Recibe: ${name(group,meal.payerId)}`;
+    $('#group-payment-dialog').dataset.revision=group.revision;$('#group-payment-dialog').dataset.tripId=trip().id;
+    $('#group-payment-dialog').showModal();
   }
   const trip = () => host.getState().viajes.find(value => Number(value.id) === Number($('#group-trip').value));
   const current = () => api().normalize(trip()?.group);
@@ -71,7 +89,7 @@
     $('#group-meals').innerHTML=group.meals.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(meal=>{
       const closed=meal.status==='closed';
       const payments=closed?api().mealPayments(group,meal):[];
-      return `<article class="group-meal-card"><h3>${esc(meal.name||'Comida sin nombre')} <span class="badge">${closed?'Cerrada':'Borrador'}</span></h3><p>${esc(meal.date)} · ${meal.attendees.length} asistentes · ${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Total por revisar'}${closed?` · Pagó ${esc(name(group,meal.payerId))}`:''}</p><div class="actions"><button class="btn ghost" type="button" data-group-edit="${esc(meal.id)}">${closed?'Revisar / corregir':'Continuar'}</button>${closed?`<button class="btn ghost" type="button" data-group-share="${esc(meal.id)}">Compartir resumen</button><button class="btn ghost" type="button" data-group-collect="${esc(meal.id)}">Registrar devolución</button>`:`<button class="ghost" type="button" data-group-delete="${esc(meal.id)}">Eliminar borrador</button>`}</div>${closed?`<div class="table-wrap"><table><thead><tr><th>Asistente</th><th>Consumo</th><th>Devuelto / cubierto</th><th>Pendiente</th></tr></thead><tbody>${payments.map(row=>`<tr><td>${esc(name(group,row.id))}</td><td>${api().money(row.due)}</td><td>${api().money(row.paid)}</td><td>${api().money(row.remaining)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['due','paid','remaining'].map(key=>`<td>${api().money(sum(payments,key))}</td>`).join('')}</tr></tfoot></table></div>`:''}${group.settlements.filter(payment=>payment.mealId===meal.id).map(payment=>`<p class="group-payment">${esc(payment.date||'')} · ${esc(name(group,payment.fromId))} → ${esc(name(group,payment.toId))}: ${api().money(payment.amountCents)} ${payment.voided?`<strong>Anulada: ${esc(payment.voidReason)}</strong>`:`<button type="button" class="ghost" data-group-void="${esc(payment.id)}">Anular registro</button>`}</p>`).join('')}</article>`;
+      return `<article class="group-meal-card"><h3>${esc(meal.name||'Comida sin nombre')} <span class="badge">${closed?'Cerrada':'Borrador'}</span></h3><p>${esc(meal.date)} · ${meal.attendees.length} asistentes · ${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Total por revisar'}${closed?` · Pagó ${esc(name(group,meal.payerId))}`:''}</p><div class="actions"><button class="btn ghost" type="button" data-group-edit="${esc(meal.id)}">${closed?'Revisar / corregir':'Continuar'}</button>${closed?`<button class="btn ghost" type="button" data-group-share="${esc(meal.id)}">Compartir resumen</button><button class="btn ghost" type="button" data-group-collect="${esc(meal.id)}">Registrar devolución</button>`:`<button class="ghost" type="button" data-group-delete="${esc(meal.id)}">Eliminar borrador</button>`}</div>${closed?`<div class="table-wrap"><table><thead><tr><th>Asistente</th><th>Consumo</th><th>Devuelto / cubierto</th><th>Pendiente</th></tr></thead><tbody>${payments.map(row=>`<tr><td>${esc(name(group,row.id))}</td><td>${api().money(row.due)}</td><td>${api().money(row.paid)}</td><td>${api().money(row.remaining)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['due','paid','remaining'].map(key=>`<td>${api().money(sum(payments,key))}</td>`).join('')}</tr></tfoot></table></div>`:''}${group.settlements.filter(payment=>payment.mealId===meal.id).map(payment=>`<p class="group-payment">${esc(payment.date||'')} · ${esc(name(group,payment.fromId))} → ${esc(name(group,payment.toId))}: ${api().money(payment.amountCents)} ${payment.voided?`<strong>Anulada: ${esc(payment.voidReason)}</strong>`:`<span class="group-payment-actions"><button type="button" class="ghost" data-group-payment-edit="${esc(payment.id)}" aria-label="Editar devolución de ${esc(name(group,payment.fromId))}">Editar</button><button type="button" class="ghost" data-group-void="${esc(payment.id)}">Anular registro</button></span>`}</p>`).join('')}</article>`;
     }).join('')||'<p class="small">Todavía no hay comidas. Añade viajeros y pulsa Nueva comida.</p>';
     $('#group-new-meal').disabled=group.participants.filter(person=>person.active).length===0;
   }
@@ -309,11 +327,22 @@
       if(button.dataset.groupDelete){if(!confirm('Eliminar este borrador de comida?'))return;group.meals=group.meals.filter(meal=>meal.id!==button.dataset.groupDelete);return commit(group);}
       if(button.dataset.groupVoid){const payment=group.settlements.find(payment=>payment.id===button.dataset.groupVoid);const reason=prompt('Motivo de la anulación (se conserva el registro):');if(!reason?.trim())return;payment.voided=true;payment.voidReason=reason.trim();return commit(group);}
       if(button.dataset.groupShare){const meal=group.meals.find(meal=>meal.id===button.dataset.groupShare);await host.share(api().summary(group,meal));message('Resumen preparado para compartir.');return;}
-      if(button.dataset.groupCollect){const meal=group.meals.find(meal=>meal.id===button.dataset.groupCollect);paymentGroup=JSON.parse(JSON.stringify(group));$('#group-payment-message').textContent='';$('#group-payment-meal').value=meal.id;$('#group-payment-from').innerHTML=options(api().mealPayments(group,meal).filter(row=>row.remaining>0).map(row=>({id:row.id,name:`${name(group,row.id)} · pendiente ${api().money(row.remaining)}`})),'','Quién devuelve');$('#group-payment-account').innerHTML=options(accounts(trip().id),'','Cuenta real si te afecta');$('#group-payment-date').value=today();$('#group-payment-amount').value='';$('#group-payment-to').textContent=`Recibe: ${name(group,meal.payerId)}`;$('#group-payment-dialog').dataset.revision=group.revision;$('#group-payment-dialog').dataset.tripId=trip().id;$('#group-payment-dialog').showModal();}
+      if(button.dataset.groupPaymentEdit){const payment=group.settlements.find(payment=>payment.id===button.dataset.groupPaymentEdit);const meal=group.meals.find(meal=>meal.id===payment?.mealId);if(!meal)throw new Error('La comida ya no existe.');return openPayment(group,meal,payment.id);}
+      if(button.dataset.groupCollect){const meal=group.meals.find(meal=>meal.id===button.dataset.groupCollect);return openPayment(group,meal);}
     });
     $('#group-payment-from').onchange=paymentAmount;
     $('#group-payment-close').onclick=()=>$('#group-payment-dialog').close();
-    $('#group-payment-form').onsubmit=safe(async event=>{event.preventDefault();const group=api().normalize(paymentGroup),meal=group.meals.find(meal=>meal.id===$('#group-payment-meal').value);if(!meal)throw new Error('La comida ya no existe.');group.settlements.push({id:uid(),mealId:meal.id,fromId:$('#group-payment-from').value,toId:meal.payerId,amountCents:api().cents($('#group-payment-amount').value),date:$('#group-payment-date').value,accountId:Number($('#group-payment-account').value)||null});await commit(group,Number($('#group-payment-dialog').dataset.revision),Number($('#group-payment-dialog').dataset.tripId));$('#group-payment-dialog').close();message('Devolución registrada.');},'#group-payment-message');
+    $('#group-payment-form').onsubmit=safe(async event=>{
+      event.preventDefault();
+      const group=api().normalize(paymentGroup),meal=group.meals.find(meal=>meal.id===$('#group-payment-meal').value);
+      if(!meal)throw new Error('La comida ya no existe.');
+      const previous=paymentId?group.settlements.find(payment=>payment.id===paymentId&&!payment.voided):null;
+      if(paymentId&&!previous)throw new Error('Esta devolución ya no se puede editar.');
+      const payment={...previous,id:previous?.id||uid(),mealId:meal.id,fromId:$('#group-payment-from').value,toId:meal.payerId,amountCents:api().cents($('#group-payment-amount').value),date:$('#group-payment-date').value,accountId:Number($('#group-payment-account').value)||null};
+      if(previous)group.settlements[group.settlements.indexOf(previous)]=payment;else group.settlements.push(payment);
+      await commit(group,Number($('#group-payment-dialog').dataset.revision),Number($('#group-payment-dialog').dataset.tripId));
+      $('#group-payment-dialog').close();message(previous?'Devolución corregida.':'Devolución registrada.');
+    },'#group-payment-message');
     render();
   }
   root.TravelGroupUI={mount,render};

@@ -75,6 +75,66 @@ test('devolución rellena el pendiente de la comida elegida y permite importes p
   ui.input('#group-payment-from','p2');assert.equal(ui.$('#group-payment-amount').value,'10.02');
  }finally{ui.close();}
 });
+test('editar devolución conserva el registro, permite corregir persona/fecha y no reactiva anuladas',async()=>{
+ const ui=await setup();try{
+  await seedPayments(ui);
+  assert.equal(ui.$('[data-group-payment-edit="s3"]'),null);
+  const submit=()=>ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));
+  ui.click('[data-group-payment-edit="s1"]');
+  assert.equal(ui.$('#group-payment-title').textContent,'Editar devolución');
+  assert.equal(ui.$('#group-payment-save').textContent,'Guardar cambios');
+  assert.equal(ui.$('#group-payment-from').value,'p1');assert.equal(ui.$('#group-payment-amount').value,'10.00');
+  assert.match(ui.$('#group-payment-from option[value="p1"]').textContent,/máximo 30,01/);
+  ui.input('#group-payment-amount','30.02');submit();await ui.waitFor(()=>ui.$('#group-payment-message').textContent.includes('supera'));
+  assert.equal(ui.state.viajes[0].group.settlements.find(s=>s.id==='s1').amountCents,1000);
+  ui.input('#group-payment-amount','30.01');submit();await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);
+  assert.equal(ui.state.viajes[0].group.settlements.length,3);
+  assert.equal(ui.state.viajes[0].group.settlements.find(s=>s.id==='s1').amountCents,3001);
+  ui.click('[data-group-payment-edit="s1"]'); // A full payment must remain selectable while editing.
+  assert.equal(ui.$('#group-payment-from').value,'p1');assert.equal(ui.$('#group-payment-amount').value,'30.01');
+  ui.input('#group-payment-from','p2');assert.equal(ui.$('#group-payment-amount').value,'10.00');
+  ui.input('#group-payment-amount','8.55');ui.input('#group-payment-date','2026-10-16');submit();await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);
+  const payment=ui.state.viajes[0].group.settlements.find(s=>s.id==='s1');
+  assert.equal(payment.fromId,'p2');assert.equal(payment.amountCents,855);assert.equal(payment.date,'2026-10-16');assert.equal(payment.toId,'p0');
+  assert.equal(ui.state.viajes[0].group.settlements.length,3);
+  assert.match(ui.$('#group-meals article:has([data-group-collect="comida1"]) tfoot').textContent,/31,46/);
+  ui.click('[data-group-payment-edit="s1"]');ui.input('#group-payment-amount','1');ui.click('#group-payment-close');
+  assert.equal(ui.state.viajes[0].group.settlements.find(s=>s.id==='s1').amountCents,855);
+  ui.click('[data-group-collect="comida1"]');assert.equal(ui.$('#group-payment-title').textContent,'Registrar devolución parcial o completa');
+  assert.equal(ui.$('#group-payment-amount').value,'');ui.input('#group-payment-from','p2');assert.equal(ui.$('#group-payment-amount').value,'1.45');
+ }finally{ui.close();}
+});
+
+test('editar un cobro integrado cambia el importe y la cuenta en la misma transferencia, con guardado atómico',async()=>{
+ const ui=await setup();try{
+  await prepare(ui);ui.input('#group-meal-reviewed',true);ui.click('#group-close-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  await new Promise((resolve,reject)=>{const tx=ui.db.transaction('cuentas','readwrite');tx.objectStore('cuentas').put({id:20,nombre:'Otra cuenta',viajeId:1,moneda:'EUR',saldoActual:100});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});await ui.load();ui.w.TravelGroupUI.render();
+  const submit=()=>ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));
+  ui.click('[data-group-collect]');ui.input('#group-payment-from','p1');ui.input('#group-payment-amount','10');ui.input('#group-payment-account','1');submit();await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);
+  const id=ui.state.viajes[0].group.settlements[0].id,transferId=ui.state.transferencias.find(t=>t.groupSource==='settlement:'+id).id;
+  ui.click('[data-group-payment-edit]');assert.equal(ui.$('#group-payment-account').value,'1');
+  ui.input('#group-payment-amount','16.55');ui.input('#group-payment-account','20');ui.input('#group-payment-date','2026-10-16');submit();await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);
+  assert.equal(ui.state.viajes[0].group.settlements.length,1);assert.equal(ui.state.transferencias.length,2);assert.equal(ui.state.gastos.length,1);
+  assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,200);assert.equal(ui.state.cuentas.find(c=>c.id===20).saldoActual,116.55);assert.equal(ui.state.cuentas.find(c=>c.groupClearing).saldoActual,258.45);
+  const transfer=ui.state.transferencias.find(t=>t.groupSource==='settlement:'+id);assert.equal(transfer.id,transferId);assert.equal(transfer.toId,20);assert.equal(transfer.importeTo,16.55);assert.equal(transfer.fecha,'2026-10-16');
+  ui.click('[data-group-payment-edit]');const before=JSON.stringify(ui.state);
+  ui.input('#group-payment-amount','26');submit();await ui.waitFor(()=>ui.$('#group-payment-message').textContent.includes('supera'));
+  assert.equal(JSON.stringify(ui.state),before);await ui.load();assert.equal(JSON.stringify(ui.state),before);
+ }finally{ui.close();}
+});
+
+test('editar una devolución detecta cambios de otra pestaña y conserva el formulario sin sobrescribirlos',async()=>{
+ const ui=await setup();try{
+  await seedPayments(ui);ui.click('[data-group-payment-edit="s1"]');
+  const latest=JSON.parse(JSON.stringify(ui.state.viajes[0].group));latest.settlements[0].amountCents=1200;
+  await ui.w.TravelGroupStore.save(ui.db,1,latest.revision,latest);
+  ui.input('#group-payment-amount','15');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));
+  await ui.waitFor(()=>ui.$('#group-payment-message').textContent.includes('otra pestaña'));
+  assert.equal(ui.$('#group-payment-dialog').open,true);assert.equal(ui.$('#group-payment-amount').value,'15');
+  await ui.load();assert.equal(ui.state.viajes[0].group.settlements[0].amountCents,1200);assert.equal(ui.state.viajes[0].group.settlements.length,3);
+ }finally{ui.close();}
+});
+
 test('interfaz: foto/OCR propuesto, revisión obligatoria, cierre de doce y cobro parcial',async()=>{const ui=await setup();try{await prepare(ui);assert.equal(ui.ocrCalls(),1);assert.match(ui.$('#group-meal-check').textContent,/Todo cuadra/);ui.click('#group-close-meal');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('Confirma'));assert.equal(ui.state.gastos.length,0);ui.input('#group-meal-reviewed',true);ui.click('#group-close-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);assert.equal(ui.state.gastos.length,1);assert.equal(ui.state.gastos[0].importe,25);assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,200);assert.equal(ui.state.viajes[0].group.meals[0].ticketData,'data:image/jpeg;base64,dGVzdA==');ui.click('[data-group-collect]');ui.input('#group-payment-from','p1');ui.input('#group-payment-amount','26');ui.input('#group-payment-account','1');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>ui.$('#group-payment-message').textContent.includes('supera'));assert.equal(ui.state.transferencias.length,1);ui.input('#group-payment-amount','10');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,210);assert.equal(ui.state.cuentas.find(c=>c.groupClearing).saldoActual,265);assert.equal(ui.state.gastos.length,1);ui.click('[data-group-archive="p11"]');await ui.waitFor(()=>ui.state.viajes[0].group.participants.find(p=>p.id==='p11').active===false);assert.equal(ui.state.viajes[0].group.meals[0].attendees.length,12);}finally{ui.close();}});
 test('interfaz: retirar un asistente no borra su consumo y deja visible el error',async()=>{const ui=await setup();try{await prepare(ui);ui.input('[data-group-attendee="p11"]',false);assert.match(ui.$('#group-meal-check').textContent,/ausente/);assert.ok(ui.$('[data-item-person="p11"]'));ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);assert.equal(ui.state.viajes[0].group.meals[0].status,'draft');assert.equal(ui.state.gastos.length,0);}finally{ui.close();}});
 

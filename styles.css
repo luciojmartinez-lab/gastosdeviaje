@@ -5918,6 +5918,7 @@ footer {
 .group-ticket-card .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .group-ticket-card:not(:only-child) .group-ticket { max-height: 42vh; }
 .group-payment { padding: 8px; background: var(--soft); border-radius: 8px; }
+.group-payment-actions { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 #view-grupo details > summary, .group-dialog details > summary { padding: 12px 0; cursor: pointer; font-weight: 600; }
 #group-meal-totals ul { columns: 2; }
 #group-message, #group-meal-message, #group-payment-message, #group-meal-check { white-space: pre-wrap; }
