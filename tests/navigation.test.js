@@ -15,7 +15,7 @@ test('Mapa es una opción principal con vista y selectores propios', () => {
   assert.match(html, /<select id="map-viaje"><\/select>/);
   assert.match(html, /<select id="map-pais"><\/select>/);
   assert.doesNotMatch(html, /href="#resumen-mapa"/);
-  assert.match(app, /\['viajes', 'preparar', 'grupo', 'gastos', 'blog', 'mapa', 'resumen', 'config'\]/);
+  assert.match(app, /\['viajes', 'preparar', 'gastos', 'grupo', 'blog', 'mapa', 'resumen', 'config'\]/);
   assert.match(app, /#tab-mapa'\)\.onclick = \(\) => setTab\('mapa'\)/);
   assert.match(app, /if \(id === 'resumen'\) \{[\s\S]*?clone\.appendChild\(mapCard\.cloneNode\(true\)\)/);
 });
