@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v010">
+  <link rel="manifest" href="manifest.webmanifest?v=800v011">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v010">
+  <link rel="stylesheet" href="styles.css?v=800v011">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v010 · 16/10/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v011 · 17/10/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v010</div>
+  <div class="app-version">800v011</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -512,7 +512,7 @@
     <p id="group-meal-message" role="status"></p><button type="button" class="ghost" id="group-rebase">Revisar borrador sobre la versión actual del grupo</button>
     <div class="row2"><div><label for="group-meal-name">Restaurante / nombre de la comida</label><input id="group-meal-name" maxlength="160"></div><div><label for="group-meal-date">Fecha</label><input type="date" id="group-meal-date"></div></div>
     <label for="group-meal-file">Fotografía del ticket (opcional)</label><input type="file" id="group-meal-file" accept="image/jpeg,image/png,image/webp"><div id="group-meal-ticket"></div><button type="button" class="btn ghost" id="group-ocr">Leer foto con OCR local</button>
-    <details id="group-ai-panel"><summary>Leer con IA gratuita (Google)</summary><p class="small">Al pulsar el botón se enviará solo esta foto a Google. Los viajeros y sus cuentas no se envían. Google puede utilizar los datos del nivel gratuito para mejorar sus productos. <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Condiciones de Google</a>.</p><p id="group-ai-status" role="status"></p><div id="group-ai-access-entry"><label for="group-ai-code">Código de acceso a la IA gratuita</label><input id="group-ai-code" type="password" autocomplete="off"><p class="small">Tras una lectura correcta se recordará en este dispositivo para no volver a pedirlo.</p></div><div id="group-ai-access-saved" hidden><p class="small">Código recordado en este dispositivo.</p><button type="button" class="ghost" id="group-ai-change-code">Cambiar código</button><button type="button" class="ghost" id="group-ai-forget-code">Olvidar código</button></div><label class="check-option"><input type="checkbox" id="group-ai-consent"> Autorizo enviar esta foto a Google para leerla</label><button type="button" class="btn" id="group-ai-read" disabled>Leer con IA gratuita</button><p class="small">Solo funciona sin facturación vinculada. Si se agota la cuota o no puede verificarse la gratuidad, se detiene sin pasar a pago.</p></details>
+    <details id="group-ai-panel"><summary>Leer con IA gratuita (Google)</summary><p class="small">Al pulsar el botón se enviará solo esta foto a Google. Los viajeros y sus cuentas no se envían. Google puede utilizar los datos del nivel gratuito para mejorar sus productos. <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Condiciones de Google</a>.</p><p id="group-ai-status" role="status"></p><div id="group-ai-access-entry"><label for="group-ai-code">Código de acceso a la IA gratuita</label><div class="group-code-field"><input id="group-ai-code" type="password" autocomplete="off" autocapitalize="none" spellcheck="false"><button type="button" class="ghost" id="group-ai-toggle-code" aria-label="Mostrar código" title="Mostrar código" aria-pressed="false" aria-controls="group-ai-code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle><path class="code-eye-slash" d="m3 3 18 18"></path></svg></button></div><p class="small">Tras una lectura correcta se recordará en este dispositivo para no volver a pedirlo.</p></div><div id="group-ai-access-saved" hidden><p class="small">Código recordado en este dispositivo.</p><button type="button" class="ghost" id="group-ai-change-code">Cambiar código</button><button type="button" class="ghost" id="group-ai-forget-code">Olvidar código</button></div><label class="check-option"><input type="checkbox" id="group-ai-consent"> Autorizo enviar esta foto a Google para leerla</label><button type="button" class="btn" id="group-ai-read" disabled>Leer con IA gratuita</button><p class="small">Solo funciona sin facturación vinculada. Si se agota la cuota o no puede verificarse la gratuidad, se detiene sin pasar a pago.</p></details>
     <div id="group-ocr-progress-wrap" hidden><label for="group-ocr-progress">Progreso de la lectura</label><progress id="group-ocr-progress" max="100" value="0"></progress><output id="group-ocr-counter" aria-live="polite">0% · 0 s</output></div>
     <details id="group-text-panel"><summary>Texto reconocido / propuesta OCR</summary><label for="group-meal-text">Revisa o pega el texto reconocido</label><textarea id="group-meal-text" rows="8"></textarea><button type="button" class="ghost" id="group-parse-text">Proponer conceptos desde este texto</button><p id="group-parse-message" role="status" aria-live="polite"></p><div id="group-parse-replace" hidden><button type="button" class="btn" id="group-parse-confirm">Sustituir conceptos</button><button type="button" class="ghost" id="group-parse-keep">Conservar actuales</button></div></details>
     <fieldset><legend>Asistentes a esta comida</legend><p class="small">Los compartidos se reparten entre estos asistentes. Si retiras a alguien, revisa sus asignaciones individuales: no se eliminan automáticamente.</p><div id="group-meal-attendees" class="group-attendees"></div></fieldset>
@@ -1327,19 +1327,19 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v010"></script>
-<script src="gpx-import.js?v=800v010"></script>
-<script src="timeline-routing.js?v=800v010"></script>
-<script src="map-model.js?v=800v010"></script>
-<script src="group-meals.js?v=800v010"></script>
-<script src="group-ledger.js?v=800v010"></script>
-<script src="group-store.js?v=800v010"></script>
-<script src="group-ui.js?v=800v010"></script>
-<script src="preparation.js?v=800v010"></script>
-<script src="app.bundle.js?v=800v010"></script>
+<script src="timeline-import.js?v=800v011"></script>
+<script src="gpx-import.js?v=800v011"></script>
+<script src="timeline-routing.js?v=800v011"></script>
+<script src="map-model.js?v=800v011"></script>
+<script src="group-meals.js?v=800v011"></script>
+<script src="group-ledger.js?v=800v011"></script>
+<script src="group-store.js?v=800v011"></script>
+<script src="group-ui.js?v=800v011"></script>
+<script src="preparation.js?v=800v011"></script>
+<script src="app.bundle.js?v=800v011"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v010';
+    const pageVersion = '800v011';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1394,7 +1394,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v010', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v011', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

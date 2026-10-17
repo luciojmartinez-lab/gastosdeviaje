@@ -7,7 +7,13 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const uid = () => crypto.randomUUID();
   const AI_CODE_KEY = 'cuaderno.receiptAccess.v1';
+  function showAICode(visible) {
+    $('#group-ai-code').type=visible?'text':'password';
+    const button=$('#group-ai-toggle-code'),label=visible?'Ocultar código':'Mostrar código';
+    button.setAttribute('aria-pressed',String(visible));button.setAttribute('aria-label',label);button.title=label;
+  }
   function restoreAICode() {
+    showAICode(false);
     let saved='';try{saved=root.localStorage.getItem(AI_CODE_KEY)||'';}catch{}
     if(saved)$('#group-ai-code').value=saved;
     $('#group-ai-access-entry').hidden=!!saved;
@@ -16,6 +22,7 @@
   function rememberAICode() {
     try{
       root.localStorage.setItem(AI_CODE_KEY,$('#group-ai-code').value.trim());
+      showAICode(false);
       $('#group-ai-access-entry').hidden=true;$('#group-ai-access-saved').hidden=false;
     }catch{ /* A blocked device store must not prevent reading the receipt. */ }
   }
@@ -258,7 +265,8 @@
       finally{reading=false;controls.forEach(selector=>$(selector).disabled=false);}
     },'#group-meal-message');
     $('#group-ocr').onclick=safe(extract,'#group-meal-message');
-    $('#group-ai-change-code').onclick=()=>{$('#group-ai-access-entry').hidden=false;$('#group-ai-access-saved').hidden=true;$('#group-ai-code').focus();};
+    $('#group-ai-toggle-code').onclick=()=>showAICode($('#group-ai-code').type==='password');
+    $('#group-ai-change-code').onclick=()=>{showAICode(false);$('#group-ai-access-entry').hidden=false;$('#group-ai-access-saved').hidden=true;$('#group-ai-code').focus();};
     $('#group-ai-forget-code').onclick=()=>{try{root.localStorage.removeItem(AI_CODE_KEY);}catch{}$('#group-ai-code').value='';restoreAICode();};
     $('#group-ai-read').onclick=safe(()=>extract(true),'#group-meal-message');
     const propose=replace=>async()=>{try{parseText(replace);}catch(error){message(error.message||String(error),true,'#group-meal-message');}showParseFeedback();};

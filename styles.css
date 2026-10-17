@@ -5897,6 +5897,12 @@ footer {
 .group-shares input { min-width: 0; width: 100%; }
 .group-shares .check-option input { width: 20px; }
 #group-ocr-progress { width: 100%; }
+.group-code-field { display: flex; align-items: stretch; gap: 8px; }
+.group-code-field input { flex: 1; min-width: 0; }
+.group-code-field button { flex: 0 0 44px; min-height: 44px; padding: 10px; display: grid; place-items: center; }
+.group-code-field svg { width: 22px; height: 22px; }
+.group-code-field .code-eye-slash { display: none; }
+.group-code-field button[aria-pressed="true"] .code-eye-slash { display: initial; }
 #group-ocr-counter { display: block; font-variant-numeric: tabular-nums; }
 #group-parse-message { white-space: pre-wrap; padding: 8px 0; }
 #group-parse-replace[hidden], #group-ocr-progress-wrap[hidden] { display: none; }
