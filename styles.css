@@ -5923,6 +5923,12 @@ footer {
 .group-receipt-table th:first-child, .group-receipt-table td:first-child { overflow-wrap: anywhere; }
 .group-receipt-table th:last-child, .group-receipt-table td:last-child { width: 110px; text-align: right; font-variant-numeric: tabular-nums; }
 #group-receipt-message { white-space: pre-wrap; }
+.expense-ai-panel { padding: 12px; margin: 10px 0; border: 1px solid var(--line); border-radius: 10px; }
+.expense-ai-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; }
+.expense-ai-panel p { overflow-wrap: anywhere; }
+[id$="-ticket-ai-usage"], #group-ai-usage { white-space: pre-wrap; }
+.expense-ai-panel .error { color: #b91c1c; }
+.expense-ai-panel .group-code-field button { flex-basis: 84px; }
 #view-grupo details > summary, .group-dialog details > summary { padding: 12px 0; cursor: pointer; font-weight: 600; }
 #group-meal-totals ul { columns: 2; }
 #group-message, #group-meal-message, #group-payment-message, #group-meal-check { white-space: pre-wrap; }

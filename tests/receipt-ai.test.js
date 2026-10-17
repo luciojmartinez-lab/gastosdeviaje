@@ -4,6 +4,7 @@ import { createHash, generateKeyPairSync } from 'node:crypto';
 import { normalizeReceiptProposal, readReceiptWithAI, getReceiptAIStatus } from '../receipt-ai.js';
 import '../group-meals.js';
 import { createReceiptHandler } from '../netlify/functions/receipt-ai.js';
+import { normalizeExpenseReceipt, receiptUsageText } from '../receipt-ai.js';
 
 const receipt = {
   merchant:'A la Fresca',currency:'EUR',totalCents:7590,warnings:[],
@@ -19,6 +20,7 @@ const image='data:image/jpeg;base64,'+Buffer.alloc(48,10).toString('base64');
 function harness(options={}){
   const calls=[];let billingCalls=0;
   const handler=createReceiptHandler({
+    usage:options.usage,
     env:key=>({...settings,...options.settings})[key],
     checker:async()=>options.noChecker?null:{type:'service_account',client_email:'checker@test.iam.gserviceaccount.com',private_key:privateKey},
     now:()=>1_700_000_000_000,
@@ -45,6 +47,37 @@ test('IA: conserva cantidades e importes de línea, total y revisión obligatori
   const proposal=normalizeReceiptProposal(receipt);
   assert.equal(proposal.itemsStatus,'reconciled');assert.equal(proposal.fields.total,75.9);
   assert.match(proposal.itemText,/2 Fideuá 33,90/);assert.match(proposal.itemText,/1 Mejillones 10,50/);
+});
+
+const foreignReceipt={merchant:'Sakura Restaurant',currency:'JPY',total:'1850',sourceLanguage:'en',originalText:'TOTAL JPY 1850',spanishText:'TOTAL JPY 1850',uncertain:{merchant:false,total:false,currency:false},warnings:[]};
+test('gastos Gemini: solo emisor y total con moneda original, traducción aparte, sin fecha ni categorías',()=>{
+ const result=normalizeExpenseReceipt({...foreignReceipt,date:'2026-01-01',category:'Comidas',items:[{name:'No contabilizar'}]});
+ assert.deepEqual(result.fields,{merchant:'Sakura Restaurant',total:1850,currency:'JPY'});assert.equal(result.spanishText,'TOTAL JPY 1850');assert.equal(result.fields.date,undefined);
+ const es=normalizeExpenseReceipt({...foreignReceipt,sourceLanguage:'es',currency:'EUR',total:'75.90',spanishText:'No usar',originalText:'No usar'});assert.equal(es.spanishText,'');assert.equal(es.originalText,'');assert.equal(es.fields.total,75.9);
+ for(const total of ['1,850','18.500','-5','Infinity','1.234','0'])assert.equal(normalizeExpenseReceipt({...foreignReceipt,total}).fields.total,null);
+ assert.equal(normalizeExpenseReceipt({...foreignReceipt,uncertain:{...foreignReceipt.uncertain,total:true}}).fields.total,null);
+ assert.equal(normalizeExpenseReceipt({...foreignReceipt,currency:'$'}).fields.total,null);
+});
+test('gastos Gemini: la petición no transmite cuentas y verifica el modo antes de llamar a Google',async()=>{
+ let sent;const result=await readReceiptWithAI({ticketData:image,accountId:42},{consent:true,accessCode:'code',mode:'expense'},()=>{},async(url,init)=>{sent=JSON.parse(init.body);return Response.json({expense:foreignReceipt});});
+ assert.deepEqual(sent,{image,mode:'expense'});assert.equal(result.fields.currency,'JPY');
+ const h=harness({receipt:foreignReceipt});assert.equal((await h.handler(h.request({image,mode:'expense'}))).status,200);
+ const prompt=JSON.parse(h.inferences()[0].init.body).systemInstruction.parts[0].text;assert.match(prompt,/SOLO emisor/);assert.match(prompt,/No conviertas monedas/);
+ const invalid=harness();assert.equal((await invalid.handler(invalid.request({image,mode:'paid'}))).status,400);assert.equal(invalid.calls.length,0);
+});
+test('gastos Gemini: facturación, saturación y cuota mantienen bloqueos y no reintentan',async()=>{
+ for(const options of [{billing:{billingEnabled:true}},{quota:true},{modelStatus:503}]){
+  const h=harness({...options,receipt:foreignReceipt});const response=await h.handler(h.request({image,mode:'expense'}));assert.notEqual(response.status,200);assert.ok(h.inferences().length<=1);
+ }
+});
+test('uso compartido: requiere código, registra solo intentos enviados y cuenta también saturación',async()=>{
+ let attempts=0;const usage={attempt:async()=>{attempts++;},tokens:async()=>{},snapshot:async()=>({available:true,requests:attempts})};
+ const h=harness({usage,modelStatus:503});
+ let status=await (await h.handler(new Request('https://test.netlify.app/.netlify/functions/receipt-ai'))).json();assert.equal(status.usage.available,false);
+ await h.handler(h.request({image,mode:'expense'}));assert.equal(attempts,1);
+ status=await (await h.handler(new Request('https://test.netlify.app/.netlify/functions/receipt-ai',{headers:{'x-receipt-access':'test-access-code'}}))).json();assert.equal(status.usage.requests,1);assert.equal(status.limits.daily,500);
+ const blocked=harness({usage,billing:{billingEnabled:true}});await blocked.handler(blocked.request());assert.equal(attempts,1);
+ assert.match(receiptUsageText({limits:status.limits,usage:{available:false}}),/no significa/);
 });
 test('IA: una cifra ilegible o una suma distinta no produce una propuesta reconciliada',()=>{
   for(const change of [value=>value.items[0].amountCents=null,value=>value.items[0].uncertain=true,value=>value.totalCents=6900]){

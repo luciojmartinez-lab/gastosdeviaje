@@ -191,7 +191,7 @@ test('el resumen de Lens IA se analiza y no se guarda como traducción', () => {
 });
 
 test('el texto pegado desde Lens IA se conserva como resumen visual en español', () => {
-  assert.match(app, /async function createLensAiSummaryCompanion\(text\)/);
+  assert.match(app, /async function createLensAiSummaryCompanion\(text, options = \{\}\)/);
   assert.match(app, /Resumen en español de Lens IA/);
   assert.match(app, /no es una fotografía traducida/);
   assert.match(app, /kind: 'ai-summary'/);

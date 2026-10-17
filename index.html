@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v016">
+  <link rel="manifest" href="manifest.webmanifest?v=800v017">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v016">
+  <link rel="stylesheet" href="styles.css?v=800v017">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v016 · 17/10/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v017 · 17/10/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v016</div>
+  <div class="app-version">800v017</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -512,7 +512,7 @@
     <p id="group-meal-message" role="status"></p><button type="button" class="ghost" id="group-rebase">Revisar borrador sobre la versión actual del grupo</button>
     <div class="row2"><div><label for="group-meal-name">Restaurante / nombre de la comida</label><input id="group-meal-name" maxlength="160"></div><div><label for="group-meal-date">Fecha</label><input type="date" id="group-meal-date"></div></div>
     <label for="group-meal-file">Añadir fotos del ticket (opcional)</label><input type="file" id="group-meal-file" accept="image/jpeg,image/png,image/webp" multiple><p class="small">Hasta 8 fotos del mismo ticket. Puedes añadirlas en varias veces. Fotografía de arriba abajo con una o dos líneas de solapamiento; incluye siempre los precios y el total final. Ordena las fotos antes de leerlas.</p><div id="group-meal-ticket"></div><button type="button" class="btn ghost" id="group-ocr">Leer foto con OCR local</button>
-    <details id="group-ai-panel"><summary>Leer con IA gratuita (Google)</summary><p class="small">Al pulsar el botón se enviarán las fotos de este ticket a Google en el orden mostrado. Los viajeros y sus cuentas no se envían. Google puede utilizar los datos del nivel gratuito para mejorar sus productos. <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Condiciones de Google</a>.</p><p id="group-ai-status" role="status"></p><div id="group-ai-access-entry"><label for="group-ai-code">Código de acceso a la IA gratuita</label><div class="group-code-field"><input id="group-ai-code" type="password" autocomplete="off" autocapitalize="none" spellcheck="false"><button type="button" class="ghost" id="group-ai-toggle-code" aria-label="Mostrar código" title="Mostrar código" aria-pressed="false" aria-controls="group-ai-code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle><path class="code-eye-slash" d="m3 3 18 18"></path></svg></button></div><p class="small">Tras una lectura correcta se recordará en este dispositivo para no volver a pedirlo.</p></div><div id="group-ai-access-saved" hidden><p class="small">Código recordado en este dispositivo.</p><button type="button" class="ghost" id="group-ai-change-code">Cambiar código</button><button type="button" class="ghost" id="group-ai-forget-code">Olvidar código</button></div><label class="check-option"><input type="checkbox" id="group-ai-consent"> Autorizo enviar las fotos de este ticket a Google para leerlo</label><button type="button" class="btn" id="group-ai-read" disabled>Leer con IA gratuita</button><p class="small">Solo funciona sin facturación vinculada. Si se agota la cuota o no puede verificarse la gratuidad, se detiene sin pasar a pago.</p></details>
+    <details id="group-ai-panel"><summary>Leer con IA gratuita (Google)</summary><p class="small">Al pulsar el botón se enviarán las fotos de este ticket a Google en el orden mostrado. Los viajeros y sus cuentas no se envían. Google puede utilizar los datos del nivel gratuito para mejorar sus productos. <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Condiciones de Google</a>.</p><p id="group-ai-status" role="status"></p><div id="group-ai-access-entry"><label for="group-ai-code">Código de acceso a la IA gratuita</label><div class="group-code-field"><input id="group-ai-code" type="password" autocomplete="off" autocapitalize="none" spellcheck="false"><button type="button" class="ghost" id="group-ai-toggle-code" aria-label="Mostrar código" title="Mostrar código" aria-pressed="false" aria-controls="group-ai-code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle><path class="code-eye-slash" d="m3 3 18 18"></path></svg></button></div><p class="small">Tras una lectura correcta se recordará en este dispositivo para no volver a pedirlo.</p></div><div id="group-ai-access-saved" hidden><p class="small">Código recordado en este dispositivo.</p><button type="button" class="ghost" id="group-ai-change-code">Cambiar código</button><button type="button" class="ghost" id="group-ai-forget-code">Olvidar código</button></div><label class="check-option"><input type="checkbox" id="group-ai-consent"> Autorizo enviar las fotos de este ticket a Google para leerlo</label><p id="group-ai-usage" class="small"></p><button type="button" class="btn" id="group-ai-read" disabled>Leer con IA gratuita</button><p class="small">Solo funciona sin facturación vinculada. Si se agota la cuota o no puede verificarse la gratuidad, se detiene sin pasar a pago.</p></details>
     <div id="group-ocr-progress-wrap" hidden><label for="group-ocr-progress">Progreso de la lectura</label><progress id="group-ocr-progress" max="100" value="0"></progress><output id="group-ocr-counter" aria-live="polite">0% · 0 s</output></div>
     <details id="group-text-panel"><summary>Texto reconocido / propuesta OCR</summary><label for="group-meal-text">Revisa o pega el texto reconocido</label><textarea id="group-meal-text" rows="8"></textarea><button type="button" class="ghost" id="group-parse-text">Proponer conceptos desde este texto</button><p id="group-parse-message" role="status" aria-live="polite"></p><div id="group-parse-replace" hidden><button type="button" class="btn" id="group-parse-confirm">Sustituir conceptos</button><button type="button" class="ghost" id="group-parse-keep">Conservar actuales</button></div></details>
     <fieldset><legend>Asistentes a esta comida</legend><p class="small">Los compartidos se reparten entre estos asistentes. Si retiras a alguien, revisa sus asignaciones individuales: no se eliminan automáticamente.</p><div id="group-meal-attendees" class="group-attendees"></div></fieldset>
@@ -571,7 +571,8 @@
         <button type="button" class="btn ghost ticket-ocr-button" id="g-ticket-read" disabled>Leer ticket</button>
       </div>
       <p id="g-ticket-selected" class="small">El ticket es opcional. Elige archivo o Cámara para añadirlo.</p>
-      <p id="g-ticket-ocr-status" class="small ticket-ocr-status" aria-live="polite"></p>
+      <details id="g-ticket-ai-panel" class="expense-ai-panel"><summary>Leer con Gemini (gratis)</summary><p class="small">Propone solo emisor y total. Si el ticket está en otro idioma, también lo traduce al español manteniendo precios y moneda originales. Se envía esta foto a Google; los datos del nivel gratuito pueden usarse para mejorar sus productos. <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Condiciones de Google</a>.</p><div id="g-ticket-ai-access"><label for="g-ticket-ai-code">Código de acceso (el mismo de Grupo)</label><div class="group-code-field"><input type="password" id="g-ticket-ai-code" autocomplete="off" autocapitalize="none" spellcheck="false"><button type="button" class="ghost" id="g-ticket-ai-eye" aria-controls="g-ticket-ai-code" aria-pressed="false">Mostrar</button></div></div><button type="button" class="ghost" id="g-ticket-ai-change-code">Cambiar código</button><label class="check-option"><input type="checkbox" id="g-ticket-ai-consent"> Autorizo enviar esta foto a Google</label><button type="button" class="btn" id="g-ticket-ai-read" disabled>Leer con Gemini gratis</button><p id="g-ticket-ai-status" class="small" role="status"></p><div id="g-ticket-ai-proposal"></div><details class="small"><summary>Cuota gratuita y uso registrado</summary><p id="g-ticket-ai-usage">Abre este apartado de Gemini para consultar la cuota.</p></details><p class="small">Si hay saturación, cuota agotada o no puede verificarse la gratuidad, la lectura se detiene. Puedes usar Leer ticket (OCR local) o Google Lens.</p></details>
+<p id="g-ticket-ocr-status" class="small ticket-ocr-status" aria-live="polite"></p>
       <details id="g-ticket-ocr-details" class="ticket-ocr-details" hidden>
         <summary>Ver texto reconocido</summary>
         <pre id="g-ticket-ocr-text"></pre>
@@ -658,7 +659,8 @@
           <button type="button" class="btn ghost ticket-ocr-button" id="edit-gasto-ticket-read" disabled>Leer ticket</button>
         </div>
         <p id="edit-gasto-ticket-selected" class="small">El ticket actual se conserva. Usa Elegir archivo o Cámara solo para sustituirlo.</p>
-        <p id="edit-gasto-ticket-ocr-status" class="small ticket-ocr-status" aria-live="polite"></p>
+        <details id="edit-gasto-ticket-ai-panel" class="expense-ai-panel"><summary>Leer con Gemini (gratis)</summary><p class="small">Propone solo emisor y total. Si el ticket está en otro idioma, también lo traduce al español manteniendo precios y moneda originales. Se envía esta foto a Google; los datos del nivel gratuito pueden usarse para mejorar sus productos. <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Condiciones de Google</a>.</p><div id="edit-gasto-ticket-ai-access"><label for="edit-gasto-ticket-ai-code">Código de acceso (el mismo de Grupo)</label><div class="group-code-field"><input type="password" id="edit-gasto-ticket-ai-code" autocomplete="off" autocapitalize="none" spellcheck="false"><button type="button" class="ghost" id="edit-gasto-ticket-ai-eye" aria-controls="edit-gasto-ticket-ai-code" aria-pressed="false">Mostrar</button></div></div><button type="button" class="ghost" id="edit-gasto-ticket-ai-change-code">Cambiar código</button><label class="check-option"><input type="checkbox" id="edit-gasto-ticket-ai-consent"> Autorizo enviar esta foto a Google</label><button type="button" class="btn" id="edit-gasto-ticket-ai-read" disabled>Leer con Gemini gratis</button><p id="edit-gasto-ticket-ai-status" class="small" role="status"></p><div id="edit-gasto-ticket-ai-proposal"></div><details class="small"><summary>Cuota gratuita y uso registrado</summary><p id="edit-gasto-ticket-ai-usage">Abre este apartado de Gemini para consultar la cuota.</p></details><p class="small">Si hay saturación, cuota agotada o no puede verificarse la gratuidad, la lectura se detiene. Puedes usar Leer ticket (OCR local) o Google Lens.</p></details>
+<p id="edit-gasto-ticket-ocr-status" class="small ticket-ocr-status" aria-live="polite"></p>
         <details id="edit-gasto-ticket-ocr-details" class="ticket-ocr-details" hidden>
           <summary>Ver texto reconocido</summary>
           <pre id="edit-gasto-ticket-ocr-text"></pre>
@@ -1328,20 +1330,21 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v016"></script>
-<script src="gpx-import.js?v=800v016"></script>
-<script src="timeline-routing.js?v=800v016"></script>
-<script src="map-model.js?v=800v016"></script>
-<script src="group-meals.js?v=800v016"></script>
-<script src="group-ledger.js?v=800v016"></script>
-<script src="group-store.js?v=800v016"></script>
-<script src="group-receipt.js?v=800v016"></script>
-<script src="group-ui.js?v=800v016"></script>
-<script src="preparation.js?v=800v016"></script>
-<script src="app.bundle.js?v=800v016"></script>
+<script src="timeline-import.js?v=800v017"></script>
+<script src="gpx-import.js?v=800v017"></script>
+<script src="timeline-routing.js?v=800v017"></script>
+<script src="map-model.js?v=800v017"></script>
+<script src="expense-receipt-ai.js?v=800v017"></script>
+<script src="group-meals.js?v=800v017"></script>
+<script src="group-ledger.js?v=800v017"></script>
+<script src="group-store.js?v=800v017"></script>
+<script src="group-receipt.js?v=800v017"></script>
+<script src="group-ui.js?v=800v017"></script>
+<script src="preparation.js?v=800v017"></script>
+<script src="app.bundle.js?v=800v017"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v016';
+    const pageVersion = '800v017';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1396,7 +1399,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v016', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v017', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

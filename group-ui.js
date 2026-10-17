@@ -163,6 +163,7 @@
     Promise.resolve(host.aiStatus?.()||{enabled:false,message:'La IA gratuita está pendiente de activación.'}).then(status=>{
       if(editor!==activeEditor)return;aiEnabled=status.enabled===true;
       $('#group-ai-status').textContent=status.message;$('#group-ai-read').disabled=!aiEnabled||reading;
+      $('#group-ai-usage').textContent=status.usageText||'';
     }).catch(()=>{if(editor===activeEditor){aiEnabled=false;$('#group-ai-status').textContent='No se pudo comprobar el acceso a Google. Puedes usar el OCR local.';}});
     renderTicket();
     message('El OCR propone conceptos. Comprueba cada línea, el total y la asignación antes de cerrar.',false,'#group-meal-message');renderItems();
@@ -240,6 +241,7 @@
       $('#group-ai-read').disabled=!aiEnabled;$('#group-close-meal').disabled=false;$('#group-save-draft').disabled=false;$('#group-meal-file').disabled=false;
       if(!completed)$('#group-ocr-counter').textContent=`Lectura interrumpida · ${Math.floor((Date.now()-started)/1000)} s`;
       if(editor){renderTicket();showParseFeedback();}
+      if(withAI)Promise.resolve(host.aiStatus?.()).then(status=>{if(editor)$('#group-ai-usage').textContent=status?.usageText||'';}).catch(()=>{});
     }
   }
   function parseText(replaceExisting=false){

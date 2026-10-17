@@ -26,7 +26,7 @@ test('scripts del grupo se cargan antes de la app y están en las dos listas de 
  const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8'),sw=fs.readFileSync(new URL('../sw.js',import.meta.url),'utf8');
  const core=sw.slice(sw.indexOf('const APP_SHELL_CORE'),sw.indexOf('const APP_SHELL_REQUIRED'));
  const required=sw.slice(sw.indexOf('const APP_SHELL_REQUIRED'),sw.indexOf('const APP_SHELL_OPTIONAL'));
- for(const file of ['group-meals.js','group-ledger.js','group-store.js','group-receipt.js','group-ui.js']){assert.ok(html.indexOf(file+'?v=800v016')>=0);assert.ok(html.indexOf(file+'?v=800v016')<html.indexOf('app.bundle.js?v=800v016'));assert.ok(core.includes(file));assert.ok(required.includes(file));}
+ for(const file of ['group-meals.js','group-ledger.js','group-store.js','group-receipt.js','group-ui.js']){assert.ok(html.indexOf(file+'?v=800v017')>=0);assert.ok(html.indexOf(file+'?v=800v017')<html.indexOf('app.bundle.js?v=800v017'));assert.ok(core.includes(file));assert.ok(required.includes(file));}
 });
 
 test('varias fotos se empaquetan sin duplicar bytes y se recuperan en el orden original; falta una y se aborta',async()=>{
