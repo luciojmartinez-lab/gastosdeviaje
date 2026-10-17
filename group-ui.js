@@ -6,7 +6,7 @@
   const all = selector => Array.from(document.querySelectorAll(selector));
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const uid = () => crypto.randomUUID();
-  const AI_CODE_KEY = 'cuaderno.receiptAccess.v1';
+  const access=root.ReceiptAccess;
   let receiptGroup,receiptMeal,receiptFiles=[],receiptSequence=0;
   async function renderReceipt(){
     const sequence=++receiptSequence;receiptFiles=[];
@@ -35,17 +35,13 @@
   }
   function restoreAICode() {
     showAICode(false);
-    let saved='';try{saved=root.localStorage.getItem(AI_CODE_KEY)||'';}catch{}
-    if(saved)$('#group-ai-code').value=saved;
-    $('#group-ai-access-entry').hidden=!!saved;
-    $('#group-ai-access-saved').hidden=!saved;
+    const saved=access.get();$('#group-ai-code').value=saved;
+    $('#group-ai-access-entry').hidden=!!saved&&access.isPersistent();
+    $('#group-ai-access-saved').hidden=!saved||!access.isPersistent();
+    $('#group-ai-code-status').textContent=access.description();
   }
   function rememberAICode() {
-    try{
-      root.localStorage.setItem(AI_CODE_KEY,$('#group-ai-code').value.trim());
-      showAICode(false);
-      $('#group-ai-access-entry').hidden=true;$('#group-ai-access-saved').hidden=false;
-    }catch{ /* A blocked device store must not prevent reading the receipt. */ }
+    restoreAICode();
   }
   function itemShares(item,meal) {
     return item.common?Object.fromEntries(meal.attendees.map(id=>[id,1])):(item.shares||{});
@@ -193,6 +189,7 @@
   async function extract(useAI=false) {
     if(reading||!editor)return;
     const withAI=useAI===true;
+    const code=$('#group-ai-code').value.trim();if(withAI&&code)access.save(code);
     if(withAI && !aiEnabled)throw new Error('La IA gratuita está pendiente de activación. Puedes usar el OCR local.');
     if(withAI && !$('#group-ai-consent').checked)throw new Error('Marca que autorizas enviar las fotos de este ticket a Google para leerlo.');
     if(withAI && !$('#group-ai-code').value.trim())throw new Error('Introduce el código de acceso a la lectura gratuita.');
@@ -213,7 +210,7 @@
         if(!withAI&&Number.isFinite(progress?.progress)){percent=Math.max(percent,Math.min(99,Math.round(progress.progress*100)));$('#group-ocr-progress').value=percent;paintProgress();}
         message(status,false,'#group-meal-message');
       };
-      const result=withAI?await host.recognizeAI(editor.meal,{accessCode:$('#group-ai-code').value,consent:$('#group-ai-consent').checked},onProgress):await host.recognize(editor.meal,onProgress);
+      const result=withAI?await host.recognizeAI(editor.meal,{accessCode:code,consent:$('#group-ai-consent').checked},onProgress):await host.recognize(editor.meal,onProgress);
       if(!editor)return;
       if(withAI)rememberAICode();
       completed=true;percent=100;$('#group-ocr-progress').value=100;paintProgress();
@@ -233,7 +230,6 @@
     }catch(error){
       if(withAI && /código de acceso incorrecto/i.test(error.message||'')){
         $('#group-ai-access-entry').hidden=false;$('#group-ai-access-saved').hidden=true;
-        try{root.localStorage.removeItem(AI_CODE_KEY);}catch{}
       }
       throw error;
     }finally{
@@ -335,8 +331,14 @@
     },'#group-meal-message');
     $('#group-ocr').onclick=safe(extract,'#group-meal-message');
     $('#group-ai-toggle-code').onclick=()=>showAICode($('#group-ai-code').type==='password');
+    $('#group-ai-code').oninput=$('#group-ai-code').onchange=()=>{access.save($('#group-ai-code').value);};
+    access.subscribe(({reason})=>{
+      if(reason==='forget'||reason==='external'||document.activeElement!==$('#group-ai-code'))$('#group-ai-code').value=access.get();
+      if(!access.get()){$('#group-ai-access-entry').hidden=false;$('#group-ai-access-saved').hidden=true;}
+      $('#group-ai-code-status').textContent=access.description();
+    });
     $('#group-ai-change-code').onclick=()=>{showAICode(false);$('#group-ai-access-entry').hidden=false;$('#group-ai-access-saved').hidden=true;$('#group-ai-code').focus();};
-    $('#group-ai-forget-code').onclick=()=>{try{root.localStorage.removeItem(AI_CODE_KEY);}catch{}$('#group-ai-code').value='';restoreAICode();};
+    $('#group-ai-forget-code').onclick=()=>{access.forget();restoreAICode();};
     $('#group-ai-read').onclick=safe(()=>extract(true),'#group-meal-message');
     const propose=replace=>async()=>{try{parseText(replace);}catch(error){message(error.message||String(error),true,'#group-meal-message');}showParseFeedback();};
     $('#group-parse-text').onclick=propose(false);

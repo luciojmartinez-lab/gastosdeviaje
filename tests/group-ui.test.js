@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { IDBFactory } from 'fake-indexeddb';
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
-const sources=['group-meals.js','group-ledger.js','group-store.js','group-ui.js'].map(file=>fs.readFileSync(new URL('../'+file,import.meta.url),'utf8'));
+const sources=['receipt-access.js','group-meals.js','group-ledger.js','group-store.js','group-ui.js'].map(file=>fs.readFileSync(new URL('../'+file,import.meta.url),'utf8'));
 async function setup(options={}){
  const dom=new JSDOM(html,{url:'http://localhost.test/',runScripts:'outside-only'}),w=dom.window;
  if(options.rememberedCode)w.localStorage.setItem('cuaderno.receiptAccess.v1',options.rememberedCode);
@@ -435,7 +435,7 @@ test('un código recordado que ya no sirve vuelve a pedir corrección; bloquear 
   ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
   ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.input('#group-ai-consent',true);ui.click('#group-ai-read');
   await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('incorrecto'));
-  assert.equal(ui.$('#group-ai-access-entry').hidden,false);assert.equal(ui.w.localStorage.getItem('cuaderno.receiptAccess.v1'),null);
+  assert.equal(ui.$('#group-ai-access-entry').hidden,false);assert.equal(ui.w.localStorage.getItem('cuaderno.receiptAccess.v1'),'old-code');
  }finally{ui.close();}
  const blocked=await setup({recognizeAI:async()=>({text:'1 Cena 12,00',fields:{total:12}})});
  try{
@@ -445,7 +445,29 @@ test('un código recordado que ya no sirve vuelve a pedir corrección; bloquear 
   blocked.input('#group-ai-code','session-code');blocked.input('#group-ai-consent',true);blocked.click('#group-ai-read');
   await blocked.waitFor(()=>blocked.$('#group-meal-items').querySelectorAll('fieldset').length===1);
   assert.equal(blocked.$('#group-ai-access-entry').hidden,false);
+  assert.match(blocked.$('#group-ai-code-status').textContent,/solo mientras esta página/);assert.equal(blocked.w.ReceiptAccess.get(),'session-code');
  }finally{blocked.close();}
+});
+
+test('Gastos, edición y Grupo comparten cambios y Olvidar código vacía los tres campos',async()=>{
+ const ui=await setup();try{
+  ui.w.eval(fs.readFileSync(new URL('../expense-receipt-ai.js',import.meta.url),'utf8'));
+  ui.w.ExpenseReceiptAIUI.mount({source:()=>null,context:()=>1,localBusy:()=>false});
+  ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
+  ui.input('#group-ai-code','from-group');for(const id of ['#g-ticket-ai-code','#edit-gasto-ticket-ai-code'])assert.equal(ui.$(id).value,'from-group');
+  ui.input('#edit-gasto-ticket-ai-code','from-expense');assert.equal(ui.$('#group-ai-code').value,'from-expense');assert.equal(ui.$('#g-ticket-ai-code').value,'from-expense');assert.equal(ui.w.localStorage.getItem('cuaderno.receiptAccess.v1'),'from-expense');
+  ui.click('#group-close-editor');ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);assert.equal(ui.$('#group-ai-code').value,'from-expense');
+  ui.click('#group-ai-forget-code');for(const id of ['#g-ticket-ai-code','#edit-gasto-ticket-ai-code','#group-ai-code'])assert.equal(ui.$(id).value,'');assert.equal(ui.w.ReceiptAccess.get(),'');
+ }finally{ui.close();}
+});
+
+test('Grupo no sobrescribe ni borra un código nuevo cuando termina una lectura anterior',async()=>{
+ for(const fails of [false,true]){
+  let finish,received;const ui=await setup({rememberedCode:'old-code',recognizeAI:async(meal,options)=>{received=options.accessCode;return new Promise((resolve,reject)=>{finish=()=>fails?reject(new Error('Código de acceso incorrecto.')):resolve({text:'1 Cena 12,00',fields:{total:12}});});}});try{
+   ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.input('#group-ai-consent',true);ui.click('#group-ai-read');await ui.waitFor(()=>!!finish);assert.equal(received,'old-code');
+   ui.input('#group-ai-code','new-code');finish();await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);assert.equal(ui.w.localStorage.getItem('cuaderno.receiptAccess.v1'),'new-code');assert.equal(ui.$('#group-ai-code').value,'new-code');
+  }finally{ui.close();}
+ }
 });
 
 const ticketPhoto=name=>({name,type:'image/jpeg',data:'data:image/jpeg;base64,'+Buffer.from(name.repeat(8)).toString('base64')});

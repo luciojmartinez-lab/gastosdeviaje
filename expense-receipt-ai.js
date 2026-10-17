@@ -1,7 +1,7 @@
 (function(root){
   'use strict';
   let host;const state={};const $=id=>document.getElementById(id);
-  const key='cuaderno.receiptAccess.v1';
+  const access=root.ReceiptAccess;
   function progress(prefix,running,started=Date.now(),succeeded=true){
     const wrap=$(prefix+'-ticket-ai-progress-wrap'),bar=$(prefix+'-ticket-ai-progress'),counter=$(prefix+'-ticket-ai-counter');
     wrap.hidden=false;
@@ -10,9 +10,13 @@
   }
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const message=(prefix,text,error=false)=>{const el=$(prefix+'-ticket-ai-status');el.textContent=text;el.classList.toggle('error',error);};
-  function showError(text){
+  function showError(text,focusTarget){
     const dialog=$('expense-ai-error-dialog');
     $('expense-ai-error-message').textContent=text;
+    dialog.onclose=()=>{
+      const target=focusTarget&&$(focusTarget);
+      if(target?.closest('dialog')?.open){target.focus({preventScroll:true});target.scrollIntoView?.({block:'center',behavior:'instant'});}
+    };
     if(!dialog.open)dialog.showModal();
   }
   function reviewApplied(prefix,result){
@@ -23,7 +27,13 @@
     heading.tabIndex=-1;heading.focus({preventScroll:true});
     form.scrollTop=0;dialog.scrollTop=0;
   }
-  function restore(prefix){let saved='';try{saved=root.localStorage.getItem(key)||'';}catch{}$(prefix+'-ticket-ai-code').value=saved;$(prefix+'-ticket-ai-access').hidden=!!saved;$(prefix+'-ticket-ai-code').type='password';$(prefix+'-ticket-ai-eye').textContent='Mostrar';$(prefix+'-ticket-ai-eye').setAttribute('aria-pressed','false');}
+  function refreshCode(prefix,reason){
+    const input=$(prefix+'-ticket-ai-code');
+    if(reason==='forget'||reason==='external'||document.activeElement!==input)input.value=access.get();
+    if(!access.get())$(prefix+'-ticket-ai-access').hidden=false;
+    $(prefix+'-ticket-ai-code-status').textContent=access.description();
+  }
+  function restore(prefix){refreshCode(prefix,'restore');$(prefix+'-ticket-ai-access').hidden=!!access.get()&&access.isPersistent();$(prefix+'-ticket-ai-code').type='password';$(prefix+'-ticket-ai-eye').textContent='Mostrar';$(prefix+'-ticket-ai-eye').setAttribute('aria-pressed','false');}
   async function status(prefix){const value=await host.status($(prefix+'-ticket-ai-code').value.trim());const usage=$(prefix+'-ticket-ai-usage');usage.textContent=value.usageText||value.message;usage.parentElement.querySelector('summary').textContent=value.usage?.available?`Registro hoy: ${value.usage.requests} / ${value.limits.daily} · ${Math.max(0,value.limits.daily-value.usage.requests)} restantes estimados*`:'Cuota gratuita y uso registrado';}
   function sync(prefix){
     if(!host||!$(prefix+'-ticket-ai-read'))return;
@@ -34,9 +44,10 @@
   }
   async function read(prefix){
     const value=state[prefix];if(value.busy)return;
+    const code=$(prefix+'-ticket-ai-code').value.trim();if(code)access.save(code);
     if(host.localBusy(prefix))throw new Error('Espera a que termine la lectura local.');
     if(!$(prefix+'-ticket-ai-consent').checked)throw new Error('Autoriza enviar esta foto a Google para leerla.');
-    const code=$(prefix+'-ticket-ai-code').value.trim();if(!code){$(prefix+'-ticket-ai-access').hidden=false;throw new Error('Introduce el código de acceso que usas en Grupo.');}
+    if(!code){$(prefix+'-ticket-ai-access').hidden=false;throw new Error('Introduce el código de acceso que usas en Grupo.');}
     value.busy=true;value.proposal=null;$(prefix+'-ticket-ai-proposal').innerHTML='';host.sync(prefix);sync(prefix);
     const sequence=++value.sequence,source=host.source(prefix)?.source,context=host.context(prefix);
     const started=Date.now();progress(prefix,true,started);$(prefix+'-ticket-ai-read').textContent='Leyendo con Gemini…';
@@ -48,7 +59,7 @@
       const result=await host.read(photo,code,progress=>message(prefix,progress.status));
       if(sequence!==value.sequence||source!==host.source(prefix)?.source||context!==host.context(prefix)||!host.isOpen(prefix))return;
       value.proposal=result;value.proposalSource=source;value.proposalContext=context;
-      try{root.localStorage.setItem(key,code);$(prefix+'-ticket-ai-access').hidden=true;$(prefix+'-ticket-ai-code').type='password';}catch{}
+      restore(prefix);
       const fields=result.fields,total=fields.total===null?'No legible':`${fields.total.toLocaleString('es-ES',{maximumFractionDigits:2})} ${fields.currency}`;
       const previous=host.hasTranslation(prefix);
       const originalMerchant=result.merchantOriginal&&result.merchantOriginal!==fields.merchant?`<br><small>Nombre original: ${esc(result.merchantOriginal)}</small>`:'';
@@ -72,16 +83,18 @@
     try{await action();}catch(error){
       if(!host.isOpen(prefix)||context!==host.context(prefix)||source!==host.source(prefix)?.source)return;
       const text=error.message||'No se pudo completar la lectura. Puedes usar el OCR local o Lens.';
-      message(prefix,text,true);showError(text);
+      if(/código de acceso incorrecto/i.test(text))$(prefix+'-ticket-ai-access').hidden=false;
+      message(prefix,text,true);showError(text,error.focusTarget);
     }
   };
   function mount(config){host=config;for(const prefix of ['g','edit-gasto']){
     state[prefix]={sequence:0,busy:false,proposal:null};restore(prefix);
     $(prefix+'-ticket-ai-panel').ontoggle=()=>{if($(prefix+'-ticket-ai-panel').open){if($(prefix+'-ticket-ai-access').hidden||!$(prefix+'-ticket-ai-code').value)restore(prefix);else $(prefix+'-ticket-ai-code').type='password';status(prefix).catch(()=>{});sync(prefix);}};
     $(prefix+'-ticket-ai-read').onclick=safe(prefix,()=>read(prefix));
+    $(prefix+'-ticket-ai-code').oninput=$(prefix+'-ticket-ai-code').onchange=()=>{access.save($(prefix+'-ticket-ai-code').value);};
     $(prefix+'-ticket-ai-change-code').onclick=()=>{$(prefix+'-ticket-ai-access').hidden=false;$(prefix+'-ticket-ai-code').type='password';};
     $(prefix+'-ticket-ai-eye').onclick=()=>{const visible=$(prefix+'-ticket-ai-code').type==='password';$(prefix+'-ticket-ai-code').type=visible?'text':'password';$(prefix+'-ticket-ai-eye').textContent=visible?'Ocultar':'Mostrar';$(prefix+'-ticket-ai-eye').setAttribute('aria-pressed',String(visible));};
     sync(prefix);
-  }}
+  }access.subscribe(({reason})=>{for(const prefix of ['g','edit-gasto'])refreshCode(prefix,reason);});}
   root.ExpenseReceiptAIUI={mount,sync,isBusy:prefix=>state[prefix]?.busy===true};
 })(globalThis);

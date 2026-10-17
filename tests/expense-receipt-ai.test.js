@@ -5,6 +5,7 @@ import {JSDOM} from 'jsdom';
 import {normalizeExpenseReceipt} from '../receipt-ai.js';
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8'),source=fs.readFileSync(new URL('../expense-receipt-ai.js',import.meta.url),'utf8'),app=fs.readFileSync(new URL('../app.bundle.js',import.meta.url),'utf8');
 const sourceOf=name=>app.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`))[0];
+const accessSource=fs.readFileSync(new URL('../receipt-access.js',import.meta.url),'utf8');
 const result={fields:{merchant:'Sakura',total:1850,currency:'JPY'},sourceLanguage:'en',originalText:'TOTAL JPY 1850',spanishText:'TOTAL JPY 1850',warnings:[]};
 
 test('arranque de la app conecta Gemini, comparte el código de Grupo y sincroniza la foto y el progreso',async()=>{
@@ -13,7 +14,7 @@ test('arranque de la app conecta Gemini, comparte el código de Grupo y sincroni
   const code='CODIGO-COMPARTIDO-DE-GRUPO';w.localStorage.setItem('cuaderno.receiptAccess.v1',code);
   w.$=selector=>w.document.querySelector(selector);w.pendingExpenseTicketTranslations={};
   const sources={};w.ticketOcrSource=prefix=>sources[prefix]||null;w.syncLensPasteAvailability=()=>{};
-  w.eval(source);let finish,receivedCode,mounted=0;
+  w.eval(accessSource);w.eval(source);let finish,receivedCode,mounted=0;
   const mount=w.ExpenseReceiptAIUI.mount;
   w.ExpenseReceiptAIUI.mount=config=>{mounted++;mount({...config,status:async()=>({usageText:'Uso consultado'}),prepare:async()=>({data:'prepared'}),read:async(photo,access,report)=>{receivedCode=access;report({status:'Comprobando gratuidad y leyendo…'});return new Promise(resolve=>{finish=resolve;});}});};
   for(const name of ['rootExpenseAIBusy','syncTicketOcrAvailability','bindExpenseAIEvents'])w.eval(sourceOf(name));
@@ -38,9 +39,11 @@ test('arranque de la app conecta Gemini, comparte el código de Grupo y sincroni
  }finally{w.close();}
 });
 async function setup(options={}){
- const dom=new JSDOM(html,{url:'https://test.local',runScripts:'outside-only'}),w=dom.window;w.eval(source);
+ const dom=new JSDOM(html,{url:'https://test.local',runScripts:'outside-only'}),w=dom.window;
+ if(options.rememberedCode)w.localStorage.setItem('cuaderno.receiptAccess.v1',options.rememberedCode);
+ w.eval(accessSource);w.eval(source);
  w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
- w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
+ w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new w.Event('close'));};
  w.document.querySelector('#expense-ai-error-dialog button').onclick=event=>{event.preventDefault();w.document.getElementById('expense-ai-error-dialog').close();};
  let sourceValue='data:image/jpeg;base64,original',reads=0,applied=0,last;
  const limits={daily:500,minute:15,inputTokensMinute:250000};
@@ -84,11 +87,32 @@ test('saturación y cambio de ticket no aplican campos ni disparan otro lector',
  }finally{stale.close();}
 });
 
+test('el código se guarda al escribir, sobrevive a saturación y se restaura en alta y edición al recargar',async()=>{
+ const ui=await setup({read:async()=>{throw new Error('Google saturado');}});let saved;try{
+  ui.$('g-ticket-ai-code').value='persistent-code';ui.$('g-ticket-ai-code').dispatchEvent(new ui.w.Event('input'));
+  assert.equal(ui.w.localStorage.getItem('cuaderno.receiptAccess.v1'),'persistent-code');assert.equal(ui.$('edit-gasto-ticket-ai-code').value,'persistent-code');assert.equal(ui.reads(),0);
+  ui.$('g-ticket-ai-consent').checked=true;ui.click('g-ticket-ai-read');await ui.wait(()=>ui.$('expense-ai-error-dialog').open);
+  saved=ui.w.localStorage.getItem('cuaderno.receiptAccess.v1');assert.equal(saved,'persistent-code');assert.match(ui.$('g-ticket-ai-code-status').textContent,/guardado/);
+ }finally{ui.close();}
+ const reopened=await setup({rememberedCode:saved});try{for(const prefix of ['g','edit-gasto']){assert.equal(reopened.$(prefix+'-ticket-ai-code').value,saved);assert.equal(reopened.$(prefix+'-ticket-ai-access').hidden,true);}}finally{reopened.close();}
+});
+
+test('una respuesta tardía no sustituye ni borra el código nuevo introducido mientras se leía',async()=>{
+ for(const fails of [false,true]){
+  let finish;const ui=await setup({rememberedCode:'old-code',read:()=>new Promise((resolve,reject)=>{finish=()=>fails?reject(new Error('Código de acceso incorrecto.')):resolve(result);})});try{
+   ui.$('g-ticket-ai-consent').checked=true;ui.click('g-ticket-ai-read');await ui.wait(()=>!!finish);assert.equal(ui.last()[1],'old-code');
+   ui.$('edit-gasto-ticket-ai-code').value='new-code';ui.$('edit-gasto-ticket-ai-code').dispatchEvent(new ui.w.Event('input'));finish();await ui.wait(()=>!ui.$('g-ticket-ai-read').disabled);
+   assert.equal(ui.w.ReceiptAccess.get(),'new-code');assert.equal(ui.w.localStorage.getItem('cuaderno.receiptAccess.v1'),'new-code');assert.equal(ui.$('g-ticket-ai-code').value,'new-code');
+  }finally{ui.close();}
+ }
+});
+
 test('error al aplicar: el aviso emergente conserva la propuesta y permite corregir sin otra lectura',async()=>{
- let missingAccount=true;const ui=await setup({apply:async()=>{if(missingAccount)throw new Error('Selecciona la cuenta del gasto.');return 'Aplicado';}});try{
+ let missingAccount=true;const ui=await setup({apply:async()=>{if(missingAccount)throw Object.assign(new Error('Selecciona la cuenta del gasto.'),{focusTarget:'g-cuenta'});return 'Aplicado';}});try{
+  ui.$('add-gasto-dialog').setAttribute('open','');let scrolled=false;ui.$('g-cuenta').scrollIntoView=()=>{scrolled=true;};
   ui.$('g-ticket-ai-code').value='test';ui.$('g-ticket-ai-consent').checked=true;ui.click('g-ticket-ai-read');await ui.wait(()=>!!ui.$('g-ticket-ai-apply'));
   ui.click('g-ticket-ai-apply');await ui.wait(()=>ui.$('expense-ai-error-dialog').open);assert.match(ui.$('expense-ai-error-message').textContent,/Selecciona la cuenta/);assert.ok(ui.$('g-ticket-ai-apply'));assert.equal(ui.$('g-ticket-ai-applied').hidden,true);
-  ui.$('expense-ai-error-dialog').querySelector('button').click();missingAccount=false;ui.click('g-ticket-ai-apply');await ui.wait(()=>!ui.$('g-ticket-ai-applied').hidden);assert.equal(ui.reads(),1);assert.equal(ui.$('expense-ai-error-dialog').open,false);
+  ui.$('expense-ai-error-dialog').querySelector('button').click();assert.equal(ui.w.document.activeElement,ui.$('g-cuenta'));assert.equal(scrolled,true);missingAccount=false;ui.click('g-ticket-ai-apply');await ui.wait(()=>!ui.$('g-ticket-ai-applied').hidden);assert.equal(ui.reads(),1);assert.equal(ui.$('expense-ai-error-dialog').open,false);
  }finally{ui.close();}
 });
 test('aplicar emisor y total solo cambia esos campos; moneda incompatible o error de traducción conserva datos',async()=>{
