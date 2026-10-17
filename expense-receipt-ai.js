@@ -10,12 +10,26 @@
   }
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const message=(prefix,text,error=false)=>{const el=$(prefix+'-ticket-ai-status');el.textContent=text;el.classList.toggle('error',error);};
+  function showError(text){
+    const dialog=$('expense-ai-error-dialog');
+    $('expense-ai-error-message').textContent=text;
+    if(!dialog.open)dialog.showModal();
+  }
+  function reviewApplied(prefix,result){
+    const notice=$(prefix+'-ticket-ai-applied'),fields=result.fields;
+    const applied=[fields.merchant,fields.total===null?'':`${fields.total.toLocaleString('es-ES',{maximumFractionDigits:2})} ${fields.currency}`].filter(Boolean).join(' · ');
+    notice.textContent=`Aplicado: ${applied}. Revisa los datos antes de guardar.`;notice.hidden=false;
+    const form=$(prefix==='g'?'add-gasto-form':'edit-gasto-form'),dialog=form.closest('dialog'),heading=form.querySelector('h2');
+    heading.tabIndex=-1;heading.focus({preventScroll:true});
+    form.scrollTop=0;dialog.scrollTop=0;
+  }
   function restore(prefix){let saved='';try{saved=root.localStorage.getItem(key)||'';}catch{}$(prefix+'-ticket-ai-code').value=saved;$(prefix+'-ticket-ai-access').hidden=!!saved;$(prefix+'-ticket-ai-code').type='password';$(prefix+'-ticket-ai-eye').textContent='Mostrar';$(prefix+'-ticket-ai-eye').setAttribute('aria-pressed','false');}
   async function status(prefix){const value=await host.status($(prefix+'-ticket-ai-code').value.trim());const usage=$(prefix+'-ticket-ai-usage');usage.textContent=value.usageText||value.message;usage.parentElement.querySelector('summary').textContent=value.usage?.available?`Registro hoy: ${value.usage.requests} / ${value.limits.daily} · ${Math.max(0,value.limits.daily-value.usage.requests)} restantes estimados*`:'Cuota gratuita y uso registrado';}
   function sync(prefix){
     if(!host||!$(prefix+'-ticket-ai-read'))return;
     const source=host.source(prefix),value=state[prefix];
-    if(value.source!==source?.source){value.source=source?.source;value.sequence++;value.proposal=null;$(prefix+'-ticket-ai-proposal').innerHTML='';$(prefix+'-ticket-ai-consent').checked=false;message(prefix,'');}
+    const context=host.context(prefix);
+    if(value.source!==source?.source||value.context!==context){value.source=source?.source;value.context=context;value.sequence++;value.proposal=null;$(prefix+'-ticket-ai-proposal').innerHTML='';$(prefix+'-ticket-ai-consent').checked=false;$(prefix+'-ticket-ai-applied').hidden=true;message(prefix,'');}
     $(prefix+'-ticket-ai-read').disabled=!source||value.busy||host.localBusy(prefix);
   }
   async function read(prefix){
@@ -50,9 +64,17 @@
     try{
       const text=await host.apply(prefix,result,$(prefix+'-ticket-ai-save-translation')?.checked===true,()=>value.proposal===result&&value.proposalSource===host.source(prefix)?.source&&value.proposalContext===host.context(prefix)&&host.isOpen(prefix));
       message(prefix,text);
+      reviewApplied(prefix,result);
     }finally{if($(prefix+'-ticket-ai-apply'))$(prefix+'-ticket-ai-apply').disabled=false;}
   }
-  const safe=(prefix,action)=>async()=>{try{await action();}catch(error){message(prefix,error.message||'No se pudo completar la lectura. Puedes usar el OCR local o Lens.',true);}};
+  const safe=(prefix,action)=>async()=>{
+    const context=host.context(prefix),source=host.source(prefix)?.source;
+    try{await action();}catch(error){
+      if(!host.isOpen(prefix)||context!==host.context(prefix)||source!==host.source(prefix)?.source)return;
+      const text=error.message||'No se pudo completar la lectura. Puedes usar el OCR local o Lens.';
+      message(prefix,text,true);showError(text);
+    }
+  };
   function mount(config){host=config;for(const prefix of ['g','edit-gasto']){
     state[prefix]={sequence:0,busy:false,proposal:null};restore(prefix);
     $(prefix+'-ticket-ai-panel').ontoggle=()=>{if($(prefix+'-ticket-ai-panel').open){if($(prefix+'-ticket-ai-access').hidden||!$(prefix+'-ticket-ai-code').value)restore(prefix);else $(prefix+'-ticket-ai-code').type='password';status(prefix).catch(()=>{});sync(prefix);}};

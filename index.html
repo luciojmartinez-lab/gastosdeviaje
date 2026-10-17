@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v019">
+  <link rel="manifest" href="manifest.webmanifest?v=800v020">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v019">
+  <link rel="stylesheet" href="styles.css?v=800v020">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v019 · 17/10/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v020 · 17/10/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v019</div>
+  <div class="app-version">800v020</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -537,6 +537,7 @@
       <h2>Nuevo gasto</h2>
       <button type="button" class="ghost icon-btn" id="add-gasto-close" aria-label="Cerrar">x</button>
     </div>
+    <p id="g-ticket-ai-applied" class="expense-ai-applied" role="status" hidden></p>
     <div class="row add-top-fields">
       <div><label>Fecha</label><input type="date" id="g-fecha"></div>
       <div><label>Hora</label><input type="time" id="g-hora"></div>
@@ -623,6 +624,7 @@
       <h2>Editar gasto</h2>
       <button type="button" class="ghost icon-btn" id="edit-gasto-close" aria-label="Cerrar">x</button>
     </div>
+    <p id="edit-gasto-ticket-ai-applied" class="expense-ai-applied" role="status" hidden></p>
     <input type="hidden" id="edit-gasto-id">
     <div class="row edit-top-fields">
       <div><label>Fecha</label><input type="date" id="edit-gasto-fecha"></div>
@@ -715,6 +717,14 @@
       <button type="button" class="ghost" id="edit-gasto-cancel">Cancelar</button>
       <span id="msg-edit-gasto" class="small"></span>
     </div>
+  </form>
+</dialog>
+
+<dialog id="expense-ai-error-dialog" class="modal result-modal" role="alertdialog" aria-labelledby="expense-ai-error-title" aria-describedby="expense-ai-error-message">
+  <form method="dialog">
+    <div class="modal-head"><h2 id="expense-ai-error-title">Revisa el ticket</h2></div>
+    <p id="expense-ai-error-message"></p>
+    <div class="actions"><button class="btn" autofocus>Entendido</button></div>
   </form>
 </dialog>
 
@@ -1330,21 +1340,21 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v019"></script>
-<script src="gpx-import.js?v=800v019"></script>
-<script src="timeline-routing.js?v=800v019"></script>
-<script src="map-model.js?v=800v019"></script>
-<script src="expense-receipt-ai.js?v=800v019"></script>
-<script src="group-meals.js?v=800v019"></script>
-<script src="group-ledger.js?v=800v019"></script>
-<script src="group-store.js?v=800v019"></script>
-<script src="group-receipt.js?v=800v019"></script>
-<script src="group-ui.js?v=800v019"></script>
-<script src="preparation.js?v=800v019"></script>
-<script src="app.bundle.js?v=800v019"></script>
+<script src="timeline-import.js?v=800v020"></script>
+<script src="gpx-import.js?v=800v020"></script>
+<script src="timeline-routing.js?v=800v020"></script>
+<script src="map-model.js?v=800v020"></script>
+<script src="expense-receipt-ai.js?v=800v020"></script>
+<script src="group-meals.js?v=800v020"></script>
+<script src="group-ledger.js?v=800v020"></script>
+<script src="group-store.js?v=800v020"></script>
+<script src="group-receipt.js?v=800v020"></script>
+<script src="group-ui.js?v=800v020"></script>
+<script src="preparation.js?v=800v020"></script>
+<script src="app.bundle.js?v=800v020"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v019';
+    const pageVersion = '800v020';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1399,7 +1409,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v019', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v020', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

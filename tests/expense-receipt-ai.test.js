@@ -39,9 +39,12 @@ test('arranque de la app conecta Gemini, comparte el código de Grupo y sincroni
 });
 async function setup(options={}){
  const dom=new JSDOM(html,{url:'https://test.local',runScripts:'outside-only'}),w=dom.window;w.eval(source);
+ w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
+ w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
+ w.document.querySelector('#expense-ai-error-dialog button').onclick=event=>{event.preventDefault();w.document.getElementById('expense-ai-error-dialog').close();};
  let sourceValue='data:image/jpeg;base64,original',reads=0,applied=0,last;
  const limits={daily:500,minute:15,inputTokensMinute:250000};
- const state={};w.ExpenseReceiptAIUI.mount({source:()=>({source:sourceValue}),context:()=>1,isOpen:()=>true,localBusy:()=>false,sync:()=>{},hasTranslation:()=>true,status:async()=>({limits,usage:{available:true,requests:7},usageText:'7 de 500 registrados'}),prepare:async()=>({data:'data:prepared'}),read:async(...args)=>{reads++;last=args;return options.read?options.read():result;},apply:async(...args)=>{applied++;state.args=args;return 'Aplicado';}});
+ const state={};w.ExpenseReceiptAIUI.mount({source:()=>({source:sourceValue}),context:()=>1,isOpen:()=>true,localBusy:()=>false,sync:()=>{},hasTranslation:()=>true,status:async()=>({limits,usage:{available:true,requests:7},usageText:'7 de 500 registrados'}),prepare:async()=>({data:'data:prepared'}),read:async(...args)=>{reads++;last=args;return options.read?options.read():result;},apply:async(...args)=>{applied++;state.args=args;return options.apply?options.apply(...args):'Aplicado';}});
  const $=id=>w.document.getElementById(id),click=id=>$(id).click(),change=(id,value)=>{$(id).value=value;$(id).dispatchEvent(new w.Event('change'));};
  const wait=async predicate=>{for(let i=0;i<200&&!predicate();i++)await new Promise(r=>setTimeout(r,5));assert.ok(predicate());};
  return{w,$,click,change,wait,state,reads:()=>reads,applied:()=>applied,last:()=>last,setSource:value=>{sourceValue=value;w.ExpenseReceiptAIUI.sync('g');},close:()=>w.close()};
@@ -49,6 +52,7 @@ async function setup(options={}){
 test('propuesta Gemini de gasto requiere consentimiento y revisión, recuerda el código y conserva Lens',async()=>{
  const ui=await setup();try{
   ui.$('g-ticket-ai-code').value='test-code';ui.click('g-ticket-ai-read');await ui.wait(()=>ui.$('g-ticket-ai-status').textContent.includes('Autoriza'));assert.equal(ui.reads(),0);
+  assert.equal(ui.$('expense-ai-error-dialog').open,true);assert.match(ui.$('expense-ai-error-message').textContent,/Autoriza/);ui.$('expense-ai-error-dialog').querySelector('button').click();assert.equal(ui.$('expense-ai-error-dialog').open,false);
   ui.$('g-ticket-ai-consent').checked=true;ui.click('g-ticket-ai-read');await ui.wait(()=>!!ui.$('g-ticket-ai-apply'));
   assert.equal(ui.reads(),1);assert.equal(ui.applied(),0);assert.equal(ui.$('g-ticket-ai-save-translation').checked,false);assert.ok(ui.$('g-ticket-translate'));assert.ok(ui.$('g-ticket-read'));
   assert.equal(ui.w.localStorage.getItem('cuaderno.receiptAccess.v1'),'test-code');ui.click('g-ticket-ai-apply');await ui.wait(()=>ui.applied()===1);assert.equal(ui.state.args[2],false);
@@ -63,7 +67,9 @@ test('emisor japonés en alta y edición: muestra nombre legible y original, y a
    ui.$(prefix+'-ticket-ai-code').value='test';ui.$(prefix+'-ticket-ai-consent').checked=true;ui.click(prefix+'-ticket-ai-read');await ui.wait(()=>!!ui.$(prefix+'-ticket-ai-apply'));
    const text=ui.$(prefix+'-ticket-ai-proposal').querySelector('p').textContent;
    assert.match(text,/Emisor: Daikoku Drug/);assert.match(text,/Nombre original: ダイコクドラッグ/);assert.match(text,/Total: 8000 JPY/);
-   const before=ui.applied();ui.click(prefix+'-ticket-ai-apply');await ui.wait(()=>ui.applied()===before+1);assert.equal(ui.state.args[1].fields.merchant,'Daikoku Drug');assert.equal(ui.state.args[1].merchantOriginal,'ダイコクドラッグ');
+   const form=ui.$(prefix==='g'?'add-gasto-form':'edit-gasto-form'),dialog=form.closest('dialog');dialog.setAttribute('open','');dialog.scrollTop=1800;form.scrollTop=700;
+   const before=ui.applied();ui.click(prefix+'-ticket-ai-apply');await ui.wait(()=>!ui.$(prefix+'-ticket-ai-applied').hidden);assert.equal(ui.applied(),before+1);assert.equal(ui.state.args[1].fields.merchant,'Daikoku Drug');assert.equal(ui.state.args[1].merchantOriginal,'ダイコクドラッグ');
+   assert.equal(dialog.scrollTop,0);assert.equal(form.scrollTop,0);assert.equal(ui.w.document.activeElement,form.querySelector('h2'));assert.match(ui.$(prefix+'-ticket-ai-applied').textContent,/Daikoku Drug · 8000 JPY/);
   }
  }finally{ui.close();}
 });
@@ -71,10 +77,19 @@ test('emisor japonés en alta y edición: muestra nombre legible y original, y a
 test('saturación y cambio de ticket no aplican campos ni disparan otro lector',async()=>{
  const ui=await setup({read:async()=>{throw new Error('Google saturado');}});try{
   ui.$('g-ticket-ai-code').value='test';ui.$('g-ticket-ai-consent').checked=true;ui.click('g-ticket-ai-read');await ui.wait(()=>ui.$('g-ticket-ai-status').textContent.includes('saturado'));assert.equal(ui.reads(),1);assert.equal(ui.applied(),0);assert.equal(ui.$('g-ticket-ai-read').disabled,false);
+  assert.equal(ui.$('expense-ai-error-dialog').open,true);assert.match(ui.$('expense-ai-error-message').textContent,/Google saturado/);ui.$('expense-ai-error-dialog').querySelector('button').click();assert.equal(ui.$('expense-ai-error-dialog').open,false);
  }finally{ui.close();}
  let finish;const stale=await setup({read:()=>new Promise(resolve=>{finish=resolve;})});try{
   stale.$('g-ticket-ai-code').value='test';stale.$('g-ticket-ai-consent').checked=true;stale.click('g-ticket-ai-read');await stale.wait(()=>!!finish);stale.setSource('new-photo');finish(result);await stale.wait(()=>!stale.$('g-ticket-ai-read').disabled);assert.equal(stale.$('g-ticket-ai-proposal').innerHTML,'');
  }finally{stale.close();}
+});
+
+test('error al aplicar: el aviso emergente conserva la propuesta y permite corregir sin otra lectura',async()=>{
+ let missingAccount=true;const ui=await setup({apply:async()=>{if(missingAccount)throw new Error('Selecciona la cuenta del gasto.');return 'Aplicado';}});try{
+  ui.$('g-ticket-ai-code').value='test';ui.$('g-ticket-ai-consent').checked=true;ui.click('g-ticket-ai-read');await ui.wait(()=>!!ui.$('g-ticket-ai-apply'));
+  ui.click('g-ticket-ai-apply');await ui.wait(()=>ui.$('expense-ai-error-dialog').open);assert.match(ui.$('expense-ai-error-message').textContent,/Selecciona la cuenta/);assert.ok(ui.$('g-ticket-ai-apply'));assert.equal(ui.$('g-ticket-ai-applied').hidden,true);
+  ui.$('expense-ai-error-dialog').querySelector('button').click();missingAccount=false;ui.click('g-ticket-ai-apply');await ui.wait(()=>!ui.$('g-ticket-ai-applied').hidden);assert.equal(ui.reads(),1);assert.equal(ui.$('expense-ai-error-dialog').open,false);
+ }finally{ui.close();}
 });
 test('aplicar emisor y total solo cambia esos campos; moneda incompatible o error de traducción conserva datos',async()=>{
  const dom=new JSDOM(html,{url:'https://test.local',runScripts:'outside-only'}),w=dom.window;
@@ -85,7 +100,26 @@ test('aplicar emisor y total solo cambia esos campos; moneda incompatible o erro
   w.pendingTicketOcr={g:{merchant:'Anterior'}};w.pendingExpenseTicketTranslations={g:{data:'old',kind:'translation'}};w.renderExpenseTicketTranslation=()=>{};w.scheduleFormDraftSave=()=>{};w.addExpenseDraftKey=()=>'';w.ADD_EXPENSE_DRAFT_FIELDS=[];
   w.eval(sourceOf('applyExpenseAIProposal'));
   await w.applyExpenseAIProposal('g',result,false);assert.equal($('#g-desc').value,'Sakura');assert.equal($('#g-importe').value,'1850.00');assert.equal($('#g-fecha').value,'2026-10-17');assert.equal($('#g-hora').value,'12:00');assert.equal(w.pendingExpenseTicketTranslations.g.data,'old');
+  $('#g-cuenta').value='';await assert.rejects(w.applyExpenseAIProposal('g',result,false),/Selecciona la cuenta/);assert.equal($('#g-desc').value,'Sakura');assert.equal($('#g-importe').value,'1850.00');$('#g-cuenta').value='1';
   $('#g-moneda').value='EUR';await assert.rejects(w.applyExpenseAIProposal('g',result,false),/JPY/);assert.equal($('#g-importe').value,'1850.00');
   $('#g-moneda').value='JPY';w.createLensAiSummaryCompanion=async()=>{throw new Error('Imagen fallida');};await assert.rejects(w.applyExpenseAIProposal('g',{...result,fields:{...result.fields,merchant:'Nuevo',total:500}},true),/Imagen fallida/);assert.equal($('#g-desc').value,'Sakura');assert.equal(w.pendingExpenseTicketTranslations.g.data,'old');
+  w.createLensAiSummaryCompanion=async()=>{$('#g-cuenta').value='';return {data:'new'};};await assert.rejects(w.applyExpenseAIProposal('g',{...result,fields:{...result.fields,merchant:'Nuevo',total:500}},true),/cuenta o la moneda/);assert.equal($('#g-desc').value,'Sakura');assert.equal($('#g-importe').value,'1850.00');assert.equal(w.pendingExpenseTicketTranslations.g.data,'old');
+ }finally{w.close();}
+});
+
+test('imagen de Gemini conserva su identidad al crearse, guardarse y reabrirse; reconoce el marcado antiguo sin cambiar Lens',async()=>{
+ const dom=new JSDOM(html,{url:'https://test.local',runScripts:'outside-only'}),w=dom.window;
+ try{
+  w.$=selector=>w.document.querySelector(selector);w.TICKET_OCR_BASE_LANGUAGES=['spa','eng'];
+  const drawn=[];w.HTMLCanvasElement.prototype.getContext=()=>({measureText:text=>({width:text.length*16}),fillRect:()=>{},fillText:text=>drawn.push(text)});
+  w.canvasToJpeg=async()=>new w.Blob(['image'],{type:'image/jpeg'});w.readBlobAsDataUrl=async()=> 'data:image/jpeg;base64,dGVzdA==';
+  w.normalizeStoredImageRecord=record=>record;w.normalizeTicketDataValue=value=>value;
+  for(const name of ['wrapLensAiSummaryLines','createLensAiSummaryCompanion','normalizeTicketCompanionKind','ticketCompanionLabel','ticketTranslationPatch','expenseTicketTranslationRecord','ticketTranslationRecordFromExpense','fillTicketTranslationPreview'])w.eval(sourceOf(name));
+  const gemini=await w.createLensAiSummaryCompanion('Daikoku Drug\nTotal 8000 JPY',{gemini:true});assert.equal(gemini.kind,'gemini-translation');assert.equal(gemini.name,'traduccion-gemini.jpg');assert.ok(drawn.includes('Traducción al español · Gemini'));
+  const saved=w.ticketTranslationPatch(gemini),record=w.ticketTranslationRecordFromExpense({...saved,id:1});assert.equal(record.kind,'gemini-translation');
+  const preview=w.$('#g-ticket-translation-preview');w.fillTicketTranslationPreview(preview,record);assert.equal(preview.querySelector('button').dataset.companionLabel,'Traducción Gemini');
+  const legacy=w.ticketTranslationRecordFromExpense({...saved,id:2,ticketTranslationKind:'ai-summary'});assert.equal(legacy.kind,'gemini-translation');assert.equal(w.ticketTranslationPatch(legacy).ticketTranslationKind,'gemini-translation');
+  const lens=await w.createLensAiSummaryCompanion('Texto de Lens');assert.equal(lens.kind,'ai-summary');assert.equal(w.ticketTranslationRecordFromExpense(w.ticketTranslationPatch(lens)).kind,'ai-summary');w.fillTicketTranslationPreview(preview,lens);assert.equal(preview.querySelector('button').dataset.companionLabel,'Resumen Lens IA');
+  assert.equal(w.normalizeTicketCompanionKind('ai-summary',true,'foto-gemini-usuario.jpg'),'ai-summary');
  }finally{w.close();}
 });

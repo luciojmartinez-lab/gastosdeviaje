@@ -1479,6 +1479,15 @@ input[type="checkbox"] {
   width: min(420px, calc(100vw - 40px));
 }
 
+.expense-ai-applied {
+  padding: 10px 12px;
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #0f3d66;
+  overflow-wrap: anywhere;
+}
+
 #ticket-total-choice-dialog .actions {
   align-items: stretch;
   flex-direction: column;

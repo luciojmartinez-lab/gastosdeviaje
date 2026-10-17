@@ -194,7 +194,7 @@ test('el texto pegado desde Lens IA se conserva como resumen visual en español'
   assert.match(app, /async function createLensAiSummaryCompanion\(text, options = \{\}\)/);
   assert.match(app, /Resumen en español de Lens IA/);
   assert.match(app, /no es una fotografía traducida/);
-  assert.match(app, /kind: 'ai-summary'/);
+  assert.match(app, /kind: options\.gemini \? 'gemini-translation' : 'ai-summary'/);
   assert.match(app, /pendingExpenseTicketTranslations\[prefix\] = await createLensAiSummaryCompanion\(sourceText\)/);
   assert.match(app, /La respuesta de Lens IA se muestra en español junto al ticket original/);
   assert.match(help, /resumen visual en español/);

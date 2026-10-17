@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v019';
+const APP_VERSION = '800v020';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -71,6 +71,7 @@ const DIALOG_HELP_TARGETS = {
   'offline-entry-dialog': 'offline',
   'add-gasto-dialog': 'gasto-formulario',
   'edit-gasto-dialog': 'gasto-formulario',
+  'expense-ai-error-dialog': 'traducir-ticket',
   'image-datetime-dialog': 'gasto-formulario',
   'ticket-total-choice-dialog': 'ocr',
   'lens-mode-dialog': 'traducir-ticket',
@@ -1088,7 +1089,7 @@ function expenseTicketImageRecord(gasto) {
 
 function expenseTicketTranslationRecord(gasto) {
   if (!gasto?.ticketTranslationData) return null;
-  const kind = normalizeTicketCompanionKind(gasto.ticketTranslationKind, true);
+  const kind = normalizeTicketCompanionKind(gasto.ticketTranslationKind, true, gasto.ticketTranslationName);
   return {
     ...normalizeStoredImageRecord({
       id: `expense-ticket-${gasto.id || ''}-translation`,
@@ -2926,7 +2927,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v019');
+    const worker = new Worker('./timeline-import-worker.js?v=800v020');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3934,7 +3935,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v019');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v020');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4068,8 +4069,10 @@ function renderSelectedExpenseTicketPreview(prefix) {
   renderExpenseTicketTranslation(prefix);
 }
 
-function normalizeTicketCompanionKind(kind, hasData = false) {
+function normalizeTicketCompanionKind(kind, hasData = false, name = '') {
   if (!hasData) return '';
+  // Versions 017–019 gave Gemini images the Lens kind, but a distinct generated name.
+  if (kind === 'ai-summary' && name === 'traduccion-gemini.jpg') return 'gemini-translation';
   if (kind === 'gemini-translation' || kind === 'secondary-ticket' || kind === 'ai-summary') return kind;
   return 'translation';
 }
@@ -4091,7 +4094,7 @@ function ticketTranslationPatch(record = null) {
     ticketTranslationHeight: Math.max(0, Number(record?.height) || 0),
     ticketTranslationText: String(record?.text || ''),
     ticketTranslationSourceLanguages: Array.isArray(record?.sourceLanguages) ? record.sourceLanguages.map(String) : [],
-    ticketTranslationKind: normalizeTicketCompanionKind(record?.kind, Boolean(record?.data))
+    ticketTranslationKind: normalizeTicketCompanionKind(record?.kind, Boolean(record?.data), record?.name)
   };
 }
 
@@ -4103,7 +4106,7 @@ function ticketTranslationRecordFromExpense(gasto) {
     sourceLanguages: Array.isArray(gasto.ticketTranslationSourceLanguages)
       ? gasto.ticketTranslationSourceLanguages.map(String)
       : [],
-    kind: normalizeTicketCompanionKind(gasto.ticketTranslationKind, true)
+    kind: normalizeTicketCompanionKind(gasto.ticketTranslationKind, true, gasto.ticketTranslationName)
   } : null;
 }
 
@@ -4839,7 +4842,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v019');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v020');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4975,7 +4978,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v019');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v020');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5287,7 +5290,7 @@ async function createLensAiSummaryCompanion(text, options = {}) {
     height,
     text: sourceText,
     sourceLanguages: TICKET_OCR_BASE_LANGUAGES.slice(),
-    kind: 'ai-summary'
+    kind: options.gemini ? 'gemini-translation' : 'ai-summary'
   };
 }
 
@@ -5529,7 +5532,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v019');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v020');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6127,7 +6130,7 @@ function renderExpenseFilesDialog(gasto) {
     items.push(`<li><span class="trip-document-info"><strong>Ticket principal</strong><span>${escapeHtml(gasto.ticketName || 'Ticket')} · ${escapeHtml(ticketTypeLabel || 'Sin clasificar')}</span></span><button type="button" class="ghost" data-open-ticket="${gasto.id}">Abrir</button></li>`);
   }
   if (gasto.ticketTranslationData) {
-    const companionLabel = ticketCompanionLabel(gasto.ticketTranslationKind, true);
+    const companionLabel = ticketCompanionLabel(normalizeTicketCompanionKind(gasto.ticketTranslationKind, true, gasto.ticketTranslationName), true);
     items.push(`<li><span class="trip-document-info"><strong>${companionLabel}</strong><span>${escapeHtml(gasto.ticketTranslationName || companionLabel)}</span></span><button type="button" class="ghost" data-open-ticket-translation="${gasto.id}">Abrir</button></li>`);
   }
   expenseExtraImages(gasto).forEach((image, index) => {
@@ -7637,7 +7640,7 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     ticketTranslationHeight: Math.max(0, Number(ticketTranslationHeight) || 0),
     ticketTranslationText: String(ticketTranslationText || ''),
     ticketTranslationSourceLanguages: Array.isArray(ticketTranslationSourceLanguages) ? ticketTranslationSourceLanguages.map(String) : [],
-    ticketTranslationKind: normalizeTicketCompanionKind(ticketTranslationKind, Boolean(ticketTranslationData)),
+    ticketTranslationKind: normalizeTicketCompanionKind(ticketTranslationKind, Boolean(ticketTranslationData), ticketTranslationName),
     extraImages: storedExtraImages,
     createdAt: now,
     updatedAt: now
@@ -7677,7 +7680,7 @@ async function updateGasto(id, patch) {
   next.ticketTranslationHeight = Math.max(0, Number(next.ticketTranslationHeight) || 0);
   next.ticketTranslationText = String(next.ticketTranslationText || '');
   next.ticketTranslationSourceLanguages = Array.isArray(next.ticketTranslationSourceLanguages) ? next.ticketTranslationSourceLanguages.map(String) : [];
-  next.ticketTranslationKind = normalizeTicketCompanionKind(next.ticketTranslationKind, Boolean(next.ticketTranslationData));
+  next.ticketTranslationKind = normalizeTicketCompanionKind(next.ticketTranslationKind, Boolean(next.ticketTranslationData), next.ticketTranslationName);
   next.paisId = next.paisId ? Number(next.paisId) : null;
   next.ciudadId = next.ciudadId ? Number(next.ciudadId) : null;
   next.hora = normalizeExpenseTime(next.hora) || expenseTimeValue(current) || currentLocalTime();
@@ -14493,7 +14496,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v019');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v020');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15796,9 +15799,10 @@ function syncSharedTicketAction() {
   }
   const companionExists = Boolean(target?.companionExists);
   const label = action === 'secondary' ? 'segundo ticket' : 'traducción';
-  const existingLabel = gasto?.ticketTranslationKind === 'secondary-ticket'
+  const existingKind = normalizeTicketCompanionKind(gasto?.ticketTranslationKind, true, gasto?.ticketTranslationName);
+  const existingLabel = existingKind === 'secondary-ticket'
     ? 'un segundo ticket'
-    : gasto?.ticketTranslationKind === 'ai-summary' ? 'un resumen de Lens IA' : 'una traducción';
+    : existingKind === 'ai-summary' ? 'un resumen de Lens IA' : existingKind === 'gemini-translation' ? 'una traducción de Gemini' : 'una traducción';
   note.textContent = companionExists
     ? `Ya existe ${existingLabel}. Esta imagen la reemplazará como ${label} cuando guardes.`
     : `La imagen se colocará junto al ticket principal como ${label}.`;
@@ -18405,6 +18409,7 @@ async function applyExpenseAIProposal(prefix,result,saveTranslation,stillCurrent
   const {merchant,total,currency}=result.fields;
   const selectedCurrency=$(`#${prefix}-moneda`)?.value;
   const account=state.cuentas.find(account=>Number(account.id)===Number($(`#${prefix}-cuenta`)?.value));
+  if(total!==null&&!account)throw new Error('Selecciona la cuenta que usarás para este gasto antes de aplicar el total. La propuesta se conserva; no necesitas volver a leer el ticket.');
   if(total!==null&&(currency!==selectedCurrency||(account&&account.moneda!==currency)))throw new Error(`El total está en ${currency}. Selecciona una cuenta y una moneda ${currency} antes de aplicarlo; no se ha cambiado el importe.`);
   let companion;
   if(saveTranslation&&result.spanishText){
@@ -18413,7 +18418,7 @@ async function applyExpenseAIProposal(prefix,result,saveTranslation,stillCurrent
     companion.sourceLanguages=[result.sourceLanguage];
   }
   if(!stillCurrent())throw new Error('El ticket ha cambiado. Vuelve a leerlo con Gemini.');
-  if(total!==null&&($(`#${prefix}-moneda`)?.value!==currency||(state.cuentas.find(account=>Number(account.id)===Number($(`#${prefix}-cuenta`)?.value))?.moneda||currency)!==currency))throw new Error('La moneda ha cambiado. Revisa la cuenta antes de aplicar el total.');
+  if(total!==null&&($(`#${prefix}-moneda`)?.value!==currency||state.cuentas.find(account=>Number(account.id)===Number($(`#${prefix}-cuenta`)?.value))?.moneda!==currency))throw new Error('La cuenta o la moneda han cambiado. Revisa la cuenta antes de aplicar el total.');
   if(merchant)$(`#${prefix}-desc`).value=merchant;
   if(total!==null)$(`#${prefix}-importe`).value=total.toFixed(2);
   pendingTicketOcr[prefix]=null;
@@ -18430,7 +18435,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v019')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v020')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -18438,7 +18443,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v019')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense'},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v020')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense'},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -18470,11 +18475,11 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      const ocr = await import('./ticket-ocr.js?v=800v019');
+      const ocr = await import('./ticket-ocr.js?v=800v020');
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => {let code='';try{code=localStorage.getItem('cuaderno.receiptAccess.v1')||'';}catch{}return (await import('./receipt-ai.js?v=800v019')).getReceiptAIStatus(fetch,code);},
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v019')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => {let code='';try{code=localStorage.getItem('cuaderno.receiptAccess.v1')||'';}catch{}return (await import('./receipt-ai.js?v=800v020')).getReceiptAIStatus(fetch,code);},
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v020')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -20338,7 +20343,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v019');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v020');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
