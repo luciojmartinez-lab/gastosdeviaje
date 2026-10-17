@@ -19,7 +19,11 @@ export function receiptUsageText({limits,usage}={}) {
 export function normalizeExpenseReceipt(value) {
   if(!value||typeof value!=='object'||!value.uncertain||typeof value.sourceLanguage!=='string')throw new Error('Google no ha devuelto una lectura válida.');
   const clean=(text,max)=>typeof text==='string'?text.trim().slice(0,max):'';
-  const merchant=value.uncertain.merchant===false?clean(value.merchant,160).replace(/[\r\n\t]+/g,' '):'';
+  const merchantOriginal=value.uncertain.merchant===false?clean(value.merchant,160).replace(/[\r\n\t]+/g,' '):'';
+  // A readable brand is useful only when both the original and its rendering are clear.
+  // Older responses have no merchantReadable and continue to use the original name.
+  const merchantReadable=merchantOriginal&&value.uncertain.merchantReadable===false?clean(value.merchantReadable,160).replace(/[\r\n\t]+/g,' '):'';
+  const merchant=merchantReadable||merchantOriginal;
   const currency=value.uncertain.currency===false&&/^[A-Z]{3}$/.test(value.currency||'')?value.currency:null;
   const raw=typeof value.total==='string'&&/^\d{1,12}(?:\.\d{1,2})?$/.test(value.total)?value.total:null;
   const total=value.uncertain.total===false&&currency&&raw&&Number(raw)>0?Number(raw):null;
@@ -29,7 +33,7 @@ export function normalizeExpenseReceipt(value) {
   const warnings=Array.isArray(value.warnings)?value.warnings.slice(0,12).map(text=>clean(text,250)).filter(Boolean):[];
   if(String(value.spanishText||'').length>16000||String(value.originalText||'').length>16000)warnings.push('El texto es demasiado largo y se muestra solo una parte. Conserva y revisa la foto original.');
   if(foreign&&!spanishText)warnings.push('No se pudo completar la traducción al español. Se conservan las traducciones anteriores.');
-  return {fields:{merchant,total,currency},sourceLanguage,originalText,spanishText,warnings,provider:'google'};
+  return {fields:{merchant,total,currency},merchantOriginal,sourceLanguage,originalText,spanishText,warnings,provider:'google'};
 }
 
 export function normalizeReceiptProposal(value, {photoCount=1} = {}) {

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {JSDOM} from 'jsdom';
+import {normalizeExpenseReceipt} from '../receipt-ai.js';
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8'),source=fs.readFileSync(new URL('../expense-receipt-ai.js',import.meta.url),'utf8'),app=fs.readFileSync(new URL('../app.bundle.js',import.meta.url),'utf8');
 const sourceOf=name=>app.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`))[0];
 const result={fields:{merchant:'Sakura',total:1850,currency:'JPY'},sourceLanguage:'en',originalText:'TOTAL JPY 1850',spanishText:'TOTAL JPY 1850',warnings:[]};
@@ -55,6 +56,18 @@ test('propuesta Gemini de gasto requiere consentimiento y revisión, recuerda el
   ui.setSource('data:other');assert.equal(ui.$('g-ticket-ai-consent').checked,false);assert.equal(ui.$('g-ticket-ai-proposal').innerHTML,'');
  }finally{ui.close();}
 });
+test('emisor japonés en alta y edición: muestra nombre legible y original, y aplica el legible tras revisión',async()=>{
+ const proposal=normalizeExpenseReceipt({merchant:'ダイコクドラッグ',merchantReadable:'Daikoku Drug',total:'8000',currency:'JPY',sourceLanguage:'ja',originalText:'ダイコクドラッグ',spanishText:'Daikoku Drug',uncertain:{merchant:false,merchantReadable:false,total:false,currency:false},warnings:[]});
+ const ui=await setup({read:async()=>proposal});try{
+  for(const prefix of ['g','edit-gasto']){
+   ui.$(prefix+'-ticket-ai-code').value='test';ui.$(prefix+'-ticket-ai-consent').checked=true;ui.click(prefix+'-ticket-ai-read');await ui.wait(()=>!!ui.$(prefix+'-ticket-ai-apply'));
+   const text=ui.$(prefix+'-ticket-ai-proposal').querySelector('p').textContent;
+   assert.match(text,/Emisor: Daikoku Drug/);assert.match(text,/Nombre original: ダイコクドラッグ/);assert.match(text,/Total: 8000 JPY/);
+   const before=ui.applied();ui.click(prefix+'-ticket-ai-apply');await ui.wait(()=>ui.applied()===before+1);assert.equal(ui.state.args[1].fields.merchant,'Daikoku Drug');assert.equal(ui.state.args[1].merchantOriginal,'ダイコクドラッグ');
+  }
+ }finally{ui.close();}
+});
+
 test('saturación y cambio de ticket no aplican campos ni disparan otro lector',async()=>{
  const ui=await setup({read:async()=>{throw new Error('Google saturado');}});try{
   ui.$('g-ticket-ai-code').value='test';ui.$('g-ticket-ai-consent').checked=true;ui.click('g-ticket-ai-read');await ui.wait(()=>ui.$('g-ticket-ai-status').textContent.includes('saturado'));assert.equal(ui.reads(),1);assert.equal(ui.applied(),0);assert.equal(ui.$('g-ticket-ai-read').disabled,false);

@@ -50,6 +50,20 @@ test('IA: conserva cantidades e importes de línea, total y revisión obligatori
 });
 
 const foreignReceipt={merchant:'Sakura Restaurant',currency:'JPY',total:'1850',sourceLanguage:'en',originalText:'TOTAL JPY 1850',spanishText:'TOTAL JPY 1850',uncertain:{merchant:false,total:false,currency:false},warnings:[]};
+const japaneseReceipt={...foreignReceipt,merchant:'ダイコクドラッグ',merchantReadable:'Daikoku Drug',sourceLanguage:'ja',total:'8000',originalText:'ダイコクドラッグ 合計 ¥8,000',spanishText:'Daikoku Drug Total 8000 JPY',uncertain:{...foreignReceipt.uncertain,merchantReadable:false}};
+test('emisor extranjero: aplica el nombre legible y conserva la marca original, sin inventar ante dudas',async()=>{
+ const proposal=normalizeExpenseReceipt(japaneseReceipt);
+ assert.equal(proposal.fields.merchant,'Daikoku Drug');assert.equal(proposal.merchantOriginal,'ダイコクドラッグ');assert.equal(proposal.fields.total,8000);assert.equal(proposal.fields.currency,'JPY');
+ for(const variant of [{merchantReadable:null},{merchantReadable:''},{uncertain:{...japaneseReceipt.uncertain,merchantReadable:true}},{uncertain:{...foreignReceipt.uncertain}}]){
+  assert.equal(normalizeExpenseReceipt({...japaneseReceipt,...variant}).fields.merchant,'ダイコクドラッグ');
+ }
+ const unclear=normalizeExpenseReceipt({...japaneseReceipt,uncertain:{...japaneseReceipt.uncertain,merchant:true}});assert.equal(unclear.fields.merchant,'');assert.equal(unclear.merchantOriginal,'');
+ const legacy=normalizeExpenseReceipt(foreignReceipt);assert.equal(legacy.fields.merchant,'Sakura Restaurant');assert.equal(legacy.merchantOriginal,'Sakura Restaurant');
+ const h=harness({receipt:japaneseReceipt});
+ const result=await readReceiptWithAI({ticketData:image},{consent:true,accessCode:'test-access-code',mode:'expense'},()=>{},(url,init)=>h.handler(new Request('https://test.netlify.app'+url,init)));
+ assert.equal(result.fields.merchant,'Daikoku Drug');assert.equal(result.merchantOriginal,'ダイコクドラッグ');assert.equal(h.inferences().length,1);
+ const prompt=JSON.parse(h.inferences()[0].init.body).systemInstruction.parts[0].text;assert.match(prompt,/transliteración fiel/);assert.match(prompt,/merchantReadable/);assert.match(prompt,/No sustituyas una marca/);
+});
 test('gastos Gemini: solo emisor y total con moneda original, traducción aparte, sin fecha ni categorías',()=>{
  const result=normalizeExpenseReceipt({...foreignReceipt,date:'2026-01-01',category:'Comidas',items:[{name:'No contabilizar'}]});
  assert.deepEqual(result.fields,{merchant:'Sakura Restaurant',total:1850,currency:'JPY'});assert.equal(result.spanishText,'TOTAL JPY 1850');assert.equal(result.fields.date,undefined);
