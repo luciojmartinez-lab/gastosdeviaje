@@ -26,6 +26,55 @@ async function setup(options={}){
  return {dom,w,db,state,drafts,$,input,click,waitFor,load,ocrCalls:()=>ocrCalls,close:()=>{db.close();w.close();}};
 }
 async function prepare(ui){ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket').innerHTML.includes('ticket.jpg')||ui.$('#group-meal-ticket').innerHTML.includes('data:image'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===13);ui.input('#group-meal-payer','p0');ui.input('#group-meal-account','1');for(let i=0;i<12;i++)ui.input('#group-meal-items fieldset:nth-child('+(i+1)+') [data-item-diner="p'+i+'"]',true);}
+
+async function seedPayments(ui){
+ const group=ui.w.TravelGroup.normalize(ui.state.viajes[0].group);
+ group.integrate=false;group.participants=group.participants.slice(0,3);group.participants[2].active=false;
+ const meal=(id,payerId,amounts)=>({id,name:id,date:'2026-10-17',status:'closed',currency:'EUR',payerId,attendees:['p0','p1','p2'],totalCents:amounts.reduce((a,b)=>a+b,0),items:amounts.map((amountCents,i)=>({id:id+i,name:'Plato '+i,quantity:1,amountCents,shares:{['p'+i]:1}}))});
+ group.meals=[meal('comida1','p0',[2000,3001,1000]),meal('comida2','p1',[1001,2000,1002]),{...meal('borrador','p0',[9000,9000,9000]),status:'draft'}];
+ group.settlements=[{id:'s1',mealId:'comida1',fromId:'p1',toId:'p0',amountCents:1000,date:'2026-10-17'}, {id:'s2',mealId:'comida2',fromId:'p0',toId:'p1',amountCents:500,date:'2026-10-17'}, {id:'s3',mealId:'comida1',fromId:'p2',toId:'p0',amountCents:500,date:'2026-10-17',voided:true,voidReason:'Registro erróneo'}];
+ await ui.w.TravelGroupStore.save(ui.db,1,0,group);await ui.load();ui.w.TravelGroupUI.render();
+}
+
+test('totales por comida y grupo: céntimos, varios pagadores, archivados, borradores y devoluciones anuladas',async()=>{
+ const ui=await setup();try{
+  await seedPayments(ui);
+  const cells=selector=>Array.from(ui.$(selector).children).map(cell=>cell.textContent.replace(/\s/g,' '));
+  assert.deepEqual(cells('#group-meals article:has([data-group-collect="comida1"]) tfoot tr'),['Total','60,01 €','30,00 €','30,01 €']);
+  assert.deepEqual(cells('#group-meals article:has([data-group-collect="comida2"]) tfoot tr'),['Total','40,03 €','25,00 €','15,03 €']);
+  assert.equal(ui.$('#group-meals article:has([data-group-edit="borrador"]) tfoot'),null);
+  const totals=cells('#group-balances tfoot tr');
+  assert.deepEqual(totals.slice(0,5),['Total','100,04 €','100,04 €','15,00 €','15,00 €']);
+  assert.match(totals[5],/^0,00 €/);assert.match(totals[5],/25,00 € a recuperar/);assert.match(totals[5],/25,00 € a pagar/);
+  ui.w.prompt=()=> 'Corrección de prueba';ui.click('[data-group-void="s1"]');
+  await ui.waitFor(()=>ui.state.viajes[0].group.settlements.find(s=>s.id==='s1').voided);
+  assert.deepEqual(cells('#group-meals article:has([data-group-collect="comida1"]) tfoot tr'),['Total','60,01 €','20,00 €','40,01 €']);
+  assert.match(ui.$('#group-balances tfoot').textContent,/35,00\s€ a recuperar/);
+ }finally{ui.close();}
+});
+
+test('devolución rellena el pendiente de la comida elegida y permite importes parciales editados',async()=>{
+ const ui=await setup();try{
+  await seedPayments(ui);
+  ui.click('[data-group-collect="comida1"]');assert.equal(ui.$('#group-payment-amount').value,'');
+  ui.input('#group-payment-from','p1');assert.equal(ui.$('#group-payment-amount').value,'20.01');
+  ui.input('#group-payment-amount','2');assert.equal(ui.$('#group-payment-amount').value,'2');
+  ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));
+  await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);
+  assert.equal(ui.state.viajes[0].group.settlements.at(-1).amountCents,200);
+  ui.click('[data-group-collect="comida1"]');ui.input('#group-payment-from','p1');assert.equal(ui.$('#group-payment-amount').value,'18.01');
+  ui.input('#group-payment-from','p2');assert.equal(ui.$('#group-payment-amount').value,'10.00');
+  ui.input('#group-payment-from','');assert.equal(ui.$('#group-payment-amount').value,'');
+  ui.input('#group-payment-from','p1');
+  ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));
+  await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);
+  assert.equal(ui.state.viajes[0].group.settlements.at(-1).amountCents,1801);
+  ui.click('[data-group-collect="comida1"]');assert.equal(ui.$('#group-payment-from option[value="p1"]'),null);ui.click('#group-payment-close');
+  ui.click('[data-group-collect="comida2"]');assert.equal(ui.$('#group-payment-amount').value,'');
+  ui.input('#group-payment-from','p0');assert.equal(ui.$('#group-payment-amount').value,'5.01');
+  ui.input('#group-payment-from','p2');assert.equal(ui.$('#group-payment-amount').value,'10.02');
+ }finally{ui.close();}
+});
 test('interfaz: foto/OCR propuesto, revisión obligatoria, cierre de doce y cobro parcial',async()=>{const ui=await setup();try{await prepare(ui);assert.equal(ui.ocrCalls(),1);assert.match(ui.$('#group-meal-check').textContent,/Todo cuadra/);ui.click('#group-close-meal');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('Confirma'));assert.equal(ui.state.gastos.length,0);ui.input('#group-meal-reviewed',true);ui.click('#group-close-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);assert.equal(ui.state.gastos.length,1);assert.equal(ui.state.gastos[0].importe,25);assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,200);assert.equal(ui.state.viajes[0].group.meals[0].ticketData,'data:image/jpeg;base64,dGVzdA==');ui.click('[data-group-collect]');ui.input('#group-payment-from','p1');ui.input('#group-payment-amount','26');ui.input('#group-payment-account','1');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>ui.$('#group-payment-message').textContent.includes('supera'));assert.equal(ui.state.transferencias.length,1);ui.input('#group-payment-amount','10');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,210);assert.equal(ui.state.cuentas.find(c=>c.groupClearing).saldoActual,265);assert.equal(ui.state.gastos.length,1);ui.click('[data-group-archive="p11"]');await ui.waitFor(()=>ui.state.viajes[0].group.participants.find(p=>p.id==='p11').active===false);assert.equal(ui.state.viajes[0].group.meals[0].attendees.length,12);}finally{ui.close();}});
 test('interfaz: retirar un asistente no borra su consumo y deja visible el error',async()=>{const ui=await setup();try{await prepare(ui);ui.input('[data-group-attendee="p11"]',false);assert.match(ui.$('#group-meal-check').textContent,/ausente/);assert.ok(ui.$('[data-item-person="p11"]'));ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);assert.equal(ui.state.viajes[0].group.meals[0].status,'draft');assert.equal(ui.state.gastos.length,0);}finally{ui.close();}});
 

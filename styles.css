@@ -5909,6 +5909,8 @@ footer {
 .group-item { padding: 14px; margin: 8px 0; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
 .group-meal-card { border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 14px; }
 .group-meal-card h3 { margin-top: 0; }
+#group-meals tfoot, #group-balances tfoot { background: #f1f5fb; border-top: 2px solid var(--line); }
+.group-balance-totals { display: block; margin-top: 6px; white-space: nowrap; font-weight: 400; }
 .group-ticket { display: block; max-width: 100%; max-height: 65vh; object-fit: contain; }
 .group-ticket-photos { display: grid; gap: 12px; }
 .group-ticket-card { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
