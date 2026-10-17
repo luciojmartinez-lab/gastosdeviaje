@@ -5929,6 +5929,9 @@ footer {
 [id$="-ticket-ai-usage"], #group-ai-usage { white-space: pre-wrap; }
 .expense-ai-panel .error { color: #b91c1c; }
 .expense-ai-panel .group-code-field button { flex-basis: 84px; }
+.expense-ai-progress progress { width: 100%; }
+.expense-ai-progress span { display: block; font-variant-numeric: tabular-nums; }
+.expense-ai-progress[hidden] { display: none; }
 #view-grupo details > summary, .group-dialog details > summary { padding: 12px 0; cursor: pointer; font-weight: 600; }
 #group-meal-totals ul { columns: 2; }
 #group-message, #group-meal-message, #group-payment-message, #group-meal-check { white-space: pre-wrap; }

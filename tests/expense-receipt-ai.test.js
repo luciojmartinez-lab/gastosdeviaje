@@ -5,6 +5,37 @@ import {JSDOM} from 'jsdom';
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8'),source=fs.readFileSync(new URL('../expense-receipt-ai.js',import.meta.url),'utf8'),app=fs.readFileSync(new URL('../app.bundle.js',import.meta.url),'utf8');
 const sourceOf=name=>app.match(new RegExp(`(?:async )?function ${name}\\([^]*?\\n\\}`))[0];
 const result={fields:{merchant:'Sakura',total:1850,currency:'JPY'},sourceLanguage:'en',originalText:'TOTAL JPY 1850',spanishText:'TOTAL JPY 1850',warnings:[]};
+
+test('arranque de la app conecta Gemini, comparte el código de Grupo y sincroniza la foto y el progreso',async()=>{
+ const dom=new JSDOM(html,{url:'https://test.local',runScripts:'outside-only'}),w=dom.window;
+ try{
+  const code='CODIGO-COMPARTIDO-DE-GRUPO';w.localStorage.setItem('cuaderno.receiptAccess.v1',code);
+  w.$=selector=>w.document.querySelector(selector);w.pendingExpenseTicketTranslations={};
+  const sources={};w.ticketOcrSource=prefix=>sources[prefix]||null;w.syncLensPasteAvailability=()=>{};
+  w.eval(source);let finish,receivedCode,mounted=0;
+  const mount=w.ExpenseReceiptAIUI.mount;
+  w.ExpenseReceiptAIUI.mount=config=>{mounted++;mount({...config,status:async()=>({usageText:'Uso consultado'}),prepare:async()=>({data:'prepared'}),read:async(photo,access,report)=>{receivedCode=access;report({status:'Comprobando gratuidad y leyendo…'});return new Promise(resolve=>{finish=resolve;});}});};
+  for(const name of ['rootExpenseAIBusy','syncTicketOcrAvailability','bindExpenseAIEvents'])w.eval(sourceOf(name));
+  w.bindGroupEvents=()=>{};w.bindPreparationEvents=()=>{};
+  // Execute the real startup block, stopping before unrelated navigation wiring.
+  const start=app.indexOf('function bindEvents() {'),end=app.indexOf("  $('#tab-viajes')",start);
+  w.eval(app.slice(start,end)+'}');w.bindEvents();assert.equal(mounted,1);
+  for(const prefix of ['g','edit-gasto']){
+   assert.equal(w.$('#'+prefix+'-ticket-ai-code').value,code);assert.equal(w.$('#'+prefix+'-ticket-ai-access').hidden,true);
+   assert.equal(w.$('#'+prefix+'-ticket-ai-read').disabled,true);
+   w.$('#'+prefix+'-ticket-ai-change-code').click();w.$('#'+prefix+'-ticket-ai-eye').click();assert.equal(w.$('#'+prefix+'-ticket-ai-code').type,'text');
+   w.$('#'+prefix+'-ticket-ai-eye').click();assert.equal(w.$('#'+prefix+'-ticket-ai-code').type,'password');
+  }
+  sources.g={source:'data:photo'};w.syncTicketOcrAvailability('g');assert.equal(w.$('#g-ticket-ai-read').disabled,false);
+  w.$('#add-gasto-dialog').setAttribute('open','');w.$('#g-ticket-ai-consent').checked=true;w.$('#g-ticket-ai-read').click();
+  for(let i=0;i<100&&!finish;i++)await new Promise(resolve=>setTimeout(resolve,5));assert.ok(finish);assert.equal(receivedCode,code);
+  assert.equal(w.$('#g-ticket-ai-progress-wrap').hidden,false);assert.equal(w.$('#g-ticket-ai-progress').hasAttribute('value'),false);
+  await new Promise(resolve=>setTimeout(resolve,1050));assert.match(w.$('#g-ticket-ai-counter').textContent,/1 s/);
+  finish(result);for(let i=0;i<100&&!w.$('#g-ticket-ai-apply');i++)await new Promise(resolve=>setTimeout(resolve,5));assert.ok(w.$('#g-ticket-ai-apply'));
+  assert.equal(w.$('#g-ticket-ai-progress').value,1);assert.equal(w.$('#g-ticket-ai-read').disabled,false);
+  sources.g={source:'data:new'};w.syncTicketOcrAvailability('g');assert.equal(w.$('#g-ticket-ai-proposal').innerHTML,'');assert.equal(w.$('#g-ticket-ai-consent').checked,false);
+ }finally{w.close();}
+});
 async function setup(options={}){
  const dom=new JSDOM(html,{url:'https://test.local',runScripts:'outside-only'}),w=dom.window;w.eval(source);
  let sourceValue='data:image/jpeg;base64,original',reads=0,applied=0,last;

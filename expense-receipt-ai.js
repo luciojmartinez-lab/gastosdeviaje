@@ -2,6 +2,12 @@
   'use strict';
   let host;const state={};const $=id=>document.getElementById(id);
   const key='cuaderno.receiptAccess.v1';
+  function progress(prefix,running,started=Date.now(),succeeded=true){
+    const wrap=$(prefix+'-ticket-ai-progress-wrap'),bar=$(prefix+'-ticket-ai-progress'),counter=$(prefix+'-ticket-ai-counter');
+    wrap.hidden=false;
+    if(running)bar.removeAttribute('value');else bar.value=succeeded?1:0;
+    counter.textContent=`${running?'Lectura en curso':succeeded?'Lectura completada':'Lectura interrumpida'} · ${Math.floor((Date.now()-started)/1000)} s`;
+  }
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const message=(prefix,text,error=false)=>{const el=$(prefix+'-ticket-ai-status');el.textContent=text;el.classList.toggle('error',error);};
   function restore(prefix){let saved='';try{saved=root.localStorage.getItem(key)||'';}catch{}$(prefix+'-ticket-ai-code').value=saved;$(prefix+'-ticket-ai-access').hidden=!!saved;$(prefix+'-ticket-ai-code').type='password';$(prefix+'-ticket-ai-eye').textContent='Mostrar';$(prefix+'-ticket-ai-eye').setAttribute('aria-pressed','false');}
@@ -19,6 +25,8 @@
     const code=$(prefix+'-ticket-ai-code').value.trim();if(!code){$(prefix+'-ticket-ai-access').hidden=false;throw new Error('Introduce el código de acceso que usas en Grupo.');}
     value.busy=true;value.proposal=null;$(prefix+'-ticket-ai-proposal').innerHTML='';host.sync(prefix);sync(prefix);
     const sequence=++value.sequence,source=host.source(prefix)?.source,context=host.context(prefix);
+    const started=Date.now();progress(prefix,true,started);$(prefix+'-ticket-ai-read').textContent='Leyendo con Gemini…';
+    const timer=root.setInterval(()=>progress(prefix,true,started),500);
     try{
       message(prefix,'Preparando la foto…');
       const photo=await host.prepare(prefix);
@@ -32,7 +40,7 @@
       $(prefix+'-ticket-ai-proposal').innerHTML=`<p><strong>Emisor:</strong> ${esc(fields.merchant||'No legible')}<br><strong>Total:</strong> ${esc(total)}</p>${result.spanishText?`<details open><summary>Traducción al español</summary><pre>${esc(result.spanishText)}</pre></details><label class="check-option"><input type="checkbox" id="${prefix}-ticket-ai-save-translation"${previous?'':' checked'}> ${previous?'Sustituir la traducción anterior por esta':'Guardar traducción junto al ticket original'}</label>`:''}${result.originalText?`<details><summary>Texto original</summary><pre>${esc(result.originalText)}</pre></details>`:''}<button type="button" class="btn" id="${prefix}-ticket-ai-apply">Aplicar emisor y total</button>`;
       $(prefix+'-ticket-ai-apply').onclick=safe(prefix,()=>apply(prefix));
       message(prefix,'Propuesta preparada. Revisa emisor, total y moneda antes de aplicarla.'+(result.warnings.length?' '+result.warnings.join(' '):''));
-    }finally{value.busy=false;host.sync(prefix);sync(prefix);status(prefix).catch(()=>{});}
+    }finally{root.clearInterval(timer);progress(prefix,false,started,!!value.proposal);$(prefix+'-ticket-ai-read').textContent='Leer con Gemini gratis';value.busy=false;host.sync(prefix);sync(prefix);status(prefix).catch(()=>{});}
   }
   async function apply(prefix){
     const value=state[prefix],result=value.proposal;
