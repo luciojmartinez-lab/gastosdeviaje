@@ -108,7 +108,7 @@
       const payments=closed?api().mealPayments(group,meal):[];
       return `<article class="group-meal-card"><h3>${esc(meal.name||'Comida sin nombre')} <span class="badge">${closed?'Cerrada':'Borrador'}</span></h3><p>${esc(meal.date)}${meal.time?' · '+esc(meal.time):''} · ${meal.attendees.length} asistentes · ${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Total por revisar'}${closed?` · Pagó ${esc(name(group,meal.payerId))}`:''}</p><div class="actions"><button class="btn ghost" type="button" data-group-edit="${esc(meal.id)}">${closed?'Revisar / corregir':'Continuar'}</button>${closed?`<button class="btn ghost" type="button" data-group-share="${esc(meal.id)}">Compartir resumen</button><button class="btn ghost" type="button" data-group-receipt="${esc(meal.id)}">Justificante individual</button><button class="btn ghost" type="button" data-group-collect="${esc(meal.id)}">Registrar devolución</button>`:`<button class="ghost" type="button" data-group-delete="${esc(meal.id)}">Eliminar borrador</button>`}</div>${closed?`<div class="table-wrap"><table><thead><tr><th>Asistente</th><th>Consumo</th><th>Devuelto / cubierto</th><th>Pendiente</th></tr></thead><tbody>${payments.map(row=>`<tr><td>${esc(name(group,row.id))}</td><td>${api().money(row.due)}</td><td>${api().money(row.paid)}</td><td>${api().money(row.remaining)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['due','paid','remaining'].map(key=>`<td>${api().money(sum(payments,key))}</td>`).join('')}</tr></tfoot></table></div>`:''}${group.settlements.filter(payment=>payment.mealId===meal.id).map(payment=>`<p class="group-payment">${esc(payment.date||'')} · ${esc(name(group,payment.fromId))} → ${esc(name(group,payment.toId))}: ${api().money(payment.amountCents)} ${payment.voided?`<strong>Anulada: ${esc(payment.voidReason)}</strong>`:`<span class="group-payment-actions"><button type="button" class="ghost" data-group-payment-edit="${esc(payment.id)}" aria-label="Editar devolución de ${esc(name(group,payment.fromId))}">Editar</button><button type="button" class="ghost" data-group-void="${esc(payment.id)}">Anular registro</button></span>`}</p>`).join('')}</article>`;
     }).join('')||'<p class="small">Todavía no hay comidas. Añade viajeros y pulsa Nueva comida.</p>';
-    $('#group-new-meal').disabled=group.participants.filter(person=>person.active).length===0;
+    $('#group-new-meal').disabled=saving;
   }
   function stash(force = false) {
     if(!editor)return;
@@ -168,6 +168,13 @@
   async function openMeal(id,resume=false) {
     const selectedTrip=trip();if(!selectedTrip)return;
     const group=current();
+    if(!id&&!resume&&!group.participants.some(person=>person.active)){
+      $('#group-people-needed-message').textContent=group.participants.length
+        ? 'No hay viajeros activos en este grupo. Añade gente en «Viajeros» o vuelve a activar a algún viajero para registrar una comida.'
+        : 'Todavía no has creado ningún grupo para este viaje. Añade gente en «Viajeros» para crearlo y poder registrar una comida.';
+      if(!$('#group-people-needed-dialog').open)$('#group-people-needed-dialog').showModal();
+      return;
+    }
     if(resume){const draft=await host.readDraft(selectedTrip.id);if(!draft)throw new Error('No hay un borrador local en este viaje.');editor=draft;editor.group=group;if(editor.revision!==group.revision)message('El grupo ha cambiado: revisa el borrador antes de aplicarlo.',true);}
     else {
       const original=group.meals.find(meal=>meal.id===id);
@@ -277,6 +284,11 @@
     $('#group-add-people').onclick=safe(async()=>{const group=current();const names=$('#group-people').value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean);if(!names.length)throw new Error('Escribe al menos un nombre.');const known=new Set(group.participants.map(person=>person.name.toLocaleLowerCase('es')));for(const value of names){if(known.has(value.toLocaleLowerCase('es')))throw new Error(`Nombre repetido: ${value}. Añade un apellido para distinguirlo.`);known.add(value.toLocaleLowerCase('es'));group.participants.push({id:uid(),name:value,active:true});}group.enabled=true;await commit(group);$('#group-people').value='';message(`${names.length} viajeros añadidos.`);});
     $('#group-rebase').onclick=safe(async()=>{if(!editor)return;await host.refresh();const fresh=host.getState().viajes.find(trip=>Number(trip.id)===Number(editor.tripId));if(!fresh)throw new Error('El viaje ya no existe.');editor.group=api().normalize(fresh.group);editor.revision=editor.group.revision;mountMeal();message('Borrador conservado sobre la versión actual. Comprueba de nuevo asistentes, pagador, conceptos y devoluciones antes de guardar.',false,'#group-meal-message');stash();},'#group-meal-message');
     $('#group-new-meal').onclick=safe(()=>openMeal());$('#group-resume').onclick=safe(()=>openMeal(null,true));
+    $('#group-people-needed-close').onclick=()=>$('#group-people-needed-dialog').close();
+    $('#group-people-needed-dialog').onclose=()=>{
+      const field=$('#group-people');field.closest('details').open=true;
+      field.focus({preventScroll:true});field.scrollIntoView?.({block:'center',behavior:'instant'});
+    };
     $('#group-close-editor').onclick=safe(async()=>{if(reading)throw new Error('Espera a que termine la lectura.');stash(true);await cacheTail;$('#group-meal-dialog').close();editor=null;},'#group-meal-message');
     $('#group-meal-dialog').oncancel=event=>{event.preventDefault();$('#group-close-editor').click();};
     $('#group-save-draft').onclick=safe(()=>saveMeal(false),'#group-meal-message');$('#group-close-meal').onclick=safe(()=>saveMeal(true),'#group-meal-message');

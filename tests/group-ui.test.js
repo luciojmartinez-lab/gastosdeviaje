@@ -8,7 +8,7 @@ const sources=['receipt-access.js','group-meals.js','group-ledger.js','group-sto
 async function setup(options={}){
  const dom=new JSDOM(html,{url:'http://localhost.test/',runScripts:'outside-only'}),w=dom.window;
  if(options.rememberedCode)w.localStorage.setItem('cuaderno.receiptAccess.v1',options.rememberedCode);
- w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};w.confirm=()=>true;
+ w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new w.Event('close'));};w.confirm=()=>true;
  for(const source of sources)w.eval(source);
  const factory=new IDBFactory();const stores=['viajes','cuentas','gastos','transferencias','categorias'];
  const db=await new Promise((resolve,reject)=>{const req=factory.open('ui',1);req.onupgradeneeded=()=>stores.forEach(name=>req.result.createObjectStore(name,{keyPath:'id',autoIncrement:true}));req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
@@ -26,6 +26,29 @@ async function setup(options={}){
  return {dom,w,db,state,drafts,$,input,click,waitFor,load,ocrCalls:()=>ocrCalls,close:()=>{db.close();w.close();}};
 }
 async function prepare(ui){ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket').innerHTML.includes('ticket.jpg')||ui.$('#group-meal-ticket').innerHTML.includes('data:image'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===13);ui.input('#group-meal-payer','p0');ui.input('#group-meal-account','1');for(let i=0;i<12;i++)ui.input('#group-meal-items fieldset:nth-child('+(i+1)+') [data-item-diner="p'+i+'"]',true);}
+
+test('Nueva comida sin viajeros avisa en un modal, no crea borrador y lleva a añadir gente',async()=>{
+ const ui=await setup();try{
+  ui.$('#view-grupo').style.display='';
+  Object.assign(ui.state.viajes[0].group,{enabled:false,participants:[],selfId:'',integrate:false});ui.w.TravelGroupUI.render();
+  const before=JSON.stringify(ui.state),draft={meal:{name:'Borrador anterior'}};ui.drafts.set(1,draft);
+  assert.equal(ui.$('#group-new-meal').disabled,false);ui.click('#group-new-meal');
+  assert.equal(ui.$('#group-people-needed-dialog').open,true);assert.match(ui.$('#group-people-needed-message').textContent,/no has creado ningún grupo.*Añade gente/);
+  assert.equal(ui.$('#group-meal-dialog').open,false);assert.equal(JSON.stringify(ui.state),before);assert.equal(ui.drafts.get(1),draft);
+  ui.click('#group-people-needed-close');assert.equal(ui.$('#group-people-needed-dialog').open,false);assert.equal(ui.$('#group-people').closest('details').open,true);assert.equal(ui.w.document.activeElement,ui.$('#group-people'));
+  ui.input('#group-people','Ana');ui.click('#group-add-people');await ui.waitFor(()=>ui.state.viajes[0].group.participants.length===1);
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);assert.equal(ui.$('#group-people-needed-dialog').open,false);
+ }finally{ui.close();}
+});
+
+test('un grupo con todos archivados pide añadir o activar viajeros y permite revisar sus comidas anteriores',async()=>{
+ const ui=await setup();try{
+  const group=ui.state.viajes[0].group;group.participants.forEach(person=>person.active=false);
+  group.meals=[{id:'anterior',name:'Comida anterior',date:'2026-10-17',status:'draft',currency:'EUR',attendees:['p0'],payerId:'p0',totalCents:null,items:[]}];
+  ui.w.TravelGroupUI.render();ui.click('#group-new-meal');assert.equal(ui.$('#group-people-needed-dialog').open,true);assert.match(ui.$('#group-people-needed-message').textContent,/No hay viajeros activos.*vuelve a activar/);
+  ui.click('#group-people-needed-close');ui.click('[data-group-edit="anterior"]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);assert.equal(ui.$('#group-meal-name').value,'Comida anterior');
+ }finally{ui.close();}
+});
 
 async function seedPayments(ui){
  const group=ui.w.TravelGroup.normalize(ui.state.viajes[0].group);
