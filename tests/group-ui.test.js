@@ -168,11 +168,11 @@ test('totales por comida y grupo: céntimos, varios pagadores, archivados, borra
   assert.equal(ui.$('#group-meals article:has([data-group-edit="borrador"]) tfoot'),null);
   const totals=cells('#group-balances tfoot tr');
   assert.deepEqual(totals.slice(0,5),['Total','100,04 €','100,04 €','15,00 €','15,00 €']);
-  assert.match(totals[5],/^0,00 €/);assert.match(totals[5],/25,00 € a recuperar/);assert.match(totals[5],/25,00 € a pagar/);
+  assert.equal(totals[5],'Pendiente de liquidar25,00 €');
   ui.w.prompt=()=> 'Corrección de prueba';ui.click('[data-group-void="s1"]');
   await ui.waitFor(()=>ui.state.viajes[0].group.settlements.find(s=>s.id==='s1').voided);
   assert.deepEqual(cells('#group-meals article:has([data-group-collect="comida1"]) tfoot tr'),['Total','60,01 €','20,00 €','40,01 €']);
-  assert.match(ui.$('#group-balances tfoot').textContent,/35,00\s€ a recuperar/);
+  assert.match(ui.$('#group-balances tfoot').textContent,/Pendiente de liquidar35,00\s€/);
  }finally{ui.close();}
 });
 
