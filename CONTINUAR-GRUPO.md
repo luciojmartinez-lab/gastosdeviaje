@@ -172,3 +172,4 @@ Publicación 800v032: main c7d9111 enviado a GitHub y publicado por Git CD. Veri
 
 800v033 (23/10/2026): Resumen del grupo muestra en rojo los saldos individuales negativos y el total a pagar cuando es mayor que cero. El saldo neto del total también admite rojo si fuera negativo; cero y saldos a recuperar mantienen su color. Cambio visual sin modificar importes ni cálculos contables.
 Validación local 800v033: 427/427 pruebas pasan (tmp/tests-800v033.log). Chrome con datos sintéticos confirma saldos -75,30 y -125,30 y total a pagar 200,60 en rgb(185,28,28); saldo a recuperar y neto cero conservan color. Captura tmp/saldos-rojos-800v033.png. Sin cambios de datos reales ni consultas de IA.
+Publicación 800v033: main 771caf4 enviado a GitHub y servido por Netlify. tmp/verify-v033.mjs confirma coincidencia pública de app.bundle.js, group-ui.js, styles.css, sw.js y version.txt, referencias HTML 800v033 y explicación actualizada en ayuda. Servidor local detenido.
