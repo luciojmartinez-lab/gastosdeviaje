@@ -49,6 +49,32 @@
   const today = () => { const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   const amount = value => Number.isSafeInteger(value) ? (value/100).toFixed(2) : '';
   const sum = (rows,key) => rows.reduce((total,row)=>total+row[key],0);
+  function renderExpenseSummary(){
+    const container=$('#expense-group-summary');if(!host||!container)return;
+    const state=host.getState(),scope=host.expenseScope?.()||{tripIds:state.selectedViajeIds||[]};
+    const trips=new Set((scope.tripIds||[]).map(Number)),entries=[];
+    for(const selectedTrip of state.viajes){
+      if(trips.size&&!trips.has(Number(selectedTrip.id)))continue;
+      const group=api().normalize(selectedTrip.group);
+      if(!group.enabled||!group.integrate||!group.selfId)continue;
+      for(const meal of group.meals){
+        if(meal.status!=='closed'||meal.payerId!==group.selfId||(scope.from&&meal.date<scope.from)||(scope.to&&meal.date>scope.to))continue;
+        const own=api().allocation(meal).totals[group.selfId]||0;
+        const receipts=group.settlements.filter(payment=>!payment.voided&&payment.mealId===meal.id&&payment.toId===group.selfId);
+        const recovered=sum(receipts,'amountCents'),pending=meal.totalCents-own-recovered;
+        entries.push({trip:selectedTrip,group,meal,own,receipts,recovered,pending});
+      }
+    }
+    entries.sort((a,b)=>String(b.meal.date).localeCompare(String(a.meal.date))||String(a.meal.name).localeCompare(String(b.meal.name),'es'));
+    container.hidden=!entries.length;
+    $('#expense-group-pending').textContent=api().money(sum(entries,'pending'));
+    $('#expense-group-count').textContent=`Ver comidas (${entries.length})`;
+    $('#expense-group-meals').innerHTML=entries.map(entry=>{
+      const {trip:selectedTrip,group,meal,own,receipts,recovered,pending}=entry;
+      const accountName=id=>state.cuentas.find(account=>Number(account.id)===Number(id))?.nombre||'Cuenta no disponible';
+      return `<article class="expense-group-meal"><div class="section-head"><h3>${esc(meal.name)}</h3><span class="badge">${pending>0?'Pendiente':'Saldada'}</span></div><p class="small">${esc(selectedTrip.nombre)} · ${esc(meal.date.split('-').reverse().join('/'))}${meal.time?' · '+esc(meal.time):''} · Pagaste desde ${esc(accountName(meal.accountId))}</p><dl class="expense-group-amounts"><div><dt>Tu consumo</dt><dd>${api().money(own)}</dd></div><div><dt>Pagaste</dt><dd>${api().money(meal.totalCents)}</dd></div><div><dt>Recuperado</dt><dd>${api().money(recovered)}</dd></div><div class="expense-group-remaining"><dt>Pendiente</dt><dd>${api().money(pending)}</dd></div></dl>${pending>0?`<button type="button" class="btn" data-expense-group-trip="${esc(selectedTrip.id)}" data-expense-group-meal="${esc(meal.id)}" aria-label="Registrar devolución de ${esc(meal.name)}">Registrar devolución</button>`:''}${receipts.length?`<details class="expense-group-receipts"><summary>Cobros recibidos (${receipts.length})</summary><ul>${receipts.map(payment=>`<li><span>${esc(name(group,payment.fromId))} · ${esc(payment.date.split('-').reverse().join('/'))}<small>${esc(accountName(payment.accountId))}</small></span><strong>${api().money(payment.amountCents)}</strong></li>`).join('')}</ul></details>`:''}</article>`;
+    }).join('');
+  }
   function paymentRows(meal) {
     // Editing replaces this payment; exclude its previous amount from the pending calculation.
     return api().mealPayments({...paymentGroup,settlements:paymentGroup.settlements.filter(payment=>payment.id!==paymentId)},meal);
@@ -57,8 +83,17 @@
     const meal=paymentGroup?.meals.find(meal=>meal.id===$('#group-payment-meal').value);
     const row=meal && paymentRows(meal).find(row=>row.id===$('#group-payment-from').value);
     $('#group-payment-amount').value=row?.remaining>0?amount(row.remaining):'';
+    paymentAccountState();
   }
-  function openPayment(group,meal,id=null) {
+  function paymentAccountState(){
+    const meal=paymentGroup?.meals.find(meal=>meal.id===$('#group-payment-meal').value);
+    const receiving=!!paymentGroup?.selfId&&meal?.payerId===paymentGroup.selfId;
+    const sending=!!paymentGroup?.selfId&&$('#group-payment-from').value===paymentGroup.selfId;
+    $('#group-payment-account').required=!!(paymentGroup?.integrate&&(receiving||sending));
+    $('#group-payment-account-label').textContent=receiving?'Cuenta donde recibes el dinero':sending?'Cuenta desde la que devuelves':'Cuenta real (si yo envío o recibo)';
+    $('#group-payment-account-help').textContent=receiving?'Si recibes efectivo, elige tu cuenta Efectivo. Si recibes un Bizum, elige la cuenta bancaria donde llega. Puedes registrar varios cobros de la misma persona, cada uno en una cuenta distinta.':'';
+  }
+  function openPayment(group,meal,id=null,selectedTrip=trip()) {
     const payment=id && group.settlements.find(payment=>payment.id===id&&!payment.voided&&payment.mealId===meal.id);
     if(id&&!payment)throw new Error('Esta devolución ya no se puede editar.');
     paymentGroup=JSON.parse(JSON.stringify(group));paymentId=payment?.id||null;
@@ -66,10 +101,12 @@
     $('#group-payment-save').textContent=payment?'Guardar cambios':'Guardar devolución';
     $('#group-payment-message').textContent='';$('#group-payment-meal').value=meal.id;
     $('#group-payment-from').innerHTML=options(paymentRows(meal).filter(row=>row.remaining>0).map(row=>({id:row.id,name:`${name(group,row.id)} · ${payment?'máximo':'pendiente'} ${api().money(row.remaining)}`})),payment?.fromId||'','Quién devuelve');
-    $('#group-payment-account').innerHTML=options(accounts(trip().id),payment?.accountId||'','Cuenta real si te afecta');
+    $('#group-payment-account').innerHTML=options(accounts(selectedTrip.id),payment?.accountId||'','Elige una cuenta');
     $('#group-payment-date').value=payment?.date||today();$('#group-payment-amount').value=payment?amount(payment.amountCents):'';
     $('#group-payment-to').textContent=`Recibe: ${name(group,meal.payerId)}`;
-    $('#group-payment-dialog').dataset.revision=group.revision;$('#group-payment-dialog').dataset.tripId=trip().id;
+    $('#group-payment-context').textContent=`${meal.name} · ${selectedTrip.nombre}`;
+    $('#group-payment-dialog').dataset.revision=group.revision;$('#group-payment-dialog').dataset.tripId=selectedTrip.id;
+    paymentAccountState();
     $('#group-payment-dialog').showModal();
   }
   const trip = () => host.getState().viajes.find(value => Number(value.id) === Number($('#group-trip').value));
@@ -92,6 +129,7 @@
   }
   function render() {
     if(!host || !$('#group-trip')) return;
+    renderExpenseSummary();
     const state=host.getState(), selected=state.selectedViajeIds?.length===1?String(state.selectedViajeIds[0]):'';
     $('#group-trip').innerHTML=options(state.viajes,selected,'Elige un viaje');
     const selectedTrip=trip(),group=current();
@@ -379,6 +417,13 @@
       if(button.dataset.groupPaymentEdit){const payment=group.settlements.find(payment=>payment.id===button.dataset.groupPaymentEdit);const meal=group.meals.find(meal=>meal.id===payment?.mealId);if(!meal)throw new Error('La comida ya no existe.');return openPayment(group,meal,payment.id);}
       if(button.dataset.groupCollect){const meal=group.meals.find(meal=>meal.id===button.dataset.groupCollect);return openPayment(group,meal);}
     });
+    $('#expense-group-meals').onclick=safe(event=>{
+      const button=event.target.closest('[data-expense-group-meal]');if(!button)return;
+      const selectedTrip=host.getState().viajes.find(value=>Number(value.id)===Number(button.dataset.expenseGroupTrip));
+      const group=api().normalize(selectedTrip?.group),meal=group.meals.find(value=>value.id===button.dataset.expenseGroupMeal&&value.status==='closed');
+      if(!selectedTrip||!group.enabled||!group.integrate||!meal||meal.payerId!==group.selfId)throw new Error('Esta comida ha cambiado. Revisa su grupo antes de registrar una devolución.');
+      return openPayment(group,meal,null,selectedTrip);
+    },'#expense-group-message');
     $('#group-payment-from').onchange=paymentAmount;
     $('#group-receipt-person').onchange=safe(renderReceipt,'#group-receipt-message');
     $('#group-receipt-close').onclick=()=>$('#group-receipt-dialog').close();
@@ -399,5 +444,5 @@
     },'#group-payment-message');
     render();
   }
-  root.TravelGroupUI={mount,render};
+  root.TravelGroupUI={mount,render,renderExpenseSummary};
 })(globalThis);
