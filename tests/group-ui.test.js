@@ -93,6 +93,35 @@ test('las comidas empiezan plegadas y conservan su apertura al actualizar el gru
  }finally{ui.close();}
 });
 
+test('la tabla de comidas muestra fechas, total y pendiente de cada pagador sin contar borradores ni cobros anulados',async()=>{
+ const ui=await setup();try{
+  await seedPayments(ui);
+  const group=ui.state.viajes[0].group;
+  group.meals[0].name='Cena <Catalinos>';group.meals[0].date='2026-10-18';
+  group.meals[1].date='2026-10-16';group.meals[2].date='2026-10-17';
+  const before=JSON.stringify(ui.state);ui.w.TravelGroupUI.render();
+  const row=id=>ui.$(`[data-group-meal-row="${id}"]`),text=element=>element.textContent.replace(/\s/g,' ');
+  assert.deepEqual(Array.from(ui.$('.group-meals-table > thead tr').children).map(text),['Fecha','Descripción','Importe']);
+  assert.deepEqual(Array.from(ui.w.document.querySelectorAll('[data-group-meal-row]')).map(element=>element.dataset.groupMealRow),['comida1','borrador','comida2']);
+  assert.equal(row('comida1').querySelector('time').textContent,'18/10/2026');assert.equal(row('comida1').querySelector('time').dateTime,'2026-10-18');
+  assert.match(row('comida1').textContent,/Cena <Catalinos>/);assert.equal(row('comida1').querySelector('catalinos'),null);
+  assert.equal(text(row('comida1').querySelector('.expense-own-amount')),'60,01 €');assert.equal(text(row('comida1').querySelector('.expense-pending')),'30,01 €Pendiente');
+  assert.equal(text(row('comida2').querySelector('.expense-pending')),'15,03 €Pendiente');
+  assert.match(row('borrador').textContent,/Borrador/);assert.equal(row('borrador').querySelector('.expense-pending'),null);
+  const totals=()=>ui.$('.group-meals-table > tfoot');
+  assert.equal(text(totals().querySelector('.expense-own-amount')),'100,04 €');assert.equal(text(totals().querySelector('.expense-pending')),'45,04 €Pendiente');
+  assert.equal(JSON.stringify(ui.state),before);
+  ui.$('#view-grupo').style.display='block';ui.click('[data-group-toggle="comida1"]');assert.equal(ui.w.document.activeElement,ui.$('[data-group-toggle="comida1"]'),ui.$('#group-message').textContent);
+  const panel=ui.w.document.getElementById(ui.$('[data-group-toggle="comida1"]').getAttribute('aria-controls'));assert.equal(panel.hidden,false);
+  // Complete the first meal: the listing must remove its red pending and keep the other payer's debt.
+  const updated=ui.w.TravelGroup.normalize(group);
+  updated.settlements.push({id:'completar1',mealId:'comida1',fromId:'p1',toId:'p0',amountCents:2001,date:'2026-10-18'},{id:'completar2',mealId:'comida1',fromId:'p2',toId:'p0',amountCents:1000,date:'2026-10-18'});
+  await ui.w.TravelGroupStore.save(ui.db,1,updated.revision,updated);await ui.load();ui.w.TravelGroupUI.render();
+  assert.equal(row('comida1').querySelector('.expense-pending'),null);assert.equal(text(totals().querySelector('.expense-pending')),'15,03 €Pendiente');
+  assert.equal(ui.$('[data-group-toggle="comida1"]').getAttribute('aria-expanded'),'true');
+ }finally{ui.close();}
+});
+
 test('desde un gasto se abre directamente la comida del viaje correcto aunque haya varios viajes seleccionados',async()=>{
  const ui=await setup();try{
   await seedExpenseAdvance(ui);const group=ui.w.TravelGroup.normalize(ui.state.viajes[0].group);group.revision=0;group.meals[0].accountId=10;group.meals[0].name='Otra comida';
