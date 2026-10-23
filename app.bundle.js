@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v030';
+const APP_VERSION = '800v031';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2929,7 +2929,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v030');
+    const worker = new Worker('./timeline-import-worker.js?v=800v031');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3281,6 +3281,7 @@ function accountKey(account) {
 
 function accountMatrixFor(account, accounts = state.cuentas) {
   if (!account) return null;
+  if(account.groupClearing)return account;
   if (!account.viajeId) return account;
   const accountName = normalizePlaceName(account.nombre);
   if (!accountName) return account;
@@ -3312,6 +3313,7 @@ function summaryAccountRows(accounts, gastos, aggregateByMatrix = false) {
         label: aggregateByMatrix ? matrix.nombre : accountLabel(account),
         chartLabel: accountChartLabel(matrix || account),
         moneda: currency,
+        groupClearing:account.groupClearing===true,
         totalEur: 0,
         saldoEur: 0
       });
@@ -3937,7 +3939,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v030');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v031');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4860,7 +4862,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v030');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v031');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4996,7 +4998,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v030');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v031');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5550,7 +5552,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v030');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v031');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -8606,7 +8608,7 @@ function renderCuentas() {
     const tripAccounts = state.cuentas.filter(c => Number(c.viajeId) === selectedTripId);
     const usedAccounts = state.cuentas.filter(c => usedAccountIds.has(Number(c.id)));
     const accounts = [...usedAccounts, ...tripAccounts.filter(c => !usedAccountIds.has(Number(c.id)))];
-    const totalSaldoEur = accounts.reduce((sum, c) => sum + toEur(c.saldoActual, c.moneda), 0);
+    const totalSaldoEur = accounts.filter(c=>!c.groupClearing).reduce((sum, c) => sum + toEur(c.saldoActual, c.moneda), 0);
     if (!accounts.length) {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td colspan="6">No hay cuentas ni gastos asociados a ${escapeHtml(trip ? trip.nombre : 'este viaje')}.</td>`;
@@ -8624,12 +8626,12 @@ function renderCuentas() {
         ? ` <button class="ghost" data-migrate-cuenta="${c.id}" data-migrate-viaje="${selectedTripId}">Pasar a viaje</button>`
         : '';
       const tripCell = isTripAccount ? escapeHtml(trip ? trip.nombre : 'Viaje') : `${escapeHtml(trip ? trip.nombre : 'Viaje')} <span class="badge">Global usada</span>`;
-      tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td>${tripCell}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${c.balanceUnknown ? 'Saldo pendiente de revisar' : fmtCurrencyWithEur(saldo, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button>${migrate}</td>`;
+      tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td>${tripCell}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${c.balanceUnknown ? 'Saldo pendiente de revisar' : c.groupClearing ? groupAccountBalanceMarkup(saldo,c.moneda) : fmtCurrencyWithEur(saldo, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button>${migrate}</td>`;
       tbody.appendChild(tr);
     });
     const tr = document.createElement('tr');
     tr.className = 'subtotal-row';
-    tr.innerHTML = `<td>Total cuentas</td><td>-</td><td>${escapeHtml(trip ? trip.nombre : 'Viaje')}</td><td><span class="badge">EUR</span></td><td>${accounts.some(c => c.balanceUnknown) ? 'Saldo pendiente de revisar' : fmtCurrency(totalSaldoEur, 'EUR')}</td><td>-</td>`;
+    tr.innerHTML = `<td>Total disponible</td><td>-</td><td>${escapeHtml(trip ? trip.nombre : 'Viaje')}</td><td><span class="badge">EUR</span></td><td>${accounts.some(c => !c.groupClearing&&c.balanceUnknown) ? 'Saldo pendiente de revisar' : fmtCurrency(totalSaldoEur, 'EUR')}</td><td>-</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -8640,7 +8642,7 @@ function renderCuentas() {
     tr.dataset.editableType = 'cuenta';
     tr.dataset.editableId = String(c.id);
     if (numberValue(c.saldoActual) < 0) tr.className = 'warning-row';
-    tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td>${tripLabel}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${c.balanceUnknown ? 'Saldo pendiente de revisar' : fmtCurrencyWithEur(c.saldoActual, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
+    tr.innerHTML = `<td>${escapeHtml(c.nombre)}</td><td>${escapeHtml(accountTypeLabel(c, true))}</td><td>${tripLabel}</td><td><span class="badge">${escapeHtml(c.moneda)}</span></td><td>${c.balanceUnknown ? 'Saldo pendiente de revisar' : c.groupClearing ? groupAccountBalanceMarkup(c.saldoActual,c.moneda) : fmtCurrencyWithEur(c.saldoActual, c.moneda)}</td><td><button class="ghost" data-edit-cuenta="${c.id}">Editar</button> <button class="ghost" data-del-cuenta="${c.id}">Eliminar</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -8820,6 +8822,37 @@ function renderLugares() {
   }).join('');
 }
 
+function groupExpenseDetails(gasto) {
+  if(gasto.groupTripId==null||!String(gasto.groupSource||'').startsWith('meal:'))return null;
+  const trip=state.viajes.find(value=>Number(value.id)===Number(gasto.groupTripId));
+  const group=TravelGroup.normalize(trip?.group),meal=group.meals.find(value=>'meal:'+value.id===gasto.groupSource&&value.status==='closed');
+  return group.enabled&&group.integrate&&meal?{trip,group,meal,...TravelGroup.advanceDetails(group,meal)}:null;
+}
+
+function expenseDisplayRows() {
+  const rows=state.gastos.slice();
+  for(const trip of state.viajes){
+    const group=TravelGroup.normalize(trip.group);if(!group.enabled||!group.integrate||!group.selfId)continue;
+    for(const meal of group.meals){
+      if(meal.status!=='closed'||meal.payerId!==group.selfId)continue;
+      const info=TravelGroup.advanceDetails(group,meal);
+      if(info.own||!info.pending||rows.some(row=>Number(row.groupTripId)===Number(trip.id)&&row.groupSource==='meal:'+meal.id))continue;
+      const account=state.cuentas.find(value=>value.groupClearing&&Number(value.viajeId)===Number(trip.id));if(!account)continue;
+      const category=state.categorias.find(value=>!value.parentId&&/comid|aliment|restaur/i.test(value.nombre));
+      rows.push({id:'group-only:'+trip.id+':'+meal.id,virtualGroupExpense:true,groupTripId:trip.id,groupSource:'meal:'+meal.id,viajeId:trip.id,cuentaId:account.id,fecha:meal.date,hora:meal.time||'00:00',moneda:'EUR',importe:0,catId:category?.id,desc:meal.name+' · adelanto de la comida del grupo'});
+    }
+  }
+  return rows;
+}
+
+function expensePendingMarkup(cents) {
+  return cents>0?`<span class="expense-pending" title="Pendiente de recuperar del grupo">${fmtCurrency(cents/100,'EUR')}<small>pendiente</small></span>`:'';
+}
+
+function groupAccountBalanceMarkup(saldo,moneda) {
+  return saldo?`<span class="expense-pending">${fmtCurrency(Math.abs(saldo),moneda)}<small>${saldo>0?'por recuperar':'por pagar'} · no disponible</small></span>`:'<span class="small">Sin pendiente</span>';
+}
+
 function filteredGastos() {
   const fMon = $('#f-moneda').value;
   const fCta = $('#f-cuenta').value;
@@ -8830,7 +8863,7 @@ function filteredGastos() {
   const fDesde = $('#f-desde').value;
   const fHasta = $('#f-hasta').value;
   const fDesc = ($('#f-desc').value || '').trim().toLowerCase();
-  return state.gastos
+  return expenseDisplayRows()
     .filter(g => !fMon || g.moneda === fMon)
     .filter(g => !fCta || g.cuentaId === Number(fCta))
     .filter(g => !fCat || g.catId === Number(fCat))
@@ -8917,6 +8950,7 @@ function renderGastosTabla() {
   syncOpenExpenseGroups(groupKeys);
   const tableView = ($('#f-view') ? $('#f-view').value : 'table') === 'table';
   let totalEur = 0;
+  let totalPendingCents=0;
   const totalCurrencies = {};
   groupKeys.forEach(key => {
     const [date] = key.split('|');
@@ -8936,12 +8970,15 @@ function renderGastosTabla() {
       : `<td colspan="10"><b>${title}</b></td>`;
     tbody.appendChild(header);
     let subtotalEur = 0;
+    let subtotalPendingCents=0;
     const subtotalCurrencies = {};
     byGroup[key].sort(compareExpensesChronologically).forEach(g => {
       const cat = state.categorias.find(c => c.id === g.catId);
       const sub = state.categorias.find(c => c.id === g.subcatId);
       const cta = state.cuentas.find(c => c.id === g.cuentaId);
       const eur = toEur(g.importe, g.moneda);
+      const pendingCents=groupExpenseDetails(g)?.pending||0;
+      subtotalPendingCents+=pendingCents;totalPendingCents+=pendingCents;
       subtotalEur += eur;
       totalEur += eur;
       addCurrencyTotal(subtotalCurrencies, g.moneda, g.importe);
@@ -8961,20 +8998,19 @@ function renderGastosTabla() {
       const attachmentIndicator = attachmentCount
         ? `<button type="button" class="expense-attachment-indicator" data-expense-files="${g.id}" title="${attachmentCount} archivo(s) adjunto(s)" aria-label="Ver ${attachmentCount} archivo(s) adjunto(s)">📎 ${attachmentCount}</button>`
         : '';
-      tr.innerHTML = `<td data-label="Hora">${escapeHtml(expenseTimeValue(g) || '-')}</td><td data-label="Ciudad">${escapeHtml(gastoCiudadLabel(g))}</td><td data-label="Categoría">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe">${fmtCurrency(g.importe, g.moneda)}</td><td data-label="EUR">${g.moneda === 'EUR' ? '' : fmtCurrency(eur, 'EUR')}</td><td class="expense-description-cell" data-label="Descripción"><span>${escapeHtml(g.desc || '')}</span>${attachmentIndicator}</td><td class="action-col" data-label="Acciones"><select class="expense-action-select" data-gasto-action="${g.id}" aria-label="Acciones del gasto"><option value="">Acciones</option>${filesOption}${blogOption}<option value="edit">Editar</option><option value="dup">Duplicar</option><option value="del">Eliminar</option></select></td>`;
+      tr.innerHTML = `<td data-label="Hora">${escapeHtml(expenseTimeValue(g) || '-')}</td><td data-label="Ciudad">${escapeHtml(gastoCiudadLabel(g))}</td><td data-label="Categoría">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe"><span class="expense-own-amount">${fmtCurrency(g.importe, g.moneda)}</span>${expensePendingMarkup(pendingCents)}</td><td data-label="EUR">${g.moneda === 'EUR' ? '' : fmtCurrency(eur, 'EUR')}</td><td class="expense-description-cell" data-label="Descripción"><span>${escapeHtml(g.desc || '')}</span>${attachmentIndicator}</td><td class="action-col" data-label="Acciones"><select class="expense-action-select" data-gasto-action="${escapeHtml(g.id)}" aria-label="Acciones del gasto"><option value="">Acciones</option>${g.virtualGroupExpense?'':filesOption+blogOption}<option value="edit">${g.groupTripId!=null?'Ver comida':'Editar'}</option>${g.virtualGroupExpense?'':'<option value="dup">Duplicar</option><option value="del">Eliminar</option>'}</select></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
     subtotal.className = 'subtotal-row';
     subtotal.dataset.expenseGroupEntry = key;
     subtotal.hidden = !isOpen;
-    subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td class="original-currency-totals">${formatForeignCurrencyTotals(subtotalCurrencies)}</td><td>${fmtCurrency(subtotalEur, 'EUR')}</td><td colspan="2"></td>`;
+    subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td class="original-currency-totals">${formatForeignCurrencyTotals(subtotalCurrencies)}</td><td><span class="expense-own-amount">${fmtCurrency(subtotalEur, 'EUR')}</span>${expensePendingMarkup(subtotalPendingCents)}</td><td colspan="2"></td>`;
     tbody.appendChild(subtotal);
   });
   const totalOriginal = $('#tg-original');
   if (totalOriginal) totalOriginal.innerHTML = formatForeignCurrencyTotals(totalCurrencies);
-  $('#tg-total').textContent = fmtCurrency(totalEur, 'EUR');
-  if(typeof TravelGroupUI!=='undefined')TravelGroupUI.renderExpenseSummary();
+  $('#tg-total').innerHTML = `<span class="expense-own-amount">${fmtCurrency(totalEur,'EUR')}</span>${expensePendingMarkup(totalPendingCents)}${totalPendingCents>0?`<span class="expense-with-pending">${fmtCurrency((Math.round(totalEur*100)+totalPendingCents)/100,'EUR')}<small>gastado + pendiente</small></span>`:''}`;
 }
 
 function drawPieChart(container, data) {
@@ -13603,16 +13639,18 @@ function renderResumen() {
   const aggregateByMatrix = !cta && selectedAccountTripIds.size !== 1;
   const accountRows = summaryAccountRows(accounts, gastos, aggregateByMatrix);
   drawBarChart($('#chart-cuenta'), accountRows.map(row => ({ label: row.chartLabel, value: row.totalEur })));
-  const accountBalanceEur = accountRows.reduce((sum, row) => sum + numberValue(row.saldoEur), 0);
+  const availableAccountRows=accountRows.filter(row=>!row.groupClearing);
+  const accountBalanceEur = availableAccountRows.reduce((sum, row) => sum + numberValue(row.saldoEur), 0);
   const accountSpentCurrencies = accountRows.reduce((totals, row) => addCurrencyTotal(totals, row.moneda, row.total), {});
-  const accountBalanceCurrencies = accountRows.reduce((totals, row) => addCurrencyTotal(totals, row.moneda, row.saldo), {});
+  const accountBalanceCurrencies = availableAccountRows.reduce((totals, row) => addCurrencyTotal(totals, row.moneda, row.saldo), {});
   const accountHtml = accountRows.map(row => {
     const expensePct = percentageOfTotal(row.totalEur, totalEur);
     const balancePct = percentageOfTotal(row.saldoEur, accountBalanceEur);
-    return `<tr><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="% gastos">${expensePct.toFixed(1)}%</td><td data-label="Saldo">${fmtCurrency(row.saldo, row.moneda)}</td><td data-label="% saldo">${balancePct.toFixed(1)}%</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td></tr>`;
+    return `<tr><td data-label="Cuenta"><span class="account-label-full">${escapeHtml(row.label)}</span><span class="account-label-mobile">${escapeHtml(row.chartLabel)}</span></td><td data-label="Moneda">${escapeHtml(row.moneda)}</td><td data-label="Gastado">${fmtCurrency(row.total, row.moneda)}</td><td data-label="% gastos">${expensePct.toFixed(1)}%</td><td data-label="Saldo">${row.groupClearing?groupAccountBalanceMarkup(row.saldo,row.moneda):fmtCurrency(row.saldo, row.moneda)}</td><td data-label="% saldo">${row.groupClearing?'—':balancePct.toFixed(1)+'%'}</td><td data-label="EUR">${row.moneda === 'EUR' ? '' : fmtCurrency(row.totalEur, 'EUR')}</td></tr>`;
   });
-  accountHtml.push(`<tr class="subtotal-row${isOverTripBudget ? ' over-budget-row' : ''}"><td data-label="Cuenta"><span class="account-label-full">Total cuentas</span><span class="account-label-mobile">Total</span></td><td data-label="Moneda">EUR + divisas</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}<span class="original-currency-totals">${formatForeignCurrencyTotals(accountSpentCurrencies, '')}</span></td><td data-label="% gastos">${totalEur ? '100%' : '0%'}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}<span class="original-currency-totals">${formatForeignCurrencyTotals(accountBalanceCurrencies, '')}</span></td><td data-label="% saldo">${accountBalanceEur ? '100%' : '0%'}</td><td data-label="EUR"></td></tr>`);
+  accountHtml.push(`<tr class="subtotal-row${isOverTripBudget ? ' over-budget-row' : ''}"><td data-label="Cuenta"><span class="account-label-full">Total cuentas</span><span class="account-label-mobile">Total</span></td><td data-label="Moneda">EUR + divisas</td><td data-label="Gastado">${fmtCurrency(totalEur, 'EUR')}<span class="original-currency-totals">${formatForeignCurrencyTotals(accountSpentCurrencies, '')}</span></td><td data-label="% gastos">${totalEur ? '100%' : '0%'}</td><td data-label="Saldo">${fmtCurrency(accountBalanceEur, 'EUR')}${accountRows.some(row=>row.groupClearing)?'<small class="balance-available-note">Disponible</small>':''}<span class="original-currency-totals">${formatForeignCurrencyTotals(accountBalanceCurrencies, '')}</span></td><td data-label="% saldo">${accountBalanceEur ? '100%' : '0%'}</td><td data-label="EUR"></td></tr>`);
   $('#tabla-cuenta tbody').innerHTML = accountHtml.join('');
+  $('#account-balance-note').hidden=!accountRows.some(row=>row.groupClearing);
   if (state.activeTab === 'mapa' || tripMapState.printMode) renderTripMap();
   renderTripComparison();
   renderSummaryDocuments();
@@ -14515,7 +14553,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v030');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v031');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15504,7 +15542,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v030').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v031').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -17211,7 +17249,7 @@ function applySelectedTrip(id) {
 }
 
 function openEditGasto(gasto) {
-  if (gasto?.groupTripId != null) { alert('Revisa o corrige esta comida desde Grupo → Comidas.'); setTab('grupo'); return; }
+  if (gasto?.groupTripId != null) { return TravelGroupUI.openMealForTrip(gasto.groupTripId,String(gasto.groupSource||'').replace(/^meal:/,'')); }
   const dialog = $('#edit-gasto-dialog');
   if (!dialog || !gasto) return;
   activeEditExpenseActionAnchor = captureExpenseActionAnchor(gasto.id);
@@ -18368,8 +18406,9 @@ async function resetDataPrompt() {
 }
 
 async function handleGastoAction(id, action) {
-  const gasto = state.gastos.find(item => item.id === Number(id));
+  const gasto = expenseDisplayRows().find(item => String(item.id) === String(id));
   if (!gasto) return;
+  if(gasto.virtualGroupExpense&&action!=='edit')return;
   if (action === 'files') {
     openExpenseFilesDialog(gasto.id);
   } else if (action === 'ticket') {
@@ -18378,7 +18417,7 @@ async function handleGastoAction(id, action) {
     const expenseActionAnchor = captureExpenseActionAnchor(gasto.id);
     await addExpenseToBlog(gasto, { expenseActionAnchor });
   } else if (action === 'edit') {
-    openEditGasto(gasto);
+    await openEditGasto(gasto);
   } else if (action === 'dup') {
     await addGasto({ ...gasto, id: undefined, desc: `${gasto.desc || ''}`.trim(), fecha: gasto.fecha || todayIso() });
     await loadAll();
@@ -18505,7 +18544,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v030')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v031')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -18513,7 +18552,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v030')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v031')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -18522,7 +18561,7 @@ function bindGroupEvents() {
   $('#tab-grupo').onclick = () => setTab('grupo');
   TravelGroupUI.mount({
     getState: () => state,
-    expenseScope:()=>({tripIds:selectedTripIds(),from:$('#f-desde').value,to:$('#f-hasta').value}),
+    showGroup:()=>setTab('grupo'),
     refresh: () => loadAll(),
     selectTrip: id => applySelectedTrip(id),
     save: async (tripId, revision, group) => {
@@ -18546,12 +18585,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v030');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v031');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v030')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v030')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v031')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v031')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -20453,7 +20492,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v030');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v031');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

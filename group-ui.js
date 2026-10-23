@@ -8,6 +8,7 @@
   const uid = () => crypto.randomUUID();
   const access=root.ReceiptAccess;
   let receiptGroup,receiptMeal,receiptFiles=[],receiptSequence=0;
+  const openMeals=new Set();
   async function renderReceipt(){
     const sequence=++receiptSequence;receiptFiles=[];
     $('#group-receipt-share').disabled=true;$('#group-receipt-download').disabled=true;
@@ -49,32 +50,6 @@
   const today = () => { const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   const amount = value => Number.isSafeInteger(value) ? (value/100).toFixed(2) : '';
   const sum = (rows,key) => rows.reduce((total,row)=>total+row[key],0);
-  function renderExpenseSummary(){
-    const container=$('#expense-group-summary');if(!host||!container)return;
-    const state=host.getState(),scope=host.expenseScope?.()||{tripIds:state.selectedViajeIds||[]};
-    const trips=new Set((scope.tripIds||[]).map(Number)),entries=[];
-    for(const selectedTrip of state.viajes){
-      if(trips.size&&!trips.has(Number(selectedTrip.id)))continue;
-      const group=api().normalize(selectedTrip.group);
-      if(!group.enabled||!group.integrate||!group.selfId)continue;
-      for(const meal of group.meals){
-        if(meal.status!=='closed'||meal.payerId!==group.selfId||(scope.from&&meal.date<scope.from)||(scope.to&&meal.date>scope.to))continue;
-        const own=api().allocation(meal).totals[group.selfId]||0;
-        const receipts=group.settlements.filter(payment=>!payment.voided&&payment.mealId===meal.id&&payment.toId===group.selfId);
-        const recovered=sum(receipts,'amountCents'),pending=meal.totalCents-own-recovered;
-        entries.push({trip:selectedTrip,group,meal,own,receipts,recovered,pending});
-      }
-    }
-    entries.sort((a,b)=>String(b.meal.date).localeCompare(String(a.meal.date))||String(a.meal.name).localeCompare(String(b.meal.name),'es'));
-    container.hidden=!entries.length;
-    $('#expense-group-pending').textContent=api().money(sum(entries,'pending'));
-    $('#expense-group-count').textContent=`Ver comidas (${entries.length})`;
-    $('#expense-group-meals').innerHTML=entries.map(entry=>{
-      const {trip:selectedTrip,group,meal,own,receipts,recovered,pending}=entry;
-      const accountName=id=>state.cuentas.find(account=>Number(account.id)===Number(id))?.nombre||'Cuenta no disponible';
-      return `<article class="expense-group-meal"><div class="section-head"><h3>${esc(meal.name)}</h3><span class="badge">${pending>0?'Pendiente':'Saldada'}</span></div><p class="small">${esc(selectedTrip.nombre)} · ${esc(meal.date.split('-').reverse().join('/'))}${meal.time?' · '+esc(meal.time):''} · Pagaste desde ${esc(accountName(meal.accountId))}</p><dl class="expense-group-amounts"><div><dt>Tu consumo</dt><dd>${api().money(own)}</dd></div><div><dt>Pagaste</dt><dd>${api().money(meal.totalCents)}</dd></div><div><dt>Recuperado</dt><dd>${api().money(recovered)}</dd></div><div class="expense-group-remaining"><dt>Pendiente</dt><dd>${api().money(pending)}</dd></div></dl>${pending>0?`<button type="button" class="btn" data-expense-group-trip="${esc(selectedTrip.id)}" data-expense-group-meal="${esc(meal.id)}" aria-label="Registrar devolución de ${esc(meal.name)}">Registrar devolución</button>`:''}${receipts.length?`<details class="expense-group-receipts"><summary>Cobros recibidos (${receipts.length})</summary><ul>${receipts.map(payment=>`<li><span>${esc(name(group,payment.fromId))} · ${esc(payment.date.split('-').reverse().join('/'))}<small>${esc(accountName(payment.accountId))}</small></span><strong>${api().money(payment.amountCents)}</strong></li>`).join('')}</ul></details>`:''}</article>`;
-    }).join('');
-  }
   function paymentRows(meal) {
     // Editing replaces this payment; exclude its previous amount from the pending calculation.
     return api().mealPayments({...paymentGroup,settlements:paymentGroup.settlements.filter(payment=>payment.id!==paymentId)},meal);
@@ -129,7 +104,6 @@
   }
   function render() {
     if(!host || !$('#group-trip')) return;
-    renderExpenseSummary();
     const state=host.getState(), selected=state.selectedViajeIds?.length===1?String(state.selectedViajeIds[0]):'';
     $('#group-trip').innerHTML=options(state.viajes,selected,'Elige un viaje');
     const selectedTrip=trip(),group=current();
@@ -144,7 +118,8 @@
     $('#group-meals').innerHTML=group.meals.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(meal=>{
       const closed=meal.status==='closed';
       const payments=closed?api().mealPayments(group,meal):[];
-      return `<article class="group-meal-card"><h3>${esc(meal.name||'Comida sin nombre')} <span class="badge">${closed?'Cerrada':'Borrador'}</span></h3><p>${esc(meal.date)}${meal.time?' · '+esc(meal.time):''} · ${meal.attendees.length} asistentes · ${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Total por revisar'}${closed?` · Pagó ${esc(name(group,meal.payerId))}`:''}</p><div class="actions"><button class="btn ghost" type="button" data-group-edit="${esc(meal.id)}">${closed?'Revisar / corregir':'Continuar'}</button>${closed?`<button class="btn ghost" type="button" data-group-share="${esc(meal.id)}">Compartir resumen</button><button class="btn ghost" type="button" data-group-receipt="${esc(meal.id)}">Justificante individual</button><button class="btn ghost" type="button" data-group-collect="${esc(meal.id)}">Registrar devolución</button>`:`<button class="ghost" type="button" data-group-delete="${esc(meal.id)}">Eliminar borrador</button>`}</div>${closed?`<div class="table-wrap"><table><thead><tr><th>Asistente</th><th>Consumo</th><th>Devuelto / cubierto</th><th>Pendiente</th></tr></thead><tbody>${payments.map(row=>`<tr><td>${esc(name(group,row.id))}</td><td>${api().money(row.due)}</td><td>${api().money(row.paid)}</td><td>${api().money(row.remaining)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['due','paid','remaining'].map(key=>`<td>${api().money(sum(payments,key))}</td>`).join('')}</tr></tfoot></table></div>`:''}${group.settlements.filter(payment=>payment.mealId===meal.id).map(payment=>`<p class="group-payment">${esc(payment.date||'')} · ${esc(name(group,payment.fromId))} → ${esc(name(group,payment.toId))}: ${api().money(payment.amountCents)} ${payment.voided?`<strong>Anulada: ${esc(payment.voidReason)}</strong>`:`<span class="group-payment-actions"><button type="button" class="ghost" data-group-payment-edit="${esc(payment.id)}" aria-label="Editar devolución de ${esc(name(group,payment.fromId))}">Editar</button><button type="button" class="ghost" data-group-void="${esc(payment.id)}">Anular registro</button></span>`}</p>`).join('')}</article>`;
+      const expanded=openMeals.has(String(selectedTrip.id)+'|'+meal.id);
+      return `<article class="group-meal-card"><h3><button type="button" class="group-meal-toggle" data-group-toggle="${esc(meal.id)}" aria-expanded="${expanded}"><span aria-hidden="true">${expanded?'−':'+'}</span><span>${esc(meal.name||'Comida sin nombre')}</span><span class="badge">${closed?'Cerrada':'Borrador'}</span></button></h3><div class="group-meal-body"${expanded?'':' hidden'}><p>${esc(meal.date)}${meal.time?' · '+esc(meal.time):''} · ${meal.attendees.length} asistentes · ${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Total por revisar'}${closed?` · Pagó ${esc(name(group,meal.payerId))}`:''}</p><div class="actions"><button class="btn ghost" type="button" data-group-edit="${esc(meal.id)}">${closed?'Revisar / corregir':'Continuar'}</button>${closed?`<button class="btn ghost" type="button" data-group-share="${esc(meal.id)}">Compartir resumen</button><button class="btn ghost" type="button" data-group-receipt="${esc(meal.id)}">Justificante individual</button><button class="btn ghost" type="button" data-group-collect="${esc(meal.id)}">Registrar devolución</button>`:`<button class="ghost" type="button" data-group-delete="${esc(meal.id)}">Eliminar borrador</button>`}</div>${closed?`<div class="table-wrap"><table><thead><tr><th>Asistente</th><th>Consumo</th><th>Devuelto / cubierto</th><th>Pendiente</th></tr></thead><tbody>${payments.map(row=>`<tr><td>${esc(name(group,row.id))}</td><td>${api().money(row.due)}</td><td>${api().money(row.paid)}</td><td>${api().money(row.remaining)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['due','paid','remaining'].map(key=>`<td>${api().money(sum(payments,key))}</td>`).join('')}</tr></tfoot></table></div>`:''}${group.settlements.filter(payment=>payment.mealId===meal.id).map(payment=>`<p class="group-payment">${esc(payment.date||'')} · ${esc(name(group,payment.fromId))} → ${esc(name(group,payment.toId))}: ${api().money(payment.amountCents)} ${payment.voided?`<strong>Anulada: ${esc(payment.voidReason)}</strong>`:`<span class="group-payment-actions"><button type="button" class="ghost" data-group-payment-edit="${esc(payment.id)}" aria-label="Editar devolución de ${esc(name(group,payment.fromId))}">Editar</button><button type="button" class="ghost" data-group-void="${esc(payment.id)}">Anular registro</button></span>`}</p>`).join('')}</div></article>`;
     }).join('')||'<p class="small">Todavía no hay comidas. Añade viajeros y pulsa Nueva comida.</p>';
     $('#group-new-meal').disabled=saving;
   }
@@ -407,6 +382,7 @@
     $('#group-parse-keep').onclick=()=>{$('#group-parse-replace').hidden=true;message('Se conservan los conceptos actuales.',false,'#group-meal-message');showParseFeedback();};
     $('#group-content').onclick=safe(async event=>{
       const button=event.target.closest('button');if(!button)return;const group=current();
+      if(button.dataset.groupToggle){const key=String(trip().id)+'|'+button.dataset.groupToggle;if(openMeals.has(key))openMeals.delete(key);else openMeals.add(key);render();return;}
       if(button.dataset.groupEdit)return openMeal(button.dataset.groupEdit);
       if(button.dataset.groupPerson){const person=group.participants.find(person=>person.id===button.dataset.groupPerson);const value=prompt('Nombre del viajero:',person.name);if(value===null)return;if(!value.trim())throw new Error('El nombre no puede estar vacío.');if(group.participants.some(other=>other.id!==person.id&&other.name.toLocaleLowerCase('es')===value.trim().toLocaleLowerCase('es')))throw new Error('Ya existe ese nombre. Usa un apellido para distinguirlo.');person.name=value.trim();return commit(group);}
       if(button.dataset.groupArchive){const person=group.participants.find(person=>person.id===button.dataset.groupArchive);person.active=!person.active;return commit(group);}
@@ -417,13 +393,6 @@
       if(button.dataset.groupPaymentEdit){const payment=group.settlements.find(payment=>payment.id===button.dataset.groupPaymentEdit);const meal=group.meals.find(meal=>meal.id===payment?.mealId);if(!meal)throw new Error('La comida ya no existe.');return openPayment(group,meal,payment.id);}
       if(button.dataset.groupCollect){const meal=group.meals.find(meal=>meal.id===button.dataset.groupCollect);return openPayment(group,meal);}
     });
-    $('#expense-group-meals').onclick=safe(event=>{
-      const button=event.target.closest('[data-expense-group-meal]');if(!button)return;
-      const selectedTrip=host.getState().viajes.find(value=>Number(value.id)===Number(button.dataset.expenseGroupTrip));
-      const group=api().normalize(selectedTrip?.group),meal=group.meals.find(value=>value.id===button.dataset.expenseGroupMeal&&value.status==='closed');
-      if(!selectedTrip||!group.enabled||!group.integrate||!meal||meal.payerId!==group.selfId)throw new Error('Esta comida ha cambiado. Revisa su grupo antes de registrar una devolución.');
-      return openPayment(group,meal,null,selectedTrip);
-    },'#expense-group-message');
     $('#group-payment-from').onchange=paymentAmount;
     $('#group-receipt-person').onchange=safe(renderReceipt,'#group-receipt-message');
     $('#group-receipt-close').onclick=()=>$('#group-receipt-dialog').close();
@@ -444,5 +413,18 @@
     },'#group-payment-message');
     render();
   }
-  root.TravelGroupUI={mount,render,renderExpenseSummary};
+  async function openMealForTrip(tripId,mealId){
+    const selectedTrip=host.getState().viajes.find(value=>Number(value.id)===Number(tripId));
+    if(!selectedTrip||!api().normalize(selectedTrip.group).meals.some(meal=>meal.id===mealId))throw new Error('La comida vinculada no está disponible.');
+    await host.selectTrip(selectedTrip.id);host.showGroup?.();
+    openMeals.add(String(selectedTrip.id)+'|'+mealId);render();
+    return openMeal(mealId);
+  }
+  function openCollection(tripId,mealId){
+    const selectedTrip=host.getState().viajes.find(value=>Number(value.id)===Number(tripId));
+    const group=api().normalize(selectedTrip?.group),meal=group.meals.find(value=>value.id===mealId&&value.status==='closed');
+    if(!selectedTrip||!meal)throw new Error('La comida vinculada no está disponible.');
+    return openPayment(group,meal,null,selectedTrip);
+  }
+  root.TravelGroupUI={mount,render,openMealForTrip,openCollection};
 })(globalThis);

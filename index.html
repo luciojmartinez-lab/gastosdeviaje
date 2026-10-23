@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v030">
+  <link rel="manifest" href="manifest.webmanifest?v=800v031">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v030">
+  <link rel="stylesheet" href="styles.css?v=800v031">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v030 · 23/10/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v031 · 23/10/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v030</div>
+  <div class="app-version">800v031</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -142,13 +142,6 @@
         </div>
       </div>
     </div>
-
-    <section id="expense-group-summary" class="card expense-group-summary" aria-labelledby="expense-group-title" hidden>
-      <div class="section-head"><h2 id="expense-group-title">Comidas que has adelantado</h2><p class="expense-group-total">Pendiente de recuperar <strong id="expense-group-pending"></strong></p></div>
-      <p class="small">Solo tu consumo se suma a los gastos. Este resumen sigue el viaje y las fechas seleccionados e incluye los cobros de todas tus cuentas.</p>
-      <p id="expense-group-message" role="status"></p>
-      <details open><summary id="expense-group-count">Ver comidas</summary><div id="expense-group-meals"></div></details>
-    </section>
 
     <div class="card expenses-list-card">
       <div class="table-wrap">
@@ -279,6 +272,7 @@
       <div class="table-wrap">
         <table id="tabla-cuenta"><thead><tr><th>Cuenta</th><th>Moneda</th><th>Gastado</th><th>% gastos</th><th>Saldo</th><th>% saldo</th><th>EUR</th></tr></thead><tbody></tbody></table>
       </div>
+      <p id="account-balance-note" class="small" hidden>El saldo disponible suma solo cuentas reales. Los pendientes del grupo todavía no están disponibles.</p>
     </div>
     <div class="card summary-documents" id="resumen-documentos">
       <h2>Documentos</h2>
@@ -1362,23 +1356,23 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v030"></script>
-<script src="gpx-import.js?v=800v030"></script>
-<script src="timeline-routing.js?v=800v030"></script>
-<script src="map-model.js?v=800v030"></script>
-<script src="ticket-camera.js?v=800v030"></script>
-<script src="receipt-access.js?v=800v030"></script>
-<script src="expense-receipt-ai.js?v=800v030"></script>
-<script src="group-meals.js?v=800v030"></script>
-<script src="group-ledger.js?v=800v030"></script>
-<script src="group-store.js?v=800v030"></script>
-<script src="group-receipt.js?v=800v030"></script>
-<script src="group-ui.js?v=800v030"></script>
-<script src="preparation.js?v=800v030"></script>
-<script src="app.bundle.js?v=800v030"></script>
+<script src="timeline-import.js?v=800v031"></script>
+<script src="gpx-import.js?v=800v031"></script>
+<script src="timeline-routing.js?v=800v031"></script>
+<script src="map-model.js?v=800v031"></script>
+<script src="ticket-camera.js?v=800v031"></script>
+<script src="receipt-access.js?v=800v031"></script>
+<script src="expense-receipt-ai.js?v=800v031"></script>
+<script src="group-meals.js?v=800v031"></script>
+<script src="group-ledger.js?v=800v031"></script>
+<script src="group-store.js?v=800v031"></script>
+<script src="group-receipt.js?v=800v031"></script>
+<script src="group-ui.js?v=800v031"></script>
+<script src="preparation.js?v=800v031"></script>
+<script src="app.bundle.js?v=800v031"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v030';
+    const pageVersion = '800v031';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1433,7 +1427,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v030', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v031', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

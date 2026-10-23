@@ -155,6 +155,12 @@
     for (const payment of group.settlements.filter(p => !p.voided)) { rows[payment.fromId].sent += payment.amountCents; rows[payment.toId].received += payment.amountCents; }
     return Object.values(rows).map(row => ({ ...row, balance: row.advanced - row.consumed + row.sent - row.received }));
   }
+  function advanceDetails(group,meal){
+    const own=allocation(meal).totals[group.selfId]||0;
+    const advanced=meal.payerId===group.selfId?meal.totalCents:0;
+    const received=group.settlements.filter(payment=>!payment.voided&&payment.mealId===meal.id&&payment.toId===group.selfId).reduce((total,payment)=>total+payment.amountCents,0);
+    return {own,advanced,received,pending:advanced?Math.max(0,advanced-own-received):0};
+  }
   function parseItems(text) {
     const items = [], ignored = [];
     const metadata = /\b(total|subtotal|sub total|base imponible|iva|igic|impuesto|tarjeta|efectivo|cambio|pagado|entregado|comensales|por persona|mesa|factura|fecha|hora|cif|nif|telefono|tel\.|descuento|propina)\b/i;
@@ -204,5 +210,5 @@
       ...meal.attendees.map(id => `${name(id)}: ${money(result.totals[id] || 0)} (individual ${money(result.individual[id] || 0)} + compartido ${money(result.common[id] || 0)})`),
       '', ...mealPayments(group, meal).map(row => `${name(row.id)}: ${row.id === meal.payerId ? 'cubierto' : 'devuelto'} ${money(row.paid)} · pendiente ${money(row.remaining)}`), '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
   }
-  root.TravelGroup = { normalize, validate, allocation, split, expandUnits, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, parseItems, remapAccounts, personalReceipt, summary };
+  root.TravelGroup = { normalize, validate, allocation, split, expandUnits, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, advanceDetails, parseItems, remapAccounts, personalReceipt, summary };
 })(globalThis);

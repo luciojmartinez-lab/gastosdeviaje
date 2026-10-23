@@ -67,59 +67,40 @@ async function seedExpenseAdvance(ui){
  await ui.w.TravelGroupStore.save(ui.db,1,0,group);await ui.load();ui.w.TravelGroupUI.render();
 }
 
-test('Gastos registra cobros en efectivo y banco, incluidos varios de una persona, conservando solo mi consumo como gasto',async()=>{
+test('los cobros en efectivo y banco conservan el pendiente y solo mi consumo como gasto',async()=>{
  const ui=await setup();try{
   await seedExpenseAdvance(ui);
-  const pending=()=>ui.$('#expense-group-pending').textContent.replace(/\s/g,' '),account=id=>ui.state.cuentas.find(value=>value.id===id).saldoActual;
-  assert.equal(ui.$('#expense-group-summary').hidden,false);assert.equal(pending(),'270,00 €');assert.equal(ui.state.gastos.length,1);assert.equal(ui.state.gastos[0].importe,30);assert.equal(account(1),200);
-  const expenseId=ui.state.gastos[0].id;
+  const pending=()=>ui.w.TravelGroup.advanceDetails(ui.state.viajes[0].group,ui.state.viajes[0].group.meals[0]).pending,account=id=>ui.state.cuentas.find(value=>value.id===id).saldoActual;
+  assert.equal(pending(),27000);assert.equal(account(1),200);const expenseId=ui.state.gastos[0].id;
   async function collect(person,amount,id){
-   ui.click('[data-expense-group-meal="adelanto"]');assert.equal(ui.$('#group-payment-dialog').dataset.tripId,'1');assert.equal(ui.$('#group-payment-account').required,true);assert.match(ui.$('#group-payment-account-label').textContent,/recibes el dinero/);assert.match(ui.$('#group-payment-account-help').textContent,/efectivo.*Bizum.*misma persona/);
+   ui.w.TravelGroupUI.openCollection(1,'adelanto');assert.equal(ui.$('#group-payment-account').required,true);assert.match(ui.$('#group-payment-account-label').textContent,/recibes el dinero/);
    ui.input('#group-payment-from',person);ui.input('#group-payment-amount',amount);ui.input('#group-payment-account',String(id));ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);
   }
-  await collect('p1','50',2);assert.equal(pending(),'220,00 €');assert.equal(account(2),50);assert.equal(account(1),200);
-  await collect('p2','70',1);assert.equal(pending(),'150,00 €');assert.equal(account(1),270);
-  await collect('p1','30',1);assert.equal(pending(),'120,00 €');assert.equal(account(1),300);assert.equal(account(2),50);
-  assert.equal(ui.state.gastos.length,1);assert.equal(ui.state.gastos[0].id,expenseId);assert.equal(ui.state.gastos[0].importe,30);assert.equal(ui.state.cuentas.find(value=>value.groupClearing).saldoActual,120);
-  assert.equal(ui.$('#expense-group-meals .expense-group-receipts li').textContent.includes('Efectivo'),true);assert.match(ui.$('#expense-group-meals').textContent,/Banco/);
-  const before=JSON.stringify(ui.state);ui.w.TravelGroupUI.renderExpenseSummary();ui.w.TravelGroupUI.renderExpenseSummary();assert.equal(JSON.stringify(ui.state),before);
-  const group=ui.w.TravelGroup.normalize(ui.state.viajes[0].group);group.settlements[0].voided=true;group.settlements[0].voidReason='Cobro equivocado';await ui.w.TravelGroupStore.save(ui.db,1,group.revision,group);await ui.load();ui.w.TravelGroupUI.render();
-  assert.equal(pending(),'170,00 €');assert.equal(account(2),0);assert.equal(account(1),300);assert.equal(ui.$('#expense-group-meals').querySelectorAll('.expense-group-receipts li').length,2);
+  await collect('p1','50',2);assert.equal(pending(),22000);assert.equal(account(2),50);
+  await collect('p2','70',1);assert.equal(pending(),15000);assert.equal(account(1),270);
+  await collect('p1','30',1);assert.equal(pending(),12000);assert.equal(account(1),300);
+  assert.equal(ui.state.gastos.length,1);assert.equal(ui.state.gastos[0].id,expenseId);assert.equal(ui.state.gastos[0].importe,30);
+  const group=ui.w.TravelGroup.normalize(ui.state.viajes[0].group);group.settlements[0].voided=true;group.settlements[0].voidReason='Error';await ui.w.TravelGroupStore.save(ui.db,1,group.revision,group);await ui.load();ui.w.TravelGroupUI.render();assert.equal(pending(),17000);assert.equal(account(2),0);
  }finally{ui.close();}
 });
 
-test('el resumen muestra adelantos incluso sin consumo propio, excluye borradores y mantiene las comidas saldadas',async()=>{
+test('las comidas empiezan plegadas y conservan su apertura al actualizar el grupo',async()=>{
  const ui=await setup();try{
-  await seedExpenseAdvance(ui);let group=ui.w.TravelGroup.normalize(ui.state.viajes[0].group),meal=group.meals[0];
-  meal.attendees=['p1','p2'];meal.items[0].shares={p1:1};group.meals.push({...JSON.parse(JSON.stringify(meal)),id:'draft',status:'draft'});
-  await ui.w.TravelGroupStore.save(ui.db,1,group.revision,group);await ui.load();ui.w.TravelGroupUI.render();
-  assert.equal(ui.state.gastos.length,0);assert.equal(ui.$('#expense-group-meals').querySelectorAll('article').length,1);assert.match(ui.$('#expense-group-pending').textContent,/300,00/);
-  group=ui.w.TravelGroup.normalize(ui.state.viajes[0].group);group.settlements=[{id:'r1',mealId:meal.id,fromId:'p1',toId:'p0',amountCents:13000,date:'2026-10-23',accountId:2},{id:'r2',mealId:meal.id,fromId:'p2',toId:'p0',amountCents:17000,date:'2026-10-23',accountId:1}];
-  await ui.w.TravelGroupStore.save(ui.db,1,group.revision,group);await ui.load();ui.w.TravelGroupUI.render();
-  assert.match(ui.$('#expense-group-pending').textContent,/0,00/);assert.match(ui.$('#expense-group-meals .badge').textContent,/Saldada/);assert.equal(ui.$('[data-expense-group-meal]'),null);assert.equal(ui.state.gastos.length,0);
-  ui.state.viajes[0].group.integrate=false;ui.w.TravelGroupUI.renderExpenseSummary();assert.equal(ui.$('#expense-group-summary').hidden,true);
+  await seedExpenseAdvance(ui);const toggle=()=>ui.$('[data-group-toggle="adelanto"]'),body=()=>ui.$('#group-meals .group-meal-body');
+  assert.equal(toggle().getAttribute('aria-expanded'),'false');assert.equal(body().hidden,true);
+  ui.click('[data-group-toggle="adelanto"]');assert.equal(toggle().getAttribute('aria-expanded'),'true');assert.equal(body().hidden,false);
+  ui.w.TravelGroupUI.render();assert.equal(body().hidden,false);ui.click('[data-group-toggle="adelanto"]');assert.equal(body().hidden,true);
  }finally{ui.close();}
 });
 
-test('con varios viajes seleccionados el cobro usa el viaje de la tarjeta, sin depender del desplegable de Grupo',async()=>{
+test('desde un gasto se abre directamente la comida del viaje correcto aunque haya varios viajes seleccionados',async()=>{
  const ui=await setup();try{
   await seedExpenseAdvance(ui);const group=ui.w.TravelGroup.normalize(ui.state.viajes[0].group);group.revision=0;group.meals[0].accountId=10;group.meals[0].name='Otra comida';
   await new Promise((resolve,reject)=>{const tx=ui.db.transaction(['viajes','cuentas'],'readwrite');tx.objectStore('viajes').put({id:2,nombre:'Otro viaje'});tx.objectStore('cuentas').put({id:10,nombre:'Banco segundo viaje',viajeId:2,moneda:'EUR',saldoActual:500});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});
-  await ui.w.TravelGroupStore.save(ui.db,2,0,group);await ui.load();ui.state.selectedViajeIds=[1,2];ui.w.TravelGroupUI.render();assert.equal(ui.$('#group-trip').value,'');assert.equal(ui.$('#expense-group-meals').querySelectorAll('article').length,2);
-  ui.click('[data-expense-group-trip="2"]');assert.equal(ui.$('#group-payment-dialog').dataset.tripId,'2');assert.match(ui.$('#group-payment-context').textContent,/Otro viaje/);
-  assert.deepEqual(Array.from(ui.$('#group-payment-account').options).map(option=>option.value),['','10']);ui.input('#group-payment-from','p1');ui.input('#group-payment-amount','25');ui.input('#group-payment-account','10');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);
-  assert.equal(ui.state.viajes.find(value=>value.id===1).group.settlements.length,0);assert.equal(ui.state.viajes.find(value=>value.id===2).group.settlements.length,1);assert.equal(ui.state.cuentas.find(value=>value.id===10).saldoActual,225);
-  ui.state.selectedViajeIds=[2];ui.w.TravelGroupUI.render();assert.equal(ui.$('#expense-group-meals').querySelectorAll('article').length,1);assert.match(ui.$('#expense-group-meals').textContent,/Otra comida/);
- }finally{ui.close();}
-});
-
-test('el resumen respeta viaje y fechas sin depender de que mi consumo aparezca en un filtro de cuenta',async()=>{
- const scope={tripIds:[1],from:'2026-10-24',to:''},ui=await setup({expenseScope:()=>scope});try{
-  await seedExpenseAdvance(ui);assert.equal(ui.$('#expense-group-summary').hidden,true);
-  scope.from='2026-10-23';scope.to='2026-10-23';ui.w.TravelGroupUI.renderExpenseSummary();assert.equal(ui.$('#expense-group-summary').hidden,false);
-  ui.state.gastos=[];ui.w.TravelGroupUI.renderExpenseSummary();assert.match(ui.$('#expense-group-pending').textContent,/270,00/);
-  scope.to='2026-10-22';ui.w.TravelGroupUI.renderExpenseSummary();assert.equal(ui.$('#expense-group-summary').hidden,true);
-  scope.from='';scope.to='';scope.tripIds=[2];ui.w.TravelGroupUI.renderExpenseSummary();assert.equal(ui.$('#expense-group-summary').hidden,true);
+  await ui.w.TravelGroupStore.save(ui.db,2,0,group);await ui.load();ui.state.selectedViajeIds=[1,2];ui.w.TravelGroupUI.render();
+  ui.w.TravelGroupUI.openCollection(2,'adelanto');assert.equal(ui.$('#group-payment-dialog').dataset.tripId,'2');assert.deepEqual(Array.from(ui.$('#group-payment-account').options).map(option=>option.value),['','10']);ui.click('#group-payment-close');
+  await ui.w.TravelGroupUI.openMealForTrip(2,'adelanto');assert.equal(ui.$('#group-meal-name').value,'Otra comida');assert.equal(ui.$('#group-trip').value,'2');assert.equal(ui.$('[data-group-toggle="adelanto"]').getAttribute('aria-expanded'),'true');
+  await assert.rejects(ui.w.TravelGroupUI.openMealForTrip(2,'inexistente'),/no está disponible/);
  }finally{ui.close();}
 });
 
