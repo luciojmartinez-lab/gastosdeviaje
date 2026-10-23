@@ -24,6 +24,9 @@ test('los pendientes van bajo el importe y el total suma gastado más pendiente 
   const before=JSON.stringify(ui.w.state);ui.w.renderGastosTabla();
   const row=ui.$('[data-gasto-id="2"] [data-label="Importe"]');assert.equal(ui.text(row.querySelector('.expense-own-amount')),'30,00 €');assert.match(ui.text(row.querySelector('.expense-pending')),/^150,00 €pendiente/);
   assert.equal(ui.text(ui.$('#tg-total .expense-own-amount')),'100,00 €');assert.match(ui.text(ui.$('#tg-total .expense-pending')),/^150,00 €/);assert.match(ui.text(ui.$('#tg-total .expense-with-pending')),/^250,00 €/);
+  assert.equal(ui.$('#tg-total').colSpan,3);assert.equal(ui.$('#tabla-gastos .subtotal-row .expense-totals-cell').colSpan,3);
+  ui.w.eval(sourceOf('printableSectionHtml'));const print=ui.w.document.createElement('div');print.innerHTML=ui.w.printableSectionHtml('gastos');
+  for(const selector of ['#tabla-gastos .subtotal-row','#tabla-gastos tfoot tr'])assert.equal(Array.from(print.querySelector(selector).cells).reduce((total,cell)=>total+cell.colSpan,0),9);
   assert.equal(ui.$('#expense-group-summary'),null);assert.equal(JSON.stringify(ui.w.state),before);
   ui.group.settlements[0].voided=true;ui.w.renderGastosTabla();assert.match(ui.text(ui.$('#tg-total .expense-pending')),/^200,00 €/);
  }finally{ui.close();}

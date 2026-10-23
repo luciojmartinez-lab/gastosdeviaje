@@ -5948,6 +5948,8 @@ footer {
 .expense-pending { display: block; color: #b91c1c; font-weight: 600; font-variant-numeric: tabular-nums; }
 .expense-pending small, .expense-with-pending small, .balance-available-note { display: block; font-size: .8em; }
 .expense-with-pending { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px solid currentColor; font-weight: 700; }
+.expense-totals-cell .expense-pending, .expense-totals-cell .expense-with-pending { display: flex; align-items: baseline; gap: 8px; width: max-content; white-space: nowrap; }
+.expense-totals-cell .expense-pending small, .expense-totals-cell .expense-with-pending small { display: inline; }
 .group-meal-toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; text-align: left; border: 0; border-radius: 4px; background: transparent; padding: 4px 0; color: inherit; font: inherit; cursor: pointer; }
 .group-meal-toggle > span:first-child { flex: 0 0 16px; font-weight: 700; }
 .group-meal-toggle > span:nth-child(2) { flex: 1; overflow-wrap: anywhere; }

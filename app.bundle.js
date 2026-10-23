@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v034';
+const APP_VERSION = '800v035';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2929,7 +2929,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v034');
+    const worker = new Worker('./timeline-import-worker.js?v=800v035');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3939,7 +3939,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v034');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v035');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4862,7 +4862,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v034');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v035');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -4998,7 +4998,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v034');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v035');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5552,7 +5552,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v034');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v035');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -9005,7 +9005,7 @@ function renderGastosTabla() {
     subtotal.className = 'subtotal-row';
     subtotal.dataset.expenseGroupEntry = key;
     subtotal.hidden = !isOpen;
-    subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td class="original-currency-totals">${formatForeignCurrencyTotals(subtotalCurrencies)}</td><td><span class="expense-own-amount">${fmtCurrency(subtotalEur, 'EUR')}</span>${expensePendingMarkup(subtotalPendingCents)}</td><td colspan="2"></td>`;
+    subtotal.innerHTML = `<td colspan="6" style="text-align:right"><i>Subtotal</i></td><td class="original-currency-totals">${formatForeignCurrencyTotals(subtotalCurrencies)}</td><td class="expense-totals-cell" colspan="3"><span class="expense-own-amount">${fmtCurrency(subtotalEur, 'EUR')}</span>${expensePendingMarkup(subtotalPendingCents)}</td>`;
     tbody.appendChild(subtotal);
   });
   const totalOriginal = $('#tg-original');
@@ -14553,7 +14553,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v034');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v035');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15542,7 +15542,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v034').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v035').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -18151,7 +18151,7 @@ function printableSectionHtml(id) {
   });
   clone.querySelectorAll('.section-head, .filters-card, .row4, .action-col, .expense-action-select, button, input, select, label').forEach(el => el.remove());
   clone.querySelectorAll('#tabla-gastos .group-row td[colspan="10"]').forEach(el => el.setAttribute('colspan', '9'));
-  clone.querySelectorAll('#tabla-gastos .subtotal-row td:last-child, #tabla-gastos tfoot td:last-child').forEach(el => el.setAttribute('colspan', '1'));
+  clone.querySelectorAll('#tabla-gastos .expense-totals-cell').forEach(el => el.setAttribute('colspan', '2'));
   clone.querySelectorAll('[style]').forEach(el => {
     if (el.closest('.trip-map')) return;
     if (el instanceof HTMLElement) el.removeAttribute('style');
@@ -18181,6 +18181,11 @@ function printableDocument(section) {
     th, td { padding: 3px 5px; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: top; font-size: 10px; line-height: 1.18; }
     .group-row td { padding: 5px 6px; background: #eef2ff; color: #1e40af; font-weight: 700; }
     .subtotal-row td { padding: 4px 5px; background: #f8fafc; font-weight: 700; }
+    .expense-totals-cell .expense-own-amount { display: block; }
+    .expense-totals-cell .expense-pending, .expense-totals-cell .expense-with-pending { display: flex; align-items: baseline; gap: 6px; width: max-content; white-space: nowrap; }
+    .expense-totals-cell .expense-pending { color: #b91c1c; }
+    .expense-totals-cell small { font-size: .8em; }
+    .expense-totals-cell .expense-with-pending { margin-top: 4px; padding-top: 4px; border-top: 1px solid currentColor; }
     .expense-row { break-inside: avoid; page-break-inside: avoid; }
     .chart { max-width: 100%; height: auto; }
     body.desktop-print .chart { width: 60%; max-width: 640px; max-height: 360px; display: block; margin: 4px auto 6px; }
@@ -18544,7 +18549,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v034')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v035')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -18552,7 +18557,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v034')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v035')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -18585,12 +18590,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v034');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v035');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v034')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v034')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v035')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v035')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -20492,7 +20497,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v034');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v035');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
