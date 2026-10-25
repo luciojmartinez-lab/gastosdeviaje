@@ -83,41 +83,9 @@ test('no permite borrar cuentas referenciadas por gastos o transferencias', asyn
   await assert.rejects(ctx.delCuenta(25),/tiene gastos o transferencias/); assert.equal(deleted,false);
   await ctx.delCuenta(26); assert.equal(deleted,true);
 });
-test('borrar un viaje conserva cuentas y gastos accesibles sin referencias al viaje eliminado', async () => {
-  const state={...empty(),viajeDocumentos:[{id:1,viajeId:3}]};
-  const ctx=vm.createContext({ Number, state, getOne:async()=>({id:3}), getAll:async name=>name==='gastos'?[{id:4,cuentaId:25,viajeId:3}]:[{id:25,viajeId:3,saldoActual:10}], commitBackupOperations:async operations=>{ctx.operations=operations;} });
-  vm.runInContext(section('async function delViaje', 'async function addTripDocument'),ctx); await ctx.delViaje(3);
-  const preserved=ctx.operations.filter(o=>o.type==='put'); assert.equal(preserved.length,2); assert.ok(preserved.every(o=>o.data.viajeId===null));
-  assert.equal(preserved.find(o=>o.store==='cuentas').data.saldoActual,10);
-  assert.ok(ctx.operations.some(o=>o.store==='viajes'&&o.type==='delete'));
-});
-
-test('eliminar viaje con sus gastos repone saldos en moneda de la cuenta y conserva datos ajenos',async()=>{
- const state={...empty(),viajeDocumentos:[{id:1,viajeId:3}],blogEntries:[{id:2,viajeId:3},{id:3,viajeId:9}],timelineDays:[{id:'day',viajeId:3}]};
- const expenses=[{id:4,cuentaId:25,viajeId:3,importe:1000,importeEur:6.2},{id:5,cuentaId:25,viajeId:3,importe:500},{id:6,cuentaId:9,viajeId:3,importe:3.25},{id:7,cuentaId:9,viajeId:9,importe:8}];
- const accounts=[{id:25,viajeId:3,moneda:'JPY',saldoActual:100},{id:9,viajeId:9,moneda:'EUR',saldoActual:20},{id:10,viajeId:3,saldoActual:40}];
- const ctx=vm.createContext({Number,Promise,state,numberValue:v=>Number(v)||0,getOne:async()=>({id:3}),getAll:async name=>name==='gastos'?expenses:accounts,commitBackupOperations:async ops=>{ctx.operations=ops;}});
- vm.runInContext(section('async function delViaje','async function addTripDocument'),ctx);await ctx.delViaje(3,'delete');
- const deleted=ctx.operations.filter(o=>o.store==='gastos'&&o.type==='delete').map(o=>o.key);assert.deepEqual(Array.from(deleted),[4,5,6]);assert.ok(!ctx.operations.some(o=>o.store==='gastos'&&o.key===7));
- const account=id=>ctx.operations.find(o=>o.store==='cuentas'&&o.data.id===id).data;assert.equal(account(25).saldoActual,1600);assert.equal(account(25).viajeId,null);assert.equal(account(9).saldoActual,23.25);assert.equal(account(9).viajeId,9);assert.equal(account(10).saldoActual,40);
- assert.ok(ctx.operations.some(o=>o.store==='tripDocuments'&&o.key===1));assert.ok(ctx.operations.some(o=>o.store==='blogEntries'&&o.key===2));assert.ok(!ctx.operations.some(o=>o.store==='blogEntries'&&o.key===3));assert.ok(ctx.operations.some(o=>o.store==='timelineDays'&&o.key==='day'));assert.ok(!ctx.operations.some(o=>o.store==='transferencias'));
-});
-
-test('borrado de viaje rechaza elecciones inválidas y movimientos de Grupo antes de escribir; propaga abortos',async()=>{
- const state=empty();let committed=0;const ctx=vm.createContext({Number,Promise,state,numberValue:Number,getOne:async()=>({group:{integrate:true,meals:[{status:'closed'}]}}),getAll:async()=>[],commitBackupOperations:async()=>{committed++;throw new Error('Transacción abortada');}});
- vm.runInContext(section('async function delViaje','async function addTripDocument'),ctx);
- await assert.rejects(ctx.delViaje(3,'other'),/Elige/);await assert.rejects(ctx.delViaje(3,'delete'),/Grupo/);assert.equal(committed,0);
- ctx.getOne=async()=>({id:3});await assert.rejects(ctx.delViaje(3,'delete'),/Transacción abortada/);assert.equal(committed,1);
-});
-
-test('ventana de eliminar viaje requiere elección y no elimina al abrir ni con selección vacía',async()=>{
- let options,calls=0,selected;const button={};const ctx=vm.createContext({Number,state:{viajes:[{id:3,nombre:'Prueba'}]},openFormDialog:value=>options=value,$:()=>button,setMessage:()=>{},delViaje:async(id,choice)=>{calls++;selected=choice;}});
- vm.runInContext(section('function openDeleteViajeDialog','async function delViaje'),ctx);ctx.openDeleteViajeDialog(3);assert.equal(calls,0);assert.equal(button.textContent,'Eliminar viaje');assert.equal(options.fields[0].value,'');
- await assert.rejects(options.onSubmit({expenses:''}),/Elige/);assert.equal(calls,0);await options.onSubmit({expenses:'delete'});assert.equal(calls,1);assert.equal(selected,'delete');assert.equal(button.disabled,false);
-});
 test('backup de viaje incluye la cuenta contraparte de una transferencia', () => {
   const state=fixture(); state.cuentas.push({id:21,nombre:'Base',moneda:'EUR',viajeId:null});
-  const ctx=vm.createContext({ state, Number, Set, Date, TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v045',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
+  const ctx=vm.createContext({ state, Number, Set, Date, TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v046',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
   vm.runInContext(section('function buildTripBackupData', '// Prepare every write'),ctx);
   const backup=ctx.buildTripBackupData(3); assert.ok(backup.cuentas.some(c=>c.id===21)); assert.equal(backup.transferencias.length,1);
 });
@@ -134,7 +102,7 @@ test('catálogo de viajeros y selección por viaje se restauran; importar un via
 
 test('exportación de un viaje incluye únicamente sus contactos y conserva el identificador de catálogo',()=>{
  const state=fixture();state.travelerCatalog=[{id:'ana',name:'Ana García',givenName:'Ana',surnames:'García'},{id:'otro',name:'Otro viajero'}];state.viajes[0].group={participants:[{id:'local',catalogId:'ana',name:'Ana García',active:false}]};
- const ctx=vm.createContext({state,Number,Set,Date,TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v045',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c});vm.runInContext(section('function buildTripBackupData','// Prepare every write'),ctx);
+ const ctx=vm.createContext({state,Number,Set,Date,TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v046',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c});vm.runInContext(section('function buildTripBackupData','// Prepare every write'),ctx);
  const backup=ctx.buildTripBackupData(3);assert.equal(backup.travelerCatalog.length,1);assert.equal(backup.travelerCatalog[0].givenName,'Ana');assert.equal(backup.viajes[0].group.participants[0].catalogId,'ana');
 });
 
