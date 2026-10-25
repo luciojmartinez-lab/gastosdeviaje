@@ -1,7 +1,7 @@
 (function(root) {
   'use strict';
   const api = () => root.TravelGroup;
-  let host, editor = null, saving = false, reading = false, cacheTail = Promise.resolve(), cacheTimer, paymentGroup, paymentId=null, aiEnabled=false;
+  let host, editor = null, saving = false, mealSaving = false, reading = false, cacheTail = Promise.resolve(), cacheTimer, paymentGroup, paymentId=null, aiEnabled=false;
   const $ = selector => document.querySelector(selector);
   const all = selector => Array.from(document.querySelectorAll(selector));
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -87,11 +87,17 @@
   const trip = () => host.getState().viajes.find(value => Number(value.id) === Number($('#group-trip').value));
   const current = () => api().normalize(trip()?.group);
   const name = (group,id) => group.participants.find(person=>person.id===id)?.name || 'Persona no disponible';
+  function showError(text){
+    const dialog=$('#group-error-dialog');
+    $('#group-error-message').textContent=text;
+    if(!dialog.open)dialog.showModal();
+  }
   const message = (text,error=false,target='#group-message') => {
     $(target).textContent=text;$(target).classList.toggle('error',error);
     if(target==='#group-meal-message' && $('#group-parse-message')){
       $('#group-parse-message').textContent=text;$('#group-parse-message').classList.toggle('error',error);
     }
+    if(error&&['#group-message','#group-meal-message','#group-payment-message'].includes(target))showError(text);
   };
   const showParseFeedback=()=>{ $('#group-text-panel').open=true;$('#group-parse-message').scrollIntoView?.({block:'nearest'}); };
   function accounts(id) { return host.getState().cuentas.filter(account=>account.moneda==='EUR'&&!account.groupClearing&&Number(account.viajeId)===Number(id)); }
@@ -166,6 +172,7 @@
   }
   function mountMeal() {
     const meal=editor.meal,group=editor.group;
+    $('#group-offline-draft-help').hidden=meal.status==='closed';
     meal.items.forEach(item=>{item.mode='weights';});
     restoreAICode();
     $('#group-meal-name').value=meal.name||'';$('#group-meal-date').value=meal.date||today();$('#group-meal-time').value=meal.time||'';$('#group-ticket-datetime').textContent='';$('#group-meal-total').value=amount(meal.totalCents);
@@ -187,7 +194,7 @@
   }
   async function openMeal(id,resume=false) {
     const selectedTrip=trip();if(!selectedTrip)return;
-    const group=current();
+    const group=current();let changed=false;
     if(!id&&!resume&&!group.participants.some(person=>person.active)){
       $('#group-people-needed-message').textContent=group.participants.length
         ? 'No hay viajeros activos en este grupo. Añade gente en «Viajeros» o vuelve a activar a algún viajero para registrar una comida.'
@@ -195,22 +202,35 @@
       if(!$('#group-people-needed-dialog').open)$('#group-people-needed-dialog').showModal();
       return;
     }
-    if(resume){const draft=await host.readDraft(selectedTrip.id);if(!draft)throw new Error('No hay un borrador local en este viaje.');editor=draft;editor.group=group;if(editor.revision!==group.revision)message('El grupo ha cambiado: revisa el borrador antes de aplicarlo.',true);}
+    if(resume){const draft=await host.readDraft(selectedTrip.id);if(!draft)throw new Error('No hay un borrador local en este viaje.');editor=draft;editor.group=group;changed=editor.revision!==group.revision;}
     else {
       const original=group.meals.find(meal=>meal.id===id);
       editor={tripId:selectedTrip.id,revision:group.revision,group,meal:original?JSON.parse(JSON.stringify(original)):{id:uid(),name:'',date:today(),currency:'EUR',status:'draft',attendees:group.participants.filter(person=>person.active).map(person=>person.id),payerId:'',accountId:null,totalCents:null,items:[]}};
     }
     mountMeal();stash();
+    if(changed)message('El grupo ha cambiado: revisa el borrador antes de aplicarlo.',true,'#group-meal-message');
   }
   async function saveMeal(closed) {
-    if(!editor||reading)return;
+    if(!editor||reading||mealSaving||saving)return;
     if(closed&&!$('#group-meal-reviewed').checked)throw new Error('Confirma que has revisado el ticket y el reparto.');
     const next=api().normalize(editor.group),meal=JSON.parse(JSON.stringify(editor.meal));meal.status=closed?'closed':'draft';
     const index=next.meals.findIndex(value=>value.id===meal.id);if(index<0)next.meals.push(meal);else next.meals[index]=meal;
     next.enabled=true;
-    stash(true); await cacheTail;
-    await commit(next,editor.revision,editor.tripId);
-    await cacheTail;await host.clearDraft(editor.tripId);$('#group-meal-dialog').close();editor=null;message(closed?'Comida cerrada y guardada.':'Borrador guardado.');
+    mealSaving=true;
+    const progress=$('#group-saving-dialog');
+    $('#group-saving-title').textContent=closed?'Guardando comida…':'Guardando borrador…';
+    $('#group-meal-form').setAttribute('aria-busy','true');
+    all('#group-save-draft, #group-close-meal, #group-close-editor').forEach(button=>button.disabled=true);
+    try{
+      progress.showModal();
+      stash(true);await cacheTail;
+      await commit(next,editor.revision,editor.tripId);
+      await cacheTail;await host.clearDraft(editor.tripId);$('#group-meal-dialog').close();editor=null;message(closed?'Comida cerrada y guardada.':'Borrador guardado.');
+    }finally{
+      mealSaving=false;$('#group-meal-form').removeAttribute('aria-busy');
+      all('#group-save-draft, #group-close-meal, #group-close-editor').forEach(button=>button.disabled=false);
+      if(progress.open)progress.close();
+    }
   }
   function readCents(value) {try{return api().cents(value);}catch{return null;}}
   async function extract(useAI=false) {
@@ -299,6 +319,8 @@
   function safe(action,target='#group-message'){return async event=>{try{await action(event);}catch(error){message(error.message||String(error),true,target);}};}
   function mount(callbacks) {
     host=callbacks;
+    $('#group-error-close').onclick=()=>$('#group-error-dialog').close();
+    $('#group-saving-dialog').oncancel=event=>event.preventDefault();
     $('#group-trip').onchange=()=>host.selectTrip($('#group-trip').value);
     $('#group-settings-save').onclick=safe(async()=>{const group=current();group.enabled=true;group.selfId=$('#group-self').value;group.integrate=$('#group-integrate').checked;await commit(group);message('Identidad e integración guardadas.');});
     $('#group-add-people').onclick=safe(async()=>{const group=current();const names=$('#group-people').value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean);if(!names.length)throw new Error('Escribe al menos un nombre.');const known=new Set(group.participants.map(person=>person.name.toLocaleLowerCase('es')));for(const value of names){if(known.has(value.toLocaleLowerCase('es')))throw new Error(`Nombre repetido: ${value}. Añade un apellido para distinguirlo.`);known.add(value.toLocaleLowerCase('es'));group.participants.push({id:uid(),name:value,active:true});}group.enabled=true;await commit(group);$('#group-people').value='';message(`${names.length} viajeros añadidos.`);});
@@ -309,7 +331,7 @@
       const field=$('#group-people');field.closest('details').open=true;
       field.focus({preventScroll:true});field.scrollIntoView?.({block:'center',behavior:'instant'});
     };
-    $('#group-close-editor').onclick=safe(async()=>{if(reading)throw new Error('Espera a que termine la lectura.');stash(true);await cacheTail;$('#group-meal-dialog').close();editor=null;},'#group-meal-message');
+    $('#group-close-editor').onclick=safe(async()=>{if(mealSaving||saving)return;if(reading)throw new Error('Espera a que termine la lectura.');stash(true);await cacheTail;$('#group-meal-dialog').close();editor=null;},'#group-meal-message');
     $('#group-meal-dialog').oncancel=event=>{event.preventDefault();$('#group-close-editor').click();};
     $('#group-save-draft').onclick=safe(()=>saveMeal(false),'#group-meal-message');$('#group-close-meal').onclick=safe(()=>saveMeal(true),'#group-meal-message');
     $('#group-add-item').onclick=()=>{editor.meal.items.push({id:uid(),name:'',quantity:1,amountCents:null,common:false,shares:{}});renderItems();stash();};

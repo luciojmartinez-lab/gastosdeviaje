@@ -13,8 +13,8 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
   const html = await readFile(helpPath, 'utf8');
 
   assert.match(html, /Fecha de creación:<\/strong> 17 de julio de 2026/);
-  assert.match(html, /Última actualización:<\/strong> 23 de octubre de 2026/);
-  assert.match(html, /Versión documentada:<\/strong> 800v036/);
+  assert.match(html, /Última actualización:<\/strong> 25 de octubre de 2026/);
+  assert.match(html, /Versión documentada:<\/strong> 800v037/);
   assert.match(html, /id="objetivo"/);
   assert.match(html, /1\. Objetivo y filosofía de la aplicación/);
   assert.match(html, /id="flujo"/);
@@ -37,15 +37,15 @@ test('todos los modales tienen ayuda contextual con un destino documentado', asy
     readFile(path.join(root, 'styles.css'), 'utf8')
   ]);
   const allDialogIds = [...index.matchAll(/<dialog\s+id="([^"]+)"\s+class="[^"]*\bmodal\b/g)].map(match => match[1]);
-  const dialogIds = allDialogIds.filter(id => !['context-help-dialog', 'sync-cloud-progress-dialog'].includes(id));
+  const dialogIds = allDialogIds.filter(id => !['context-help-dialog', 'sync-cloud-progress-dialog', 'group-saving-dialog'].includes(id));
   const mapStart = app.indexOf('const DIALOG_HELP_TARGETS = {');
   const mapEnd = app.indexOf('\n};', mapStart);
   const helpMap = app.slice(mapStart, mapEnd);
   const targets = new Map([...helpMap.matchAll(/'([^']+-dialog)': '([^']+)'/g)].map(match => [match[1], match[2]]));
   const helpIds = new Set([...help.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
 
-  assert.equal(allDialogIds.length, 33);
-  assert.equal(dialogIds.length, 31);
+  assert.equal(allDialogIds.length, 35);
+  assert.equal(dialogIds.length, 32);
   assert.equal(targets.size, dialogIds.length);
   for (const dialogId of dialogIds) {
     assert.ok(targets.has(dialogId), `Falta ayuda contextual para ${dialogId}`);

@@ -18,7 +18,7 @@ async function setup(options={}){
  const state={selectedViajeIds:[1]},drafts=new Map();
  async function load(){await new Promise((resolve,reject)=>{const tx=db.transaction(stores);tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);stores.forEach(name=>{const req=tx.objectStore(name).getAll();req.onsuccess=()=>state[name]=req.result;});});}
  await load();let ocrCalls=0;
- w.TravelGroupUI.mount({prepareReceipt:options.prepareReceipt,shareReceipt:options.shareReceipt,downloadReceipt:options.downloadReceipt,aiStatus:options.aiStatus||(async()=>({enabled:true,message:'Comprobación gratuita por foto'})),recognizeAI:options.recognizeAI,expenseScope:options.expenseScope,getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>drafts.set(value.tripId,JSON.parse(JSON.stringify(value))),readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:options.recognize || (async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};}),share:async text=>assert.match(text,/Pendiente|pendiente/)});
+ w.TravelGroupUI.mount({prepareReceipt:options.prepareReceipt,shareReceipt:options.shareReceipt,downloadReceipt:options.downloadReceipt,aiStatus:options.aiStatus||(async()=>({enabled:true,message:'Comprobación gratuita por foto'})),recognizeAI:options.recognizeAI,expenseScope:options.expenseScope,getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{await options.beforeSave?.();const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>{await options.cacheDraft?.();drafts.set(value.tripId,JSON.parse(JSON.stringify(value)));},readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:options.recognize || (async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};}),share:async text=>assert.match(text,/Pendiente|pendiente/)});
  const $=selector=>w.document.querySelector(selector);
  const input=(selector,value)=>{const element=$(selector);if(element.type==='checkbox')element.checked=value;else element.value=value;element.dispatchEvent(new w.Event('input',{bubbles:true}));element.dispatchEvent(new w.Event('change',{bubbles:true}));};
  const click=selector=>$(selector).click();
@@ -484,6 +484,67 @@ test('Grupo conserva fecha/hora existentes si faltan en la lectura',async()=>{
  try{
   ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);ui.input('#group-meal-date','2026-08-03');ui.input('#group-meal-time','13:20');ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.input('#group-ai-consent',true);ui.click('#group-ai-read');await ui.waitFor(()=>!!finish);
   finish({text:'1 Cena 12,00',itemsStatus:'reconciled',fields:{total:12}});await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);assert.equal(ui.$('#group-meal-date').value,'2026-08-03');assert.equal(ui.$('#group-meal-time').value,'13:20');
+ }finally{ui.close();}
+});
+
+test('los errores de revisión y cuenta aparecen en un modal y permiten corregir sin perder la comida',async()=>{
+ const ui=await setup();try{
+  await prepare(ui);const before=JSON.stringify(ui.state);
+  ui.click('#group-close-meal');await ui.waitFor(()=>ui.$('#group-error-dialog').open);
+  assert.match(ui.$('#group-error-message').textContent,/Confirma que has revisado/);assert.equal(ui.$('#group-saving-dialog').open,false);
+  ui.click('#group-error-close');ui.input('#group-meal-account','');ui.input('#group-meal-reviewed',true);ui.click('#group-close-meal');
+  await ui.waitFor(()=>ui.$('#group-error-dialog').open);
+  assert.match(ui.$('#group-error-message').textContent,/cuenta/i);assert.equal(ui.$('#group-saving-dialog').open,false);assert.equal(ui.$('#group-close-meal').disabled,false);
+  assert.equal(JSON.stringify(ui.state),before);assert.equal(ui.$('#group-meal-name').value,'Restaurante prueba');assert.equal(ui.$('#group-meal-dialog').open,true);
+  ui.click('#group-error-close');ui.input('#group-meal-account','1');ui.input('#group-meal-reviewed',true);ui.click('#group-close-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  assert.equal(ui.state.viajes[0].group.meals.length,1);assert.equal(ui.$('#group-saving-dialog').open,false);
+ }finally{ui.close();}
+});
+
+test('Guardando comida cubre caché y guardado, bloquea cierre y doble clic y registra una sola vez',async()=>{
+ let blocked=false,releaseCache,releaseSave,saveCalls=0;
+ const ui=await setup({cacheDraft:()=>blocked?new Promise(resolve=>{releaseCache=resolve;}):undefined,beforeSave:async()=>{saveCalls++;await new Promise(resolve=>{releaseSave=resolve;});}});
+ try{
+  await prepare(ui);ui.input('#group-meal-reviewed',true);blocked=true;ui.click('#group-close-meal');
+  assert.equal(ui.$('#group-saving-dialog').open,true);assert.equal(ui.$('#group-saving-title').textContent,'Guardando comida…');assert.equal(ui.$('#group-meal-form').getAttribute('aria-busy'),'true');
+  assert.equal(ui.$('#group-close-meal').disabled,true);assert.equal(ui.$('#group-save-draft').disabled,true);
+  await ui.$('#group-close-meal').onclick();await ui.$('#group-close-editor').onclick();assert.equal(ui.$('#group-meal-dialog').open,true);
+  const cancel=new ui.w.Event('cancel',{cancelable:true});ui.$('#group-saving-dialog').dispatchEvent(cancel);assert.equal(cancel.defaultPrevented,true);
+  await ui.waitFor(()=>!!releaseCache);assert.equal(saveCalls,0);blocked=false;releaseCache();await ui.waitFor(()=>!!releaseSave);
+  await ui.$('#group-close-meal').onclick();assert.equal(saveCalls,1);assert.equal(ui.$('#group-saving-dialog').open,true);
+  releaseSave();await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  assert.equal(saveCalls,1);assert.equal(ui.state.viajes[0].group.meals.length,1);assert.equal(ui.state.gastos.length,1);assert.equal(ui.state.cuentas.find(account=>account.id===1).saldoActual,200);
+  assert.equal(ui.$('#group-saving-dialog').open,false);assert.equal(ui.$('#group-meal-form').hasAttribute('aria-busy'),false);assert.equal(ui.drafts.has(1),false);
+ }finally{blocked=false;releaseCache?.();releaseSave?.();ui.close();}
+});
+
+test('fallo de conexión a Gemini conserva fotos y permite recuperar, guardar borrador y leer después manualmente',async()=>{
+ let calls=0;
+ const ui=await setup({recognizeAI:async meal=>{calls++;assert.match(meal.ticketData,/data:image/);if(calls===1)throw new Error('No se pudo conectar con la lectura de Google.');return{text:'1 Cena 12,00',fields:{total:12}};}});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-name','Local sin cobertura');ui.input('#group-meal-file','');
+  await ui.waitFor(()=>!!ui.$('#group-meal-ticket img'));await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
+  const photo=ui.$('#group-meal-ticket img').src;ui.input('#group-ai-code','test-code');ui.input('#group-ai-consent',true);ui.click('#group-ai-read');
+  await ui.waitFor(()=>ui.$('#group-error-dialog').open);assert.match(ui.$('#group-error-message').textContent,/No se pudo conectar/);assert.equal(calls,1);assert.equal(ui.state.viajes[0].group.meals.length,0);
+  ui.click('#group-error-close');ui.click('#group-close-editor');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  assert.equal(ui.drafts.get(1).meal.ticketData,photo);ui.click('#group-resume');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  assert.equal(ui.$('#group-meal-ticket img').src,photo);assert.equal(ui.$('#group-meal-name').value,'Local sin cobertura');assert.equal(calls,1);
+  ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  const draft=ui.state.viajes[0].group.meals[0];assert.equal(draft.status,'draft');assert.equal(draft.ticketData,photo);assert.equal(ui.state.gastos.length,0);assert.equal(ui.state.transferencias.length,0);
+  ui.click('[data-group-edit]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
+  assert.equal(calls,1);assert.equal(ui.$('#group-ai-consent').checked,false);ui.input('#group-ai-consent',true);ui.click('#group-ai-read');await ui.waitFor(()=>ui.$('#group-meal-total').value==='12.00');
+  assert.equal(calls,2);assert.equal(ui.$('#group-meal-ticket img').src,photo);assert.equal(ui.state.gastos.length,0);
+ }finally{ui.close();}
+});
+
+test('un fallo al guardar el borrador local cierra el progreso, avisa y permite volver a guardar',async()=>{
+ let fail=false;const ui=await setup({cacheDraft:()=>{if(fail)throw new Error('Sin espacio de prueba');}});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-name','Comida pendiente');
+  fail=true;ui.click('#group-save-draft');await ui.waitFor(()=>ui.$('#group-error-dialog').open&&!ui.$('#group-saving-dialog').open);
+  assert.match(ui.$('#group-error-message').textContent,/Sin espacio/);assert.equal(ui.state.viajes[0].group.meals.length,0);assert.equal(ui.$('#group-save-draft').disabled,false);assert.equal(ui.$('#group-meal-name').value,'Comida pendiente');
+  fail=false;ui.click('#group-error-close');ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  assert.equal(ui.state.viajes[0].group.meals[0].status,'draft');assert.equal(ui.state.gastos.length,0);
  }finally{ui.close();}
 });
 
