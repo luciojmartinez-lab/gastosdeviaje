@@ -38,7 +38,7 @@
     });
     return {items:sorted(items),viajes,changed};
   }
-  function references(group,person,draft){return root.TravelGroup.participantInUse(root.TravelGroup.normalize(group),person.id,draft);}
+  function references(group,person,draft){return root.TravelGroup.participantInUse(group,person.id,draft);}
   function canDelete(items,trips,id){return !trips.some(trip=>(trip.group?.participants||[]).some(person=>person.catalogId===id&&references(trip.group,person)));}
   function apply(catalog,trips,settings,action){
     const result=reconcile(catalog,trips),items=result.items,viajes=result.viajes;

@@ -9,7 +9,7 @@
   const access=root.ReceiptAccess;
   let receiptGroup,receiptMeal,receiptFiles=[],receiptSequence=0;
   const openMeals=new Set();
-  let editorDraftBefore=null,discarding=false,travelersSaving=false,travelerEditingId=null;
+  let editorDraftBefore=null,discarding=false,travelersSaving=false,travelerEditingId=null,pendingTravelerSelection=null;
   function resetTravelerEditor(){
     travelerEditingId=null;$('#group-people').value='';$('#traveler-surnames').value='';
     $('#traveler-editor-title').textContent='Añadir viajero';$('#group-add-people').textContent='Añadir viajero al catálogo';$('#traveler-cancel-edit').hidden=true;
@@ -114,17 +114,22 @@
     $('#group-self').innerHTML=options(ordered(group.participants.filter(person=>person.active||person.id===group.selfId)),group.selfId,'Quién soy (opcional)');
     $('#group-integrate').checked=group.integrate;
     $('#group-roster').innerHTML=catalog.map(person=>{
-      const selected=group.participants.some(value=>value.catalogId===person.id&&value.active);
+      const pending=pendingTravelerSelection?.id===person.id&&Number(pendingTravelerSelection.tripId)===Number(selectedTrip?.id);
+      const selected=pending?pendingTravelerSelection.checked:group.participants.some(value=>value.catalogId===person.id&&value.active);
       return `<li><label class="traveler-pick"><input type="checkbox" data-traveler-select="${esc(person.id)}"${selected?' checked':''}${!selectedTrip?' disabled':''}><span>${esc(person.name)}</span></label><span><button type="button" class="ghost" data-traveler-edit="${esc(person.id)}">Editar</button>${root.TravelGroupTravelers.canDelete(catalog,state.viajes,person.id)?`<button type="button" class="ghost" data-traveler-delete="${esc(person.id)}">Eliminar</button>`:''}</span></li>`;
     }).join('')||'<li>Añade los nombres al catálogo para poder seleccionarlos en tus viajes.</li>';
-    $('#group-roster-count').textContent=`${catalog.length} viajeros en el catálogo · ${selectedTrip?group.participants.filter(person=>person.active).length+' seleccionados para '+selectedTrip.nombre:'selecciona un viaje para marcar sus viajeros'}`;
+    $('#group-roster-count').textContent=travelersSaving?'Guardando viajeros…':`${catalog.length} viajeros en el catálogo · ${selectedTrip?group.participants.filter(person=>person.active).length+' seleccionados para '+selectedTrip.nombre:'selecciona un viaje para marcar sus viajeros'}`;
+    $('#group-roster').setAttribute('aria-busy',String(travelersSaving));
     all('#config-viajeros button, #config-viajeros input, #config-viajeros textarea, #config-viajeros select').forEach(element=>element.disabled=blocked||(!selectedTrip&&(element.id==='group-self'||element.id==='group-integrate'||element.id==='group-settings-save'||!!element.dataset.travelerSelect)));
   }
   async function changeTravelers(action,text){
     if(travelersSaving||saving)return;
-    const revision=host.getState().travelerCatalogRevision||0;travelersSaving=true;render();
+    const revision=host.getState().travelerCatalogRevision||0;travelersSaving=true;
+    pendingTravelerSelection=action.type==='select'?action:null;
+    const selectedTrip=trip();renderTravelers(host.getState(),selectedTrip,selectedTrip?.group||api().normalize());
+    message('Guardando viajeros…',false,'#travelers-message');
     try{await host.saveTravelers(revision,action);message(text,false,'#travelers-message');}
-    finally{travelersSaving=false;render();}
+    finally{travelersSaving=false;pendingTravelerSelection=null;render();}
   }
   async function commit(group, expected = group.revision, tripId = trip()?.id) {
     if(saving) throw new Error('Espera a que termine el guardado anterior.');
