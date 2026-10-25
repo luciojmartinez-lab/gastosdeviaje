@@ -67,10 +67,19 @@ test('tickets PDF por MIME, extensión o contenido se abren dentro de la app; la
  ctx.state.gastos=[{id:1,ticketName:'foto.jpg',ticketType:'image/jpeg',ticketData:'data:image/jpeg;base64,AA=='}];ctx.openTicket(1);assert.equal(imageCalls.length,1);
 });
 
-test('antes de guardar un gasto se ofrece abrir el PDF seleccionado sin enviarlo ni convertirlo a imagen',()=>{
- const dom=new JSDOM(html,{url:'http://local.test',runScripts:'outside-only'}),w=dom.window,input=w.document.getElementById('g-ticket');try{
-  const file=new w.File(['%PDF'],'billete.pdf',{type:'application/pdf'});Object.defineProperty(input,'files',{value:[file]});let opened;
-  Object.assign(w,{$:selector=>w.document.querySelector(selector),pendingExpenseTicketPreviews:{g:null},selectedFileInput:()=>input,normalizeTicketDataValue:value=>String(value||''),renderExpenseTicketTranslation:()=>{},openPdfDocument:(blob,name)=>opened=[blob,name]});
-  for(const name of ['isPdfDocument','renderSelectedExpenseTicketPreview'])w.eval(sourceOf(name));w.renderSelectedExpenseTicketPreview('g');const preview=w.document.getElementById('g-ticket-new-preview');assert.equal(preview.hidden,false);assert.match(preview.textContent,/PDF.*Abrir/);preview.querySelector('button').click();assert.equal(opened[0],file);assert.equal(opened[1],'billete.pdf');assert.equal(w.document.getElementById('g-ticket-new-rotate').hidden,true);
+test('el PDF seleccionado se abre junto al nombre en alta y edición y desaparece al cambiar o limpiar',async()=>{
+ const dom=new JSDOM(html,{url:'http://local.test',runScripts:'outside-only'}),w=dom.window;try{
+  let opened;
+  Object.assign(w,{$:selector=>w.document.querySelector(selector),pendingExpenseTicketPreviews:{g:null,'edit-gasto':null},normalizeTicketDataValue:value=>String(value||''),renderExpenseTicketTranslation:()=>{},openPdfDocument:(blob,name)=>opened=[blob,name]});
+  for(const name of ['selectedFileInput','isPdfDocument','renderSelectedExpenseTicketPreview'])w.eval(sourceOf(name));
+  for(const prefix of ['g','edit-gasto']){
+   const input=w.document.getElementById(prefix+'-ticket'),file=new w.File(['%PDF'],'billete.pdf',{type:''});
+   Object.defineProperty(input,'files',{configurable:true,value:[file]});w.renderSelectedExpenseTicketPreview(prefix);
+   const button=w.document.getElementById(prefix+'-ticket-open-pdf');assert.equal(button.hidden,false);assert.equal(button.textContent,'Abrir PDF');
+   assert.ok(button.compareDocumentPosition(w.document.getElementById(prefix+'-ticket-ai-panel'))&w.Node.DOCUMENT_POSITION_FOLLOWING);
+   button.click();assert.equal(opened[0],file);assert.equal(opened[1],'billete.pdf');assert.equal(w.document.getElementById(prefix+'-ticket-new-rotate').hidden,true);
+   Object.defineProperty(input,'files',{configurable:true,value:[]});w.renderSelectedExpenseTicketPreview(prefix);assert.equal(button.hidden,true);assert.equal(button.onclick,null);
+   Object.defineProperty(input,'files',{configurable:true,value:[new w.File(['image'],'foto.jpg',{type:'image/jpeg'})]});w.renderSelectedExpenseTicketPreview(prefix);assert.equal(button.hidden,true);
+  }
  }finally{w.close();}
 });
