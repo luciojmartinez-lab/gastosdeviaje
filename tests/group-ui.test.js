@@ -4,21 +4,21 @@ import fs from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { IDBFactory } from 'fake-indexeddb';
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
-const sources=['receipt-access.js','group-meals.js','group-ledger.js','group-store.js','group-ui.js'].map(file=>fs.readFileSync(new URL('../'+file,import.meta.url),'utf8'));
+const sources=['receipt-access.js','group-meals.js','group-ledger.js','group-store.js','group-travelers.js','group-ui.js'].map(file=>fs.readFileSync(new URL('../'+file,import.meta.url),'utf8'));
 async function setup(options={}){
  const dom=new JSDOM(html,{url:'http://localhost.test/',runScripts:'outside-only'}),w=dom.window;
  if(options.rememberedCode)w.localStorage.setItem('cuaderno.receiptAccess.v1',options.rememberedCode);
  w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new w.Event('close'));};w.confirm=()=>true;
  for(const source of sources)w.eval(source);
- const factory=new IDBFactory();const stores=['viajes','cuentas','gastos','transferencias','categorias'];
- const db=await new Promise((resolve,reject)=>{const req=factory.open('ui',1);req.onupgradeneeded=()=>stores.forEach(name=>req.result.createObjectStore(name,{keyPath:'id',autoIncrement:true}));req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
+ const factory=new IDBFactory();const stores=['viajes','cuentas','gastos','transferencias','categorias','appSettings'];
+ const db=await new Promise((resolve,reject)=>{const req=factory.open('ui',1);req.onupgradeneeded=()=>stores.forEach(name=>req.result.createObjectStore(name,name==='appSettings'?{keyPath:'key'}:{keyPath:'id',autoIncrement:true}));req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
  const people=Array.from({length:12},(_,i)=>({id:'p'+i,name:'Atleta '+i,active:true}));
  const seed=[['viajes',{id:1,nombre:'Tenerife',group:{enabled:true,revision:0,selfId:'p0',integrate:true,participants:people,meals:[],settlements:[]}}],['cuentas',{id:1,nombre:'Banco',viajeId:1,moneda:'EUR',saldoActual:500}],['categorias',{id:1,nombre:'Comida',parentId:null}]];
  await new Promise((resolve,reject)=>{const tx=db.transaction(stores,'readwrite');tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);seed.forEach(([name,value])=>tx.objectStore(name).put(value));});
  const state={selectedViajeIds:[1]},drafts=new Map();
- async function load(){await new Promise((resolve,reject)=>{const tx=db.transaction(stores);tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);stores.forEach(name=>{const req=tx.objectStore(name).getAll();req.onsuccess=()=>state[name]=req.result;});});}
+ async function load(){await w.TravelGroupTravelers.ensure(db);await new Promise((resolve,reject)=>{const tx=db.transaction(stores);tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);stores.forEach(name=>{const req=tx.objectStore(name).getAll();req.onsuccess=()=>state[name]=req.result;});});const catalog=state.appSettings.find(row=>row.key===w.TravelGroupTravelers.KEY);state.travelerCatalog=catalog.items;state.travelerCatalogRevision=catalog.revision;}
  await load();let ocrCalls=0;
- w.TravelGroupUI.mount({prepareReceipt:options.prepareReceipt,shareReceipt:options.shareReceipt,downloadReceipt:options.downloadReceipt,aiStatus:options.aiStatus||(async()=>({enabled:true,message:'Comprobación gratuita por foto'})),recognizeAI:options.recognizeAI,expenseScope:options.expenseScope,getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{await options.beforeSave?.();const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>{await options.cacheDraft?.();drafts.set(value.tripId,JSON.parse(JSON.stringify(value)));},readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:options.recognize || (async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};}),share:async text=>assert.match(text,/Pendiente|pendiente/)});
+ w.TravelGroupUI.mount({prepareReceipt:options.prepareReceipt,shareReceipt:options.shareReceipt,downloadReceipt:options.downloadReceipt,aiStatus:options.aiStatus||(async()=>({enabled:true,message:'Comprobación gratuita por foto'})),recognizeAI:options.recognizeAI,expenseScope:options.expenseScope,showTravelers:()=>{w.document.querySelector('#view-config').style.display='';},saveTravelers:async(revision,action)=>{await w.TravelGroupTravelers.save(db,revision,action);await load();w.TravelGroupUI.render();},getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{await options.beforeSave?.();const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>{await options.cacheDraft?.();drafts.set(value.tripId,JSON.parse(JSON.stringify(value)));},readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:options.recognize || (async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};}),share:async text=>assert.match(text,/Pendiente|pendiente/)});
  const $=selector=>w.document.querySelector(selector);
  const input=(selector,value)=>{const element=$(selector);if(element.type==='checkbox')element.checked=value;else element.value=value;element.dispatchEvent(new w.Event('input',{bubbles:true}));element.dispatchEvent(new w.Event('change',{bubbles:true}));};
  const click=selector=>$(selector).click();
@@ -31,12 +31,12 @@ test('Nueva comida sin viajeros avisa en un modal, no crea borrador y lleva a a�
  const ui=await setup();try{
   ui.$('#view-grupo').style.display='';
   Object.assign(ui.state.viajes[0].group,{enabled:false,participants:[],selfId:'',integrate:false});ui.w.TravelGroupUI.render();
-  const before=JSON.stringify(ui.state),draft={meal:{name:'Borrador anterior'}};ui.drafts.set(1,draft);
+  await new Promise(resolve=>{const tx=ui.db.transaction('viajes','readwrite');tx.objectStore('viajes').put(ui.state.viajes[0]);tx.oncomplete=resolve;});const before=JSON.stringify(ui.state),draft={meal:{name:'Borrador anterior'}};ui.drafts.set(1,draft);
   assert.equal(ui.$('#group-new-meal').disabled,false);ui.click('#group-new-meal');
   assert.equal(ui.$('#group-people-needed-dialog').open,true);assert.match(ui.$('#group-people-needed-message').textContent,/no has creado ningún grupo.*Añade gente/);
   assert.equal(ui.$('#group-meal-dialog').open,false);assert.equal(JSON.stringify(ui.state),before);assert.equal(ui.drafts.get(1),draft);
-  ui.click('#group-people-needed-close');assert.equal(ui.$('#group-people-needed-dialog').open,false);assert.equal(ui.$('#group-people').closest('details').open,true);assert.equal(ui.w.document.activeElement,ui.$('#group-people'));
-  ui.input('#group-people','Ana');ui.click('#group-add-people');await ui.waitFor(()=>ui.state.viajes[0].group.participants.length===1);
+  ui.click('#group-people-needed-close');assert.equal(ui.$('#group-people-needed-dialog').open,false);assert.equal(ui.$('#view-config').style.display,'');assert.equal(ui.w.document.activeElement,ui.$('#group-people'));
+  ui.input('#group-people','Ana');ui.input('#traveler-surnames','García');ui.click('#group-add-people');await ui.waitFor(()=>ui.state.travelerCatalog.some(p=>p.name==='Ana García'));const id=ui.state.travelerCatalog.find(p=>p.name==='Ana García').id;ui.input('[data-traveler-select="'+id+'"]',true);await ui.waitFor(()=>ui.state.viajes[0].group.participants.length===1);
   ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);assert.equal(ui.$('#group-people-needed-dialog').open,false);
  }finally{ui.close();}
 });
@@ -45,7 +45,7 @@ test('un grupo con todos archivados pide añadir o activar viajeros y permite re
  const ui=await setup();try{
   const group=ui.state.viajes[0].group;group.participants.forEach(person=>person.active=false);
   group.meals=[{id:'anterior',name:'Comida anterior',date:'2026-10-17',status:'draft',currency:'EUR',attendees:['p0'],payerId:'p0',totalCents:null,items:[]}];
-  ui.w.TravelGroupUI.render();ui.click('#group-new-meal');assert.equal(ui.$('#group-people-needed-dialog').open,true);assert.match(ui.$('#group-people-needed-message').textContent,/No hay viajeros activos.*reactiva/);
+  ui.w.TravelGroupUI.render();ui.click('#group-new-meal');assert.equal(ui.$('#group-people-needed-dialog').open,true);assert.match(ui.$('#group-people-needed-message').textContent,/No hay viajeros seleccionados.*Configuración/);
   ui.click('#group-people-needed-close');ui.click('[data-group-edit="anterior"]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);assert.equal(ui.$('#group-meal-name').value,'Comida anterior');
  }finally{ui.close();}
 });
@@ -67,17 +67,28 @@ async function seedExpenseAdvance(ui){
  await ui.w.TravelGroupStore.save(ui.db,1,0,group);await ui.load();ui.w.TravelGroupUI.render();
 }
 
-test('Desactivar y Reactivar conservan el historial; Eliminar solo quita viajeros sin referencias y admite cancelar',async()=>{
+test('seleccionar viajeros conserva historial y eliminar solo quita contactos sin referencias',async()=>{
  const ui=await setup();try{
   await seedPayments(ui);const finance=JSON.stringify([ui.state.cuentas,ui.state.gastos,ui.state.transferencias]);
-  assert.equal(ui.$('[data-group-archive="p1"]').textContent,'Desactivar');ui.click('[data-group-archive="p1"]');await ui.waitFor(()=>ui.state.viajes[0].group.participants.find(person=>person.id==='p1').active===false);
-  assert.equal(ui.$('[data-group-archive="p1"]').textContent,'Reactivar');assert.match(ui.$('[data-group-archive="p1"]').closest('li').textContent,/desactivado/);
-  assert.equal(ui.$('[data-group-person-delete="p1"]'),null);ui.click('[data-group-archive="p1"]');await ui.waitFor(()=>ui.state.viajes[0].group.participants.find(person=>person.id==='p1').active===true);
-  ui.input('#group-people','Invitado de prueba');ui.click('#group-add-people');await ui.waitFor(()=>ui.state.viajes[0].group.participants.length===4);
-  const id=ui.state.viajes[0].group.participants.at(-1).id,button=()=>ui.$(`[data-group-person-delete="${id}"]`);
-  ui.w.confirm=()=>false;await ui.$('#group-content').onclick({target:button()});assert.equal(ui.state.viajes[0].group.participants.length,4);
-  ui.drafts.set(1,{tripId:1,meal:{attendees:[id]}});ui.w.confirm=()=>true;await ui.$('#group-content').onclick({target:button()});assert.equal(ui.$('#group-error-dialog').open,true);assert.match(ui.$('#group-error-message').textContent,/borrador local/);
-  ui.click('#group-error-close');ui.drafts.delete(1);await ui.$('#group-content').onclick({target:button()});assert.equal(ui.state.viajes[0].group.participants.length,3);assert.equal(JSON.stringify([ui.state.cuentas,ui.state.gastos,ui.state.transferencias]),finance);
+  const id=ui.state.viajes[0].group.participants.find(p=>p.id==='p1').catalogId;
+  ui.input('[data-traveler-select="'+id+'"]',false);await ui.waitFor(()=>!ui.state.viajes[0].group.participants.find(p=>p.id==='p1').active);
+  assert.equal(ui.$('[data-traveler-delete="'+id+'"]'),null);
+  ui.input('[data-traveler-select="'+id+'"]',true);await ui.waitFor(()=>ui.state.viajes[0].group.participants.find(p=>p.id==='p1').active);
+  ui.input('#group-people','Invitado');ui.input('#traveler-surnames','de prueba');ui.click('#group-add-people');await ui.waitFor(()=>ui.state.travelerCatalog.some(p=>p.name==='Invitado de prueba'));
+  const unused=ui.state.travelerCatalog.find(p=>p.name==='Invitado de prueba').id;
+  ui.w.confirm=()=>false;ui.click('[data-traveler-delete="'+unused+'"]');assert.ok(ui.state.travelerCatalog.some(p=>p.id===unused));
+  ui.w.confirm=()=>true;ui.click('[data-traveler-delete="'+unused+'"]');await ui.waitFor(()=>!ui.state.travelerCatalog.some(p=>p.id===unused));
+  assert.equal(JSON.stringify([ui.state.cuentas,ui.state.gastos,ui.state.transferencias]),finance);
+ }finally{ui.close();}
+});
+
+test('nombre y apellidos distinguen homónimos, rechazan duplicados y se editan por separado',async()=>{
+ const ui=await setup();try{
+  async function add(surnames){ui.input('#group-people','Ana');ui.input('#traveler-surnames',surnames);ui.click('#group-add-people');await ui.waitFor(()=>ui.state.travelerCatalog.some(p=>p.name==='Ana '+surnames));}
+  await add('García');await add('López');assert.equal(ui.state.viajes[0].group.participants.length,12);
+  ui.input('#group-people',' ANA ');ui.input('#traveler-surnames','garcia');ui.click('#group-add-people');await ui.waitFor(()=>ui.$('#group-error-dialog').open);assert.match(ui.$('#group-error-message').textContent,/Ya existe/);ui.click('#group-error-close');
+  const id=ui.state.travelerCatalog.find(p=>p.name==='Ana López').id;ui.click('[data-traveler-edit="'+id+'"]');assert.equal(ui.$('#group-people').value,'Ana');assert.equal(ui.$('#traveler-surnames').value,'López');
+  ui.input('#traveler-surnames','Martínez');ui.click('#group-add-people');await ui.waitFor(()=>ui.state.travelerCatalog.some(p=>p.name==='Ana Martínez'));assert.equal(ui.$('#traveler-cancel-edit').hidden,true);
  }finally{ui.close();}
 });
 
@@ -272,7 +283,7 @@ test('editar una devolución detecta cambios de otra pestaña y conserva el form
  }finally{ui.close();}
 });
 
-test('interfaz: foto/OCR propuesto, revisión obligatoria, cierre de doce y cobro parcial',async()=>{const ui=await setup();try{await prepare(ui);assert.equal(ui.ocrCalls(),1);assert.match(ui.$('#group-meal-check').textContent,/Todo cuadra/);ui.click('#group-close-meal');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('Confirma'));assert.equal(ui.state.gastos.length,0);ui.input('#group-meal-reviewed',true);ui.click('#group-close-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);assert.equal(ui.state.gastos.length,1);assert.equal(ui.state.gastos[0].importe,25);assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,200);assert.equal(ui.state.viajes[0].group.meals[0].ticketData,'data:image/jpeg;base64,dGVzdA==');ui.click('[data-group-collect]');ui.input('#group-payment-from','p1');ui.input('#group-payment-amount','26');ui.input('#group-payment-account','1');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>ui.$('#group-payment-message').textContent.includes('supera'));assert.equal(ui.state.transferencias.length,1);ui.input('#group-payment-amount','10');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,210);assert.equal(ui.state.cuentas.find(c=>c.groupClearing).saldoActual,265);assert.equal(ui.state.gastos.length,1);ui.click('[data-group-archive="p11"]');await ui.waitFor(()=>ui.state.viajes[0].group.participants.find(p=>p.id==='p11').active===false);assert.equal(ui.state.viajes[0].group.meals[0].attendees.length,12);}finally{ui.close();}});
+test('interfaz: foto/OCR propuesto, revisión obligatoria, cierre de doce y cobro parcial',async()=>{const ui=await setup();try{await prepare(ui);assert.equal(ui.ocrCalls(),1);assert.match(ui.$('#group-meal-check').textContent,/Todo cuadra/);ui.click('#group-close-meal');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('Confirma'));assert.equal(ui.state.gastos.length,0);ui.input('#group-meal-reviewed',true);ui.click('#group-close-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);assert.equal(ui.state.gastos.length,1);assert.equal(ui.state.gastos[0].importe,25);assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,200);assert.equal(ui.state.viajes[0].group.meals[0].ticketData,'data:image/jpeg;base64,dGVzdA==');ui.click('[data-group-collect]');ui.input('#group-payment-from','p1');ui.input('#group-payment-amount','26');ui.input('#group-payment-account','1');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>ui.$('#group-payment-message').textContent.includes('supera'));assert.equal(ui.state.transferencias.length,1);ui.input('#group-payment-amount','10');ui.$('#group-payment-form').dispatchEvent(new ui.w.Event('submit',{bubbles:true,cancelable:true}));await ui.waitFor(()=>!ui.$('#group-payment-dialog').open);assert.equal(ui.state.cuentas.find(c=>c.id===1).saldoActual,210);assert.equal(ui.state.cuentas.find(c=>c.groupClearing).saldoActual,265);assert.equal(ui.state.gastos.length,1);ui.input('[data-traveler-select="'+ui.state.viajes[0].group.participants.find(p=>p.id==='p11').catalogId+'"]',false);await ui.waitFor(()=>ui.state.viajes[0].group.participants.find(p=>p.id==='p11').active===false);assert.equal(ui.state.viajes[0].group.meals[0].attendees.length,12);}finally{ui.close();}});
 test('interfaz: retirar un asistente no borra su consumo y deja visible el error',async()=>{const ui=await setup();try{await prepare(ui);ui.input('[data-group-attendee="p11"]',false);assert.match(ui.$('#group-meal-check').textContent,/ausente/);assert.ok(ui.$('[data-item-person="p11"]'));ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);assert.equal(ui.state.viajes[0].group.meals[0].status,'draft');assert.equal(ui.state.gastos.length,0);}finally{ui.close();}});
 
 

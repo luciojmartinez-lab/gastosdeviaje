@@ -5,11 +5,11 @@ import vm from 'node:vm';
 const app = fs.readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
 const section = (from, to) => app.slice(app.indexOf(from), app.indexOf(to, app.indexOf(from)));
 const prepContext = vm.createContext({});
-for (const file of ['preparation.js','group-meals.js']) vm.runInContext(fs.readFileSync(new URL('../'+file, import.meta.url), 'utf8'), prepContext);
+for (const file of ['preparation.js','group-meals.js','group-travelers.js']) vm.runInContext(fs.readFileSync(new URL('../'+file, import.meta.url), 'utf8'), prepContext);
 const empty = () => ({ cuentas: [], categorias: [], gastos: [], viajes: [], monedas: [], transferencias: [], lugares: [], photoTypes: [], viajeDocumentos: [], blogEntries: [], timelineDays: [] });
 function harness(initial = empty()) {
   const state = structuredClone(initial);
-  const context = vm.createContext({ state, Date, Number, Set, Map, Promise, TravelPreparation: prepContext.TravelPreparation, TravelGroup: prepContext.TravelGroup, PREPARATION_CATALOG_SETTING_KEY: 'preparationCatalog',
+  const context = vm.createContext({ state, Date, Number, Set, Map, Promise, TravelPreparation: prepContext.TravelPreparation, TravelGroup: prepContext.TravelGroup, TravelGroupTravelers:prepContext.TravelGroupTravelers, PREPARATION_CATALOG_SETTING_KEY: 'preparationCatalog',
     numberValue: value => Number(value) || 0, optionalNumberValue: value => value == null ? null : Number(value),
     normalizeAccountType: value => value || '', normalizePhotoTypes: value => value || [],
     PHOTO_TYPES_SETTING_KEY: 'photoTypes', DEFAULT_PHOTO_TYPES: [], DEFAULT_MONEDAS: [{codigo:'EUR',eurPorUnidad:1,unidadesPorEuro:1}],
@@ -93,9 +93,25 @@ test('borrar un viaje conserva cuentas y gastos accesibles sin referencias al vi
 });
 test('backup de viaje incluye la cuenta contraparte de una transferencia', () => {
   const state=fixture(); state.cuentas.push({id:21,nombre:'Base',moneda:'EUR',viajeId:null});
-  const ctx=vm.createContext({ state, Number, Set, Date, APP_VERSION:'800v039',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
+  const ctx=vm.createContext({ state, Number, Set, Date, TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v040',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
   vm.runInContext(section('function buildTripBackupData', '// Prepare every write'),ctx);
   const backup=ctx.buildTripBackupData(3); assert.ok(backup.cuentas.some(c=>c.id===21)); assert.equal(backup.transferencias.length,1);
+});
+
+test('catálogo de viajeros y selección por viaje se restauran; importar un viaje conserva contactos ajenos',async()=>{
+ const data=fixture(),catalog=[{id:'ana',name:'Ana García',givenName:'Ana',surnames:'García'},{id:'luis',name:'Luis Pérez',givenName:'Luis',surnames:'Pérez'}];
+ data.travelerCatalog=catalog;data.viajes[0].group={participants:[{id:'local',catalogId:'ana',name:'Ana García',active:false}],meals:[],settlements:[]};
+ const full=harness();await full.importAll(data);const setting=full.operations.find(o=>o.store==='appSettings'&&o.data?.key==='groupTravelerCatalog');assert.deepEqual(JSON.parse(JSON.stringify(setting.data.items)),catalog);
+ assert.equal(full.operations.find(o=>o.store==='viajes'&&o.type==='add').data.group.participants[0].active,false);
+ const initial={...empty(),viajes:[{id:50,nombre:'Destino'}],travelerCatalog:[{id:'pedro',name:'Pedro López'}]},single=harness(initial);await single.importTripBackup(data,50);
+ const merged=single.operations.find(o=>o.store==='appSettings'&&o.data?.key==='groupTravelerCatalog').data.items;assert.equal(merged.length,3);assert.ok(merged.some(p=>p.id==='pedro'));assert.equal(merged.find(p=>p.id==='ana').surnames,'García');
+ const invalid=harness();await assert.rejects(invalid.importAll({...data,travelerCatalog:[{id:'x',name:''}]}),/catálogo/);assert.equal(invalid.operations,undefined);
+});
+
+test('exportación de un viaje incluye únicamente sus contactos y conserva el identificador de catálogo',()=>{
+ const state=fixture();state.travelerCatalog=[{id:'ana',name:'Ana García',givenName:'Ana',surnames:'García'},{id:'otro',name:'Otro viajero'}];state.viajes[0].group={participants:[{id:'local',catalogId:'ana',name:'Ana García',active:false}]};
+ const ctx=vm.createContext({state,Number,Set,Date,TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v040',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c});vm.runInContext(section('function buildTripBackupData','// Prepare every write'),ctx);
+ const backup=ctx.buildTripBackupData(3);assert.equal(backup.travelerCatalog.length,1);assert.equal(backup.travelerCatalog[0].givenName,'Ana');assert.equal(backup.viajes[0].group.participants[0].catalogId,'ana');
 });
 
 test('backups completos y de viaje restauran selección, notas, cantidades y progreso de preparativos', async () => {

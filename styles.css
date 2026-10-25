@@ -5991,3 +5991,9 @@ footer {
   .group-roster li { flex-wrap: wrap; }
   .group-dialog .actions { display: grid; grid-template-columns: 1fr; }
 }
+#config-viajeros .traveler-name-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+#config-viajeros .traveler-pick { display: flex; align-items: center; gap: 10px; margin: 0; flex: 1; min-width: 150px; font-size: 16px; color: var(--text); overflow-wrap: anywhere; }
+#config-viajeros input[type="checkbox"] { width: 20px; height: 20px; flex: 0 0 20px; }
+#config-viajeros details { margin-top: 18px; }
+#config-viajeros .group-roster li > span { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 480px) { #config-viajeros .traveler-name-fields { grid-template-columns: 1fr; } }

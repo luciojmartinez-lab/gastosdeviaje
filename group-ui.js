@@ -9,7 +9,11 @@
   const access=root.ReceiptAccess;
   let receiptGroup,receiptMeal,receiptFiles=[],receiptSequence=0;
   const openMeals=new Set();
-  let editorDraftBefore=null,discarding=false;
+  let editorDraftBefore=null,discarding=false,travelersSaving=false,travelerEditingId=null;
+  function resetTravelerEditor(){
+    travelerEditingId=null;$('#group-people').value='';$('#traveler-surnames').value='';
+    $('#traveler-editor-title').textContent='Añadir viajero';$('#group-add-people').textContent='Añadir viajero al catálogo';$('#traveler-cancel-edit').hidden=true;
+  }
   async function renderReceipt(){
     const sequence=++receiptSequence;receiptFiles=[];
     $('#group-receipt-share').disabled=true;$('#group-receipt-download').disabled=true;
@@ -98,16 +102,35 @@
     if(target==='#group-meal-message' && $('#group-parse-message')){
       $('#group-parse-message').textContent=text;$('#group-parse-message').classList.toggle('error',error);
     }
-    if(error&&['#group-message','#group-meal-message','#group-payment-message'].includes(target))showError(text);
+    if(error&&['#group-message','#group-meal-message','#group-payment-message','#travelers-message'].includes(target))showError(text);
   };
   const showParseFeedback=()=>{ $('#group-text-panel').open=true;$('#group-parse-message').scrollIntoView?.({block:'nearest'}); };
   function accounts(id) { return host.getState().cuentas.filter(account=>account.moneda==='EUR'&&!account.groupClearing&&Number(account.viajeId)===Number(id)); }
   const options = (rows,value,empty='Elige una opción') => `<option value="">${esc(empty)}</option>${rows.map(row=>`<option value="${esc(row.id)}"${String(row.id)===String(value)?' selected':''}>${esc(row.name||row.nombre)}</option>`).join('')}`;
+  const ordered=people=>people.slice().sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base',numeric:true})||a.id.localeCompare(b.id));
+  function renderTravelers(state,selectedTrip,group){
+    const catalog=state.travelerCatalog||[],blocked=travelersSaving||saving;
+    $('#travelers-trip').innerHTML=options(state.viajes,selectedTrip?.id,'Elige un viaje');
+    $('#group-self').innerHTML=options(ordered(group.participants.filter(person=>person.active||person.id===group.selfId)),group.selfId,'Quién soy (opcional)');
+    $('#group-integrate').checked=group.integrate;
+    $('#group-roster').innerHTML=catalog.map(person=>{
+      const selected=group.participants.some(value=>value.catalogId===person.id&&value.active);
+      return `<li><label class="traveler-pick"><input type="checkbox" data-traveler-select="${esc(person.id)}"${selected?' checked':''}${!selectedTrip?' disabled':''}><span>${esc(person.name)}</span></label><span><button type="button" class="ghost" data-traveler-edit="${esc(person.id)}">Editar</button>${root.TravelGroupTravelers.canDelete(catalog,state.viajes,person.id)?`<button type="button" class="ghost" data-traveler-delete="${esc(person.id)}">Eliminar</button>`:''}</span></li>`;
+    }).join('')||'<li>Añade los nombres al catálogo para poder seleccionarlos en tus viajes.</li>';
+    $('#group-roster-count').textContent=`${catalog.length} viajeros en el catálogo · ${selectedTrip?group.participants.filter(person=>person.active).length+' seleccionados para '+selectedTrip.nombre:'selecciona un viaje para marcar sus viajeros'}`;
+    all('#config-viajeros button, #config-viajeros input, #config-viajeros textarea, #config-viajeros select').forEach(element=>element.disabled=blocked||(!selectedTrip&&(element.id==='group-self'||element.id==='group-integrate'||element.id==='group-settings-save'||!!element.dataset.travelerSelect)));
+  }
+  async function changeTravelers(action,text){
+    if(travelersSaving||saving)return;
+    const revision=host.getState().travelerCatalogRevision||0;travelersSaving=true;render();
+    try{await host.saveTravelers(revision,action);message(text,false,'#travelers-message');}
+    finally{travelersSaving=false;render();}
+  }
   async function commit(group, expected = group.revision, tripId = trip()?.id) {
     if(saving) throw new Error('Espera a que termine el guardado anterior.');
-    saving=true; all('#view-grupo button, #group-meal-dialog button, #group-payment-dialog button').forEach(button=>button.disabled=true);
+    saving=true; all('#view-grupo button, #config-viajeros button, #group-meal-dialog button, #group-payment-dialog button').forEach(button=>button.disabled=true);
     try { return await host.save(tripId,expected,group); }
-    finally { saving=false;all('#view-grupo button, #group-meal-dialog button, #group-payment-dialog button').forEach(button=>button.disabled=false);render(); }
+    finally { saving=false;all('#view-grupo button, #config-viajeros button, #group-meal-dialog button, #group-payment-dialog button').forEach(button=>button.disabled=false);render(); }
   }
   function render() {
     if(!host || !$('#group-trip')) return;
@@ -115,12 +138,10 @@
     $('#group-trip').innerHTML=options(state.viajes,selected,'Elige un viaje');
     const selectedTrip=trip(),group=current();
     $('#group-content').hidden=!selectedTrip; $('#group-empty').hidden=!!selectedTrip;
+    renderTravelers(state,selectedTrip,group);
     if(!selectedTrip)return;
-    $('#group-self').innerHTML=options(group.participants,group.selfId,'Quién soy (opcional)');
-    $('#group-integrate').checked=group.integrate;
-    $('#group-roster').innerHTML=group.participants.map(person=>`<li><span>${esc(person.name)}${person.id===group.selfId?' · yo':''}${person.active?'':' · desactivado'}</span><span><button type="button" class="ghost" data-group-person="${esc(person.id)}">Editar</button><button type="button" class="ghost" data-group-archive="${esc(person.id)}">${person.active?'Desactivar':'Reactivar'}</button>${api().participantInUse(group,person.id)?'':`<button type="button" class="ghost" data-group-person-delete="${esc(person.id)}">Eliminar</button>`}</span></li>`).join('')||'<li>Añade los nombres de los viajeros, uno por línea.</li>';
-    $('#group-roster-count').textContent=`${group.participants.filter(person=>person.active).length} viajeros activos`;
-    const balances=group.meals.some(meal=>meal.status==='closed')?api().balances(group):[];
+    $('#group-selected-people').textContent='Viajeros del viaje: '+(ordered(group.participants.filter(person=>person.active)).map(person=>person.name).join(', ')||'ninguno seleccionado. Abre Configurar viajeros.');
+    const balances=group.meals.some(meal=>meal.status==='closed')?ordered(api().balances(group).filter(row=>row.active||row.consumed||row.advanced||row.sent||row.received)):[];
     const owedTotal=balances.reduce((total,row)=>total+Math.max(0,-row.balance),0);
     $('#group-balances').innerHTML=balances.length?`<div class="table-wrap"><table><thead><tr><th>Viajero</th><th>Consumido</th><th>Adelantado</th><th>Devuelto</th><th>Recibido</th><th>Saldo</th></tr></thead><tbody>${balances.map(row=>`<tr><td>${esc(row.name)}</td><td>${api().money(row.consumed)}</td><td>${api().money(row.advanced)}</td><td>${api().money(row.sent)}</td><td>${api().money(row.received)}</td><td${row.balance<0?' class="group-balance-negative"':''}>${api().money(row.balance)} ${row.balance>0?'a recuperar':row.balance<0?'a pagar':'saldado'}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['consumed','advanced','sent','received'].map(key=>`<td>${api().money(sum(balances,key))}</td>`).join('')}<td><small class="group-balance-totals">Pendiente de liquidar</small><span${owedTotal>0?' class="group-balance-negative"':''}>${api().money(owedTotal)}</span></td></tr></tfoot></table></div>`:'<p class="small">El resumen aparecerá al cerrar la primera comida.</p>';
     const mealTotals={amount:0,pending:0};
@@ -178,9 +199,9 @@
     meal.items.forEach(item=>{item.mode='weights';});
     restoreAICode();
     $('#group-meal-name').value=meal.name||'';$('#group-meal-date').value=meal.date||today();$('#group-meal-time').value=meal.time||'';$('#group-ticket-datetime').textContent='';$('#group-meal-total').value=amount(meal.totalCents);
-    $('#group-meal-payer').innerHTML=options(group.participants,meal.payerId,'Quién pagó al restaurante');
+    $('#group-meal-payer').innerHTML=options(ordered(group.participants.filter(person=>person.active||person.id===meal.payerId)),meal.payerId,'Quién pagó al restaurante');
     $('#group-meal-account').innerHTML=options(accounts(editor.tripId),meal.accountId,'Cuenta real si pagaste tú');
-    $('#group-meal-attendees').innerHTML=group.participants.filter(person=>person.active||meal.attendees.includes(person.id)).map(person=>`<label class="check-option"><input type="checkbox" data-group-attendee="${esc(person.id)}"${meal.attendees.includes(person.id)?' checked':''}> ${esc(person.name)}</label>`).join('');
+    $('#group-meal-attendees').innerHTML=ordered(group.participants.filter(person=>person.active||meal.attendees.includes(person.id))).map(person=>`<label class="check-option"><input type="checkbox" data-group-attendee="${esc(person.id)}"${meal.attendees.includes(person.id)?' checked':''}> ${esc(person.name)}</label>`).join('');
     $('#group-meal-reviewed').checked=false;$('#group-meal-file').value='';$('#group-meal-text').value=meal.ocrText||'';
     $('#group-text-panel').open=!!meal.ocrText;$('#group-parse-replace').hidden=true;$('#group-ocr-progress-wrap').hidden=true;
     $('#group-ai-read').disabled=true;$('#group-ai-consent').checked=false;$('#group-ai-status').textContent='Comprobando disponibilidad de la IA gratuita…';
@@ -199,8 +220,8 @@
     const group=current();let changed=false;
     if(!id&&!resume&&!group.participants.some(person=>person.active)){
       $('#group-people-needed-message').textContent=group.participants.length
-        ? 'No hay viajeros activos en este grupo. Añade gente en «Viajeros» o reactiva a algún viajero para registrar una comida.'
-        : 'Todavía no has creado ningún grupo para este viaje. Añade gente en «Viajeros» para crearlo y poder registrar una comida.';
+        ? 'No hay viajeros seleccionados para este viaje. Selecciona gente en Configuración → Viajeros para registrar una comida.'
+        : 'Todavía no has creado ningún grupo para este viaje. Añade gente al catálogo y selecciónala en Configuración → Viajeros para crearlo.';
       if(!$('#group-people-needed-dialog').open)$('#group-people-needed-dialog').showModal();
       return;
     }
@@ -341,13 +362,34 @@
     $('#group-error-close').onclick=()=>$('#group-error-dialog').close();
     $('#group-saving-dialog').oncancel=event=>event.preventDefault();
     $('#group-trip').onchange=()=>host.selectTrip($('#group-trip').value);
-    $('#group-settings-save').onclick=safe(async()=>{const group=current();group.enabled=true;group.selfId=$('#group-self').value;group.integrate=$('#group-integrate').checked;await commit(group);message('Identidad e integración guardadas.');});
-    $('#group-add-people').onclick=safe(async()=>{const group=current();const names=$('#group-people').value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean);if(!names.length)throw new Error('Escribe al menos un nombre.');const known=new Set(group.participants.map(person=>person.name.toLocaleLowerCase('es')));for(const value of names){if(known.has(value.toLocaleLowerCase('es')))throw new Error(`Nombre repetido: ${value}. Añade un apellido para distinguirlo.`);known.add(value.toLocaleLowerCase('es'));group.participants.push({id:uid(),name:value,active:true});}group.enabled=true;await commit(group);$('#group-people').value='';message(`${names.length} viajeros añadidos.`);});
+    $('#group-settings-save').onclick=safe(async()=>{const group=current();group.enabled=true;group.selfId=$('#group-self').value;group.integrate=$('#group-integrate').checked;await commit(group);message('Identidad e integración guardadas.',false,'#travelers-message');});
+    $('#group-add-people').onclick=safe(async()=>{
+      if(travelersSaving||saving)return;
+      await changeTravelers({type:travelerEditingId?'rename':'add',id:travelerEditingId,givenName:$('#group-people').value,surnames:$('#traveler-surnames').value},travelerEditingId?'Nombre y apellidos actualizados.':'Viajero añadido al catálogo. Márcalo para incluirlo en este viaje.');resetTravelerEditor();
+    },'#travelers-message');
+    $('#traveler-cancel-edit').onclick=()=>resetTravelerEditor();
+    $('#travelers-trip').onchange=()=>host.selectTrip($('#travelers-trip').value);
+    $('#group-configure-people').onclick=()=>host.showTravelers?.();
+    $('#config-viajeros').onchange=safe(async event=>{
+      const input=event.target;if(!input.dataset.travelerSelect)return;
+      await changeTravelers({type:'select',id:input.dataset.travelerSelect,tripId:trip()?.id,checked:input.checked},'Selección de viajeros guardada para este viaje.');
+    },'#travelers-message');
+    $('#config-viajeros').onclick=safe(async event=>{
+      const button=event.target.closest('button');if(!button)return;
+      const catalog=host.getState().travelerCatalog||[],person=catalog.find(value=>value.id===(button.dataset.travelerEdit||button.dataset.travelerDelete));
+      if(!person)return;
+      if(button.dataset.travelerEdit){
+        travelerEditingId=person.id;$('#group-people').value=person.givenName||person.name;$('#traveler-surnames').value=person.surnames||'';
+        $('#traveler-editor-title').textContent='Editar viajero';$('#group-add-people').textContent='Guardar nombre y apellidos';$('#traveler-cancel-edit').hidden=false;
+        $('#group-people').focus();$('#group-people').scrollIntoView?.({block:'center'});
+      }
+      if(button.dataset.travelerDelete&&confirm(`¿Eliminar a ${person.name} del catálogo y de los viajes donde esté seleccionado? Solo se permite si no tiene historial.`))await changeTravelers({type:'delete',id:person.id},'Viajero eliminado del catálogo.');
+    },'#travelers-message');
     $('#group-rebase').onclick=safe(async()=>{if(!editor)return;await host.refresh();const fresh=host.getState().viajes.find(trip=>Number(trip.id)===Number(editor.tripId));if(!fresh)throw new Error('El viaje ya no existe.');editor.group=api().normalize(fresh.group);editor.revision=editor.group.revision;mountMeal();message('Borrador conservado sobre la versión actual. Comprueba de nuevo asistentes, pagador, conceptos y devoluciones antes de guardar.',false,'#group-meal-message');stash();},'#group-meal-message');
     $('#group-new-meal').onclick=safe(()=>openMeal());$('#group-resume').onclick=safe(()=>openMeal(null,true));
     $('#group-people-needed-close').onclick=()=>$('#group-people-needed-dialog').close();
     $('#group-people-needed-dialog').onclose=()=>{
-      const field=$('#group-people');field.closest('details').open=true;
+      host.showTravelers?.();const field=$('#group-people');
       field.focus({preventScroll:true});field.scrollIntoView?.({block:'center',behavior:'instant'});
     };
     $('#group-close-editor').onclick=safe(async()=>{if(mealSaving||saving||discarding)return;if(reading)throw new Error('Espera a que termine la lectura.');stash(true);await cacheTail;$('#group-meal-dialog').close();editor=null;},'#group-meal-message');
@@ -433,14 +475,6 @@
       const button=event.target.closest('button');if(!button)return;const group=current();
       if(button.dataset.groupToggle){const key=String(trip().id)+'|'+button.dataset.groupToggle;if(openMeals.has(key))openMeals.delete(key);else openMeals.add(key);render();all('[data-group-toggle]').find(value=>value.dataset.groupToggle===button.dataset.groupToggle)?.focus({preventScroll:true});return;}
       if(button.dataset.groupEdit)return openMeal(button.dataset.groupEdit);
-      if(button.dataset.groupPerson){const person=group.participants.find(person=>person.id===button.dataset.groupPerson);const value=prompt('Nombre del viajero:',person.name);if(value===null)return;if(!value.trim())throw new Error('El nombre no puede estar vacío.');if(group.participants.some(other=>other.id!==person.id&&other.name.toLocaleLowerCase('es')===value.trim().toLocaleLowerCase('es')))throw new Error('Ya existe ese nombre. Usa un apellido para distinguirlo.');person.name=value.trim();return commit(group);}
-      if(button.dataset.groupPersonDelete){
-        const id=button.dataset.groupPersonDelete,person=group.participants.find(value=>value.id===id),tripId=trip().id,draft=await host.readDraft(tripId);
-        const next=api().removeParticipant(group,id,draft);
-        if(!confirm(`¿Eliminar a ${person.name} del grupo?`))return;
-        await commit(next,group.revision,tripId);message('Viajero eliminado.');return;
-      }
-      if(button.dataset.groupArchive){const person=group.participants.find(person=>person.id===button.dataset.groupArchive);person.active=!person.active;return commit(group);}
       if(button.dataset.groupDelete){if(!confirm('Eliminar este borrador de comida?'))return;group.meals=group.meals.filter(meal=>meal.id!==button.dataset.groupDelete);return commit(group);}
       if(button.dataset.groupVoid){const payment=group.settlements.find(payment=>payment.id===button.dataset.groupVoid);const reason=prompt('Motivo de la anulación (se conserva el registro):');if(!reason?.trim())return;payment.voided=true;payment.voidReason=reason.trim();return commit(group);}
       if(button.dataset.groupShare){const meal=group.meals.find(meal=>meal.id===button.dataset.groupShare);await host.share(api().summary(group,meal));message('Resumen preparado para compartir.');return;}
