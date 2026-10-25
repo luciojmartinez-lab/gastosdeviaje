@@ -40,8 +40,24 @@ test('los filtros solo suman los pendientes de los gastos visibles y al saldar d
 test('un adelanto sin consumo propio se muestra como fila informativa cero sin crear un gasto',async()=>{
  const ui=setup();try{
   ui.meal.attendees=['a','b'];ui.meal.items[0].shares={a:1};ui.w.state.gastos=ui.w.state.gastos.filter(g=>g.id!==2);const before=JSON.stringify(ui.w.state);
-  ui.w.renderGastosTabla();const row=ui.$('.expense-row[data-gasto-id^="group-only:"]');assert.ok(row);assert.match(ui.text(row.querySelector('.expense-pending')),/^180,00 €/);assert.equal(row.querySelectorAll('select option').length,2);assert.equal(JSON.stringify(ui.w.state),before);
+  ui.w.renderGastosTabla();const row=ui.$('.expense-row[data-gasto-id^="group-only:"]');assert.ok(row);assert.match(ui.text(row.querySelector('.expense-pending')),/^180,00 €/);assert.equal(row.querySelectorAll('select option').length,3);assert.ok(row.querySelector('option[value="del"]'));assert.equal(JSON.stringify(ui.w.state),before);
   let target;ui.w.TravelGroupUI={openMealForTrip:(trip,id)=>{target=[trip,id];}};ui.w.eval(sourceOf('openEditGasto'));ui.w.eval(sourceOf('handleGastoAction'));await ui.w.handleGastoAction(ui.w.expenseDisplayRows().find(g=>g.virtualGroupExpense).id,'edit');assert.deepEqual(target,[1,'m1']);
+ }finally{ui.close();}
+});
+
+test('Eliminar en Gastos confirma la comida completa con nombre y no toca dinero antes de confirmar',async()=>{
+ const ui=setup();try{
+  let options,calls=[];ui.w.openFormDialog=value=>options=value;ui.w.deleteGroupMeal=async(...args)=>calls.push(args);
+  ui.w.eval(sourceOf('openDeleteGroupMealDialog'));ui.w.eval(sourceOf('handleGastoAction'));
+  await ui.w.handleGastoAction(2,'del');assert.equal(calls.length,0);assert.equal(options.title,'Eliminar comida: Cena');assert.match(ui.$('#form-dialog-fields').textContent,/Cena.*Viaje/);assert.match(ui.$('#form-dialog-fields').textContent,/registros anulados/);assert.match(ui.$('#form-dialog-fields').textContent,/no devuelve dinero físicamente/);
+  await options.onSubmit();assert.deepEqual(calls,[[1,'m1',0]]);
+  ui.meal.attendees=['a','b'];ui.meal.items[0].shares={a:1};ui.w.state.gastos=ui.w.state.gastos.filter(g=>g.id!==2);const row=ui.w.expenseDisplayRows().find(g=>g.virtualGroupExpense);await ui.w.handleGastoAction(row.id,'del');assert.equal(options.title,'Eliminar comida: Cena');assert.equal(calls.length,1);
+ }finally{ui.close();}
+});
+
+test('delGasto de Grupo delega al borrado de comida completa sin borrar el gasto ni devolver importes por separado',async()=>{
+ const ui=setup();try{
+  let call;ui.w.deleteGroupMeal=async(...args)=>{call=args;};ui.w.getOne=async()=>ui.w.state.viajes[0];ui.w.deleteRecord=()=>assert.fail('No debe borrar el gasto de forma aislada');ui.w.updateCuenta=()=>assert.fail('No debe duplicar el ajuste de saldos');ui.w.eval(sourceOf('delGasto'));await ui.w.delGasto(2);assert.deepEqual(call,[1,'m1',0]);
  }finally{ui.close();}
 });
 test('la apertura del gasto de grupo solicita su comida exacta sin alertas ni buscar por nombre',async()=>{

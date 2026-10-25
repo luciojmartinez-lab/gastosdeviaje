@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v047';
+const APP_VERSION = '800v048';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2933,7 +2933,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v047');
+    const worker = new Worker('./timeline-import-worker.js?v=800v048');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3943,7 +3943,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v047');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v048');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4866,7 +4866,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v047');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v048');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5002,7 +5002,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v047');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v048');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5556,7 +5556,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v047');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v048');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -7931,7 +7931,11 @@ async function handleOpenExpenseTicketRotation(direction) {
 async function delGasto(id) {
   const gastoId = Number(id);
   const current = state.gastos.find(g => g.id === gastoId) || await getOne('gastos', gastoId);
-  if (current?.groupTripId != null) throw new Error('Este gasto se gestiona desde Grupo → Comidas.');
+  if (current?.groupTripId != null) {
+    const trip=await getOne('viajes',Number(current.groupTripId)),mealId=String(current.groupSource||'').replace(/^meal:/,'');
+    if(!trip||!String(current.groupSource||'').startsWith('meal:'))throw new Error('No se encuentra la comida vinculada a este gasto.');
+    return deleteGroupMeal(current.groupTripId,mealId,TravelGroup.normalize(trip.group).revision);
+  }
   if (current) {
     const account = await getOne('cuentas', Number(current.cuentaId));
     if (account) {
@@ -9056,7 +9060,7 @@ function renderGastosTabla() {
       const attachmentIndicator = attachmentCount
         ? `<button type="button" class="expense-attachment-indicator" data-expense-files="${g.id}" title="${attachmentCount} archivo(s) adjunto(s)" aria-label="Ver ${attachmentCount} archivo(s) adjunto(s)">📎 ${attachmentCount}</button>`
         : '';
-      tr.innerHTML = `<td data-label="Hora">${escapeHtml(expenseTimeValue(g) || '-')}</td><td data-label="Ciudad">${escapeHtml(gastoCiudadLabel(g))}</td><td data-label="Categoría">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe"><span class="expense-own-amount">${fmtCurrency(g.importe, g.moneda)}</span>${expensePendingMarkup(pendingCents)}</td><td data-label="EUR">${g.moneda === 'EUR' ? '' : fmtCurrency(eur, 'EUR')}</td><td class="expense-description-cell" data-label="Descripción"><span>${escapeHtml(g.desc || '')}</span>${attachmentIndicator}</td><td class="action-col" data-label="Acciones"><select class="expense-action-select" data-gasto-action="${escapeHtml(g.id)}" aria-label="Acciones del gasto"><option value="">Acciones</option>${g.virtualGroupExpense?'':filesOption+blogOption}<option value="edit">${g.groupTripId!=null?'Ver comida':'Editar'}</option>${g.virtualGroupExpense?'':'<option value="dup">Duplicar</option><option value="del">Eliminar</option>'}</select></td>`;
+      tr.innerHTML = `<td data-label="Hora">${escapeHtml(expenseTimeValue(g) || '-')}</td><td data-label="Ciudad">${escapeHtml(gastoCiudadLabel(g))}</td><td data-label="Categoría">${escapeHtml(cat ? cat.nombre : '?')}</td><td data-label="Subcat.">${escapeHtml(sub ? sub.nombre : '-')}</td><td data-label="Cuenta">${escapeHtml(cta ? cta.nombre : '?')}</td><td data-label="Moneda">${escapeHtml(g.moneda)}</td><td data-label="Importe"><span class="expense-own-amount">${fmtCurrency(g.importe, g.moneda)}</span>${expensePendingMarkup(pendingCents)}</td><td data-label="EUR">${g.moneda === 'EUR' ? '' : fmtCurrency(eur, 'EUR')}</td><td class="expense-description-cell" data-label="Descripción"><span>${escapeHtml(g.desc || '')}</span>${attachmentIndicator}</td><td class="action-col" data-label="Acciones"><select class="expense-action-select" data-gasto-action="${escapeHtml(g.id)}" aria-label="Acciones del gasto"><option value="">Acciones</option>${g.virtualGroupExpense?'':filesOption+blogOption}<option value="edit">${g.groupTripId!=null?'Ver comida':'Editar'}</option>${g.virtualGroupExpense?'':'<option value="dup">Duplicar</option>'}<option value="del">Eliminar</option></select></td>`;
       tbody.appendChild(tr);
     });
     const subtotal = document.createElement('tr');
@@ -14614,7 +14618,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v047');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v048');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15603,7 +15607,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v047').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v048').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -18473,10 +18477,31 @@ async function resetDataPrompt() {
   });
 }
 
+async function deleteGroupMeal(tripId,mealId,revision) {
+  const result=await TravelGroupStore.removeMeal(await openDB(),Number(tripId),mealId,revision);
+  ['viajes','cuentas','gastos','transferencias','blogEntries'].forEach(noteLocalDataChanged);return result;
+}
+
+function openDeleteGroupMealDialog(gasto) {
+  const trip=state.viajes.find(value=>Number(value.id)===Number(gasto.groupTripId));
+  const group=TravelGroup.normalize(trip?.group),meal=group.meals.find(value=>'meal:'+value.id===gasto.groupSource);
+  if(!trip||!meal)throw new Error('No se encuentra la comida vinculada a este gasto. Recarga los datos.');
+  let deleting=false;
+  openFormDialog({title:'Eliminar comida: '+meal.name,fields:[],helpTarget:'grupo-comidas',onSubmit:async()=>{
+    if(deleting)throw new Error('Espera a que termine la eliminación de la comida.');
+    deleting=true;const button=$('#form-dialog-form button[type="submit"]'),dialog=$('#form-dialog');
+    const controls=[button,$('#form-dialog-cancel'),$('#form-dialog-close')],cancel=dialog.oncancel;
+    controls.forEach(control=>control.disabled=true);dialog.oncancel=event=>event.preventDefault();button.textContent='Borrando comida…';
+    try{await deleteGroupMeal(trip.id,meal.id,group.revision);}finally{deleting=false;controls.forEach(control=>control.disabled=false);dialog.oncancel=cancel;button.textContent='Sí, borrar la comida';}
+  }});
+  $('#form-dialog-fields').innerHTML='<div class="trip-delete-confirmation"><p>¿Estás seguro de querer borrar la comida <strong>«'+escapeHtml(meal.name)+'»</strong> del viaje <strong>«'+escapeHtml(trip.nombre)+'»</strong>?</p><p>Se borrará la comida completa de Grupo: conceptos, fotos, repartos, devoluciones y registros anulados, su gasto, sus transferencias, su borrador local y la entrada del Blog vinculada al gasto, si existe.</p><p>Se revertirán sus movimientos en las cuentas y desaparecerá su pendiente. Las demás comidas se conservarán. Esta acción corrige los registros; no devuelve dinero físicamente.</p></div>';
+  $('#form-dialog-form button[type="submit"]').textContent='Sí, borrar la comida';
+}
+
 async function handleGastoAction(id, action) {
   const gasto = expenseDisplayRows().find(item => String(item.id) === String(id));
   if (!gasto) return;
-  if(gasto.virtualGroupExpense&&action!=='edit')return;
+  if(gasto.virtualGroupExpense&&!['edit','del'].includes(action))return;
   if (action === 'files') {
     openExpenseFilesDialog(gasto.id);
   } else if (action === 'ticket') {
@@ -18489,6 +18514,8 @@ async function handleGastoAction(id, action) {
   } else if (action === 'dup') {
     await addGasto({ ...gasto, id: undefined, desc: `${gasto.desc || ''}`.trim(), fecha: gasto.fecha || todayIso() });
     await loadAll();
+  } else if (action === 'del'&&gasto.groupTripId!=null) {
+    openDeleteGroupMealDialog(gasto);
   } else if (action === 'del' && confirm('Eliminar este gasto?')) {
     await delGasto(gasto.id);
     await loadAll();
@@ -18612,7 +18639,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v047')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v048')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -18620,7 +18647,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v047')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v048')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -18661,12 +18688,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v047');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v048');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v047')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v047')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v048')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v048')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -20567,7 +20594,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v047');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v048');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
