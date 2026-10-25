@@ -369,6 +369,7 @@
   function safe(action,target='#group-message'){return async event=>{try{await action(event);}catch(error){message(error.message||String(error),true,target);}};}
   function mount(callbacks) {
     host=callbacks;
+    $('#config-travelers-link').onclick=()=>{$('#travelers-panel').open=true;};
     $('#group-error-close').onclick=()=>$('#group-error-dialog').close();
     $('#group-saving-dialog').oncancel=event=>event.preventDefault();
     $('#group-trip').onchange=()=>host.selectTrip($('#group-trip').value);

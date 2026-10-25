@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v042">
+  <link rel="manifest" href="manifest.webmanifest?v=800v043">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v042">
+  <link rel="stylesheet" href="styles.css?v=800v043">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v042 · 25/10/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v043 · 25/10/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v042</div>
+  <div class="app-version">800v043</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -312,7 +312,7 @@
       <div class="config-links">
         <a class="btn ghost" href="#config-paises">Países / ciudades</a>
         <a class="btn ghost" href="#config-viajes">Viajes</a>
-        <a class="btn ghost" href="#config-viajeros">Otros viajeros</a>
+        <a class="btn ghost" id="config-travelers-link" href="#config-viajeros">Otros viajeros</a>
         <a class="btn ghost" href="#config-monedas">Monedas</a>
         <a class="btn ghost" href="#config-cuentas">Cuentas</a>
         <a class="btn ghost" href="#config-transferencias">Transferencias</a>
@@ -324,7 +324,8 @@
       </div>
     </div>
     <div class="card" id="config-viajeros">
-      <h2>Otros viajeros</h2><p>Tú figuras como «Yo» y estás incluido por defecto en todos los viajes: no necesitas añadirte ni marcarte. Añade aquí a tus acompañantes y marca quién participa en el viaje seleccionado.</p>
+      <details id="travelers-panel" class="config-section-panel"><summary>Otros viajeros</summary>
+      <p>Tú figuras como «Yo» y estás incluido por defecto en todos los viajes: no necesitas añadirte ni marcarte. Añade aquí a tus acompañantes y marca quién participa en el viaje seleccionado.</p>
       <p id="traveler-self" class="small">Yo · incluido automáticamente</p>
       <label for="travelers-trip">Viaje para seleccionar viajeros</label><select id="travelers-trip"></select>
       <p id="travelers-message" role="status"></p>
@@ -336,6 +337,7 @@
       <details><summary>Integración con Gastos de este viaje</summary>
       <select id="group-self" hidden aria-label="Usuario incluido automáticamente"></select><label class="check-option"><input type="checkbox" id="group-integrate"> Registrar mi consumo, adelantos y devoluciones en mis cuentas</label>
       <p class="small">Yo conserva tus referencias de las comidas anteriores. Los adelantos y las devoluciones se reflejan en tus cuentas reales.</p><button type="button" class="btn" id="group-settings-save">Guardar integración</button>
+      </details>
       </details>
     </div>
     <div class="card compact-config-form" id="config-paises">
@@ -440,9 +442,11 @@
         <div class="filter-action"><button class="btn" id="btn-add-transfer">Añadir transferencia</button></div>
       </div>
       <div class="actions"><span id="msg-transfer" class="small"></span></div>
+      <details id="transfers-list-panel" class="compact-list"><summary>Listado de transferencias</summary>
       <div class="table-wrap">
         <table id="tabla-transferencias"><thead><tr><th>Fecha</th><th>Cuenta origen</th><th>Cuenta destino</th><th>Sale</th><th>Entra</th><th>Cambio</th><th>Nota</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
+      </details>
     </div>
 
     <div class="card" id="config-categorias">
@@ -1372,24 +1376,24 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v042"></script>
-<script src="gpx-import.js?v=800v042"></script>
-<script src="timeline-routing.js?v=800v042"></script>
-<script src="map-model.js?v=800v042"></script>
-<script src="ticket-camera.js?v=800v042"></script>
-<script src="receipt-access.js?v=800v042"></script>
-<script src="expense-receipt-ai.js?v=800v042"></script>
-<script src="group-meals.js?v=800v042"></script>
-<script src="group-ledger.js?v=800v042"></script>
-<script src="group-store.js?v=800v042"></script>
-<script src="group-receipt.js?v=800v042"></script>
-<script src="group-travelers.js?v=800v042"></script>
-<script src="group-ui.js?v=800v042"></script>
-<script src="preparation.js?v=800v042"></script>
-<script src="app.bundle.js?v=800v042"></script>
+<script src="timeline-import.js?v=800v043"></script>
+<script src="gpx-import.js?v=800v043"></script>
+<script src="timeline-routing.js?v=800v043"></script>
+<script src="map-model.js?v=800v043"></script>
+<script src="ticket-camera.js?v=800v043"></script>
+<script src="receipt-access.js?v=800v043"></script>
+<script src="expense-receipt-ai.js?v=800v043"></script>
+<script src="group-meals.js?v=800v043"></script>
+<script src="group-ledger.js?v=800v043"></script>
+<script src="group-store.js?v=800v043"></script>
+<script src="group-receipt.js?v=800v043"></script>
+<script src="group-travelers.js?v=800v043"></script>
+<script src="group-ui.js?v=800v043"></script>
+<script src="preparation.js?v=800v043"></script>
+<script src="app.bundle.js?v=800v043"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v042';
+    const pageVersion = '800v043';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1444,7 +1448,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v042', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v043', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;
