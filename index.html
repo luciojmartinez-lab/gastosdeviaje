@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v043">
+  <link rel="manifest" href="manifest.webmanifest?v=800v044">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v043">
+  <link rel="stylesheet" href="styles.css?v=800v044">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v043 · 25/10/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v044 · 25/10/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v043</div>
+  <div class="app-version">800v044</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -341,7 +341,7 @@
       </details>
     </div>
     <div class="card compact-config-form" id="config-paises">
-      <h2>Crear Países / ciudades</h2>
+      <details id="config-paises-panel" class="config-section-panel"><summary>Crear Países / ciudades</summary>
       <div class="row4">
         <div><label>Nombre</label><input id="lugar-nombre"></div>
         <div><label>Ciudad de</label><select id="lugar-parent"></select></div>
@@ -353,9 +353,10 @@
         <summary>Ver listado <span id="lugares-count" class="small"></span></summary>
         <div id="lugares-tree" class="country-tree"></div>
       </details>
+      </details>
     </div>
     <div class="card compact-config-form" id="config-viajes">
-      <h2>Crear Viaje</h2>
+      <details id="config-viajes-panel" class="config-section-panel"><summary>Crear Viaje</summary>
       <div class="row3">
         <div><label>Nombre</label><input id="v-nombre"></div>
         <div><label>Fecha de inicio</label><input type="date" id="v-inicio"></div>
@@ -386,10 +387,11 @@
       <div class="table-wrap">
         <table id="tabla-viajes"><thead><tr><th>Viaje</th><th>Países</th><th>Inicio</th><th>Final</th><th>Presupuesto</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
+      </details>
     </div>
 
     <div class="card compact-config-form" id="config-monedas">
-      <h2>Crear monedas extranjeras</h2>
+      <details id="config-monedas-panel" class="config-section-panel"><summary>Crear monedas extranjeras</summary>
       <div class="row4">
         <div class="currency-code-field"><label>ISO moneda</label><input id="m-iso-entry" name="currency-iso-picker" maxlength="3" placeholder="USD" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" enterkeyhint="done" aria-label="ISO moneda" aria-autocomplete="list" aria-expanded="false"><div id="currency-iso-options" class="currency-suggestions" role="listbox" hidden></div></div>
         <div><label>Nombre</label><input id="m-nombre" placeholder="Dólar"></div>
@@ -406,10 +408,11 @@
       <div class="table-wrap">
         <table id="tabla-monedas"><thead><tr><th>Código</th><th>Nombre</th><th>1 moneda</th><th>1 EUR</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
+      </details>
     </div>
 
     <div class="card compact-config-form" id="config-cuentas">
-      <h2>Crear Cuentas / formas de pago</h2>
+      <details id="config-cuentas-panel" class="config-section-panel"><summary>Crear Cuentas / formas de pago</summary>
       <div class="row4">
         <div><label>Nombre</label><input id="c-nombre"></div>
         <div><label>Desde plantilla</label><select id="c-template"></select></div>
@@ -424,10 +427,11 @@
       <div class="table-wrap">
         <table id="tabla-cuentas"><thead><tr><th>Cuenta</th><th>Tipo</th><th>Viaje</th><th>Moneda</th><th>Saldo</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
+      </details>
     </div>
 
     <div class="card" id="config-transferencias">
-      <h2>Transferencias entre cuentas</h2>
+      <details id="config-transferencias-panel" class="config-section-panel"><summary>Transferencias entre cuentas</summary>
       <p class="small">Usa transferencias cuando muevas dinero entre formas de pago. La cuenta origen es de donde sale el dinero y la cuenta destino es donde entra; si cambias de moneda, indica lo que sale y lo que recibes.</p>
       <div class="row4">
         <div><label>Fecha</label><input type="date" id="t-fecha"></div>
@@ -447,20 +451,22 @@
         <table id="tabla-transferencias"><thead><tr><th>Fecha</th><th>Cuenta origen</th><th>Cuenta destino</th><th>Sale</th><th>Entra</th><th>Cambio</th><th>Nota</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
       </details>
+      </details>
     </div>
 
     <div class="card" id="config-categorias">
-      <h2>Crear Categorías / Subcategorías</h2>
+      <details id="config-categorias-panel" class="config-section-panel"><summary>Crear Categorías / Subcategorías</summary>
       <div class="row">
         <div><label>Nombre</label><input id="cat-nombre"></div>
         <div><label>¿Subcategoría de?</label><select id="cat-parent"></select></div>
       </div>
       <div class="actions"><button class="btn" id="btn-add-cat">Añadir</button><span id="msg-cat" class="small"></span></div>
       <div id="categorias-tree" class="category-tree"></div>
+      </details>
     </div>
 
     <div class="card" id="config-preparation">
-      <h2>Preparar viaje · catálogo y selección</h2>
+      <details id="config-preparation-panel" class="config-section-panel"><summary>Preparar viaje · catálogo y selección</summary>
       <label for="prep-config-viaje">Incluir elementos en este viaje</label><select id="prep-config-viaje"></select>
       <p class="small">Despliega los conceptos y marca qué necesitas para este viaje. Este check incluye el elemento; el check de Preparar viaje indica que ya está hecho.</p>
       <div class="preparation-copy"><div><label for="prep-copy-source">Copiar selección de otro viaje</label><select id="prep-copy-source"></select></div><button class="btn ghost" type="button" id="prep-copy">Copiar con todo pendiente</button></div>
@@ -474,9 +480,10 @@
           <button class="btn" type="submit">Añadir al catálogo</button>
         </form>
       </details>
+      </details>
     </div>
     <div class="card compact-config-form" id="config-photo-types">
-      <h2>Clasificaciones de imágenes y tickets</h2>
+      <details id="config-photo-types-panel" class="config-section-panel"><summary>Clasificaciones de imágenes y tickets</summary>
       <p class="small">Clasifica cada imagen o ticket y decide qué tipos pueden señalar el destino real del alojamiento.</p>
       <div class="row">
         <div><label>Nombre</label><input id="photo-type-name" placeholder="Museo, transporte..."></div>
@@ -484,10 +491,11 @@
       </div>
       <div class="actions"><button class="btn" id="btn-add-photo-type" type="button">Añadir tipo</button><span id="msg-photo-type" class="small"></span></div>
       <div id="photo-types-list" class="photo-types-list"></div>
+      </details>
     </div>
 
     <div class="card" id="config-backups">
-      <h2>Exportar / Importar</h2>
+      <details id="config-backups-panel" class="config-section-panel"><summary>Exportar / Importar</summary>
       <div class="actions">
         <button class="btn ghost" id="btn-export" onclick="openBackupDialogSafe()" type="button">Exportar / backup</button>
         <button class="btn ghost" id="btn-sync-config" type="button">Sincronizar</button>
@@ -506,10 +514,11 @@
         <p class="small">Se guardan las últimas 5 copias completas en este dispositivo.</p>
       </div>
       <p class="small">Datos locales guardados en IndexedDB.</p>
+      </details>
     </div>
 
     <div class="card" id="config-avanzado">
-      <h2>Avanzado</h2>
+      <details id="config-avanzado-panel" class="config-section-panel"><summary>Avanzado</summary>
       <p class="small">Reduce el espacio ocupado recomprimiendo las imágenes ya guardadas en Gastos, Blog y Documentos de viaje. Los PDF y otros documentos no se modifican.</p>
       <div class="actions"><button class="btn ghost" id="btn-compact-storage" type="button">Reducir espacio ocupado</button><span id="msg-compact-storage" class="small"></span></div>
       <p class="small">Los borradores de formularios se guardan solo en este dispositivo y caducan automÃ¡ticamente tras 30 dÃ­as.</p>
@@ -517,6 +526,7 @@
       <div id="form-drafts-list" class="form-drafts-list small"></div>
       <p class="small">Si algo no responde, este botón borra caché, service worker y base de datos local.</p>
       <div class="actions"><button class="btn" id="btn-reset">Reparar / Resetear datos</button></div>
+      </details>
     </div>
   </section>
 </main>
@@ -1376,24 +1386,24 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v043"></script>
-<script src="gpx-import.js?v=800v043"></script>
-<script src="timeline-routing.js?v=800v043"></script>
-<script src="map-model.js?v=800v043"></script>
-<script src="ticket-camera.js?v=800v043"></script>
-<script src="receipt-access.js?v=800v043"></script>
-<script src="expense-receipt-ai.js?v=800v043"></script>
-<script src="group-meals.js?v=800v043"></script>
-<script src="group-ledger.js?v=800v043"></script>
-<script src="group-store.js?v=800v043"></script>
-<script src="group-receipt.js?v=800v043"></script>
-<script src="group-travelers.js?v=800v043"></script>
-<script src="group-ui.js?v=800v043"></script>
-<script src="preparation.js?v=800v043"></script>
-<script src="app.bundle.js?v=800v043"></script>
+<script src="timeline-import.js?v=800v044"></script>
+<script src="gpx-import.js?v=800v044"></script>
+<script src="timeline-routing.js?v=800v044"></script>
+<script src="map-model.js?v=800v044"></script>
+<script src="ticket-camera.js?v=800v044"></script>
+<script src="receipt-access.js?v=800v044"></script>
+<script src="expense-receipt-ai.js?v=800v044"></script>
+<script src="group-meals.js?v=800v044"></script>
+<script src="group-ledger.js?v=800v044"></script>
+<script src="group-store.js?v=800v044"></script>
+<script src="group-receipt.js?v=800v044"></script>
+<script src="group-travelers.js?v=800v044"></script>
+<script src="group-ui.js?v=800v044"></script>
+<script src="preparation.js?v=800v044"></script>
+<script src="app.bundle.js?v=800v044"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v043';
+    const pageVersion = '800v044';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1448,7 +1458,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v043', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v044', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;
