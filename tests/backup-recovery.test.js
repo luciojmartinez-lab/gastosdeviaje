@@ -85,7 +85,7 @@ test('no permite borrar cuentas referenciadas por gastos o transferencias', asyn
 });
 test('backup de viaje incluye la cuenta contraparte de una transferencia', () => {
   const state=fixture(); state.cuentas.push({id:21,nombre:'Base',moneda:'EUR',viajeId:null});
-  const ctx=vm.createContext({ state, Number, Set, Date, TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v046',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
+  const ctx=vm.createContext({ state, Number, Set, Date, TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v047',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
   vm.runInContext(section('function buildTripBackupData', '// Prepare every write'),ctx);
   const backup=ctx.buildTripBackupData(3); assert.ok(backup.cuentas.some(c=>c.id===21)); assert.equal(backup.transferencias.length,1);
 });
@@ -102,7 +102,7 @@ test('catálogo de viajeros y selección por viaje se restauran; importar un via
 
 test('exportación de un viaje incluye únicamente sus contactos y conserva el identificador de catálogo',()=>{
  const state=fixture();state.travelerCatalog=[{id:'ana',name:'Ana García',givenName:'Ana',surnames:'García'},{id:'otro',name:'Otro viajero'}];state.viajes[0].group={participants:[{id:'local',catalogId:'ana',name:'Ana García',active:false}]};
- const ctx=vm.createContext({state,Number,Set,Date,TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v046',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c});vm.runInContext(section('function buildTripBackupData','// Prepare every write'),ctx);
+ const ctx=vm.createContext({state,Number,Set,Date,TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v047',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c});vm.runInContext(section('function buildTripBackupData','// Prepare every write'),ctx);
  const backup=ctx.buildTripBackupData(3);assert.equal(backup.travelerCatalog.length,1);assert.equal(backup.travelerCatalog[0].givenName,'Ana');assert.equal(backup.viajes[0].group.participants[0].catalogId,'ana');
 });
 

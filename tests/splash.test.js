@@ -30,7 +30,7 @@ test('el arranque conserva la portada y la cierra al terminar la carga sin esper
   ]);
   assert.match(html, /rel="preload"[\s\S]*?bitacora-splash-mobile\.png/);
   assert.match(html, /app-loading-train-group[\s\S]*?app-loading-train[\s\S]*?app-loading-credit/);
-  assert.match(html, /Preparando el viaje\.\.\.[\s\S]*?<strong>Versión 800v046 · 25\/10\/2026<\/strong>/);
+  assert.match(html, /Preparando el viaje\.\.\.[\s\S]*?<strong>Versión 800v047 · 25\/10\/2026<\/strong>/);
   assert.match(styles, /\.app-loading-release strong \{[\s\S]*?font-weight: 800/);
   assert.match(styles, /\.app-loading-release \{[\s\S]*?top: calc\(76svh \+ 48px\)/);
   assert.doesNotMatch(app, /APP_LOADING_MIN_MS|APP_LOADING_STARTED_AT/);
