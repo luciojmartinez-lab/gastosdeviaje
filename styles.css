@@ -6000,3 +6000,14 @@ footer {
 #config-viajeros .group-roster li > span { display: flex; flex-wrap: wrap; gap: 6px; }
 @media (max-width: 480px) { #config-viajeros .traveler-name-fields { grid-template-columns: 1fr; } }
 #form-dialog-fields .trip-delete-confirmation { grid-column: 1 / -1; }
+.pdf-viewer-modal { width: min(920px,96vw); max-width: 96vw; height: 90dvh; max-height: 94dvh; padding: 14px; }
+.pdf-viewer-modal[open] { display: flex; flex-direction: column; gap: 8px; }
+.pdf-viewer-modal .modal-head h2 { min-width: 0; overflow-wrap: anywhere; }
+.pdf-viewer-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.pdf-viewer-controls select { width: auto; max-width: 100%; }
+.pdf-viewer-controls label { margin: 0; }
+#pdf-viewer-stage { flex: 1; min-height: 80px; overflow: auto; scrollbar-gutter: stable; padding: 12px; background: var(--bg); }
+#pdf-viewer-canvas { display: block; margin: 0 auto; background: white; }
+#pdf-viewer-canvas[hidden] { display: none; }
+#pdf-viewer-status { margin: 0; font-size: 14px; }
+.pdf-viewer-modal .actions { flex: 0 0 auto; margin: 0; flex-wrap: wrap; }
