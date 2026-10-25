@@ -3,6 +3,8 @@ import { access, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import {createHash} from 'node:crypto';
+import {helpSourceDigest} from '../scripts/help-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const helpPath = path.join(root, 'ayuda.html');
@@ -14,7 +16,7 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
 
   assert.match(html, /Fecha de creación:<\/strong> 17 de julio de 2026/);
   assert.match(html, /Última actualización:<\/strong> 25 de octubre de 2026/);
-  assert.match(html, /Versión documentada:<\/strong> 800v038/);
+  assert.match(html, /Versión documentada:<\/strong> 800v039/);
   assert.match(html, /id="objetivo"/);
   assert.match(html, /1\. Objetivo y filosofía de la aplicación/);
   assert.match(html, /id="flujo"/);
@@ -107,4 +109,9 @@ test('las capturas explicativas y el PDF descargable están publicados', async (
   const pdf = await readFile(pdfPath);
   assert.equal(pdf.subarray(0, 5).toString('ascii'), '%PDF-');
   assert.ok(pdf.length > 500_000, 'El PDF de ayuda parece incompleto');
+  const manifest=JSON.parse(await readFile(path.join(root,'output/pdf/ayuda-cuaderno-bitacora.manifest.json'),'utf8'));
+  assert.equal(manifest.version,(await readFile(path.join(root,'version.txt'),'utf8')).trim());
+  assert.equal(manifest.sourceSha256,await helpSourceDigest(root),'El PDF está desfasado. Actualiza ayuda.html y ejecuta npm run help:pdf antes de publicar.');
+  assert.equal(manifest.pdfSha256,createHash('sha256').update(pdf).digest('hex'));
+  assert.ok(pdf.includes(Buffer.from(manifest.sourceSha256)),'El PDF no corresponde a este contenido fuente');
 });

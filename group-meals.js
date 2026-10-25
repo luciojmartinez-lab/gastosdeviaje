@@ -44,6 +44,15 @@
       participants: Array.isArray(group.participants) ? group.participants.filter(p => p && p.id && p.name).map(p => ({ ...p, id: String(p.id), name: String(p.name), active: p.active !== false })) : [],
       meals: Array.isArray(group.meals) ? group.meals : [], settlements: Array.isArray(group.settlements) ? group.settlements : [] };
   }
+  function participantInUse(group,id,draft=null){
+    const meals=[...(group.meals||[]),...(draft?.meal?[draft.meal]:[])];
+    return group.selfId===id||meals.some(meal=>meal.payerId===id||(meal.attendees||[]).includes(id)||(meal.items||[]).some(item=>Object.hasOwn(item.shares||{},id)))||(group.settlements||[]).some(payment=>payment.fromId===id||payment.toId===id);
+  }
+  function removeParticipant(group,id,draft=null){
+    if(!group.participants.some(person=>person.id===id))throw new Error('Este viajero ya no está en el grupo.');
+    if(participantInUse(group,id,draft))throw new Error('Este viajero está seleccionado como «yo» o tiene referencias en comidas, devoluciones o un borrador local. Puedes desactivarlo para conservar su historial.');
+    const next=normalize(group);next.participants=next.participants.filter(person=>person.id!==id);return next;
+  }
   function split(amount, shares) {
     if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('Importe de reparto no válido.');
     if (Object.values(shares || {}).some(weight => !Number.isFinite(Number(weight)) || Number(weight) < 0)) throw new Error('Reparto no válido.');
@@ -210,5 +219,5 @@
       ...meal.attendees.map(id => `${name(id)}: ${money(result.totals[id] || 0)} (individual ${money(result.individual[id] || 0)} + compartido ${money(result.common[id] || 0)})`),
       '', ...mealPayments(group, meal).map(row => `${name(row.id)}: ${row.id === meal.payerId ? 'cubierto' : 'devuelto'} ${money(row.paid)} · pendiente ${money(row.remaining)}`), '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
   }
-  root.TravelGroup = { normalize, validate, allocation, split, expandUnits, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, advanceDetails, parseItems, remapAccounts, personalReceipt, summary };
+  root.TravelGroup = { normalize, validate, participantInUse, removeParticipant, allocation, split, expandUnits, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, advanceDetails, parseItems, remapAccounts, personalReceipt, summary };
 })(globalThis);

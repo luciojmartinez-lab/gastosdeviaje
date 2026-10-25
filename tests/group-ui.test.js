@@ -45,7 +45,7 @@ test('un grupo con todos archivados pide añadir o activar viajeros y permite re
  const ui=await setup();try{
   const group=ui.state.viajes[0].group;group.participants.forEach(person=>person.active=false);
   group.meals=[{id:'anterior',name:'Comida anterior',date:'2026-10-17',status:'draft',currency:'EUR',attendees:['p0'],payerId:'p0',totalCents:null,items:[]}];
-  ui.w.TravelGroupUI.render();ui.click('#group-new-meal');assert.equal(ui.$('#group-people-needed-dialog').open,true);assert.match(ui.$('#group-people-needed-message').textContent,/No hay viajeros activos.*vuelve a activar/);
+  ui.w.TravelGroupUI.render();ui.click('#group-new-meal');assert.equal(ui.$('#group-people-needed-dialog').open,true);assert.match(ui.$('#group-people-needed-message').textContent,/No hay viajeros activos.*reactiva/);
   ui.click('#group-people-needed-close');ui.click('[data-group-edit="anterior"]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);assert.equal(ui.$('#group-meal-name').value,'Comida anterior');
  }finally{ui.close();}
 });
@@ -66,6 +66,20 @@ async function seedExpenseAdvance(ui){
  await new Promise((resolve,reject)=>{const tx=ui.db.transaction('cuentas','readwrite');tx.objectStore('cuentas').put({id:2,nombre:'Efectivo',viajeId:1,moneda:'EUR',saldoActual:0});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});
  await ui.w.TravelGroupStore.save(ui.db,1,0,group);await ui.load();ui.w.TravelGroupUI.render();
 }
+
+test('Desactivar y Reactivar conservan el historial; Eliminar solo quita viajeros sin referencias y admite cancelar',async()=>{
+ const ui=await setup();try{
+  await seedPayments(ui);const finance=JSON.stringify([ui.state.cuentas,ui.state.gastos,ui.state.transferencias]);
+  assert.equal(ui.$('[data-group-archive="p1"]').textContent,'Desactivar');ui.click('[data-group-archive="p1"]');await ui.waitFor(()=>ui.state.viajes[0].group.participants.find(person=>person.id==='p1').active===false);
+  assert.equal(ui.$('[data-group-archive="p1"]').textContent,'Reactivar');assert.match(ui.$('[data-group-archive="p1"]').closest('li').textContent,/desactivado/);
+  assert.equal(ui.$('[data-group-person-delete="p1"]'),null);ui.click('[data-group-archive="p1"]');await ui.waitFor(()=>ui.state.viajes[0].group.participants.find(person=>person.id==='p1').active===true);
+  ui.input('#group-people','Invitado de prueba');ui.click('#group-add-people');await ui.waitFor(()=>ui.state.viajes[0].group.participants.length===4);
+  const id=ui.state.viajes[0].group.participants.at(-1).id,button=()=>ui.$(`[data-group-person-delete="${id}"]`);
+  ui.w.confirm=()=>false;await ui.$('#group-content').onclick({target:button()});assert.equal(ui.state.viajes[0].group.participants.length,4);
+  ui.drafts.set(1,{tripId:1,meal:{attendees:[id]}});ui.w.confirm=()=>true;await ui.$('#group-content').onclick({target:button()});assert.equal(ui.$('#group-error-dialog').open,true);assert.match(ui.$('#group-error-message').textContent,/borrador local/);
+  ui.click('#group-error-close');ui.drafts.delete(1);await ui.$('#group-content').onclick({target:button()});assert.equal(ui.state.viajes[0].group.participants.length,3);assert.equal(JSON.stringify([ui.state.cuentas,ui.state.gastos,ui.state.transferencias]),finance);
+ }finally{ui.close();}
+});
 
 test('los cobros en efectivo y banco conservan el pendiente y solo mi consumo como gasto',async()=>{
  const ui=await setup();try{

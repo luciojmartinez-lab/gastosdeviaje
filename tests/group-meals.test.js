@@ -6,6 +6,15 @@ const context = vm.createContext({});
 for (const name of ['group-meals.js', 'group-ledger.js']) vm.runInContext(fs.readFileSync(new URL(`../${name}`, import.meta.url), 'utf8'), context);
 const api = context.TravelGroup;
 const plain = value => JSON.parse(JSON.stringify(value));
+
+test('solo elimina viajeros sin referencias, incluida identidad, borradores y devoluciones anuladas',()=>{
+ const base={selfId:'a',participants:[{id:'a',name:'Yo'},{id:'b',name:'Invitado'}],meals:[],settlements:[]};
+ const before=JSON.stringify(base),removed=api.removeParticipant(base,'b');assert.equal(removed.participants.length,1);assert.equal(JSON.stringify(base),before);
+ const cases=[{selfId:'b'},{meals:[{status:'draft',attendees:['b']}]},{meals:[{status:'closed',payerId:'b'}]},{meals:[{items:[{shares:{b:0}}]}]},{settlements:[{fromId:'b',voided:true}]},{settlements:[{toId:'b'}]}];
+ for(const changes of cases)assert.throws(()=>api.removeParticipant({...base,...changes},'b'),/desactivarlo/);
+ assert.throws(()=>api.removeParticipant(base,'b',{meal:{attendees:['b']}}),/desactivarlo/);
+ assert.throws(()=>api.removeParticipant(base,'inexistente'),/ya no está/);
+});
 test('desglosar unidades conserva nombres y céntimos y permite un plato individual y otro compartido',()=>{
   const original={id:'line',name:'Paella',quantity:2,amountCents:2400,shares:{}};
   const items=api.expandUnits([original]);

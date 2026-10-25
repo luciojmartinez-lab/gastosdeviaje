@@ -118,7 +118,7 @@
     if(!selectedTrip)return;
     $('#group-self').innerHTML=options(group.participants,group.selfId,'Quién soy (opcional)');
     $('#group-integrate').checked=group.integrate;
-    $('#group-roster').innerHTML=group.participants.map(person=>`<li><span>${esc(person.name)}${person.id===group.selfId?' · yo':''}${person.active?'':' · archivado'}</span><span><button type="button" class="ghost" data-group-person="${esc(person.id)}">Editar</button><button type="button" class="ghost" data-group-archive="${esc(person.id)}">${person.active?'Archivar':'Activar'}</button></span></li>`).join('')||'<li>Añade los nombres de los viajeros, uno por línea.</li>';
+    $('#group-roster').innerHTML=group.participants.map(person=>`<li><span>${esc(person.name)}${person.id===group.selfId?' · yo':''}${person.active?'':' · desactivado'}</span><span><button type="button" class="ghost" data-group-person="${esc(person.id)}">Editar</button><button type="button" class="ghost" data-group-archive="${esc(person.id)}">${person.active?'Desactivar':'Reactivar'}</button>${api().participantInUse(group,person.id)?'':`<button type="button" class="ghost" data-group-person-delete="${esc(person.id)}">Eliminar</button>`}</span></li>`).join('')||'<li>Añade los nombres de los viajeros, uno por línea.</li>';
     $('#group-roster-count').textContent=`${group.participants.filter(person=>person.active).length} viajeros activos`;
     const balances=group.meals.some(meal=>meal.status==='closed')?api().balances(group):[];
     const owedTotal=balances.reduce((total,row)=>total+Math.max(0,-row.balance),0);
@@ -199,7 +199,7 @@
     const group=current();let changed=false;
     if(!id&&!resume&&!group.participants.some(person=>person.active)){
       $('#group-people-needed-message').textContent=group.participants.length
-        ? 'No hay viajeros activos en este grupo. Añade gente en «Viajeros» o vuelve a activar a algún viajero para registrar una comida.'
+        ? 'No hay viajeros activos en este grupo. Añade gente en «Viajeros» o reactiva a algún viajero para registrar una comida.'
         : 'Todavía no has creado ningún grupo para este viaje. Añade gente en «Viajeros» para crearlo y poder registrar una comida.';
       if(!$('#group-people-needed-dialog').open)$('#group-people-needed-dialog').showModal();
       return;
@@ -434,6 +434,12 @@
       if(button.dataset.groupToggle){const key=String(trip().id)+'|'+button.dataset.groupToggle;if(openMeals.has(key))openMeals.delete(key);else openMeals.add(key);render();all('[data-group-toggle]').find(value=>value.dataset.groupToggle===button.dataset.groupToggle)?.focus({preventScroll:true});return;}
       if(button.dataset.groupEdit)return openMeal(button.dataset.groupEdit);
       if(button.dataset.groupPerson){const person=group.participants.find(person=>person.id===button.dataset.groupPerson);const value=prompt('Nombre del viajero:',person.name);if(value===null)return;if(!value.trim())throw new Error('El nombre no puede estar vacío.');if(group.participants.some(other=>other.id!==person.id&&other.name.toLocaleLowerCase('es')===value.trim().toLocaleLowerCase('es')))throw new Error('Ya existe ese nombre. Usa un apellido para distinguirlo.');person.name=value.trim();return commit(group);}
+      if(button.dataset.groupPersonDelete){
+        const id=button.dataset.groupPersonDelete,person=group.participants.find(value=>value.id===id),tripId=trip().id,draft=await host.readDraft(tripId);
+        const next=api().removeParticipant(group,id,draft);
+        if(!confirm(`¿Eliminar a ${person.name} del grupo?`))return;
+        await commit(next,group.revision,tripId);message('Viajero eliminado.');return;
+      }
       if(button.dataset.groupArchive){const person=group.participants.find(person=>person.id===button.dataset.groupArchive);person.active=!person.active;return commit(group);}
       if(button.dataset.groupDelete){if(!confirm('Eliminar este borrador de comida?'))return;group.meals=group.meals.filter(meal=>meal.id!==button.dataset.groupDelete);return commit(group);}
       if(button.dataset.groupVoid){const payment=group.settlements.find(payment=>payment.id===button.dataset.groupVoid);const reason=prompt('Motivo de la anulación (se conserva el registro):');if(!reason?.trim())return;payment.voided=true;payment.voidReason=reason.trim();return commit(group);}

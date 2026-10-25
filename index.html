@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v038">
+  <link rel="manifest" href="manifest.webmanifest?v=800v039">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v038">
+  <link rel="stylesheet" href="styles.css?v=800v039">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v038 · 25/10/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v039 · 25/10/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v038</div>
+  <div class="app-version">800v039</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -95,7 +95,7 @@
       <div class="card"><h2>Viajeros</h2><p>Una persona administra las comidas y devoluciones. No se usa fondo común.</p>
         <details><summary>Viajeros e integración con mis gastos</summary>
           <label for="group-people">Añadir viajeros, uno por línea</label><textarea id="group-people" rows="5" placeholder="Lucio&#10;Ana&#10;Luis"></textarea><button type="button" class="btn" id="group-add-people">Añadir viajeros</button>
-          <p id="group-roster-count"></p><ul id="group-roster" class="group-roster"></ul>
+          <p id="group-roster-count"></p><ul id="group-roster" class="group-roster"></ul><p class="small">Desactivar conserva el historial y deja de proponer al viajero en nuevas comidas. Reactivar lo vuelve a incluir. Eliminar solo está disponible si no tiene referencias ni está seleccionado como «yo».</p>
           <label for="group-self">Quién soy</label><select id="group-self"></select><label class="check-option"><input type="checkbox" id="group-integrate"> Registrar mi consumo, adelantos y devoluciones en mis cuentas</label>
           <p class="small">La integración es opcional. Registra solo tu consumo como gasto. Los adelantos y devoluciones son transferencias. La cuenta «Grupo · pendiente de recuperar / pagar» muestra lo que debes recuperar o pagar.</p><button type="button" class="btn" id="group-settings-save">Guardar identidad e integración</button>
         </details>
@@ -1363,23 +1363,23 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v038"></script>
-<script src="gpx-import.js?v=800v038"></script>
-<script src="timeline-routing.js?v=800v038"></script>
-<script src="map-model.js?v=800v038"></script>
-<script src="ticket-camera.js?v=800v038"></script>
-<script src="receipt-access.js?v=800v038"></script>
-<script src="expense-receipt-ai.js?v=800v038"></script>
-<script src="group-meals.js?v=800v038"></script>
-<script src="group-ledger.js?v=800v038"></script>
-<script src="group-store.js?v=800v038"></script>
-<script src="group-receipt.js?v=800v038"></script>
-<script src="group-ui.js?v=800v038"></script>
-<script src="preparation.js?v=800v038"></script>
-<script src="app.bundle.js?v=800v038"></script>
+<script src="timeline-import.js?v=800v039"></script>
+<script src="gpx-import.js?v=800v039"></script>
+<script src="timeline-routing.js?v=800v039"></script>
+<script src="map-model.js?v=800v039"></script>
+<script src="ticket-camera.js?v=800v039"></script>
+<script src="receipt-access.js?v=800v039"></script>
+<script src="expense-receipt-ai.js?v=800v039"></script>
+<script src="group-meals.js?v=800v039"></script>
+<script src="group-ledger.js?v=800v039"></script>
+<script src="group-store.js?v=800v039"></script>
+<script src="group-receipt.js?v=800v039"></script>
+<script src="group-ui.js?v=800v039"></script>
+<script src="preparation.js?v=800v039"></script>
+<script src="app.bundle.js?v=800v039"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v038';
+    const pageVersion = '800v039';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1434,7 +1434,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v038', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v039', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;
