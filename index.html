@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v037">
+  <link rel="manifest" href="manifest.webmanifest?v=800v038">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v037">
+  <link rel="stylesheet" href="styles.css?v=800v038">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v037 · 25/10/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v038 · 25/10/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v037</div>
+  <div class="app-version">800v038</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -541,7 +541,7 @@
     <label class="check-option"><input type="checkbox" id="group-meal-reviewed"> He comprobado foto, conceptos, importes, total y reparto</label>
     <p id="group-offline-draft-help" class="small">Sin cobertura o con la IA no disponible, pulsa Guardar borrador para conservar las fotos y los datos sin contabilizar la comida. Después abre Continuar en esa comida y vuelve a pulsar Leer con Gemini cuando tengas conexión. La lectura no se reintenta automáticamente.</p>
     <p class="small">Guardar como borrador retira los movimientos de una comida antes cerrada. Si tiene devoluciones activas, primero anula o corrige sus registros; no se borrarán silenciosamente.</p>
-    <div class="actions"><button type="button" class="btn ghost" id="group-save-draft">Guardar borrador</button><button type="button" class="btn" id="group-close-meal">Cerrar y guardar comida</button></div>
+    <div class="actions"><button type="button" class="btn ghost" id="group-save-draft">Guardar borrador</button><button type="button" class="btn" id="group-close-meal">Cerrar y guardar comida</button><button type="button" class="ghost" id="group-cancel-meal" title="Salir sin guardar los cambios de esta edición">Cancelar</button></div>
   </form>
 </dialog>
 <dialog id="group-receipt-dialog" class="modal group-dialog" aria-labelledby="group-receipt-title"><h2 id="group-receipt-title">Justificante individual</h2><label for="group-receipt-person">Persona</label><select id="group-receipt-person"></select><div id="group-receipt-content"></div><p id="group-receipt-message" role="status"></p><div class="actions"><button type="button" class="btn" id="group-receipt-share" disabled>Compartir imagen</button><button type="button" class="btn ghost" id="group-receipt-download" disabled>Descargar imagen</button><button type="button" class="ghost" id="group-receipt-close">Cerrar</button></div></dialog>
@@ -1363,23 +1363,23 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v037"></script>
-<script src="gpx-import.js?v=800v037"></script>
-<script src="timeline-routing.js?v=800v037"></script>
-<script src="map-model.js?v=800v037"></script>
-<script src="ticket-camera.js?v=800v037"></script>
-<script src="receipt-access.js?v=800v037"></script>
-<script src="expense-receipt-ai.js?v=800v037"></script>
-<script src="group-meals.js?v=800v037"></script>
-<script src="group-ledger.js?v=800v037"></script>
-<script src="group-store.js?v=800v037"></script>
-<script src="group-receipt.js?v=800v037"></script>
-<script src="group-ui.js?v=800v037"></script>
-<script src="preparation.js?v=800v037"></script>
-<script src="app.bundle.js?v=800v037"></script>
+<script src="timeline-import.js?v=800v038"></script>
+<script src="gpx-import.js?v=800v038"></script>
+<script src="timeline-routing.js?v=800v038"></script>
+<script src="map-model.js?v=800v038"></script>
+<script src="ticket-camera.js?v=800v038"></script>
+<script src="receipt-access.js?v=800v038"></script>
+<script src="expense-receipt-ai.js?v=800v038"></script>
+<script src="group-meals.js?v=800v038"></script>
+<script src="group-ledger.js?v=800v038"></script>
+<script src="group-store.js?v=800v038"></script>
+<script src="group-receipt.js?v=800v038"></script>
+<script src="group-ui.js?v=800v038"></script>
+<script src="preparation.js?v=800v038"></script>
+<script src="app.bundle.js?v=800v038"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v037';
+    const pageVersion = '800v038';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1434,7 +1434,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v037', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v038', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

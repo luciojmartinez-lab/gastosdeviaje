@@ -9,6 +9,7 @@
   const access=root.ReceiptAccess;
   let receiptGroup,receiptMeal,receiptFiles=[],receiptSequence=0;
   const openMeals=new Set();
+  let editorDraftBefore=null,discarding=false;
   async function renderReceipt(){
     const sequence=++receiptSequence;receiptFiles=[];
     $('#group-receipt-share').disabled=true;$('#group-receipt-download').disabled=true;
@@ -137,10 +138,11 @@
     $('#group-new-meal').disabled=saving;
   }
   function stash(force = false) {
-    if(!editor)return;
+    if(!editor||discarding)return;
+    const activeEditor=editor;
     const saved=JSON.parse(JSON.stringify({ tripId: editor.tripId, revision: editor.revision, meal: editor.meal }));
     clearTimeout(cacheTimer);
-    const write = () => { cacheTail=cacheTail.catch(()=>{}).then(()=>host.cacheDraft(saved));cacheTail.catch(error=>message(`No se pudo guardar el borrador local: ${error.message}`,true,'#group-meal-message')); };
+    const write = () => { cacheTail=cacheTail.catch(()=>{}).then(()=>host.cacheDraft(saved));cacheTail.catch(error=>{if(editor===activeEditor&&!discarding)message(`No se pudo guardar el borrador local: ${error.message}`,true,'#group-meal-message');}); };
     if (force) write(); else cacheTimer=setTimeout(write,300);
   }
   function preview() {
@@ -202,7 +204,9 @@
       if(!$('#group-people-needed-dialog').open)$('#group-people-needed-dialog').showModal();
       return;
     }
-    if(resume){const draft=await host.readDraft(selectedTrip.id);if(!draft)throw new Error('No hay un borrador local en este viaje.');editor=draft;editor.group=group;changed=editor.revision!==group.revision;}
+    const previousDraft=await host.readDraft(selectedTrip.id);
+    editorDraftBefore=previousDraft?JSON.parse(JSON.stringify(previousDraft)):null;
+    if(resume){if(!previousDraft)throw new Error('No hay un borrador local en este viaje.');editor=JSON.parse(JSON.stringify(previousDraft));editor.group=group;changed=editor.revision!==group.revision;}
     else {
       const original=group.meals.find(meal=>meal.id===id);
       editor={tripId:selectedTrip.id,revision:group.revision,group,meal:original?JSON.parse(JSON.stringify(original)):{id:uid(),name:'',date:today(),currency:'EUR',status:'draft',attendees:group.participants.filter(person=>person.active).map(person=>person.id),payerId:'',accountId:null,totalCents:null,items:[]}};
@@ -210,27 +214,42 @@
     mountMeal();stash();
     if(changed)message('El grupo ha cambiado: revisa el borrador antes de aplicarlo.',true,'#group-meal-message');
   }
+  function mealProgress(running,title=''){
+    const progress=$('#group-saving-dialog');
+    all('#group-save-draft, #group-close-meal, #group-close-editor, #group-cancel-meal').forEach(button=>button.disabled=running);
+    if(running){
+      $('#group-saving-title').textContent=title;$('#group-meal-form').setAttribute('aria-busy','true');
+      if(!progress.open)progress.showModal();
+    }else{
+      $('#group-meal-form').removeAttribute('aria-busy');if(progress.open)progress.close();
+    }
+  }
+  async function cancelMeal(){
+    if(!editor||discarding||mealSaving||saving)return;
+    if(reading)throw new Error('Espera a que termine la lectura o la carga de fotos.');
+    const activeEditor=editor,previousDraft=editorDraftBefore;
+    discarding=true;clearTimeout(cacheTimer);
+    try{
+      mealProgress(true,'Descartando cambios…');
+      // Wait for any in-flight autosave before restoring the state from before this edit.
+      cacheTail=cacheTail.catch(()=>{}).then(()=>previousDraft?host.cacheDraft(previousDraft):host.clearDraft(activeEditor.tripId));
+      await cacheTail;
+      $('#group-meal-dialog').close();editor=null;editorDraftBefore=null;message('Cambios descartados.');
+    }finally{discarding=false;mealProgress(false);}
+  }
   async function saveMeal(closed) {
-    if(!editor||reading||mealSaving||saving)return;
+    if(!editor||reading||mealSaving||saving||discarding)return;
     if(closed&&!$('#group-meal-reviewed').checked)throw new Error('Confirma que has revisado el ticket y el reparto.');
     const next=api().normalize(editor.group),meal=JSON.parse(JSON.stringify(editor.meal));meal.status=closed?'closed':'draft';
     const index=next.meals.findIndex(value=>value.id===meal.id);if(index<0)next.meals.push(meal);else next.meals[index]=meal;
     next.enabled=true;
     mealSaving=true;
-    const progress=$('#group-saving-dialog');
-    $('#group-saving-title').textContent=closed?'Guardando comida…':'Guardando borrador…';
-    $('#group-meal-form').setAttribute('aria-busy','true');
-    all('#group-save-draft, #group-close-meal, #group-close-editor').forEach(button=>button.disabled=true);
     try{
-      progress.showModal();
+      mealProgress(true,closed?'Guardando comida…':'Guardando borrador…');
       stash(true);await cacheTail;
       await commit(next,editor.revision,editor.tripId);
       await cacheTail;await host.clearDraft(editor.tripId);$('#group-meal-dialog').close();editor=null;message(closed?'Comida cerrada y guardada.':'Borrador guardado.');
-    }finally{
-      mealSaving=false;$('#group-meal-form').removeAttribute('aria-busy');
-      all('#group-save-draft, #group-close-meal, #group-close-editor').forEach(button=>button.disabled=false);
-      if(progress.open)progress.close();
-    }
+    }finally{mealSaving=false;mealProgress(false);}
   }
   function readCents(value) {try{return api().cents(value);}catch{return null;}}
   async function extract(useAI=false) {
@@ -243,7 +262,7 @@
     if(withAI && !$('#group-ai-consent').checked)throw new Error('Marca que autorizas enviar las fotos de este ticket a Google para leerlo.');
     if(withAI && !code)throw new Error('Introduce el código de acceso a la lectura gratuita.');
     reading=true;$('#group-ocr').disabled=true;$('#group-parse-text').disabled=true;
-    $('#group-ai-read').disabled=true;$('#group-close-meal').disabled=true;$('#group-save-draft').disabled=true;$('#group-meal-file').disabled=true;
+    $('#group-ai-read').disabled=true;$('#group-close-meal').disabled=true;$('#group-save-draft').disabled=true;$('#group-cancel-meal').disabled=true;$('#group-meal-file').disabled=true;
     all('#group-meal-ticket button').forEach(button=>button.disabled=true);
     $('#group-ocr-progress-wrap').hidden=false;$('#group-ocr-progress').value=0;
     const started=Date.now();let percent=0;
@@ -292,7 +311,7 @@
       throw error;
     }finally{
       clearInterval(timer);reading=false;$('#group-ocr').disabled=false;$('#group-parse-text').disabled=false;
-      $('#group-ai-read').disabled=!aiEnabled;$('#group-close-meal').disabled=false;$('#group-save-draft').disabled=false;$('#group-meal-file').disabled=false;
+      $('#group-ai-read').disabled=!aiEnabled;$('#group-close-meal').disabled=false;$('#group-save-draft').disabled=false;$('#group-cancel-meal').disabled=false;$('#group-meal-file').disabled=false;
       if(!completed)$('#group-ocr-counter').textContent=`Lectura interrumpida · ${Math.floor((Date.now()-started)/1000)} s`;
       if(editor){renderTicket();showParseFeedback();}
       if(withAI)Promise.resolve(host.aiStatus?.()).then(status=>{if(editor)$('#group-ai-usage').textContent=status?.usageText||'';}).catch(()=>{});
@@ -331,9 +350,10 @@
       const field=$('#group-people');field.closest('details').open=true;
       field.focus({preventScroll:true});field.scrollIntoView?.({block:'center',behavior:'instant'});
     };
-    $('#group-close-editor').onclick=safe(async()=>{if(mealSaving||saving)return;if(reading)throw new Error('Espera a que termine la lectura.');stash(true);await cacheTail;$('#group-meal-dialog').close();editor=null;},'#group-meal-message');
+    $('#group-close-editor').onclick=safe(async()=>{if(mealSaving||saving||discarding)return;if(reading)throw new Error('Espera a que termine la lectura.');stash(true);await cacheTail;$('#group-meal-dialog').close();editor=null;},'#group-meal-message');
     $('#group-meal-dialog').oncancel=event=>{event.preventDefault();$('#group-close-editor').click();};
     $('#group-save-draft').onclick=safe(()=>saveMeal(false),'#group-meal-message');$('#group-close-meal').onclick=safe(()=>saveMeal(true),'#group-meal-message');
+    $('#group-cancel-meal').onclick=safe(cancelMeal,'#group-meal-message');
     $('#group-add-item').onclick=()=>{editor.meal.items.push({id:uid(),name:'',quantity:1,amountCents:null,common:false,shares:{}});renderItems();stash();};
     $('#group-meal-form').onsubmit=event=>event.preventDefault();
     $('#group-meal-form').oninput=event=>{
@@ -378,7 +398,7 @@
       if(!editor||reading)return;
       const input=event.target;
       reading=true;
-      const controls=['#group-meal-file','#group-ocr','#group-ai-read','#group-save-draft','#group-close-meal'];
+      const controls=['#group-meal-file','#group-ocr','#group-ai-read','#group-save-draft','#group-close-meal','#group-cancel-meal'];
       controls.forEach(selector=>$(selector).disabled=true);all('#group-meal-ticket button').forEach(button=>button.disabled=true);
       message('Cargando las fotos del ticket…',false,'#group-meal-message');
       try{

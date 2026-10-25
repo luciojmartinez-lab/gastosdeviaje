@@ -501,6 +501,44 @@ test('los errores de revisión y cuenta aparecen en un modal y permiten corregir
  }finally{ui.close();}
 });
 
+test('Cancelar una comida nueva descarta fotos y datos sin guardar ni dejar recuperación automática',async()=>{
+ const ui=await setup();try{
+  const before=JSON.stringify(ui.state);ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.input('#group-meal-name','Descartar cena');ui.input('#group-meal-file','');await ui.waitFor(()=>!!ui.$('#group-meal-ticket img'));
+  ui.click('#group-cancel-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  await new Promise(resolve=>setTimeout(resolve,350));
+  assert.equal(ui.drafts.has(1),false);assert.equal(JSON.stringify(ui.state),before);assert.equal(ui.$('#group-saving-dialog').open,false);
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);assert.equal(ui.$('#group-meal-name').value,'');assert.equal(ui.$('#group-meal-ticket img'),null);
+ }finally{ui.close();}
+});
+
+test('Cancelar espera un autoguardado en curso y no permite que reaparezcan los cambios descartados',async()=>{
+ let releaseCache,blocked=true;
+ const ui=await setup({cacheDraft:()=>blocked?new Promise(resolve=>{releaseCache=resolve;}):undefined});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-name','No conservar');await ui.waitFor(()=>!!releaseCache);
+  ui.click('#group-cancel-meal');assert.equal(ui.$('#group-saving-title').textContent,'Descartando cambios…');assert.equal(ui.$('#group-save-draft').disabled,true);
+  await ui.$('#group-save-draft').onclick();await ui.$('#group-close-editor').onclick();assert.equal(ui.$('#group-meal-dialog').open,true);
+  blocked=false;releaseCache();await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);await new Promise(resolve=>setTimeout(resolve,350));
+  assert.equal(ui.drafts.has(1),false);assert.equal(ui.state.viajes[0].group.meals.length,0);assert.equal(ui.state.gastos.length,0);
+ }finally{blocked=false;releaseCache?.();ui.close();}
+});
+
+test('Cancelar conserva comidas y movimientos guardados y restaura cualquier borrador local anterior',async()=>{
+ const ui=await setup();try{
+  await seedPayments(ui);const before=JSON.stringify(ui.state);
+  const previous={tripId:1,revision:ui.state.viajes[0].group.revision,meal:{id:'recuperacion',name:'Borrador anterior',date:'2026-10-25',status:'draft',currency:'EUR',attendees:['p0'],items:[],totalCents:null}};
+  ui.drafts.set(1,JSON.parse(JSON.stringify(previous)));
+  for(const id of ['comida1','borrador']){
+   ui.click(`[data-group-edit="${id}"]`);await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-name','Cambios sin guardar');
+   await ui.waitFor(()=>ui.drafts.get(1)?.meal.name==='Cambios sin guardar');ui.click('#group-cancel-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+   assert.equal(JSON.stringify(ui.state),before);assert.deepEqual(ui.drafts.get(1),previous);
+  }
+  ui.click('#group-resume');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-name','Cambiar recuperación');ui.click('#group-cancel-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  assert.deepEqual(ui.drafts.get(1),previous);assert.equal(JSON.stringify(ui.state),before);
+ }finally{ui.close();}
+});
+
 test('Guardando comida cubre caché y guardado, bloquea cierre y doble clic y registra una sola vez',async()=>{
  let blocked=false,releaseCache,releaseSave,saveCalls=0;
  const ui=await setup({cacheDraft:()=>blocked?new Promise(resolve=>{releaseCache=resolve;}):undefined,beforeSave:async()=>{saveCalls++;await new Promise(resolve=>{releaseSave=resolve;});}});
@@ -508,7 +546,7 @@ test('Guardando comida cubre caché y guardado, bloquea cierre y doble clic y re
   await prepare(ui);ui.input('#group-meal-reviewed',true);blocked=true;ui.click('#group-close-meal');
   assert.equal(ui.$('#group-saving-dialog').open,true);assert.equal(ui.$('#group-saving-title').textContent,'Guardando comida…');assert.equal(ui.$('#group-meal-form').getAttribute('aria-busy'),'true');
   assert.equal(ui.$('#group-close-meal').disabled,true);assert.equal(ui.$('#group-save-draft').disabled,true);
-  await ui.$('#group-close-meal').onclick();await ui.$('#group-close-editor').onclick();assert.equal(ui.$('#group-meal-dialog').open,true);
+  await ui.$('#group-close-meal').onclick();await ui.$('#group-close-editor').onclick();await ui.$('#group-cancel-meal').onclick();assert.equal(ui.$('#group-meal-dialog').open,true);
   const cancel=new ui.w.Event('cancel',{cancelable:true});ui.$('#group-saving-dialog').dispatchEvent(cancel);assert.equal(cancel.defaultPrevented,true);
   await ui.waitFor(()=>!!releaseCache);assert.equal(saveCalls,0);blocked=false;releaseCache();await ui.waitFor(()=>!!releaseSave);
   await ui.$('#group-close-meal').onclick();assert.equal(saveCalls,1);assert.equal(ui.$('#group-saving-dialog').open,true);
