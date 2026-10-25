@@ -109,7 +109,8 @@
   const options = (rows,value,empty='Elige una opción') => `<option value="">${esc(empty)}</option>${rows.map(row=>`<option value="${esc(row.id)}"${String(row.id)===String(value)?' selected':''}>${esc(row.name||row.nombre)}</option>`).join('')}`;
   const ordered=people=>people.slice().sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base',numeric:true})||a.id.localeCompare(b.id));
   function renderTravelers(state,selectedTrip,group){
-    const catalog=state.travelerCatalog||[],blocked=travelersSaving||saving;
+    const ownCatalogIds=new Set(state.viajes.flatMap(value=>(value.group?.participants||[]).filter(person=>person.id===value.group.selfId).map(person=>person.catalogId).filter(Boolean)));
+    const catalog=(state.travelerCatalog||[]).filter(person=>!ownCatalogIds.has(person.id)),blocked=travelersSaving||saving;
     $('#travelers-trip').innerHTML=options(state.viajes,selectedTrip?.id,'Elige un viaje');
     $('#group-self').innerHTML=options(ordered(group.participants.filter(person=>person.active||person.id===group.selfId)),group.selfId,'Quién soy (opcional)');
     $('#group-integrate').checked=group.integrate;
@@ -118,7 +119,7 @@
       const selected=pending?pendingTravelerSelection.checked:group.participants.some(value=>value.catalogId===person.id&&value.active);
       return `<li><label class="traveler-pick"><input type="checkbox" data-traveler-select="${esc(person.id)}"${selected?' checked':''}${!selectedTrip?' disabled':''}><span>${esc(person.name)}</span></label><span><button type="button" class="ghost" data-traveler-edit="${esc(person.id)}">Editar</button>${root.TravelGroupTravelers.canDelete(catalog,state.viajes,person.id)?`<button type="button" class="ghost" data-traveler-delete="${esc(person.id)}">Eliminar</button>`:''}</span></li>`;
     }).join('')||'<li>Añade los nombres al catálogo para poder seleccionarlos en tus viajes.</li>';
-    $('#group-roster-count').textContent=travelersSaving?'Guardando viajeros…':`${catalog.length} viajeros en el catálogo · ${selectedTrip?group.participants.filter(person=>person.active).length+' seleccionados para '+selectedTrip.nombre:'selecciona un viaje para marcar sus viajeros'}`;
+    $('#group-roster-count').textContent=travelersSaving?'Guardando otros viajeros…':`${catalog.length} acompañantes en el catálogo · ${selectedTrip?group.participants.filter(person=>person.active&&person.id!==group.selfId).length+' seleccionados para '+selectedTrip.nombre:'selecciona un viaje para marcar sus acompañantes'}`;
     $('#group-roster').setAttribute('aria-busy',String(travelersSaving));
     all('#config-viajeros button, #config-viajeros input, #config-viajeros textarea, #config-viajeros select').forEach(element=>element.disabled=blocked||(!selectedTrip&&(element.id==='group-self'||element.id==='group-integrate'||element.id==='group-settings-save'||!!element.dataset.travelerSelect)));
   }
@@ -129,7 +130,11 @@
     const selectedTrip=trip();renderTravelers(host.getState(),selectedTrip,selectedTrip?.group||api().normalize());
     message('Guardando viajeros…',false,'#travelers-message');
     try{await host.saveTravelers(revision,action);message(text,false,'#travelers-message');}
-    finally{travelersSaving=false;pendingTravelerSelection=null;render();}
+    finally{
+      travelersSaving=false;pendingTravelerSelection=null;
+      if(action.type==='select'&&host.getState().activeTab==='config'){const selected=trip();renderTravelers(host.getState(),selected,selected?.group||api().normalize());}
+      else render();
+    }
   }
   async function commit(group, expected = group.revision, tripId = trip()?.id) {
     if(saving) throw new Error('Espera a que termine el guardado anterior.');
@@ -141,11 +146,11 @@
     if(!host || !$('#group-trip')) return;
     const state=host.getState(), selected=state.selectedViajeIds?.length===1?String(state.selectedViajeIds[0]):'';
     $('#group-trip').innerHTML=options(state.viajes,selected,'Elige un viaje');
-    const selectedTrip=trip(),group=current();
+    const selectedTrip=trip(),group=selectedTrip?.group||api().normalize();
     $('#group-content').hidden=!selectedTrip; $('#group-empty').hidden=!!selectedTrip;
     renderTravelers(state,selectedTrip,group);
     if(!selectedTrip)return;
-    $('#group-selected-people').textContent='Viajeros del viaje: '+(ordered(group.participants.filter(person=>person.active)).map(person=>person.name).join(', ')||'ninguno seleccionado. Abre Configurar viajeros.');
+    $('#group-selected-people').textContent='Participantes del viaje: '+(ordered(group.participants.filter(person=>person.active)).map(person=>person.name).join(', ')||'ninguno seleccionado. Abre Configurar otros viajeros.');
     const balances=group.meals.some(meal=>meal.status==='closed')?ordered(api().balances(group).filter(row=>row.active||row.consumed||row.advanced||row.sent||row.received)):[];
     const owedTotal=balances.reduce((total,row)=>total+Math.max(0,-row.balance),0);
     $('#group-balances').innerHTML=balances.length?`<div class="table-wrap"><table><thead><tr><th>Viajero</th><th>Consumido</th><th>Adelantado</th><th>Devuelto</th><th>Recibido</th><th>Saldo</th></tr></thead><tbody>${balances.map(row=>`<tr><td>${esc(row.name)}</td><td>${api().money(row.consumed)}</td><td>${api().money(row.advanced)}</td><td>${api().money(row.sent)}</td><td>${api().money(row.received)}</td><td${row.balance<0?' class="group-balance-negative"':''}>${api().money(row.balance)} ${row.balance>0?'a recuperar':row.balance<0?'a pagar':'saldado'}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['consumed','advanced','sent','received'].map(key=>`<td>${api().money(sum(balances,key))}</td>`).join('')}<td><small class="group-balance-totals">Pendiente de liquidar</small><span${owedTotal>0?' class="group-balance-negative"':''}>${api().money(owedTotal)}</span></td></tr></tfoot></table></div>`:'<p class="small">El resumen aparecerá al cerrar la primera comida.</p>';
@@ -223,10 +228,10 @@
   async function openMeal(id,resume=false) {
     const selectedTrip=trip();if(!selectedTrip)return;
     const group=current();let changed=false;
-    if(!id&&!resume&&!group.participants.some(person=>person.active)){
-      $('#group-people-needed-message').textContent=group.participants.length
-        ? 'No hay viajeros seleccionados para este viaje. Selecciona gente en Configuración → Viajeros para registrar una comida.'
-        : 'Todavía no has creado ningún grupo para este viaje. Añade gente al catálogo y selecciónala en Configuración → Viajeros para crearlo.';
+    if(!id&&!resume&&!group.participants.some(person=>person.active&&person.id!==group.selfId)){
+      $('#group-people-needed-message').textContent=group.participants.some(person=>person.id!==group.selfId)
+        ? 'No hay viajeros seleccionados para este viaje. Selecciona gente en Configuración → Otros viajeros para registrar una comida.'
+        : 'Todavía no has creado ningún grupo para este viaje. Añade gente al catálogo y selecciónala en Configuración → Otros viajeros para crearlo.';
       if(!$('#group-people-needed-dialog').open)$('#group-people-needed-dialog').showModal();
       return;
     }

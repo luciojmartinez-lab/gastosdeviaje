@@ -23,10 +23,24 @@
   function mergeCatalog(current,incoming){const items=normalizeCatalog(current);for(const person of normalizeCatalog(incoming))if(!items.some(item=>item.id===person.id))items.push(person);return sorted(items);}
   function reconcile(catalog,trips){
     const items=normalizeCatalog(catalog);let changed=JSON.stringify(items)!==JSON.stringify(catalog||[]);
+    const knownUsers=trips.flatMap(trip=>(trip.group?.participants||[]).filter(person=>person.id===trip.group.selfId||person.isUser===true));
+    const ownIds=new Set(knownUsers.map(person=>person.catalogId).filter(Boolean));
+    const ownNames=new Set(knownUsers.map(person=>nameKey(person.originalName||person.name)).filter(name=>name&&name!=='yo'));
     const viajes=trips.map(trip=>{
-      if(!trip.group?.participants?.length)return trip;
-      const used=new Set();let modified=false;
-      const participants=trip.group.participants.map(person=>{
+      const source=trip.group||root.TravelGroup.normalize();
+      const own=(source.participants||[]).find(person=>person.id===source.selfId)||(source.participants||[]).find(person=>person.isUser===true)||(source.participants||[]).find(person=>ownIds.has(person.catalogId)||ownNames.has(nameKey(person.name)));
+      let selfId=own?.id||'__user__';while(!own&&(source.participants||[]).some(person=>person.id===selfId))selfId+=':me';
+      let ownCatalog=own?.catalogId&&items.find(item=>item.id===own.catalogId);
+      if(own&&!ownCatalog&&!own.isUser&&own.name!=='Yo'){
+        ownCatalog=items.find(item=>nameKey(item.name)===nameKey(own.name));
+        if(!ownCatalog){ownCatalog={id:newId(items,own.name),name:own.name};items.push(ownCatalog);changed=true;}
+      }
+      const used=new Set(ownCatalog?[ownCatalog.id]:[]);let modified=!own||source.selfId!==selfId;
+      const participants=(source.participants||[]).map(person=>{
+        if(person.id===selfId){
+          if(person.name==='Yo'&&person.active===true&&person.isUser===true)return person;
+          modified=true;return {...person,...(ownCatalog?{catalogId:ownCatalog.id}:{}),name:'Yo',active:true,isUser:true,originalName:person.originalName||person.name};
+        }
         let item=items.find(value=>value.id===person.catalogId&&!used.has(value.id));
         if(!item)item=items.find(value=>nameKey(value.name)===nameKey(person.name)&&!used.has(value.id));
         if(!item){item={id:newId(items,person.name),name:person.name.trim()};items.push(item);changed=true;}
@@ -34,7 +48,8 @@
         if(person.catalogId===item.id&&person.name===item.name)return person;
         modified=true;return {...person,catalogId:item.id,name:item.name};
       });
-      if(!modified)return trip;changed=true;return {...trip,group:{...trip.group,participants}};
+      if(!own)participants.unshift({id:selfId,name:'Yo',active:true,isUser:true});
+      if(!modified)return trip;changed=true;return {...trip,group:{...source,selfId,participants}};
     });
     return {items:sorted(items),viajes,changed};
   }
@@ -56,7 +71,8 @@
         for(let i=0;i<viajes.length;i++){const trip=viajes[i];if(trip.group?.participants?.some(p=>p.catalogId===person.id))viajes[i]={...trip,group:{...trip.group,participants:trip.group.participants.map(p=>p.catalogId===person.id?{...p,name}:p)}};}
       }else if(action.type==='select'){
         const index=viajes.findIndex(trip=>Number(trip.id)===Number(action.tripId));if(index<0)throw new Error('Selecciona un viaje para elegir sus viajeros.');
-        const trip=viajes[index],group=root.TravelGroup.normalize(trip.group),existing=group.participants.find(p=>p.catalogId===person.id);
+        const trip=viajes[index],group={...root.TravelGroup.normalize(),...trip.group,participants:trip.group.participants.map(p=>({...p}))},existing=group.participants.find(p=>p.catalogId===person.id);
+        if(existing?.id===group.selfId)throw new Error('Yo ya está incluido automáticamente en este viaje.');
         if(existing)existing.active=action.checked===true;
         else if(action.checked===true){let id=person.id;while(group.participants.some(p=>p.id===id))id+=':p';group.participants.push({id,catalogId:person.id,name:person.name,active:true});}
         group.enabled=true;viajes[index]={...trip,group};
@@ -87,5 +103,21 @@
       const a=tx.objectStore('viajes').getAll();a.onsuccess=()=>{trips=a.result;ready();};const b=tx.objectStore('appSettings').getAll();b.onsuccess=()=>{settings=b.result;ready();};
     });
   }
-  root.TravelGroupTravelers={KEY,normalizeCatalog,mergeCatalog,reconcile,canDelete,apply,ensure:db=>transaction(db,null,null),save:(db,expected,action)=>transaction(db,expected,action)};
+  function select(db,expected,action){
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(['viajes','appSettings'],'readwrite');let trip,setting,failure,result,remaining=2;
+      tx.onabort=()=>reject(failure||tx.error||new Error('No se ha guardado la selección.'));tx.onerror=()=>{};tx.oncomplete=()=>resolve(result);
+      const ready=()=>{if(--remaining)return;try{
+        if((Number(setting?.revision)||0)!==expected)throw new Error('Los viajeros han cambiado en otra pestaña. Vuelve a revisar la selección.');
+        if(!trip)throw new Error('Selecciona un viaje para elegir sus viajeros.');
+        const applied=apply(setting?.items,[trip],[],action),saved=applied.viajes[0];
+        const group={...saved.group,revision:(Number(trip.group?.revision)||0)+1};
+        result={trip:{...saved,group},items:applied.items,revision:expected+1};
+        tx.objectStore('viajes').put(result.trip);tx.objectStore('appSettings').put({key:KEY,items:result.items,revision:result.revision,updatedAt:new Date().toISOString()});
+      }catch(error){failure=error;tx.abort();}};
+      const a=tx.objectStore('viajes').get(Number(action.tripId));a.onsuccess=()=>{trip=a.result;ready();};
+      const b=tx.objectStore('appSettings').get(KEY);b.onsuccess=()=>{setting=b.result;ready();};
+    });
+  }
+  root.TravelGroupTravelers={KEY,normalizeCatalog,mergeCatalog,reconcile,canDelete,apply,ensure:db=>transaction(db,null,null),save:(db,expected,action)=>action?.type==='select'?select(db,expected,action):transaction(db,expected,action)};
 })(globalThis);
