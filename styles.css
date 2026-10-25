@@ -5999,3 +5999,5 @@ footer {
 .config-section-panel > summary { cursor: pointer; font-size: 20px; font-weight: 700; }
 #config-viajeros .group-roster li > span { display: flex; flex-wrap: wrap; gap: 6px; }
 @media (max-width: 480px) { #config-viajeros .traveler-name-fields { grid-template-columns: 1fr; } }
+#form-dialog-fields .form-field-expenses { grid-column: 1 / -1; }
+#form-dialog-fields .form-field-expenses label { font-size: 14px; line-height: 1.35; }
