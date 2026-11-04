@@ -211,7 +211,7 @@
         const shares=itemShares(item,meal);
         const people=group.participants.filter(person=>meal.attendees.includes(person.id)||Number(shares[person.id])>0);
         return `<fieldset class="group-item" data-group-item="${esc(item.id)}"><legend>${concept.items.length>1?`Unidad ${itemIndex+1} de ${concept.items.length}`:'Concepto del ticket'}</legend><div class="row3"><div><label>Concepto<input data-item-field="name" value="${esc(item.name)}" maxlength="160"></label></div><div><label>Unidades del ticket<input type="number" min="0.01" step="0.01" data-item-field="quantity" value="${esc(item.quantity??1)}"></label></div><div><label>Importe total de esta línea (€)<input inputmode="decimal" data-item-field="amountCents" value="${amount(item.amountCents)}"></label></div></div><p class="small">Marca quién consume este concepto. Si marcas varias personas, se reparte por igual entre ellas.</p><div class="actions"><button class="ghost" type="button" data-group-item-select="all">Marcar todos</button><button class="ghost" type="button" data-group-item-select="none">Quitar todos</button></div><div class="group-shares">${people.map(person=>`<label class="check-option"><input type="checkbox" data-item-diner="${esc(person.id)}"${Number(shares[person.id])>0?' checked':''}> ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE: retira su asignación'}</label>`).join('')||'<p>Selecciona los asistentes antes de asignar.</p>'}</div><details><summary>Ajustar partes (opcional)</summary><p class="small">Una parte por persona reparte por igual. Aumenta las partes de quien consuma más.</p><div class="group-shares">${people.map(person=>`<label>Partes de ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE'}<input type="number" min="0" max="1000000" step="0.01" data-item-person="${esc(person.id)}" value="${esc(shares[person.id]||0)}"></label>`).join('')}</div></details><button class="ghost" type="button" data-group-item-expand="${esc(item.id)}"${Number.isSafeInteger(Number(item.quantity))&&Number(item.quantity)>1?'':' hidden'}>Desglosar unidades</button><button class="ghost" type="button" data-group-item-remove="${esc(item.id)}">Quitar concepto</button></fieldset>`;
-      }).join('')}</div></div>`;
+      }).join('')}${concept.items.length>1?`<button type="button" class="ghost" data-group-item-merge="${esc(concept.id)}">Agrupar unidades</button>`:''}</div></div>`;
     }).join('')}`:'';
     preview();
   }
@@ -497,6 +497,15 @@
         item.common=false;item.mode='weights';item.shares=button.dataset.groupItemSelect==='all'?Object.fromEntries(editor.meal.attendees.map(id=>[id,1])):{};
         item.participantsConfirmed=false;$('#group-meal-reviewed').checked=false;renderItems();stash();return;
       }
+      if(button.dataset.groupItemMerge){
+        const concept=conceptGroups(editor.meal.items).find(group=>group.id===button.dataset.groupItemMerge);if(!concept)return;
+        const merged=api().regroupUnits(concept.items,editor.meal.attendees);
+        if(merged.needsReset&&!confirm('Hay unidades con un reparto incompleto o no válido. Se conservarán la cantidad y el importe total, pero tendrás que seleccionar de nuevo los comensales de este concepto. ¿Agrupar unidades?'))return;
+        const ids=new Set(concept.items.map(item=>item.id)),first=editor.meal.items.findIndex(item=>ids.has(item.id));
+        editor.meal.items=editor.meal.items.filter(item=>!ids.has(item.id));editor.meal.items.splice(first,0,merged.item);
+        openConcepts.add(String(merged.item.id));$('#group-meal-reviewed').checked=false;renderItems();stash();
+        message(merged.needsReset?'Unidades agrupadas. Selecciona de nuevo los comensales de este concepto.':'Unidades agrupadas en un único reparto, conservando el importe. Revisa los comensales.',false,'#group-meal-message');return;
+      }
       const id=button.dataset.groupItemRemove||button.dataset.groupItemExpand;
       const index=editor.meal.items.findIndex(item=>item.id===id);if(index<0)return;
       if(button.dataset.groupItemExpand){
@@ -556,7 +565,14 @@
     });
     $('#group-ai-change-code').onclick=()=>{showAICode(false);$('#group-ai-access-entry').hidden=false;$('#group-ai-access-saved').hidden=true;$('#group-ai-code').focus();};
     $('#group-ai-forget-code').onclick=()=>{access.forget();restoreAICode();};
-    $('#group-ai-read').onclick=safe(()=>extract(true),'#group-meal-message');
+    $('#group-ai-read').onclick=safe(()=>{
+      if(!$('#group-ai-consent').checked||!($('#group-ai-code').value.trim()||access.get())){
+        $('#group-ai-panel').open=true;
+        const field=$('#group-ai-consent').checked?$('#group-ai-code'):$('#group-ai-consent');
+        field.scrollIntoView?.({block:'center'});field.focus();
+      }
+      return extract(true);
+    },'#group-meal-message');
     const propose=replace=>async()=>{try{parseText(replace);}catch(error){message(error.message||String(error),true,'#group-meal-message');}showParseFeedback();};
     $('#group-parse-text').onclick=propose(false);
     $('#group-parse-confirm').onclick=propose(true);

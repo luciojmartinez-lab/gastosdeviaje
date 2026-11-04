@@ -163,3 +163,20 @@ test('importar otro viaje remapea las cuentas de adelantos y cobros',()=>{
   const result=api.remapAccounts(group,{1:37});
   assert.equal(result.meals[0].accountId,37);assert.equal(result.settlements[0].accountId,37);assert.equal(group.meals[0].accountId,1);
 });
+
+test('agrupar conserva cantidades, importes y céntimos por persona incluso con repartos distintos y redondeos',()=>{
+ for(const items of [
+  [{id:'a',name:'Paella',quantity:1,amountCents:1200,shares:{a:1}},{id:'b',name:'Paella',quantity:1,amountCents:1200,shares:{b:1,c:1}}],
+  [{id:'a',name:'Agua',quantity:1,amountCents:1,common:true},{id:'b',name:'Agua',quantity:1,amountCents:1,common:true}]
+ ]){
+  const before=JSON.stringify(items),attendees=['a','b','c'],totalCents=items.reduce((sum,item)=>sum+item.amountCents,0),original=api.allocation({attendees,items,totalCents});
+  const result=api.regroupUnits(items,attendees);assert.equal(result.needsReset,false);assert.equal(result.item.quantity,2);assert.equal(result.item.amountCents,totalCents);
+  assert.deepEqual(plain(api.allocation({attendees,items:[result.item],totalCents}).totals),plain(original.totals));assert.equal(JSON.stringify(items),before);
+ }
+});
+test('agrupar unidades sin asignar permite volver al general y advierte antes de perder un reparto parcial',()=>{
+ const items=[{id:'a',name:'Copa 33',quantity:1,amountCents:300,shares:{}},{id:'b',name:'Copa 33',quantity:1,amountCents:300,shares:{}}];
+ assert.equal(api.regroupUnits(items,['a']).needsReset,false);items[0].shares={a:1};const result=api.regroupUnits(items,['a']);assert.equal(result.needsReset,true);assert.deepEqual(plain(result.item.shares),{});
+ assert.throws(()=>api.regroupUnits([{...items[0],amountCents:null},items[1]],['a']),/Revisa/);
+ assert.throws(()=>api.regroupUnits([items[0],{...items[1],name:'Paella'}],['a']),/mismo concepto/);
+});

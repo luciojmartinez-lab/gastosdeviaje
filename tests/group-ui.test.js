@@ -496,7 +496,9 @@ test('IA pide consentimiento, muestra propuesta revisable y no guarda el código
  try{
   ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
   ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
+  assert.equal(ui.$('#group-ai-panel').contains(ui.$('#group-ai-read')),false);
   ui.click('#group-ai-read');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('autorizas'));
+  assert.equal(ui.$('#group-ai-panel').open,true);
   assert.equal(calls,0);ui.input('#group-ai-consent',true);ui.input('#group-ai-code','private-test-code');ui.click('#group-ai-read');
   await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===1 && !ui.$('#group-ai-read').disabled);
   assert.equal(calls,1);assert.equal(ui.$('[data-item-field="amountCents"]').value,'10.50');
@@ -906,5 +908,18 @@ test('Copa 33 y platos con varias unidades comparten reparto sin clasificar la b
   const rows=[...ui.$('#group-meal-items').querySelectorAll('fieldset')];assert.equal(rows[0].querySelector('[data-item-field="name"]').value,'Copa 33');assert.equal(rows[0].querySelector('[data-item-field="quantity"]').value,'3');assert.equal(rows[1].querySelector('[data-item-field="quantity"]').value,'2');
   for(const row of rows){const selector='[data-group-item="'+row.dataset.groupItem+'"]';ui.input(selector+' [data-item-person="p0"]','0.5');ui.input(selector+' [data-item-person="p1"]','0.5');}
   assert.match(ui.$('#group-meal-totals').textContent,/16,50/);assert.match(ui.$('#group-meal-totals').textContent,/Diferencia con ticket: 0,00/);
+ }finally{ui.close();}
+});
+
+test('Agrupar unidades revierte el desglose sin perder céntimos y cancelar el reinicio parcial conserva los platos',async()=>{
+ const ui=await setup({recognize:async()=>({text:'2 Paella 24,00',fields:{total:24}})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items fieldset'));
+  ui.click('[data-group-item-toggle]');ui.click('[data-group-item-expand]');assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,2);
+  ui.click('[data-group-item-merge]');assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,1);assert.equal(ui.$('[data-item-field="quantity"]').value,'2');assert.equal(ui.$('[data-item-field="amountCents"]').value,'24.00');
+  ui.click('[data-group-item-expand]');ui.input('fieldset:nth-child(1) [data-item-diner="p0"]',true);
+  ui.w.confirm=()=>false;ui.click('[data-group-item-merge]');assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,2);assert.equal(ui.$('fieldset:nth-child(1) [data-item-diner="p0"]').checked,true);
+  ui.input('fieldset:nth-child(2) [data-item-diner="p1"]',true);ui.input('fieldset:nth-child(2) [data-item-diner="p2"]',true);
+  ui.click('[data-group-item-merge]');assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,1);assert.match(ui.$('#group-meal-totals').textContent,/12,00/);assert.match(ui.$('#group-meal-totals').textContent,/6,00/);assert.equal(ui.$('#group-meal-reviewed').checked,false);
  }finally{ui.close();}
 });

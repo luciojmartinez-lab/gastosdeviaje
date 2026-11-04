@@ -36,6 +36,33 @@
     if(Array.isArray(meal.ticketPhotos)&&meal.ticketPhotos.length)return meal.ticketPhotos;
     return meal.ticketData?[{data:meal.ticketData,name:meal.ticketName||'ticket.jpg',type:meal.ticketType||'image/jpeg'}]:[];
   }
+  function regroupUnits(items, attendees) {
+    if (!Array.isArray(items) || items.length < 2) throw new Error('No hay unidades que agrupar.');
+    const label = value => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('es');
+    if (items.some(item => label(item.name) !== label(items[0].name))) throw new Error('Solo se pueden agrupar unidades del mismo concepto.');
+    const amountCents = items.reduce((sum, item) => sum + item.amountCents, 0);
+    const quantity = items.reduce((sum, item) => sum + Number(item.quantity ?? 1), 0);
+    if (items.some(item => !Number.isSafeInteger(item.amountCents) || item.amountCents < 0 || !Number.isFinite(Number(item.quantity ?? 1)) || Number(item.quantity ?? 1) <= 0) || !Number.isSafeInteger(amountCents) || !Number.isFinite(quantity)) throw new Error('Revisa los importes y unidades antes de agrupar.');
+    const weights = item => item.common ? Object.fromEntries(attendees.map(id => [id, 1])) : item.shares || {};
+    const signature = item => JSON.stringify(Object.entries(weights(item)).filter(([, value]) => Number(value) > 0).sort(([a], [b]) => a.localeCompare(b)));
+    const equal = items.every(item => signature(item) === signature(items[0]));
+    let common = items.every(item => item.common), shares = {}, needsReset = false;
+    const result = allocation({ attendees, items, totalCents: amountCents });
+    if (equal && result.errors.length) shares = copy(weights(items[0]));
+    else {
+      if (!result.errors.length) {
+        const original = equal ? split(amountCents, weights(items[0])) : null;
+        if (original && Object.entries(result.totals).every(([id, value]) => (original[id] || 0) === value)) shares = copy(weights(items[0]));
+        else {
+        common = false;
+        shares = Object.fromEntries(Object.entries(result.totals).filter(([, value]) => value > 0).map(([id, value]) => [id, value / 100]));
+        const check = split(amountCents, shares);
+        if (Object.entries(result.totals).some(([id, value]) => (check[id] || 0) !== value)) throw new Error('No se puede agrupar conservando exactamente el reparto.');
+        }
+      } else { common = false; needsReset = true; }
+    }
+    return { item: { ...copy(items[0]), quantity, amountCents, common, shares, mode: 'weights', participantsConfirmed: false }, needsReset };
+  }
   function setTicketPhotos(meal, photos) {
     if(!Array.isArray(photos)||photos.length>8)throw new Error('Se admiten hasta 8 fotos del mismo ticket.');
     if(photos.some(photo=>!photo||typeof photo.data!=='string'||!/^data:image\/(jpeg|png|webp);base64,/i.test(photo.data)))throw new Error('Una foto del ticket no es válida.');
@@ -225,5 +252,5 @@
       ...meal.attendees.map(id => `${name(id)}: ${money(result.totals[id] || 0)} (individual ${money(result.individual[id] || 0)} + compartido ${money(result.common[id] || 0)})`),
       '', ...mealPayments(group, meal).map(row => `${name(row.id)}: ${row.id === meal.payerId ? 'cubierto' : 'devuelto'} ${money(row.paid)} · pendiente ${money(row.remaining)}`), '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
   }
-  root.TravelGroup = { normalize, validate, participantInUse, removeParticipant, allocation, split, expandUnits, sharedByDefault, keepUnitsTogether, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, advanceDetails, parseItems, remapAccounts, personalReceipt, summary };
+  root.TravelGroup = { normalize, validate, participantInUse, removeParticipant, allocation, split, expandUnits, regroupUnits, sharedByDefault, keepUnitsTogether, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, advanceDetails, parseItems, remapAccounts, personalReceipt, summary };
 })(globalThis);
