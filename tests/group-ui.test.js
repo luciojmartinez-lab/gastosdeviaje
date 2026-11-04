@@ -462,6 +462,7 @@ test('OCR muestra progreso y tiempo, abre el texto al terminar y no deja botones
   assert.equal(ui.$('#group-ocr-progress-wrap').hidden,false);
   assert.equal(ui.$('#group-parse-text').disabled,true);
   notify({status:'Leyendo los productos',progress:0.55});
+  assert.equal(ui.$('#group-ai-panel').contains(ui.$('#group-ocr-progress-wrap')),false);
   assert.equal(ui.$('#group-ocr-progress').value,55);assert.match(ui.$('#group-ocr-counter').textContent,/55% · \d+ s/);
   notify({status:'Nueva pasada',progress:0.2});assert.equal(ui.$('#group-ocr-progress').value,55);
   complete({itemText:'1 Cena 12,00',text:'1 Cena 12,00',itemsStatus:'reconciled',fields:{total:12}});
@@ -929,6 +930,7 @@ test('el botón junto a la autorización inicia Gemini y ambos botones impiden u
  try{
   ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read-confirm').disabled);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));
   assert.equal(ui.$('#group-ai-panel').contains(ui.$('#group-ai-read-confirm')),true);ui.input('#group-ai-consent',true);ui.input('#group-ai-code','test-code');ui.click('#group-ai-read-confirm');await ui.waitFor(()=>!!finish);
+  assert.equal(ui.$('#group-ai-read-confirm').nextElementSibling,ui.$('#group-ocr-progress-wrap'));assert.equal(ui.$('#group-ai-panel').open,true);
   assert.equal(ui.$('#group-ai-read').disabled,true);assert.equal(ui.$('#group-ai-read-confirm').disabled,true);ui.click('#group-ai-read');ui.click('#group-ai-read-confirm');assert.equal(calls,1);
   finish({text:'1 Cena 12,00',itemsStatus:'reconciled',fields:{total:12}});await ui.waitFor(()=>!ui.$('#group-ai-read-confirm').disabled);assert.equal(ui.$('#group-ai-read').disabled,false);assert.equal(calls,1);assert.equal(ui.$('[data-item-field="name"]').value,'Cena');
  }finally{ui.close();}

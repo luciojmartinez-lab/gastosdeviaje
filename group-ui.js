@@ -271,6 +271,7 @@
     $('#group-meal-attendees').innerHTML=ordered(group.participants.filter(person=>person.active||meal.attendees.includes(person.id))).map(person=>`<label class="check-option"><input type="checkbox" data-group-attendee="${esc(person.id)}"${meal.attendees.includes(person.id)?' checked':''}> ${esc(person.name)}</label>`).join('');
     $('#group-meal-reviewed').checked=false;$('#group-meal-file').value='';$('#group-meal-text').value=meal.ocrText||'';
     $('#group-text-panel').open=!!meal.ocrText;$('#group-parse-replace').hidden=true;$('#group-ocr-progress-wrap').hidden=true;
+    $('#group-ai-read-confirm').after($('#group-ocr-progress-wrap'));
     setAIReadDisabled(true);$('#group-ai-consent').checked=false;$('#group-ai-status').textContent='Comprobando disponibilidad de la IA gratuita…';
     const activeEditor=editor;
     Promise.resolve(host.aiStatus?.()||{enabled:false,message:'La IA gratuita está pendiente de activación.'}).then(status=>{
@@ -352,6 +353,9 @@
     reading=true;$('#group-ocr').disabled=true;$('#group-parse-text').disabled=true;
     setAIReadDisabled(true);$('#group-close-meal').disabled=true;$('#group-save-draft').disabled=true;$('#group-cancel-meal').disabled=true;$('#group-meal-file').disabled=true;
     all('#group-meal-ticket button').forEach(button=>button.disabled=true);
+    const progressAnchor=withAI?$('#group-ai-read-confirm'):$('#group-ai-panel');
+    progressAnchor.after($('#group-ocr-progress-wrap'));
+    if(withAI)$('#group-ai-panel').open=true;
     $('#group-ocr-progress-wrap').hidden=false;$('#group-ocr-progress').value=0;
     const started=Date.now();let percent=0;
     const paintProgress=()=>{$('#group-ocr-counter').textContent=`${withAI&&percent<100?'IA gratuita':percent+'%'} · ${Math.floor((Date.now()-started)/1000)} s`;};

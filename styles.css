@@ -6035,3 +6035,9 @@ footer {
 
 .group-ticket-read-actions { display: grid; gap: 8px; margin: 10px 0; }
 .group-ticket-read-actions > button { width: 100%; }
+
+#group-ai-read-confirm { display: block; margin-top: 16px; }
+#group-ocr-progress-wrap { margin: 18px 0; }
+#group-ocr-progress-wrap > label { display: block; margin-bottom: 8px; }
+#group-ocr-progress { display: block; }
+#group-ocr-counter { margin-top: 8px; }
