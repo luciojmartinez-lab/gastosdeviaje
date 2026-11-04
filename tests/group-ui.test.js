@@ -970,3 +970,29 @@ test('un plato compartido entre tres o cinco permite porciones 1/3 y 1/5 y se ci
   }finally{ui.close();}
  }
 });
+
+test('confirma una unidad compartida entre tres o cinco desde check o signo, calcula y conserva el reparto al reabrir',async()=>{
+ for(const people of [3,5]){
+  const ui=await setup({recognize:async()=>({text:'1 Tapa 10,00',fields:{total:10}})});
+  try{
+   ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-name','Compartidos');ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items fieldset'));
+   ui.input('[data-group-item-confirm]',true);for(let i=0;i<people;i++)ui.input('[data-item-diner="p'+i+'"]',true);
+   if(people===3)ui.input('[data-group-item-confirm]',true);else ui.click('[data-group-item-toggle]');
+   assert.equal(ui.$('#group-units-dialog').open,true);assert.equal(ui.$('#group-units-edit').textContent,'Sí');assert.equal(ui.$('#group-units-close').textContent,'No');assert.match(ui.$('#group-units-message').textContent,new RegExp('entre '+people+' comensales'));assert.equal(ui.$('[data-item-person="p0"]').value,'1');
+   ui.click('#group-units-edit');assert.equal(ui.$('.group-concept-details').hidden,true);assert.equal(ui.$('[data-group-item-confirm]').checked,true);assert.equal(ui.$('#group-units-dialog').open,false);
+   ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+   const meal=ui.state.viajes[0].group.meals[0],item=meal.items[0],result=ui.w.TravelGroup.allocation(meal);assert.equal(item.equalShareConfirmed,true);assert.equal(item.shares.p0,people===3?0.333333:0.2);assert.equal(Object.values(result.totals).reduce((a,b)=>a+b,0),1000);
+   ui.click('[data-group-edit]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.click('[data-group-item-toggle]');ui.input('[data-item-diner="p0"]',false);ui.click('[data-group-item-toggle]');assert.match(ui.$('#group-units-message').textContent,new RegExp('entre '+(people-1)+' comensales'));ui.click('#group-units-edit');assert.equal(ui.$('[data-group-item-confirm]').checked,true);
+  }finally{ui.close();}
+ }
+});
+test('No a compartir abre el aviso anterior sin modificar comensales y permite editar o cerrar sin marcar',async()=>{
+ const ui=await setup({recognize:async()=>({text:'1 Tapa 9,00',fields:{total:9}})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items fieldset'));ui.input('[data-group-item-confirm]',true);
+  for(let i=0;i<3;i++)ui.input('[data-item-diner="p'+i+'"]',true);ui.click('[data-group-item-toggle]');ui.click('#group-units-close');
+  assert.equal(ui.$('#group-units-dialog').open,true);assert.equal(ui.$('#group-units-edit').textContent,'Seguir editando');assert.equal(ui.$('#group-units-close').textContent,'Cerrar sin marcar');assert.match(ui.$('#group-units-message').textContent,/Sobran 2 unidades/);assert.equal(ui.$('[data-item-person="p0"]').value,'1');
+  ui.click('#group-units-edit');assert.equal(ui.$('.group-concept-details').hidden,false);assert.equal(ui.$('[data-group-item-confirm]').checked,false);
+  ui.click('[data-group-item-toggle]');ui.click('#group-units-close');ui.click('#group-units-close');assert.equal(ui.$('.group-concept-details').hidden,true);assert.equal(ui.$('[data-group-item-confirm]').checked,false);assert.equal(ui.$('[data-item-person="p0"]').value,'1');
+ }finally{ui.close();}
+});

@@ -199,3 +199,9 @@ test('tercios y quintos se escriben como fracción o decimal y completan una uni
   const result=api.allocation({attendees,items:[{name:'Tapa',quantity:1,amountCents:1000,shares}],totalCents:1000});assert.equal(result.errors.length,0);assert.equal(Object.values(result.totals).reduce((a,b)=>a+b,0),1000);
  }
 });
+
+test('solo propone compartir por igual unidades individuales con varios checks de una unidad',()=>{
+ const items=[{id:'unit',quantity:1,shares:{a:1,b:1,c:1}},{id:'mixed',quantity:2,shares:{a:1,b:1,c:1}},{id:'manual',quantity:1,shares:{a:0.5,b:0.5}},{id:'absent',quantity:1,shares:{a:1,missing:1}}];
+ const candidates=api.sharedUnitCandidates(items,['a','b','c']);assert.equal(candidates.length,1);assert.equal(candidates[0].id,'unit');assert.equal(candidates[0].people.length,3);
+ assert.equal(api.sharedUnitCandidates([{id:'common',quantity:1,common:true}],['a','b','c']).length,1);
+});

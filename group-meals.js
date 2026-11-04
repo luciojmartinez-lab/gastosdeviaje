@@ -61,7 +61,7 @@
         }
       } else { common = false; needsReset = true; }
     }
-    return { item: { ...copy(items[0]), quantity, amountCents, common, shares, mode: 'weights', participantsConfirmed: false }, needsReset };
+    return { item: { ...copy(items[0]), quantity, amountCents, common, shares, mode: 'weights', participantsConfirmed: false, equalShareConfirmed: false }, needsReset };
   }
   function parsePortion(value) {
     const text = String(value ?? '').trim().replace(/,/g, '.');
@@ -91,6 +91,16 @@
       expected += quantity; assigned += total;
     }
     return { valid: items.length > 0 && issues.length === 0, expected, assigned, issues };
+  }
+  function sharedUnitCandidates(items, attendees) {
+    return items.flatMap((item, index) => {
+      if (Number(item.quantity ?? 1) !== 1) return [];
+      const shares = item.common ? Object.fromEntries(attendees.map(id => [id, 1])) : item.shares || {};
+      if (Object.values(shares).some(value => !Number.isFinite(Number(value)) || Number(value) < 0)) return [];
+      const selected = Object.entries(shares).filter(([, value]) => Number(value) > 0);
+      return selected.length > 1 && selected.every(([id, value]) => attendees.includes(id) && Number(value) === 1)
+        ? [{ id: item.id, index, people: selected.map(([id]) => id) }] : [];
+    });
   }
   function setTicketPhotos(meal, photos) {
     if(!Array.isArray(photos)||photos.length>8)throw new Error('Se admiten hasta 8 fotos del mismo ticket.');
@@ -281,5 +291,5 @@
       ...meal.attendees.map(id => `${name(id)}: ${money(result.totals[id] || 0)} (individual ${money(result.individual[id] || 0)} + compartido ${money(result.common[id] || 0)})`),
       '', ...mealPayments(group, meal).map(row => `${name(row.id)}: ${row.id === meal.payerId ? 'cubierto' : 'devuelto'} ${money(row.paid)} · pendiente ${money(row.remaining)}`), '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
   }
-  root.TravelGroup = { normalize, validate, participantInUse, removeParticipant, allocation, split, expandUnits, regroupUnits, parsePortion, checkAssignedUnits, sharedByDefault, keepUnitsTogether, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, advanceDetails, parseItems, remapAccounts, personalReceipt, summary };
+  root.TravelGroup = { normalize, validate, participantInUse, removeParticipant, allocation, split, expandUnits, regroupUnits, parsePortion, checkAssignedUnits, sharedUnitCandidates, sharedByDefault, keepUnitsTogether, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, advanceDetails, parseItems, remapAccounts, personalReceipt, summary };
 })(globalThis);
