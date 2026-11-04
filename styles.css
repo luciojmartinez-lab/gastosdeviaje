@@ -6045,3 +6045,6 @@ footer {
 
 #group-units-message { white-space: pre-line; overflow-wrap: anywhere; }
 #group-units-dialog { padding: 18px; }
+
+.group-item-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.group-item-actions > button { width: 100%; min-width: 0; min-height: 44px; padding: 8px 6px; white-space: normal; font-size: 0.9rem; }

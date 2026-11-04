@@ -950,7 +950,7 @@ test('cerrar por signo o check avisa de fracciones pendientes o sobrantes y perm
  const ui=await setup({recognize:async()=>({text:'2 Pizza 20,00',fields:{total:20}})});
  try{
   ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items fieldset'));
-  ui.click('[data-group-item-toggle]');ui.input('[data-item-person="p0"]','0.5');ui.click('[data-group-item-toggle]');
+  ui.click('[data-group-item-toggle]');ui.input('[data-item-person="p0"]','0.5');ui.click('[data-group-item-validate]');
   assert.equal(ui.$('#group-units-dialog').open,true);assert.match(ui.$('#group-units-message').textContent,/Faltan 1,5 unidades/);assert.equal(ui.$('[data-group-item-confirm]').checked,false);
   ui.click('#group-units-edit');assert.equal(ui.$('.group-concept-details').hidden,false);assert.equal(ui.$('[data-item-person="p0"]').value,'0.5');
   ui.input('[data-group-item-confirm]',true);assert.equal(ui.$('#group-units-dialog').open,true);ui.click('#group-units-close');assert.equal(ui.$('.group-concept-details').hidden,true);assert.equal(ui.$('[data-group-item-confirm]').checked,false);
@@ -971,18 +971,18 @@ test('un plato compartido entre tres o cinco permite porciones 1/3 y 1/5 y se ci
  }
 });
 
-test('confirma una unidad compartida entre tres o cinco desde check o signo, calcula y conserva el reparto al reabrir',async()=>{
- for(const people of [3,5]){
+test('confirma una unidad compartida entre dos, tres o cinco desde Validar, check o signo, calcula y conserva el reparto al reabrir',async()=>{
+ for(const people of [2,3,5]){
   const ui=await setup({recognize:async()=>({text:'1 Tapa 10,00',fields:{total:10}})});
   try{
    ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-name','Compartidos');ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items fieldset'));
    ui.input('[data-group-item-confirm]',true);for(let i=0;i<people;i++)ui.input('[data-item-diner="p'+i+'"]',true);
-   if(people===3)ui.input('[data-group-item-confirm]',true);else ui.click('[data-group-item-toggle]');
+   if(people===3)ui.input('[data-group-item-confirm]',true);else if(people===5)ui.click('[data-group-item-toggle]');else ui.click('[data-group-item-validate]');
    assert.equal(ui.$('#group-units-dialog').open,true);assert.equal(ui.$('#group-units-edit').textContent,'Sí');assert.equal(ui.$('#group-units-close').textContent,'No');assert.match(ui.$('#group-units-message').textContent,new RegExp('entre '+people+' comensales'));assert.equal(ui.$('[data-item-person="p0"]').value,'1');
    ui.click('#group-units-edit');assert.equal(ui.$('.group-concept-details').hidden,true);assert.equal(ui.$('[data-group-item-confirm]').checked,true);assert.equal(ui.$('#group-units-dialog').open,false);
    ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
-   const meal=ui.state.viajes[0].group.meals[0],item=meal.items[0],result=ui.w.TravelGroup.allocation(meal);assert.equal(item.equalShareConfirmed,true);assert.equal(item.shares.p0,people===3?0.333333:0.2);assert.equal(Object.values(result.totals).reduce((a,b)=>a+b,0),1000);
-   ui.click('[data-group-edit]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.click('[data-group-item-toggle]');ui.input('[data-item-diner="p0"]',false);ui.click('[data-group-item-toggle]');assert.match(ui.$('#group-units-message').textContent,new RegExp('entre '+(people-1)+' comensales'));ui.click('#group-units-edit');assert.equal(ui.$('[data-group-item-confirm]').checked,true);
+   const meal=ui.state.viajes[0].group.meals[0],item=meal.items[0],result=ui.w.TravelGroup.allocation(meal);assert.equal(item.equalShareConfirmed,true);assert.equal(item.shares.p0,ui.w.TravelGroup.parsePortion('1/'+people));assert.equal(Object.values(result.totals).reduce((a,b)=>a+b,0),1000);
+   ui.click('[data-group-edit]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.click('[data-group-item-toggle]');ui.input('[data-item-diner="p0"]',false);ui.click('[data-group-item-toggle]');if(people>2){assert.match(ui.$('#group-units-message').textContent,new RegExp('entre '+(people-1)+' comensales'));ui.click('#group-units-edit');}else assert.equal(ui.$('#group-units-dialog').open,false);assert.equal(ui.$('[data-group-item-confirm]').checked,true);
   }finally{ui.close();}
  }
 });
