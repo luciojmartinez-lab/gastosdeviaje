@@ -29,17 +29,17 @@ test('desglosar unidades conserva nombres y céntimos y permite un plato individ
   assert.equal(api.expandUnits([{...original,quantity:1.5}])[0].quantity,1.5);
   assert.throws(()=>api.expandUnits([{...original,quantity:501}]),/500/);
 });
-test('pan, agua y bebidas mantienen varias unidades en un único reparto; otros platos se separan',()=>{
-  const lines=api.parseItems('3 Agua mineral 9,00\n2 Pan 4,00\n4 Cervezas 12,00\n2 Café con leche 5,00\n2 Paella 24,00').items;
+test('cualquier concepto conserva varias unidades en un único reparto, incluso copa 33',()=>{
+  const lines=api.parseItems('3 Agua mineral 9,00\n2 Pan 4,00\n4 Cervezas 12,00\n2 Café con leche 5,00\n2 Paella 24,00\n3 Copa 33 9,00').items;
   const proposed=api.expandUnits(lines,api.keepUnitsTogether);
   assert.deepEqual(plain(proposed.map(item=>[item.name,item.quantity,item.amountCents])),[
-    ['Agua mineral',3,900],['Pan',2,400],['Cervezas',4,1200],['Café con leche',2,500],['Paella',1,1200],['Paella',1,1200]
+    ['Agua mineral',3,900],['Pan',2,400],['Cervezas',4,1200],['Café con leche',2,500],['Paella',2,2400],['Copa 33',3,900]
   ]);
   assert.equal(proposed[0].common,true);
   assert.equal(proposed[1].common,true);
   assert.equal(proposed[2].common,false);
   assert.equal(api.keepUnitsTogether('Tinto de verano'),true);
-  assert.equal(api.keepUnitsTogether('Paella'),false);
+  assert.equal(api.keepUnitsTogether('Paella'),true);
 });
 function fixture() {
   return api.normalize({ enabled: true, selfId: 'a', integrate: true,

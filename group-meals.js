@@ -17,8 +17,9 @@
   }
   function normalizeConcept(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
   function sharedByDefault(name) { return /\b(?:pan|panes|agua)\b/.test(normalizeConcept(name)); }
-  function keepUnitsTogether(name) {
-    return /\b(?:pan|panes|agua|bebida|bebidas|cerveza|cervezas|refresco|refrescos|vino|vinos|tinto|cava|sidra|sangria|zumo|zumos|jugo|jugos|cafe|cafes|te|infusion|infusiones|cola|coca\s*cola|fanta|sprite|kas|tonica|vermut|gin|ginebra|ron|whisky|mojito|coctel|cocteles|chupito|chupitos|botella|botellas|jarra|jarras)\b/.test(normalizeConcept(name));
+  function keepUnitsTogether() {
+    // Preserve every ticket line by default; splitting units is an explicit editor action.
+    return true;
   }
   function expandUnits(items, keepTogether = () => false) {
     const count = item => Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 1 ? Number(item.quantity) : 1;

@@ -5954,7 +5954,9 @@ footer {
 .group-ticket-photos { display: grid; gap: 12px; }
 .group-ticket-card { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .group-ticket-card h4 { margin: 0 0 10px; overflow-wrap: anywhere; }
-.group-ticket-card .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.group-ticket-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.group-ticket-actions > button { width: 100%; min-width: 0; min-height: 40px; margin: 0; padding: 6px 8px; font-size: 0.9rem; }
+.group-ticket-actions > [data-group-ticket-action="remove"] { grid-column: 1 / -1; }
 .group-ticket-card:not(:only-child) .group-ticket { max-height: 42vh; }
 .group-payment { padding: 8px; background: var(--soft); border-radius: 8px; }
 .group-payment-actions { display: inline-flex; flex-wrap: wrap; gap: 4px; }
