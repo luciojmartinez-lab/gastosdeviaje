@@ -9,6 +9,7 @@
   const access=root.ReceiptAccess;
   let receiptGroup,receiptMeal,receiptFiles=[],receiptSequence=0;
   const openMeals=new Set(),openConcepts=new Set();
+  let pendingConceptClose=null;
   let editorDraftBefore=null,discarding=false,travelersSaving=false,travelerEditingId=null,pendingTravelerSelection=null;
   function resetTravelerEditor(){
     travelerEditingId=null;$('#group-people').value='';$('#traveler-surnames').value='';
@@ -69,7 +70,33 @@
       ?quantities.reduce((total,value)=>total+value,0).toLocaleString('es-ES',{maximumFractionDigits:2}):'—';
     const amounts=group.items.map(item=>item.amountCents);
     const cents=amounts.every(Number.isSafeInteger)?amounts.reduce((total,value)=>total+value,0):null;
-    return {units,price:Number.isSafeInteger(cents)?api().money(cents):'Por revisar',confirmed:group.items.every(item=>item.participantsConfirmed===true)};
+    return {units,price:Number.isSafeInteger(cents)?api().money(cents):'Por revisar',confirmed:group.items.every(item=>item.participantsConfirmed===true)&&api().checkAssignedUnits(group.items,editor.meal.attendees).valid};
+  }
+  function setConceptClosed(concept, confirmed) {
+    concept.items.forEach(item=>item.participantsConfirmed=confirmed);
+    openConcepts.delete(concept.id);renderItems();stash();
+  }
+  function closeConcept(id) {
+    const concept=conceptGroups(editor.meal.items).find(group=>group.id===id);if(!concept)return;
+    const check=api().checkAssignedUnits(concept.items,editor.meal.attendees);
+    if(check.valid){setConceptClosed(concept,true);return;}
+    concept.items.forEach(item=>item.participantsConfirmed=false);openConcepts.add(concept.id);renderItems();stash();
+    const number=value=>Number.isFinite(value)?value.toLocaleString('es-ES',{maximumFractionDigits:6}):'—';
+    const lines=check.issues.map(issue=>{
+      const prefix=concept.items.length>1?'Unidad '+(issue.index+1)+': ':'';
+      if(issue.reason)return prefix+issue.reason;
+      const units=Math.abs(issue.difference),verb=issue.difference>0?(units===1?'Falta':'Faltan'):(units===1?'Sobra':'Sobran');
+      return prefix+'Ticket: '+number(issue.expected)+' · Asignadas: '+number(issue.assigned)+'. '+verb+' '+number(units)+(units===1?' unidad':' unidades')+' (comensales o fracciones).';
+    });
+    $('#group-units-message').textContent='El reparto de «'+concept.name+'» no coincide con las unidades del ticket.\n\n'+lines.join('\n')+'\n\nPuedes seguir editando o cerrarlo sin marcar Hecho.';
+    pendingConceptClose={editor,id:concept.id};$('#group-units-dialog').showModal();
+  }
+  function finishConceptClose(closeAnyway) {
+    const pending=pendingConceptClose;pendingConceptClose=null;$('#group-units-dialog').close();
+    if(!pending||editor!==pending.editor)return;
+    const concept=conceptGroups(editor.meal.items).find(group=>group.id===pending.id);if(!concept)return;
+    if(closeAnyway)setConceptClosed(concept,false);
+    else {openConcepts.add(concept.id);renderItems();}
   }
   const today = () => { const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
   const amount = value => Number.isSafeInteger(value) ? (value/100).toFixed(2) : '';
@@ -210,7 +237,7 @@
       return `<div class="group-concept" data-group-concept="${esc(concept.id)}"><div class="group-concept-grid group-concept-row"><button class="group-concept-toggle" type="button" data-group-item-toggle="${esc(concept.id)}" aria-expanded="${expanded}" aria-controls="${detailsId}" aria-label="${expanded?'Plegar':'Desplegar'} ${esc(concept.name)}"><span aria-hidden="true">${expanded?'−':'+'}</span></button><span class="group-concept-name">${esc(concept.name)}</span><span class="group-concept-units">${esc(summary.units)}</span><span class="group-concept-price">${esc(summary.price)}</span><label class="group-concept-check" title="Participantes definidos para ${esc(concept.name)}"><input type="checkbox" data-group-item-confirm="${esc(concept.id)}" aria-label="Participantes definidos para ${esc(concept.name)}"${summary.confirmed?' checked':''}></label></div><div class="group-concept-details" id="${detailsId}"${expanded?'':' hidden'}>${concept.items.map((item,itemIndex)=>{
         const shares=itemShares(item,meal);
         const people=group.participants.filter(person=>meal.attendees.includes(person.id)||Number(shares[person.id])>0);
-        return `<fieldset class="group-item" data-group-item="${esc(item.id)}"><legend>${concept.items.length>1?`Unidad ${itemIndex+1} de ${concept.items.length}`:'Concepto del ticket'}</legend><div class="row3"><div><label>Concepto<input data-item-field="name" value="${esc(item.name)}" maxlength="160"></label></div><div><label>Unidades del ticket<input type="number" min="0.01" step="0.01" data-item-field="quantity" value="${esc(item.quantity??1)}"></label></div><div><label>Importe total de esta línea (€)<input inputmode="decimal" data-item-field="amountCents" value="${amount(item.amountCents)}"></label></div></div><p class="small">Marca quién consume este concepto. Si marcas varias personas, se reparte por igual entre ellas.</p><div class="actions"><button class="ghost" type="button" data-group-item-select="all">Marcar todos</button><button class="ghost" type="button" data-group-item-select="none">Quitar todos</button></div><div class="group-shares">${people.map(person=>`<label class="check-option"><input type="checkbox" data-item-diner="${esc(person.id)}"${Number(shares[person.id])>0?' checked':''}> ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE: retira su asignación'}</label>`).join('')||'<p>Selecciona los asistentes antes de asignar.</p>'}</div><details><summary>Ajustar partes (opcional)</summary><p class="small">Una parte por persona reparte por igual. Aumenta las partes de quien consuma más.</p><div class="group-shares">${people.map(person=>`<label>Partes de ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE'}<input type="number" min="0" max="1000000" step="0.01" data-item-person="${esc(person.id)}" value="${esc(shares[person.id]||0)}"></label>`).join('')}</div></details><button class="ghost" type="button" data-group-item-expand="${esc(item.id)}"${Number.isSafeInteger(Number(item.quantity))&&Number(item.quantity)>1?'':' hidden'}>Desglosar unidades</button><button class="ghost" type="button" data-group-item-remove="${esc(item.id)}">Quitar concepto</button></fieldset>`;
+        return `<fieldset class="group-item" data-group-item="${esc(item.id)}"><legend>${concept.items.length>1?`Unidad ${itemIndex+1} de ${concept.items.length}`:'Concepto del ticket'}</legend><div class="row3"><div><label>Concepto<input data-item-field="name" value="${esc(item.name)}" maxlength="160"></label></div><div><label>Unidades del ticket<input type="number" min="0.01" step="0.01" data-item-field="quantity" value="${esc(item.quantity??1)}"></label></div><div><label>Importe total de esta línea (€)<input inputmode="decimal" data-item-field="amountCents" value="${amount(item.amountCents)}"></label></div></div><p class="small">Marca quién consume este concepto. Cada check asigna inicialmente 1 unidad. Para platos compartidos, ajusta las porciones en Ajustar partes.</p><div class="actions"><button class="ghost" type="button" data-group-item-select="all">Marcar todos</button><button class="ghost" type="button" data-group-item-select="none">Quitar todos</button></div><div class="group-shares">${people.map(person=>`<label class="check-option"><input type="checkbox" data-item-diner="${esc(person.id)}"${Number(shares[person.id])>0?' checked':''}> ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE: retira su asignación'}</label>`).join('')||'<p>Selecciona los asistentes antes de asignar.</p>'}</div><details><summary>Ajustar partes (opcional)</summary><p class="small">Indica unidades o porciones: 1 = una unidad; 0,5 o 1/2 = media; 1/3 = un tercio; 1/5 = un quinto. Para marcar Hecho, la suma debe coincidir con las unidades del ticket.</p><div class="group-shares">${people.map(person=>`<label>Partes de ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE'}<input type="text" inputmode="text" data-item-person="${esc(person.id)}" value="${esc(shares[person.id]||0)}"></label>`).join('')}</div></details><button class="ghost" type="button" data-group-item-expand="${esc(item.id)}"${Number.isSafeInteger(Number(item.quantity))&&Number(item.quantity)>1?'':' hidden'}>Desglosar unidades</button><button class="ghost" type="button" data-group-item-remove="${esc(item.id)}">Quitar concepto</button></fieldset>`;
       }).join('')}${concept.items.length>1?`<button type="button" class="ghost" data-group-item-merge="${esc(concept.id)}">Agrupar unidades</button>`:''}</div></div>`;
     }).join('')}`:'';
     preview();
@@ -466,6 +493,9 @@
     $('#group-close-editor').onclick=safe(async()=>{if(mealSaving||saving||discarding)return;if(reading)throw new Error('Espera a que termine la lectura.');stash(true);await cacheTail;$('#group-meal-dialog').close();editor=null;},'#group-meal-message');
     $('#group-meal-dialog').oncancel=event=>{event.preventDefault();$('#group-close-editor').click();};
     $('#group-save-draft').onclick=safe(()=>saveMeal(false),'#group-meal-message');$('#group-close-meal').onclick=safe(()=>saveMeal(true),'#group-meal-message');
+    $('#group-units-edit').onclick=()=>finishConceptClose(false);
+    $('#group-units-close').onclick=()=>finishConceptClose(true);
+    $('#group-units-dialog').oncancel=event=>{event.preventDefault();finishConceptClose(false);};
     $('#group-cancel-meal').onclick=safe(cancelMeal,'#group-meal-message');
     $('#group-add-item').onclick=()=>{const item={id:uid(),name:'',quantity:1,amountCents:null,common:false,shares:{},participantsConfirmed:false};editor.meal.items.push(item);openConcepts.add(item.id);renderItems();stash();};
     $('#group-meal-form').onsubmit=event=>event.preventDefault();
@@ -477,25 +507,25 @@
       const item=editor.meal.items.find(item=>item.id===element.closest('[data-group-item]')?.dataset.groupItem);
       if(item&&element.dataset.itemField){const field=element.dataset.itemField;item[field]=field==='amountCents'?readCents(element.value):field==='quantity'?Number(element.value):field==='common'?element.checked:element.value;if(field==='name'&&!Object.values(item.shares||{}).some(value=>Number(value)>0))item.common=api().sharedByDefault(item.name);if(field==='quantity'||field==='name'||field==='common')item.participantsConfirmed=false;}
       if(item&&(element.dataset.itemPerson||element.dataset.itemDiner)){item.shares={...itemShares(item,editor.meal)};item.common=false;item.mode='weights';item.participantsConfirmed=false;}
-      if(item&&element.dataset.itemPerson){item.shares||={};item.shares[element.dataset.itemPerson]=Number(element.value);}
+      if(item&&element.dataset.itemPerson){item.shares||={};item.shares[element.dataset.itemPerson]=api().parsePortion(element.value);}
       if(item&&element.dataset.itemDiner){
         item.shares||={};item.shares[element.dataset.itemDiner]=element.checked?1:0;
         element.closest('[data-group-item]').querySelectorAll('[data-item-person]').forEach(input=>{if(input.dataset.itemPerson===element.dataset.itemDiner)input.value=element.checked?'1':'0';});
       }
-      if(item&&element.dataset.itemPerson)element.closest('[data-group-item]').querySelectorAll('[data-item-diner]').forEach(input=>{if(input.dataset.itemDiner===element.dataset.itemPerson)input.checked=Number(element.value)>0;});
+      if(item&&element.dataset.itemPerson)element.closest('[data-group-item]').querySelectorAll('[data-item-diner]').forEach(input=>{if(input.dataset.itemDiner===element.dataset.itemPerson)input.checked=api().parsePortion(element.value)>0;});
       if(item)refreshConceptRow(element);
       if(element.id!=='group-meal-reviewed')$('#group-meal-reviewed').checked=false;
       preview();stash();
     };
-    $('#group-meal-form').onchange=event=>{const element=event.target;if(element.dataset.groupItemConfirm){const concept=conceptGroups(editor.meal.items).find(group=>group.id===element.dataset.groupItemConfirm);if(concept){concept.items.forEach(item=>item.participantsConfirmed=element.checked);stash();}return;}if(element.dataset.groupAttendee){const id=element.dataset.groupAttendee;editor.meal.attendees=element.checked?[...new Set([...editor.meal.attendees,id])]:editor.meal.attendees.filter(value=>value!==id);editor.meal.items.forEach(item=>item.participantsConfirmed=false);$('#group-meal-reviewed').checked=false;renderItems();stash();}else if(element.dataset.itemField==='quantity')renderItems();else if(element.dataset.itemField==='name'){const editing=editor;setTimeout(()=>{if(editor===editing)renderItems();},0);}};
+    $('#group-meal-form').onchange=event=>{const element=event.target;if(element.dataset.groupItemConfirm){const concept=conceptGroups(editor.meal.items).find(group=>group.id===element.dataset.groupItemConfirm);if(concept){if(element.checked&&!openConcepts.has(concept.id)){concept.items.forEach(item=>item.participantsConfirmed=false);openConcepts.add(concept.id);renderItems();stash();}else if(element.checked)closeConcept(concept.id);else{concept.items.forEach(item=>item.participantsConfirmed=false);stash();}}return;}if(element.dataset.groupAttendee){const id=element.dataset.groupAttendee;editor.meal.attendees=element.checked?[...new Set([...editor.meal.attendees,id])]:editor.meal.attendees.filter(value=>value!==id);editor.meal.items.forEach(item=>item.participantsConfirmed=false);$('#group-meal-reviewed').checked=false;renderItems();stash();}else if(element.dataset.itemField==='quantity')renderItems();else if(element.dataset.itemField==='name'){const editing=editor;setTimeout(()=>{if(editor===editing)renderItems();},0);}};
     $('#group-meal-items').onclick=safe(event=>{
       const button=event.target.closest('button');if(!button)return;
       if(button.dataset.groupItemToggle){
         const row=button.closest('.group-concept'),details=row.querySelector('.group-concept-details'),expanded=details.hidden;
-        details.hidden=!expanded;button.setAttribute('aria-expanded',String(expanded));
-        button.setAttribute('aria-label',`${expanded?'Plegar':'Desplegar'} ${row.querySelector('.group-concept-name').textContent}`);
-        button.querySelector('span').textContent=expanded?'−':'+';
-        if(expanded)openConcepts.add(button.dataset.groupItemToggle);else openConcepts.delete(button.dataset.groupItemToggle);
+        if(!expanded){closeConcept(button.dataset.groupItemToggle);return;}
+        details.hidden=false;button.setAttribute('aria-expanded','true');
+        button.setAttribute('aria-label','Plegar '+row.querySelector('.group-concept-name').textContent);
+        button.querySelector('span').textContent='−';openConcepts.add(button.dataset.groupItemToggle);
         return;
       }
       if(button.dataset.groupItemSelect){

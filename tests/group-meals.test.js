@@ -180,3 +180,22 @@ test('agrupar unidades sin asignar permite volver al general y advierte antes de
  assert.throws(()=>api.regroupUnits([{...items[0],amountCents:null},items[1]],['a']),/Revisa/);
  assert.throws(()=>api.regroupUnits([items[0],{...items[1],name:'Paella'}],['a']),/mismo concepto/);
 });
+
+test('las porciones deben sumar las unidades de cada línea sin compensar faltantes con sobrantes',()=>{
+ const item=(quantity,shares)=>({quantity,shares});
+ assert.equal(api.checkAssignedUnits([item(1,{a:0.5,b:0.5})],['a','b']).valid,true);
+ assert.equal(api.checkAssignedUnits([item(1,{a:0.1,b:0.2,c:0.7})],['a','b','c']).valid,true);
+ const missing=api.checkAssignedUnits([item(2,{a:0.5})],['a']);assert.equal(missing.valid,false);assert.equal(missing.issues[0].difference,1.5);
+ const compensated=api.checkAssignedUnits([item(1,{a:1.5}),item(1,{b:0.5})],['a','b']);assert.equal(compensated.expected,compensated.assigned);assert.equal(compensated.valid,false);assert.equal(compensated.issues.length,2);
+ for(const shares of [{a:-1},{a:NaN},{absent:1}])assert.equal(api.checkAssignedUnits([item(1,shares)],['a']).valid,false);
+ assert.equal(api.checkAssignedUnits([{quantity:2,common:true}],['a','b']).valid,true);
+});
+
+test('tercios y quintos se escriben como fracción o decimal y completan una unidad sin falsos faltantes',()=>{
+ assert.equal(api.parsePortion('0,5'),0.5);assert.equal(api.parsePortion('1/3'),0.333333);assert.equal(api.parsePortion('1/5'),0.2);assert.equal(Number.isNaN(api.parsePortion('1/0')),true);assert.equal(Number.isNaN(api.parsePortion('abc')),true);
+ for(const people of [3,5]){
+  const attendees=Array.from({length:people},(_,i)=>String(i)),shares=Object.fromEntries(attendees.map(id=>[id,api.parsePortion('1/'+people)]));
+  assert.equal(api.checkAssignedUnits([{quantity:1,shares}],attendees).valid,true);
+  const result=api.allocation({attendees,items:[{name:'Tapa',quantity:1,amountCents:1000,shares}],totalCents:1000});assert.equal(result.errors.length,0);assert.equal(Object.values(result.totals).reduce((a,b)=>a+b,0),1000);
+ }
+});

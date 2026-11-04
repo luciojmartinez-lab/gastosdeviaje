@@ -6042,3 +6042,6 @@ footer {
 #group-ocr-progress { display: block; }
 #group-ocr-counter { margin-top: 8px; }
 #group-ai-notes { margin-top: 18px; }
+
+#group-units-message { white-space: pre-line; overflow-wrap: anywhere; }
+#group-units-dialog { padding: 18px; }

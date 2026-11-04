@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v057">
+  <link rel="manifest" href="manifest.webmanifest?v=800v058">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v057">
+  <link rel="stylesheet" href="styles.css?v=800v058">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v057 · 04/11/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v058 · 04/11/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v057</div>
+  <div class="app-version">800v058</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -543,6 +543,11 @@
 </dialog>
 <dialog id="group-error-dialog" class="modal result-modal" role="alertdialog" aria-labelledby="group-error-title" aria-describedby="group-error-message">
   <form method="dialog"><div class="modal-head"><h2 id="group-error-title">Revisa la comida o el grupo</h2></div><p id="group-error-message"></p><div class="actions"><button type="button" class="btn" id="group-error-close" autofocus>Entendido</button></div></form>
+</dialog>
+<dialog id="group-units-dialog" class="modal result-modal" role="alertdialog" aria-labelledby="group-units-title" aria-describedby="group-units-message">
+  <div class="modal-head"><h2 id="group-units-title">Revisa las unidades asignadas</h2></div>
+  <p id="group-units-message"></p>
+  <div class="actions"><button type="button" class="btn" id="group-units-edit" autofocus>Seguir editando</button><button type="button" class="ghost" id="group-units-close">Cerrar sin marcar</button></div>
 </dialog>
 <dialog id="group-saving-dialog" class="modal result-modal" data-context-help="false" aria-labelledby="group-saving-title" aria-describedby="group-saving-message" aria-busy="true">
   <div><h2 id="group-saving-title" tabindex="-1" autofocus>Guardando comida…</h2><p id="group-saving-message" role="status">Espera un momento. No cierres esta ventana.</p><progress aria-label="Guardado en curso"></progress></div>
@@ -1394,24 +1399,24 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v057"></script>
-<script src="gpx-import.js?v=800v057"></script>
-<script src="timeline-routing.js?v=800v057"></script>
-<script src="map-model.js?v=800v057"></script>
-<script src="ticket-camera.js?v=800v057"></script>
-<script src="receipt-access.js?v=800v057"></script>
-<script src="expense-receipt-ai.js?v=800v057"></script>
-<script src="group-meals.js?v=800v057"></script>
-<script src="group-ledger.js?v=800v057"></script>
-<script src="group-store.js?v=800v057"></script>
-<script src="group-receipt.js?v=800v057"></script>
-<script src="group-travelers.js?v=800v057"></script>
-<script src="group-ui.js?v=800v057"></script>
-<script src="preparation.js?v=800v057"></script>
-<script src="app.bundle.js?v=800v057"></script>
+<script src="timeline-import.js?v=800v058"></script>
+<script src="gpx-import.js?v=800v058"></script>
+<script src="timeline-routing.js?v=800v058"></script>
+<script src="map-model.js?v=800v058"></script>
+<script src="ticket-camera.js?v=800v058"></script>
+<script src="receipt-access.js?v=800v058"></script>
+<script src="expense-receipt-ai.js?v=800v058"></script>
+<script src="group-meals.js?v=800v058"></script>
+<script src="group-ledger.js?v=800v058"></script>
+<script src="group-store.js?v=800v058"></script>
+<script src="group-receipt.js?v=800v058"></script>
+<script src="group-travelers.js?v=800v058"></script>
+<script src="group-ui.js?v=800v058"></script>
+<script src="preparation.js?v=800v058"></script>
+<script src="app.bundle.js?v=800v058"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v057';
+    const pageVersion = '800v058';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1466,7 +1471,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v057', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v058', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

@@ -63,6 +63,35 @@
     }
     return { item: { ...copy(items[0]), quantity, amountCents, common, shares, mode: 'weights', participantsConfirmed: false }, needsReset };
   }
+  function parsePortion(value) {
+    const text = String(value ?? '').trim().replace(/,/g, '.');
+    if (!text) return 0;
+    const parts = text.split('/');
+    if (parts.length > 2 || parts.some(part => !/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(part.trim()))) return NaN;
+    const denominator = parts.length === 2 ? Number(parts[1]) : 1;
+    const result = Number(parts[0]) / denominator;
+    return denominator > 0 && Number.isFinite(result) && result <= 1000000 ? Math.round(result * 1000000) / 1000000 : NaN;
+  }
+  function checkAssignedUnits(items, attendees) {
+    const issues = [];
+    let expected = 0, assigned = 0;
+    for (const [index, item] of items.entries()) {
+      const quantity = Number(item.quantity ?? 1);
+      const shares = item.common ? Object.fromEntries(attendees.map(id => [id, 1])) : item.shares || {};
+      const entries = Object.entries(shares), values = entries.map(([, value]) => Number(value));
+      const total = values.reduce((sum, value) => sum + value, 0);
+      let reason = '';
+      if (!Number.isFinite(quantity) || quantity <= 0) reason = 'Revisa las unidades del ticket.';
+      else if (values.some(value => !Number.isFinite(value) || value < 0 || value > 1000000)) reason = 'Hay porciones no válidas. Usa números iguales o mayores que cero.';
+      else if (entries.some(([id, value]) => Number(value) > 0 && !attendees.includes(id))) reason = 'Hay porciones asignadas a una persona que no asiste.';
+      else if (!attendees.length) reason = 'Selecciona los asistentes de la comida.';
+      const roundingTolerance = Math.max(1, values.filter(value => value > 0).length) * 0.000000500001;
+      const difference = Number.isFinite(quantity) && Number.isFinite(total) ? Math.abs(quantity - total) <= roundingTolerance ? 0 : Math.round((quantity - total) * 1000000) / 1000000 : null;
+      if (reason || difference !== 0) issues.push({ index, expected: quantity, assigned: total, difference, reason });
+      expected += quantity; assigned += total;
+    }
+    return { valid: items.length > 0 && issues.length === 0, expected, assigned, issues };
+  }
   function setTicketPhotos(meal, photos) {
     if(!Array.isArray(photos)||photos.length>8)throw new Error('Se admiten hasta 8 fotos del mismo ticket.');
     if(photos.some(photo=>!photo||typeof photo.data!=='string'||!/^data:image\/(jpeg|png|webp);base64,/i.test(photo.data)))throw new Error('Una foto del ticket no es válida.');
@@ -252,5 +281,5 @@
       ...meal.attendees.map(id => `${name(id)}: ${money(result.totals[id] || 0)} (individual ${money(result.individual[id] || 0)} + compartido ${money(result.common[id] || 0)})`),
       '', ...mealPayments(group, meal).map(row => `${name(row.id)}: ${row.id === meal.payerId ? 'cubierto' : 'devuelto'} ${money(row.paid)} · pendiente ${money(row.remaining)}`), '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
   }
-  root.TravelGroup = { normalize, validate, participantInUse, removeParticipant, allocation, split, expandUnits, regroupUnits, sharedByDefault, keepUnitsTogether, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, advanceDetails, parseItems, remapAccounts, personalReceipt, summary };
+  root.TravelGroup = { normalize, validate, participantInUse, removeParticipant, allocation, split, expandUnits, regroupUnits, parsePortion, checkAssignedUnits, sharedByDefault, keepUnitsTogether, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, advanceDetails, parseItems, remapAccounts, personalReceipt, summary };
 })(globalThis);

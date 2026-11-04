@@ -669,13 +669,14 @@ test('dos platos agrupados se desglosan y se guardan uno individual y otro compa
   assert.equal(ui.$('[data-item-field="mode"]'),null);assert.equal(ui.$('[data-item-field="common"]'),null);
   ui.input('fieldset:nth-child(1) [data-item-diner="p0"]',true);
   ui.input('fieldset:nth-child(2) [data-item-diner="p1"]',true);ui.input('fieldset:nth-child(2) [data-item-diner="p2"]',true);
+  ui.input('fieldset:nth-child(2) [data-item-person="p1"]','0.5');ui.input('fieldset:nth-child(2) [data-item-person="p2"]','0.5');
   ui.input('[data-group-item-confirm]',true);
   assert.equal(ui.$('[data-group-item-confirm]').checked,true);
+  assert.equal(ui.$('.group-concept-details').hidden,true);ui.click('[data-group-item-toggle]');
   ui.input('fieldset:nth-child(2) [data-item-diner="p2"]',false);
   assert.equal(ui.$('[data-group-item-confirm]').checked,false);
-  ui.input('fieldset:nth-child(2) [data-item-diner="p2"]',true);
+  ui.input('fieldset:nth-child(2) [data-item-diner="p2"]',true);ui.input('fieldset:nth-child(2) [data-item-person="p2"]','0.5');
   ui.input('[data-group-item-confirm]',true);
-  ui.click('[data-group-item-toggle]');
   assert.equal(ui.$('.group-concept-details').hidden,true);
   ui.input('#group-meal-payer','p0');ui.input('#group-meal-account','1');ui.input('#group-meal-reviewed',true);
   ui.click('#group-close-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
@@ -934,4 +935,38 @@ test('el botón junto a la autorización inicia Gemini y ambos botones impiden u
   assert.equal(ui.$('#group-ai-read').disabled,true);assert.equal(ui.$('#group-ai-read-confirm').disabled,true);ui.click('#group-ai-read');ui.click('#group-ai-read-confirm');assert.equal(calls,1);
   finish({text:'1 Cena 12,00',itemsStatus:'reconciled',fields:{total:12}});await ui.waitFor(()=>!ui.$('#group-ai-read-confirm').disabled);assert.equal(ui.$('#group-ai-read').disabled,false);assert.equal(calls,1);assert.equal(ui.$('[data-item-field="name"]').value,'Cena');
  }finally{ui.close();}
+});
+
+test('check vacío abre sin marcar; confirmar un reparto completo cierra y marca Hecho',async()=>{
+ const ui=await setup({recognize:async()=>({text:'2 Copa 33 6,00',fields:{total:6}})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items fieldset'));
+  ui.input('[data-group-item-confirm]',true);assert.equal(ui.$('.group-concept-details').hidden,false);assert.equal(ui.$('[data-group-item-confirm]').checked,false);assert.equal(ui.$('#group-units-dialog').open,false);
+  ui.input('[data-item-diner="p0"]',true);ui.input('[data-item-diner="p1"]',true);ui.input('[data-group-item-confirm]',true);
+  assert.equal(ui.$('.group-concept-details').hidden,true);assert.equal(ui.$('[data-group-item-confirm]').checked,true);assert.equal(ui.$('#group-units-dialog').open,false);
+ }finally{ui.close();}
+});
+test('cerrar por signo o check avisa de fracciones pendientes o sobrantes y permite editar o cerrar sin marcar',async()=>{
+ const ui=await setup({recognize:async()=>({text:'2 Pizza 20,00',fields:{total:20}})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items fieldset'));
+  ui.click('[data-group-item-toggle]');ui.input('[data-item-person="p0"]','0.5');ui.click('[data-group-item-toggle]');
+  assert.equal(ui.$('#group-units-dialog').open,true);assert.match(ui.$('#group-units-message').textContent,/Faltan 1,5 unidades/);assert.equal(ui.$('[data-group-item-confirm]').checked,false);
+  ui.click('#group-units-edit');assert.equal(ui.$('.group-concept-details').hidden,false);assert.equal(ui.$('[data-item-person="p0"]').value,'0.5');
+  ui.input('[data-group-item-confirm]',true);assert.equal(ui.$('#group-units-dialog').open,true);ui.click('#group-units-close');assert.equal(ui.$('.group-concept-details').hidden,true);assert.equal(ui.$('[data-group-item-confirm]').checked,false);
+  ui.input('[data-group-item-confirm]',true);assert.equal(ui.$('.group-concept-details').hidden,false);ui.input('[data-item-person="p1"]','1.5');ui.click('[data-group-item-toggle]');assert.equal(ui.$('.group-concept-details').hidden,true);assert.equal(ui.$('[data-group-item-confirm]').checked,true);
+  ui.click('[data-group-item-toggle]');ui.input('[data-item-person="p1"]','2');ui.input('[data-group-item-confirm]',true);assert.match(ui.$('#group-units-message').textContent,/Sobran 0,5 unidades/);
+  ui.$('#group-units-dialog').dispatchEvent(new ui.w.Event('cancel',{cancelable:true}));assert.equal(ui.$('.group-concept-details').hidden,false);assert.equal(ui.$('[data-group-item-confirm]').checked,false);assert.equal(ui.$('#group-units-dialog').open,false);
+ }finally{ui.close();}
+});
+
+test('un plato compartido entre tres o cinco permite porciones 1/3 y 1/5 y se cierra marcado',async()=>{
+ for(const people of [3,5]){
+  const ui=await setup({recognize:async()=>({text:'1 Tapa 10,00',fields:{total:10}})});
+  try{
+   ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items fieldset'));
+   ui.input('[data-group-item-confirm]',true);for(let i=0;i<people;i++)ui.input('[data-item-person="p'+i+'"]','1/'+people);
+   ui.click('[data-group-item-toggle]');assert.equal(ui.$('.group-concept-details').hidden,true);assert.equal(ui.$('[data-group-item-confirm]').checked,true);assert.equal(ui.$('#group-units-dialog').open,false);
+  }finally{ui.close();}
+ }
 });
