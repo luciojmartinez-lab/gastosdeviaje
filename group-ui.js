@@ -256,6 +256,9 @@
     $('#group-meal-reviewed').checked=false;$('#group-ai-consent').checked=false;
     renderTicket();stash();
   }
+  function setAIReadDisabled(disabled) {
+    for(const id of ['#group-ai-read','#group-ai-read-confirm'])$(id).disabled=disabled;
+  }
   function mountMeal() {
     const meal=editor.meal,group=editor.group;
     openConcepts.clear();
@@ -268,11 +271,11 @@
     $('#group-meal-attendees').innerHTML=ordered(group.participants.filter(person=>person.active||meal.attendees.includes(person.id))).map(person=>`<label class="check-option"><input type="checkbox" data-group-attendee="${esc(person.id)}"${meal.attendees.includes(person.id)?' checked':''}> ${esc(person.name)}</label>`).join('');
     $('#group-meal-reviewed').checked=false;$('#group-meal-file').value='';$('#group-meal-text').value=meal.ocrText||'';
     $('#group-text-panel').open=!!meal.ocrText;$('#group-parse-replace').hidden=true;$('#group-ocr-progress-wrap').hidden=true;
-    $('#group-ai-read').disabled=true;$('#group-ai-consent').checked=false;$('#group-ai-status').textContent='Comprobando disponibilidad de la IA gratuita…';
+    setAIReadDisabled(true);$('#group-ai-consent').checked=false;$('#group-ai-status').textContent='Comprobando disponibilidad de la IA gratuita…';
     const activeEditor=editor;
     Promise.resolve(host.aiStatus?.()||{enabled:false,message:'La IA gratuita está pendiente de activación.'}).then(status=>{
       if(editor!==activeEditor)return;aiEnabled=status.enabled===true;
-      $('#group-ai-status').textContent=status.message;$('#group-ai-read').disabled=!aiEnabled||reading;
+      $('#group-ai-status').textContent=status.message;setAIReadDisabled(!aiEnabled||reading);
       $('#group-ai-usage').textContent=status.usageText||'';
     }).catch(()=>{if(editor===activeEditor){aiEnabled=false;$('#group-ai-status').textContent='No se pudo comprobar el acceso a Google. Puedes usar el OCR local.';}});
     renderTicket();
@@ -347,7 +350,7 @@
     if(withAI && !$('#group-ai-consent').checked)throw new Error('Marca que autorizas enviar las fotos de este ticket a Google para leerlo.');
     if(withAI && !code)throw new Error('Introduce el código de acceso a la lectura gratuita.');
     reading=true;$('#group-ocr').disabled=true;$('#group-parse-text').disabled=true;
-    $('#group-ai-read').disabled=true;$('#group-close-meal').disabled=true;$('#group-save-draft').disabled=true;$('#group-cancel-meal').disabled=true;$('#group-meal-file').disabled=true;
+    setAIReadDisabled(true);$('#group-close-meal').disabled=true;$('#group-save-draft').disabled=true;$('#group-cancel-meal').disabled=true;$('#group-meal-file').disabled=true;
     all('#group-meal-ticket button').forEach(button=>button.disabled=true);
     $('#group-ocr-progress-wrap').hidden=false;$('#group-ocr-progress').value=0;
     const started=Date.now();let percent=0;
@@ -396,7 +399,7 @@
       throw error;
     }finally{
       clearInterval(timer);reading=false;$('#group-ocr').disabled=false;$('#group-parse-text').disabled=false;
-      $('#group-ai-read').disabled=!aiEnabled;$('#group-close-meal').disabled=false;$('#group-save-draft').disabled=false;$('#group-cancel-meal').disabled=false;$('#group-meal-file').disabled=false;
+      setAIReadDisabled(!aiEnabled);$('#group-close-meal').disabled=false;$('#group-save-draft').disabled=false;$('#group-cancel-meal').disabled=false;$('#group-meal-file').disabled=false;
       if(!completed)$('#group-ocr-counter').textContent=`Lectura interrumpida · ${Math.floor((Date.now()-started)/1000)} s`;
       if(editor){renderTicket();showParseFeedback();}
       if(withAI)Promise.resolve(host.aiStatus?.()).then(status=>{if(editor)$('#group-ai-usage').textContent=status?.usageText||'';}).catch(()=>{});
@@ -524,11 +527,11 @@
       if(!Number.isInteger(index)||!photos[index])return;
       if(action==='rotate-left'||action==='rotate-right'){
         reading=true;
-        const controls=['#group-meal-file','#group-ocr','#group-ai-read','#group-save-draft','#group-close-meal','#group-cancel-meal'];
+        const controls=['#group-meal-file','#group-ocr','#group-ai-read','#group-ai-read-confirm','#group-save-draft','#group-close-meal','#group-cancel-meal'];
         controls.forEach(selector=>$(selector).disabled=true);all('#group-meal-ticket button').forEach(control=>control.disabled=true);
         message('Girando foto…',false,'#group-meal-message');
         try{photos[index]=await rotatePhoto(photos[index],action==='rotate-left'?'left':'right');updatePhotos(photos);message('Foto girada. Vuelve a leer el ticket si ya habías obtenido una propuesta.',false,'#group-meal-message');}
-        finally{reading=false;controls.forEach(selector=>$(selector).disabled=selector==='#group-ai-read'?!aiEnabled:false);renderTicket();}
+        finally{reading=false;controls.forEach(selector=>$(selector).disabled=false);setAIReadDisabled(!aiEnabled);renderTicket();}
         return;
       }
       if(action==='remove')photos.splice(index,1);
@@ -539,7 +542,7 @@
       if(!editor||reading)return;
       const input=event.target;
       reading=true;
-      const controls=['#group-meal-file','#group-ocr','#group-ai-read','#group-save-draft','#group-close-meal','#group-cancel-meal'];
+      const controls=['#group-meal-file','#group-ocr','#group-ai-read','#group-ai-read-confirm','#group-save-draft','#group-close-meal','#group-cancel-meal'];
       controls.forEach(selector=>$(selector).disabled=true);all('#group-meal-ticket button').forEach(button=>button.disabled=true);
       message('Cargando las fotos del ticket…',false,'#group-meal-message');
       try{
@@ -553,7 +556,7 @@
         if(photos.length>8)throw new Error('Se admiten hasta 8 fotos del mismo ticket. Quita alguna antes de añadir más.');
         updatePhotos(photos);
         message(`${photos.length===1?'Foto cargada':'Fotos cargadas'}: ${photos.length===1?photos[0].name:photos.length+' fotos del mismo ticket'}.${repeated?' Se han omitido '+repeated+' fotos idénticas.':''} Revisa el orden de arriba abajo y lee el ticket completo.`,false,'#group-meal-message');
-      }finally{input.value='';reading=false;controls.forEach(selector=>$(selector).disabled=false);$('#group-ai-read').disabled=!aiEnabled;renderTicket();}
+      }finally{input.value='';reading=false;controls.forEach(selector=>$(selector).disabled=false);setAIReadDisabled(!aiEnabled);renderTicket();}
     },'#group-meal-message');
     $('#group-ocr').onclick=safe(extract,'#group-meal-message');
     $('#group-ai-toggle-code').onclick=()=>showAICode($('#group-ai-code').type==='password');
@@ -573,6 +576,7 @@
       }
       return extract(true);
     },'#group-meal-message');
+    $('#group-ai-read-confirm').onclick=$('#group-ai-read').onclick;
     const propose=replace=>async()=>{try{parseText(replace);}catch(error){message(error.message||String(error),true,'#group-meal-message');}showParseFeedback();};
     $('#group-parse-text').onclick=propose(false);
     $('#group-parse-confirm').onclick=propose(true);

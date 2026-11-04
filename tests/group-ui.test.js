@@ -923,3 +923,13 @@ test('Agrupar unidades revierte el desglose sin perder céntimos y cancelar el r
   ui.click('[data-group-item-merge]');assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,1);assert.match(ui.$('#group-meal-totals').textContent,/12,00/);assert.match(ui.$('#group-meal-totals').textContent,/6,00/);assert.equal(ui.$('#group-meal-reviewed').checked,false);
  }finally{ui.close();}
 });
+
+test('el botón junto a la autorización inicia Gemini y ambos botones impiden una segunda lectura simultánea',async()=>{
+ let calls=0,finish;const ui=await setup({recognizeAI:async()=>{calls++;return new Promise(resolve=>finish=resolve);}});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read-confirm').disabled);ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));
+  assert.equal(ui.$('#group-ai-panel').contains(ui.$('#group-ai-read-confirm')),true);ui.input('#group-ai-consent',true);ui.input('#group-ai-code','test-code');ui.click('#group-ai-read-confirm');await ui.waitFor(()=>!!finish);
+  assert.equal(ui.$('#group-ai-read').disabled,true);assert.equal(ui.$('#group-ai-read-confirm').disabled,true);ui.click('#group-ai-read');ui.click('#group-ai-read-confirm');assert.equal(calls,1);
+  finish({text:'1 Cena 12,00',itemsStatus:'reconciled',fields:{total:12}});await ui.waitFor(()=>!ui.$('#group-ai-read-confirm').disabled);assert.equal(ui.$('#group-ai-read').disabled,false);assert.equal(calls,1);assert.equal(ui.$('[data-item-field="name"]').value,'Cena');
+ }finally{ui.close();}
+});
