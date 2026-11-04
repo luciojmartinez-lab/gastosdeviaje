@@ -649,12 +649,29 @@ test('dos platos iguales aparecen separados y se guardan uno individual y otro c
   ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
   ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));
   ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===2);
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('.group-concept').length,1);
+  assert.equal(ui.$('.group-concept-name').textContent,'Paella');
+  assert.equal(ui.$('.group-concept-units').textContent,'2');
+  assert.match(ui.$('.group-concept-price').textContent,/24,00/);
+  assert.equal(ui.$('.group-concept-details').hidden,true);
+  assert.equal(ui.$('[data-group-item-toggle]').textContent,'+');
+  ui.click('[data-group-item-toggle]');
+  assert.equal(ui.$('.group-concept-details').hidden,false);
+  assert.equal(ui.$('[data-group-item-toggle]').getAttribute('aria-expanded'),'true');
   const rows=[...ui.$('#group-meal-items').querySelectorAll('fieldset')];
   for(const row of rows){assert.equal(row.querySelector('[data-item-field="name"]').value,'Paella');assert.equal(row.querySelector('[data-item-field="quantity"]').value,'1');assert.equal(row.querySelector('[data-item-field="amountCents"]').value,'12.00');}
   assert.notEqual(rows[0].dataset.groupItem,rows[1].dataset.groupItem);
   assert.equal(ui.$('[data-item-field="mode"]'),null);assert.equal(ui.$('[data-item-field="common"]'),null);
   ui.input('fieldset:nth-child(1) [data-item-diner="p0"]',true);
   ui.input('fieldset:nth-child(2) [data-item-diner="p1"]',true);ui.input('fieldset:nth-child(2) [data-item-diner="p2"]',true);
+  ui.input('[data-group-item-confirm]',true);
+  assert.equal(ui.$('[data-group-item-confirm]').checked,true);
+  ui.input('fieldset:nth-child(2) [data-item-diner="p2"]',false);
+  assert.equal(ui.$('[data-group-item-confirm]').checked,false);
+  ui.input('fieldset:nth-child(2) [data-item-diner="p2"]',true);
+  ui.input('[data-group-item-confirm]',true);
+  ui.click('[data-group-item-toggle]');
+  assert.equal(ui.$('.group-concept-details').hidden,true);
   ui.input('#group-meal-payer','p0');ui.input('#group-meal-account','1');ui.input('#group-meal-reviewed',true);
   ui.click('#group-close-meal');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
   const meal=ui.state.viajes[0].group.meals[0],result=ui.w.TravelGroup.allocation(meal);
@@ -663,7 +680,51 @@ test('dos platos iguales aparecen separados y se guardan uno individual y otro c
   assert.equal(ui.state.cuentas.find(c=>c.groupClearing).saldoActual,12);
   ui.click('[data-group-edit]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
   assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,2);
+  assert.equal(ui.$('[data-group-item-confirm]').checked,true);
+  ui.click('[data-group-item-toggle]');
   assert.equal(ui.$('fieldset:nth-child(2) [data-item-diner="p2"]').checked,true);
+ }finally{ui.close();}
+});
+
+test('tres botellas aparecen en una fila y el signo más abre sus tres asignaciones',async()=>{
+ const ui=await setup({recognize:async()=>({text:'3 Agua 9,00',fields:{total:9,merchant:'Restaurante prueba'}})});
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));
+  ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===3);
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('.group-concept').length,1);
+  assert.equal(ui.$('.group-concept-name').textContent,'Agua');
+  assert.equal(ui.$('.group-concept-units').textContent,'3');
+  assert.match(ui.$('.group-concept-price').textContent,/9,00/);
+  assert.equal(ui.$('.group-concept-details').hidden,true);
+  ui.click('[data-group-item-toggle]');
+  const rows=[...ui.$('#group-meal-items').querySelectorAll('fieldset')];
+  assert.equal(rows.length,3);
+  assert.deepEqual(rows.map(row=>row.querySelector('[data-item-field="amountCents"]').value),['3.00','3.00','3.00']);
+  assert.deepEqual(rows.map(row=>row.querySelector('legend').textContent),['Unidad 1 de 3','Unidad 2 de 3','Unidad 3 de 3']);
+ }finally{ui.close();}
+});
+
+test('un concepto manual de tres unidades conserva el total al desglosarlo bajo una sola fila',async()=>{
+ const ui=await setup();
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.click('#group-add-item');
+  assert.equal(ui.$('.group-concept-details').hidden,false);
+  ui.input('[data-item-field="name"]','Agua');
+  await new Promise(resolve=>setTimeout(resolve,5));
+  ui.input('[data-item-field="quantity"]','3');
+  ui.input('[data-item-field="amountCents"]','9.00');
+  assert.equal(ui.$('.group-concept-name').textContent,'Agua');
+  assert.equal(ui.$('.group-concept-units').textContent,'3');
+  assert.match(ui.$('.group-concept-price').textContent,/9,00/);
+  ui.click('[data-group-item-expand]');
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('.group-concept').length,1);
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,3);
+  assert.equal(ui.$('.group-concept-details').hidden,false);
+  assert.equal(ui.$('.group-concept-units').textContent,'3');
+  assert.match(ui.$('.group-concept-price').textContent,/9,00/);
+  assert.equal(ui.$('[data-group-item-confirm]').checked,false);
  }finally{ui.close();}
 });
 
