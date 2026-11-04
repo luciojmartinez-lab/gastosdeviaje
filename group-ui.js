@@ -210,7 +210,7 @@
       return `<div class="group-concept" data-group-concept="${esc(concept.id)}"><div class="group-concept-grid group-concept-row"><button class="group-concept-toggle" type="button" data-group-item-toggle="${esc(concept.id)}" aria-expanded="${expanded}" aria-controls="${detailsId}" aria-label="${expanded?'Plegar':'Desplegar'} ${esc(concept.name)}"><span aria-hidden="true">${expanded?'−':'+'}</span></button><span class="group-concept-name">${esc(concept.name)}</span><span class="group-concept-units">${esc(summary.units)}</span><span class="group-concept-price">${esc(summary.price)}</span><label class="group-concept-check" title="Participantes definidos para ${esc(concept.name)}"><input type="checkbox" data-group-item-confirm="${esc(concept.id)}" aria-label="Participantes definidos para ${esc(concept.name)}"${summary.confirmed?' checked':''}></label></div><div class="group-concept-details" id="${detailsId}"${expanded?'':' hidden'}>${concept.items.map((item,itemIndex)=>{
         const shares=itemShares(item,meal);
         const people=group.participants.filter(person=>meal.attendees.includes(person.id)||Number(shares[person.id])>0);
-        return `<fieldset class="group-item" data-group-item="${esc(item.id)}"><legend>${concept.items.length>1?`Unidad ${itemIndex+1} de ${concept.items.length}`:'Concepto del ticket'}</legend><div class="row3"><div><label>Concepto<input data-item-field="name" value="${esc(item.name)}" maxlength="160"></label></div><div><label>Unidades del ticket<input type="number" min="0.01" step="0.01" data-item-field="quantity" value="${esc(item.quantity??1)}"></label></div><div><label>Importe total de esta línea (€)<input inputmode="decimal" data-item-field="amountCents" value="${amount(item.amountCents)}"></label></div></div><p class="small">Marca quién consume este plato. Si marcas varias personas, se reparte por igual entre ellas.</p><div class="group-shares">${people.map(person=>`<label class="check-option"><input type="checkbox" data-item-diner="${esc(person.id)}"${Number(shares[person.id])>0?' checked':''}> ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE: retira su asignación'}</label>`).join('')||'<p>Selecciona los asistentes antes de asignar.</p>'}</div><details><summary>Ajustar partes (opcional)</summary><p class="small">Una parte por persona reparte por igual. Aumenta las partes de quien consuma más.</p><div class="group-shares">${people.map(person=>`<label>Partes de ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE'}<input type="number" min="0" max="1000000" step="0.01" data-item-person="${esc(person.id)}" value="${esc(shares[person.id]||0)}"></label>`).join('')}</div></details><button class="ghost" type="button" data-group-item-expand="${esc(item.id)}"${Number.isSafeInteger(Number(item.quantity))&&Number(item.quantity)>1?'':' hidden'}>Desglosar unidades</button><button class="ghost" type="button" data-group-item-remove="${esc(item.id)}">Quitar concepto</button></fieldset>`;
+        return `<fieldset class="group-item" data-group-item="${esc(item.id)}"><legend>${concept.items.length>1?`Unidad ${itemIndex+1} de ${concept.items.length}`:'Concepto del ticket'}</legend><div class="row3"><div><label>Concepto<input data-item-field="name" value="${esc(item.name)}" maxlength="160"></label></div><div><label>Unidades del ticket<input type="number" min="0.01" step="0.01" data-item-field="quantity" value="${esc(item.quantity??1)}"></label></div><div><label>Importe total de esta línea (€)<input inputmode="decimal" data-item-field="amountCents" value="${amount(item.amountCents)}"></label></div></div><p class="small">Marca quién consume este concepto. Si marcas varias personas, se reparte por igual entre ellas.</p><div class="actions"><button class="ghost" type="button" data-group-item-select="all">Marcar todos</button><button class="ghost" type="button" data-group-item-select="none">Quitar todos</button></div><div class="group-shares">${people.map(person=>`<label class="check-option"><input type="checkbox" data-item-diner="${esc(person.id)}"${Number(shares[person.id])>0?' checked':''}> ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE: retira su asignación'}</label>`).join('')||'<p>Selecciona los asistentes antes de asignar.</p>'}</div><details><summary>Ajustar partes (opcional)</summary><p class="small">Una parte por persona reparte por igual. Aumenta las partes de quien consuma más.</p><div class="group-shares">${people.map(person=>`<label>Partes de ${esc(person.name)}${meal.attendees.includes(person.id)?'':' · AUSENTE'}<input type="number" min="0" max="1000000" step="0.01" data-item-person="${esc(person.id)}" value="${esc(shares[person.id]||0)}"></label>`).join('')}</div></details><button class="ghost" type="button" data-group-item-expand="${esc(item.id)}"${Number.isSafeInteger(Number(item.quantity))&&Number(item.quantity)>1&&!api().keepUnitsTogether(item.name)?'':' hidden'}>Desglosar unidades</button><button class="ghost" type="button" data-group-item-remove="${esc(item.id)}">Quitar concepto</button></fieldset>`;
       }).join('')}</div></div>`;
     }).join('')}`:'';
     preview();
@@ -228,7 +228,27 @@
   function renderTicket() {
     const meal=editor.meal,photos=api().ticketPhotos(meal);
     $('#group-ocr').textContent=photos.length>1?'Leer todas las fotos con OCR local':'Leer foto con OCR local';
-    $('#group-meal-ticket').innerHTML=photos.length?`<p class="small" role="status">${photos.length===1?'Foto cargada':'Fotos cargadas'}: ${photos.length}. Se leerán de arriba abajo como un único ticket.</p><div class="group-ticket-photos" role="list">${photos.map((photo,index)=>`<article class="group-ticket-card" role="listitem"><h4>Foto ${index+1} de ${photos.length}: ${esc(photo.name||'ticket')}</h4>${/^data:image\/(jpeg|png|webp);base64,/i.test(photo.data||'')?`<img class="group-ticket" src="${esc(photo.data)}" alt="Ticket de ${esc(meal.name||'la comida')}, foto ${index+1}">`:'<p class="error">Foto no válida; vuelve a seleccionarla.</p>'}<div class="actions"><button type="button" class="ghost" data-group-ticket-action="up" data-ticket-index="${index}" aria-label="Subir foto ${index+1}"${reading||index===0?' disabled':''}>Subir</button><button type="button" class="ghost" data-group-ticket-action="down" data-ticket-index="${index}" aria-label="Bajar foto ${index+1}"${reading||index===photos.length-1?' disabled':''}>Bajar</button><button type="button" class="ghost" data-group-ticket-action="remove" data-ticket-index="${index}" aria-label="Quitar foto ${index+1}"${reading?' disabled':''}>Quitar foto</button></div></article>`).join('')}</div>`:'';
+    $('#group-meal-ticket').innerHTML=photos.length?`<p class="small" role="status">${photos.length===1?'Foto cargada':'Fotos cargadas'}: ${photos.length}. Se leerán de arriba abajo como un único ticket. Subir y Bajar cambian ese orden, no giran la imagen.</p><div class="group-ticket-photos" role="list">${photos.map((photo,index)=>`<article class="group-ticket-card" role="listitem"><h4>Foto ${index+1} de ${photos.length}: ${esc(photo.name||'ticket')}</h4>${/^data:image\/(jpeg|png|webp);base64,/i.test(photo.data||'')?`<img class="group-ticket" src="${esc(photo.data)}" alt="Ticket de ${esc(meal.name||'la comida')}, foto ${index+1}">`:'<p class="error">Foto no válida; vuelve a seleccionarla.</p>'}<div class="actions"><button type="button" class="ghost" data-group-ticket-action="rotate-left" data-ticket-index="${index}" aria-label="Girar foto ${index+1} a la izquierda"${reading?' disabled':''}>↶ Girar izquierda</button><button type="button" class="ghost" data-group-ticket-action="rotate-right" data-ticket-index="${index}" aria-label="Girar foto ${index+1} a la derecha"${reading?' disabled':''}>↷ Girar derecha</button><button type="button" class="ghost" data-group-ticket-action="up" data-ticket-index="${index}" aria-label="Subir foto ${index+1} en el orden de lectura"${reading||index===0?' disabled':''}>Subir en orden</button><button type="button" class="ghost" data-group-ticket-action="down" data-ticket-index="${index}" aria-label="Bajar foto ${index+1} en el orden de lectura"${reading||index===photos.length-1?' disabled':''}>Bajar en orden</button><button type="button" class="ghost" data-group-ticket-action="remove" data-ticket-index="${index}" aria-label="Quitar foto ${index+1}"${reading?' disabled':''}>Quitar foto</button></div></article>`).join('')}</div>`:'';
+  }
+  function rotatePhoto(photo,direction) {
+    return new Promise((resolve,reject)=>{
+      const image=new Image();
+      image.onload=()=>{
+        try{
+          const canvas=document.createElement('canvas'),width=image.naturalWidth||image.width,height=image.naturalHeight||image.height;
+          if(!width||!height)throw new Error('No se pudo leer el tamaño de la fotografía.');
+          canvas.width=height;canvas.height=width;
+          const context=canvas.getContext('2d');if(!context)throw new Error('No se pudo preparar la fotografía para girarla.');
+          if(direction==='left'){context.translate(0,width);context.rotate(-Math.PI/2);}
+          else{context.translate(height,0);context.rotate(Math.PI/2);}
+          context.drawImage(image,0,0,width,height);
+          const data=canvas.toDataURL(photo.type||'image/jpeg',0.92),type=data.slice(5,data.indexOf(';'));
+          resolve({...photo,data,type});
+        }catch(error){reject(error);}
+      };
+      image.onerror=()=>reject(new Error('No se pudo abrir la foto para girarla.'));
+      image.src=photo.data;
+    });
   }
   function updatePhotos(photos) {
     api().setTicketPhotos(editor.meal,photos);
@@ -390,7 +410,7 @@
     const result=api().parseItems(text);
     if(!result.items.length)throw new Error('No se han reconocido conceptos fiables. Introdúcelos manualmente; no se ha cambiado la lista.');
     if(Number.isSafeInteger(editor.meal.totalCents)&&editor.meal.totalCents>0 && result.items.reduce((sum,item)=>sum+item.amountCents,0)!==editor.meal.totalCents)throw new Error('Los conceptos reconocidos no suman el total del ticket. No se ha cambiado la lista: corrige las líneas y sus precios antes de proponerlos.');
-    const proposed=api().expandUnits(result.items);
+    const proposed=api().expandUnits(result.items,api().keepUnitsTogether);
     if(editor.meal.items.length && replaceExisting!==true){
       $('#group-parse-replace').hidden=false;
       message(`Hay ${editor.meal.items.length} conceptos. La propuesta contiene ${proposed.length}. Pulsa «Sustituir conceptos» para reemplazarlos y revisar sus asignaciones, o conserva los actuales.`,false,'#group-meal-message');
@@ -448,7 +468,7 @@
       const fields={'group-meal-name':'name','group-meal-date':'date','group-meal-time':'time','group-meal-total':'totalCents','group-meal-payer':'payerId','group-meal-account':'accountId','group-meal-text':'ocrText'};
       if(fields[element.id])editor.meal[fields[element.id]]=element.id==='group-meal-total'?readCents(element.value):element.id==='group-meal-account'?(Number(element.value)||null):element.value;
       const item=editor.meal.items.find(item=>item.id===element.closest('[data-group-item]')?.dataset.groupItem);
-      if(item&&element.dataset.itemField){const field=element.dataset.itemField;item[field]=field==='amountCents'?readCents(element.value):field==='quantity'?Number(element.value):field==='common'?element.checked:element.value;if(field==='quantity'||field==='name'||field==='common')item.participantsConfirmed=false;}
+      if(item&&element.dataset.itemField){const field=element.dataset.itemField;item[field]=field==='amountCents'?readCents(element.value):field==='quantity'?Number(element.value):field==='common'?element.checked:element.value;if(field==='name'&&!Object.values(item.shares||{}).some(value=>Number(value)>0))item.common=api().sharedByDefault(item.name);if(field==='quantity'||field==='name'||field==='common')item.participantsConfirmed=false;}
       if(item&&(element.dataset.itemPerson||element.dataset.itemDiner)){item.shares={...itemShares(item,editor.meal)};item.common=false;item.mode='weights';item.participantsConfirmed=false;}
       if(item&&element.dataset.itemPerson){item.shares||={};item.shares[element.dataset.itemPerson]=Number(element.value);}
       if(item&&element.dataset.itemDiner){
@@ -471,6 +491,12 @@
         if(expanded)openConcepts.add(button.dataset.groupItemToggle);else openConcepts.delete(button.dataset.groupItemToggle);
         return;
       }
+      if(button.dataset.groupItemSelect){
+        const item=editor.meal.items.find(value=>value.id===button.closest('[data-group-item]')?.dataset.groupItem);
+        if(!item)return;
+        item.common=false;item.mode='weights';item.shares=button.dataset.groupItemSelect==='all'?Object.fromEntries(editor.meal.attendees.map(id=>[id,1])):{};
+        item.participantsConfirmed=false;$('#group-meal-reviewed').checked=false;renderItems();stash();return;
+      }
       const id=button.dataset.groupItemRemove||button.dataset.groupItemExpand;
       const index=editor.meal.items.findIndex(item=>item.id===id);if(index<0)return;
       if(button.dataset.groupItemExpand){
@@ -482,11 +508,20 @@
       }else editor.meal.items.splice(index,1);
       $('#group-meal-reviewed').checked=false;renderItems();stash();
     },'#group-meal-message');
-    $('#group-meal-ticket').onclick=safe(event=>{
+    $('#group-meal-ticket').onclick=safe(async event=>{
       const button=event.target.closest('[data-group-ticket-action]');if(!button||!editor)return;
       if(reading)throw new Error('Espera a que termine la lectura.');
       const photos=api().ticketPhotos(editor.meal).slice(),index=Number(button.dataset.ticketIndex),action=button.dataset.groupTicketAction;
       if(!Number.isInteger(index)||!photos[index])return;
+      if(action==='rotate-left'||action==='rotate-right'){
+        reading=true;
+        const controls=['#group-meal-file','#group-ocr','#group-ai-read','#group-save-draft','#group-close-meal','#group-cancel-meal'];
+        controls.forEach(selector=>$(selector).disabled=true);all('#group-meal-ticket button').forEach(control=>control.disabled=true);
+        message('Girando foto…',false,'#group-meal-message');
+        try{photos[index]=await rotatePhoto(photos[index],action==='rotate-left'?'left':'right');updatePhotos(photos);message('Foto girada. Vuelve a leer el ticket si ya habías obtenido una propuesta.',false,'#group-meal-message');}
+        finally{reading=false;controls.forEach(selector=>$(selector).disabled=selector==='#group-ai-read'?!aiEnabled:false);renderTicket();}
+        return;
+      }
       if(action==='remove')photos.splice(index,1);
       else{const destination=index+(action==='up'?-1:1);if(destination<0||destination>=photos.length)return;[photos[index],photos[destination]]=[photos[destination],photos[index]];}
       updatePhotos(photos);message('Fotos actualizadas. Revisa el orden y vuelve a leer el ticket si ya habías obtenido una propuesta.',false,'#group-meal-message');

@@ -15,12 +15,17 @@
     if (exact > BigInt(Number.MAX_SAFE_INTEGER) || exact < -BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Importe demasiado grande.');
     return Number(exact);
   }
-  function expandUnits(items) {
+  function normalizeConcept(value) { return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+  function sharedByDefault(name) { return /\b(?:pan|panes|agua)\b/.test(normalizeConcept(name)); }
+  function keepUnitsTogether(name) {
+    return /\b(?:pan|panes|agua|bebida|bebidas|cerveza|cervezas|refresco|refrescos|vino|vinos|tinto|cava|sidra|sangria|zumo|zumos|jugo|jugos|cafe|cafes|te|infusion|infusiones|cola|coca\s*cola|fanta|sprite|kas|tonica|vermut|gin|ginebra|ron|whisky|mojito|coctel|cocteles|chupito|chupitos|botella|botellas|jarra|jarras)\b/.test(normalizeConcept(name));
+  }
+  function expandUnits(items, keepTogether = () => false) {
     const count = item => Number.isSafeInteger(Number(item.quantity)) && Number(item.quantity) > 1 ? Number(item.quantity) : 1;
     if (items.reduce((sum,item)=>sum+count(item),0)>500) throw new Error('La propuesta supera 500 platos o unidades. Revisa el texto antes de incorporarlo.');
     return items.flatMap(item => {
       const quantity=count(item);
-      if(quantity===1)return [copy(item)];
+      if(quantity===1||keepTogether(item.name))return [copy(item)];
       if(!Number.isSafeInteger(item.amountCents)||item.amountCents<0)throw new Error('Revisa el importe de la línea antes de desglosar las unidades.');
       const base=Math.floor(item.amountCents/quantity),remainder=item.amountCents%quantity;
       return Array.from({length:quantity},(_,index)=>({...copy(item),quantity:1,amountCents:base+(index<remainder?1:0)}));
@@ -185,7 +190,7 @@
       label = label.replace(/\s+\d+[.,]\d{2}\s*(?:€|EUR)?$/i, '').trim();
       const amountCents = cents(match[2]);
       if (amountCents < 0 || !quantity || !label) { ignored.push(line); continue; }
-      const common = /^(?:pan(?:\s|$)|agua(?:\s|$)|servicio de pan\b)/i.test(label);
+      const common = sharedByDefault(label) || /servicio de pan\b/i.test(label);
       items.push({ name: label, quantity, amountCents, common, shares: {} });
     }
     return { items, ignored };
@@ -219,5 +224,5 @@
       ...meal.attendees.map(id => `${name(id)}: ${money(result.totals[id] || 0)} (individual ${money(result.individual[id] || 0)} + compartido ${money(result.common[id] || 0)})`),
       '', ...mealPayments(group, meal).map(row => `${name(row.id)}: ${row.id === meal.payerId ? 'cubierto' : 'devuelto'} ${money(row.paid)} · pendiente ${money(row.remaining)}`), '', `Pagó: ${name(meal.payerId)}`, 'El reparto de céntimos conserva exactamente el total del ticket.'].join('\n');
   }
-  root.TravelGroup = { normalize, validate, participantInUse, removeParticipant, allocation, split, expandUnits, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, advanceDetails, parseItems, remapAccounts, personalReceipt, summary };
+  root.TravelGroup = { normalize, validate, participantInUse, removeParticipant, allocation, split, expandUnits, sharedByDefault, keepUnitsTogether, ticketPhotos, setTicketPhotos, cents, money, balances, mealPayments, advanceDetails, parseItems, remapAccounts, personalReceipt, summary };
 })(globalThis);

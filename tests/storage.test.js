@@ -13,20 +13,20 @@ const [html, app, help, sw, version, pkg, ticketOcr, ticketWorker] = await Promi
   readFile(new URL('../ticket-image-worker.js', import.meta.url), 'utf8')
 ]);
 
-test('la versiÃ³n 800v051 estÃ¡ alineada en app, cache y paquete', () => {
-  assert.equal(version.trim(), '800v051');
-  assert.match(pkg, /"version": "800\.51\.0"/);
-  assert.match(html, /styles\.css\?v=800v051/);
-  assert.match(html, /app\.bundle\.js\?v=800v051/);
-  assert.match(html, /map-model\.js\?v=800v051/);
-  assert.match(html, /sw\.js\?v=800v051/);
-  assert.match(app, /const APP_VERSION = '800v051'/);
-  assert.match(app, /image-location\.js\?v=800v051/);
-  assert.match(app, /ticket-ocr\.js\?v=800v051/);
-  assert.match(app, /share-pdf\.js\?v=800v051/);
-  assert.match(ticketOcr, /DOCUMENT_PREPROCESSOR_VERSION = '800v051'/);
-  assert.match(ticketWorker, /ticket-image-processing\.js\?v=800v051/);
-  assert.match(sw, /gastosdeviaje-800v051/);
+test('la versiÃ³n 800v052 estÃ¡ alineada en app, cache y paquete', () => {
+  assert.equal(version.trim(), '800v052');
+  assert.match(pkg, /"version": "800\.52\.0"/);
+  assert.match(html, /styles\.css\?v=800v052/);
+  assert.match(html, /app\.bundle\.js\?v=800v052/);
+  assert.match(html, /map-model\.js\?v=800v052/);
+  assert.match(html, /sw\.js\?v=800v052/);
+  assert.match(app, /const APP_VERSION = '800v052'/);
+  assert.match(app, /image-location\.js\?v=800v052/);
+  assert.match(app, /ticket-ocr\.js\?v=800v052/);
+  assert.match(app, /share-pdf\.js\?v=800v052/);
+  assert.match(ticketOcr, /DOCUMENT_PREPROCESSOR_VERSION = '800v052'/);
+  assert.match(ticketWorker, /ticket-image-processing\.js\?v=800v052/);
+  assert.match(sw, /gastosdeviaje-800v052/);
   assert.doesNotMatch(html + app + sw, /700v136|700v135|700v134|700v133|700v132|700v131|700v128/);
 });
 

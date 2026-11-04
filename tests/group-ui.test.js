@@ -686,12 +686,12 @@ test('dos platos iguales aparecen separados y se guardan uno individual y otro c
  }finally{ui.close();}
 });
 
-test('tres botellas aparecen en una fila y el signo más abre sus tres asignaciones',async()=>{
+test('tres botellas de agua usan un único reparto, todos seleccionados y ajuste de partes',async()=>{
  const ui=await setup({recognize:async()=>({text:'3 Agua 9,00',fields:{total:9,merchant:'Restaurante prueba'}})});
  try{
   ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
   ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));
-  ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===3);
+  ui.click('#group-ocr');await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===1);
   assert.equal(ui.$('#group-meal-items').querySelectorAll('.group-concept').length,1);
   assert.equal(ui.$('.group-concept-name').textContent,'Agua');
   assert.equal(ui.$('.group-concept-units').textContent,'3');
@@ -699,13 +699,21 @@ test('tres botellas aparecen en una fila y el signo más abre sus tres asignacio
   assert.equal(ui.$('.group-concept-details').hidden,true);
   ui.click('[data-group-item-toggle]');
   const rows=[...ui.$('#group-meal-items').querySelectorAll('fieldset')];
-  assert.equal(rows.length,3);
-  assert.deepEqual(rows.map(row=>row.querySelector('[data-item-field="amountCents"]').value),['3.00','3.00','3.00']);
-  assert.deepEqual(rows.map(row=>row.querySelector('legend').textContent),['Unidad 1 de 3','Unidad 2 de 3','Unidad 3 de 3']);
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].querySelector('[data-item-field="quantity"]').value,'3');
+  assert.equal(rows[0].querySelector('[data-item-field="amountCents"]').value,'9.00');
+  assert.equal(rows[0].querySelector('[data-group-item-expand]').hidden,true);
+  assert.equal(rows[0].querySelectorAll('[data-item-diner]:checked').length,12);
+  ui.input('[data-item-person="p0"]','2');
+  assert.equal(ui.$('[data-item-person="p0"]').value,'2');
+  ui.click('[data-group-item-select="none"]');
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('[data-item-diner]:checked').length,0);
+  ui.click('[data-group-item-select="all"]');
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('[data-item-diner]:checked').length,12);
  }finally{ui.close();}
 });
 
-test('un concepto manual de tres unidades conserva el total al desglosarlo bajo una sola fila',async()=>{
+test('una bebida manual de tres unidades conserva un solo reparto y pan y agua empiezan para todos',async()=>{
  const ui=await setup();
  try{
   ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
@@ -718,13 +726,32 @@ test('un concepto manual de tres unidades conserva el total al desglosarlo bajo 
   assert.equal(ui.$('.group-concept-name').textContent,'Agua');
   assert.equal(ui.$('.group-concept-units').textContent,'3');
   assert.match(ui.$('.group-concept-price').textContent,/9,00/);
-  ui.click('[data-group-item-expand]');
+  assert.equal(ui.$('[data-group-item-expand]').hidden,true);
   assert.equal(ui.$('#group-meal-items').querySelectorAll('.group-concept').length,1);
-  assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,3);
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('fieldset').length,1);
   assert.equal(ui.$('.group-concept-details').hidden,false);
   assert.equal(ui.$('.group-concept-units').textContent,'3');
   assert.match(ui.$('.group-concept-price').textContent,/9,00/);
   assert.equal(ui.$('[data-group-item-confirm]').checked,false);
+  assert.equal(ui.$('#group-meal-items').querySelectorAll('[data-item-diner]:checked').length,12);
+ }finally{ui.close();}
+});
+
+test('girar foto del ticket cambia sus dimensiones y Subir/Bajar solo ordenan varias fotos',async()=>{
+ const ui=await setup();
+ try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));
+  assert.equal(ui.$('[data-group-ticket-action="up"]').disabled,true);
+  assert.equal(ui.$('[data-group-ticket-action="down"]').disabled,true);
+  let transform=[];
+  ui.w.Image=class {naturalWidth=4;naturalHeight=2;set src(value){this.source=value;queueMicrotask(()=>this.onload());}};
+  ui.w.HTMLCanvasElement.prototype.getContext=function(){return {translate:(...values)=>transform.push(['translate',...values]),rotate:value=>transform.push(['rotate',value]),drawImage:()=>transform.push(['draw'])};};
+  ui.w.HTMLCanvasElement.prototype.toDataURL=function(){assert.equal(this.width,2);assert.equal(this.height,4);return 'data:image/jpeg;base64,Z2lyYWRh';};
+  ui.click('[data-group-ticket-action="rotate-right"]');
+  await ui.waitFor(()=>ui.$('#group-meal-ticket img')?.src.includes('Z2lyYWRh'));
+  assert.deepEqual(transform,[['translate',2,0],['rotate',Math.PI/2],['draw']]);
+  assert.match(ui.$('#group-meal-ticket').textContent,/Subir y Bajar cambian ese orden/);
  }finally{ui.close();}
 });
 
