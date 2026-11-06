@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v063';
+const APP_VERSION = '800v064';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -91,6 +91,7 @@ const DIALOG_HELP_TARGETS = {
   'lodging-name-dialog': 'mapa-controles',
   'map-point-dialog': 'mapa-controles',
   'route-dialog': 'ruta-paradas',
+  'route-plan-dialog': 'ruta-paradas',
   'trip-documents-dialog': 'documentos-viaje',
   'trip-review-dialog': 'revisar-viaje',
   'blog-entry-dialog': 'blog-formulario',
@@ -198,6 +199,8 @@ const blogPointMapGesture = {
 const routeEditorState = {
   tripId: null,
   stops: [],
+  startDate: '',
+  endDate: '',
   lastDate: '',
   parentDialogs: [],
   dragIndex: null,
@@ -2937,7 +2940,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v063');
+    const worker = new Worker('./timeline-import-worker.js?v=800v064');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3947,7 +3950,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v063');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v064');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4877,7 +4880,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v063');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v064');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5013,7 +5016,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v063');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v064');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5567,7 +5570,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v063');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v064');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6060,7 +6063,7 @@ function isPdfDocument(type, name, data) {
 let pdfViewerControllerPromise;
 async function openPdfDocument(blob,name) {
   try{
-    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v063').then(module=>module.createPdfViewer(document)));
+    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v064').then(module=>module.createPdfViewer(document)));
     return await viewer.open(blob,name);
   }catch(error){pdfViewerControllerPromise=null;alert('No se ha podido abrir el visor PDF: '+(error.message||error));}
 }
@@ -8766,7 +8769,7 @@ function renderViajes() {
     const tr = document.createElement('tr');
     tr.className = 'trip-row';
     tr.dataset.tripId = String(v.id);
-    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${escapeHtml(tripCountryLabel(v))}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td><select class="trip-config-action-select" data-trip-config-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}"><option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="edit">Editar</option><option value="delete">Eliminar</option></select></td>`;
+    tr.innerHTML = `<td>${escapeHtml(v.nombre)}</td><td>${escapeHtml(tripCountryLabel(v))}</td><td>${fmtDate(v.fechaInicio)}</td><td>${fmtDate(v.fechaFin)}</td><td>${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td><select class="trip-config-action-select" data-trip-config-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}"><option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="route-map">Mapa de las etapas</option><option value="edit">Editar</option><option value="delete">Eliminar</option></select></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -8837,7 +8840,7 @@ function renderViajesHome() {
       tr.classList.add('trip-row');
       tr.dataset.tripId = String(v.id);
       const documentCount = tripDocumentsFor(v.id).length;
-      const actionOptions = `<option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="edit">Editar</option>`;
+      const actionOptions = `<option value="">Acciones</option><option value="review">Revisar viaje</option><option value="documents">Documentos viaje (${documentCount})</option><option value="route-map">Mapa de las etapas</option><option value="edit">Editar</option>`;
       tr.innerHTML = `<td class="trip-name-col"><label class="trip-check"><input type="checkbox" data-trip-check="${v.id}"${selectedIds.has(v.id) ? ' checked' : ''}> <span>${escapeHtml(v.nombre)}</span></label></td><td class="trip-start-col">${fmtTripDate(v.fechaInicio)}</td><td class="trip-end-col">${fmtTripDate(v.fechaFin)}</td><td class="trip-days-col">${days || '-'}</td><td class="trip-daily-col">${dailyAverage === null ? '-' : fmtCurrency(dailyAverage, 'EUR')}</td><td class="trip-total-col">${fmtCurrency(total, 'EUR')}</td><td class="trip-expenses-col">${expenses.length}</td><td class="trip-budget-col">${budget ? fmtCurrency(budget, 'EUR') : '-'}</td><td class="trip-remaining-col">${remaining === null ? '-' : fmtCurrency(remaining, 'EUR')}</td><td class="trip-home-actions trip-actions-col"><select class="trip-home-action-select" data-trip-home-action="${v.id}" aria-label="Acciones de ${escapeHtml(v.nombre)}">${actionOptions}</select></td>`;
       tbody.appendChild(tr);
     });
@@ -9768,6 +9771,10 @@ function renderRouteDialog() {
     </tr>
   `).join('');
   body.innerHTML = `
+    <div class="route-trip-dates">
+      <label>Fecha de inicio<input type="date" id="route-trip-start" value="${escapeHtml(routeEditorState.startDate ?? trip.fechaInicio ?? '')}" required></label>
+      <label>Fecha final<input type="date" id="route-trip-end" value="${escapeHtml(routeEditorState.endDate ?? trip.fechaFin ?? '')}" required></label>
+    </div>
     <p class="small route-help">Indica si cada parada es destino, tránsito o inicio/regreso. El día previsto es opcional; permite que el mapa de cada día muestre solamente lo que corresponde.</p>
     <div class="table-wrap route-table-wrap">
       <table class="route-stops-table">
@@ -9782,6 +9789,7 @@ function renderRouteDialog() {
         </tbody>
       </table>
     </div>
+    <button type="button" class="btn ghost route-plan-open" id="route-plan-open">Mapa de las etapas</button>
   `;
 }
 
@@ -9796,6 +9804,8 @@ function openRouteDialog(trip, options = {}) {
     .filter(Boolean);
   const configuredCityIds = tripCityIds(trip).map(Number).filter(Boolean);
   routeEditorState.tripId = Number(trip.id);
+  routeEditorState.startDate = trip.fechaInicio || '';
+  routeEditorState.endDate = trip.fechaFin || '';
   routeEditorState.stops = configuredCityIds.length
     ? tripRouteStops(trip)
     : normalizeTripRouteStops(trip, mapCityIds);
@@ -9814,6 +9824,8 @@ function closeRouteDialog({ saved = false } = {}) {
   const parents = routeEditorState.parentDialogs || [];
   routeEditorState.tripId = null;
   routeEditorState.stops = [];
+  routeEditorState.startDate = '';
+  routeEditorState.endDate = '';
   routeEditorState.lastDate = '';
   routeEditorState.parentDialogs = [];
   routeEditorState.dragIndex = null;
@@ -9833,7 +9845,7 @@ function closeRouteDialog({ saved = false } = {}) {
 function prepareRouteDateInput(input) {
   if (!input || typeof input.matches !== 'function' || !input.matches('input[data-route-date]') || input.value) return;
   const stop = routeEditorState.stops[Number(input.dataset.routeDate)];
-  const trip = state.viajes.find(v => Number(v.id) === Number(routeEditorState.tripId));
+  const trip = routeEditorTrip();
   if (!stop || !trip) return;
   const seed = tripDateWithinRange(routeEditorState.lastDate, trip) ? routeEditorState.lastDate : trip.fechaInicio;
   if (!tripDateWithinRange(seed, trip)) return;
@@ -9842,14 +9854,22 @@ function prepareRouteDateInput(input) {
   routeEditorState.lastDate = seed;
 }
 
-async function saveRouteDialog() {
+function routeEditorTrip() {
   const trip = state.viajes.find(v => Number(v.id) === Number(routeEditorState.tripId));
+  if (!trip) return null;
+  return { ...trip, fechaInicio: routeEditorState.startDate ?? trip.fechaInicio, fechaFin: routeEditorState.endDate ?? trip.fechaFin };
+}
+
+async function saveRouteDialog() {
+  const trip = routeEditorTrip();
   if (!trip) throw new Error('No se encontró el viaje');
+  if (!trip.fechaInicio || !trip.fechaFin) throw new Error('Completa las fechas de inicio y final del viaje.');
+  if (trip.fechaFin < trip.fechaInicio) throw new Error('La fecha final del viaje no puede ser anterior al inicio.');
   const invalidDateIndex = routeEditorState.stops.findIndex(stop => stop && stop.cityId && stop.date && !tripDateWithinRange(stop.date, trip));
   if (invalidDateIndex !== -1) {
     const input = $(`[data-route-date="${invalidDateIndex}"]`);
     if (input) input.focus();
-    throw new Error(`La fecha de la parada ${invalidDateIndex + 1} debe estar dentro de las fechas del viaje. Corrige el día previsto o las fechas del viaje en Configuración → Crear/Editar Viaje.`);
+    throw new Error(`La fecha de la parada ${invalidDateIndex + 1} debe estar dentro de las fechas del viaje. Corrige el día previsto o las fechas de inicio y final en la parte superior de esta ventana.`);
   }
   const editorCityIds = routeEditorState.stops.map(stop => Number(stop && stop.cityId));
   const routeStops = routeEditorState.stops
@@ -9873,6 +9893,8 @@ async function saveRouteDialog() {
     if (city && city.parentId) paisIds.add(Number(city.parentId));
   });
   await updateViaje(trip.id, {
+    fechaInicio: trip.fechaInicio,
+    fechaFin: trip.fechaFin,
     ciudadIds: cityIds,
     routeStops,
     paisIds: [...paisIds],
@@ -9885,6 +9907,131 @@ async function saveRouteDialog() {
   setSelectedTrips([trip.id]);
   renderLugarSelectors();
   renderMapAfterTripChange();
+}
+
+function routePlanHasCoords(city) {
+  return Boolean(city && city.lat !== null && city.lat !== undefined && city.lat !== '' && city.lng !== null && city.lng !== undefined && city.lng !== '' && Number.isFinite(Number(city.lat)) && Number.isFinite(Number(city.lng)) && Math.abs(Number(city.lat)) <= 90 && Math.abs(Number(city.lng)) <= 180);
+}
+
+function routePlanStages(trip, stops) {
+  const stages = (stops || []).filter(stop => Number(stop.cityId));
+  return stages.map((stop, index) => {
+    const city = state.lugares.find(place => Number(place.id) === Number(stop.cityId));
+    const date = stop.date || '';
+    const nextDate = index + 1 < stages.length ? stages[index + 1].date : trip.fechaFin;
+    const days = date && nextDate ? (Date.parse(nextDate + 'T00:00:00Z') - Date.parse(date + 'T00:00:00Z')) / 86400000 : NaN;
+    const nights = Number.isInteger(days) && days >= 0 ? days : null;
+    const dayMonth = date ? `${date.slice(8, 10)}-${date.slice(5, 7)}` : 'Sin fecha';
+    const label = `${dayMonth} · ${nights === null ? 'noches sin calcular' : `${nights} ${nights === 1 ? 'noche' : 'noches'}`}`;
+    return { city, date, nights, label, number: index + 1 };
+  });
+}
+
+let routePlanMap = null;
+function closeRoutePlanMap() {
+  routePlanMap?.remove();
+  routePlanMap = null;
+  const dialog = $('#route-plan-dialog');
+  if (dialog?.close) dialog.close();
+  else dialog?.removeAttribute('open');
+}
+
+function routePlanFallbackMap(stages, host) {
+  const points = stages.filter(stage => routePlanHasCoords(stage.city));
+  if (!points.length) {
+    host.innerHTML = '<p class="map-empty">No hay ciudades con coordenadas. Puedes añadirlas desde Configuración → Crear/Editar Países / ciudades.</p>';
+    return;
+  }
+  const width = Math.max(280, host.clientWidth || 700), height = 440;
+  const zoom = chooseMapZoom(points.map(stage => ({ ciudad: stage.city })), width, height);
+  const world = points.map(stage => mapWorldPoint(stage.city.lat, stage.city.lng, zoom));
+  const center = mapLatLngFromWorldPoint((Math.min(...world.map(p => p.x)) + Math.max(...world.map(p => p.x))) / 2, (Math.min(...world.map(p => p.y)) + Math.max(...world.map(p => p.y))) / 2, zoom);
+  const tiles = mapTileLayer(center.latitude, center.longitude, zoom, width, height);
+  const positioned = stages.map(stage => {
+    if (!routePlanHasCoords(stage.city)) return null;
+    const point = mapWorldPoint(stage.city.lat, stage.city.lng, zoom);
+    return { ...stage, x: point.x - tiles.startX, y: point.y - tiles.startY };
+  });
+  const lines = positioned.slice(1).map((point, index) => point && positioned[index] ? `<line x1="${positioned[index].x}" y1="${positioned[index].y}" x2="${point.x}" y2="${point.y}" stroke="#0876c9" stroke-width="3"/>` : '').join('');
+  const groups = new Map();
+  positioned.filter(Boolean).forEach(point => {
+    const key = `${point.city.lat},${point.city.lng}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(point);
+  });
+  const markers = [...groups.values()].map(group => {
+    const point = group[0], right = point.x < width / 2;
+    const labels = group.map(stage => `${stage.number}. ${stage.city.nombre} (${stage.label})`);
+    return `<g><circle cx="${point.x}" cy="${point.y}" r="5" fill="#0876c9"/><text x="${point.x + (right ? 8 : -8)}" y="${point.y - 10}" text-anchor="${right ? 'start' : 'end'}" font-size="11" paint-order="stroke" stroke="white" stroke-width="3" fill="#17263c">${labels.map((label, i) => `<tspan x="${point.x + (right ? 8 : -8)}" dy="${i ? 15 : 0}">${escapeHtml(label)}</tspan>`).join('')}</text></g>`;
+  }).join('');
+  host.innerHTML = `<div class="route-plan-raster"><div class="map-tiles">${tiles.html}</div><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Etapas y noches del viaje">${lines}${markers}</svg><div class="map-attribution">© OpenStreetMap · © CARTO</div></div>`;
+}
+
+function openRoutePlanMap(trip, stops = tripRouteStops(trip), preview = false) {
+  const dialog = $('#route-plan-dialog'), host = $('#route-plan-map');
+  if (!trip || !dialog || !host) return;
+  routePlanMap?.remove();
+  routePlanMap = null;
+  const stages = routePlanStages(trip, stops);
+  const points = stages.filter(stage => routePlanHasCoords(stage.city));
+  $('#route-plan-title').textContent = `Mapa de las etapas · ${trip.nombre}`;
+  const missing = stages.filter(stage => !routePlanHasCoords(stage.city));
+  $('#route-plan-status').textContent = `${preview ? 'Vista previa sin guardar. ' : ''}${stages.length} etapas.${missing.length ? ` Sin coordenadas: ${missing.map(stage => stage.city?.nombre || 'Ciudad no disponible').join(', ')}. Todas las etapas aparecen en el listado.` : ''}`;
+  $('#route-plan-stages').innerHTML = stages.map(stage => `<li><strong>${escapeHtml(stage.city?.nombre || 'Ciudad no disponible')}</strong> (${escapeHtml(stage.label)})${routePlanHasCoords(stage.city) ? '' : ' · sin coordenadas'}</li>`).join('') || '<li>No hay etapas planificadas.</li>';
+  if (!dialog.open) {
+    if (dialog.showModal) dialog.showModal();
+    else dialog.setAttribute('open', 'open');
+  }
+  host.replaceChildren();
+  if (!points.length || !window.maplibregl || (typeof window.maplibregl.supported === 'function' && !window.maplibregl.supported())) {
+    routePlanFallbackMap(stages, host);
+    return;
+  }
+  try {
+    const coordinates = points.map(stage => [Number(stage.city.lng), Number(stage.city.lat)]);
+    const map = new window.maplibregl.Map({ container: host, style: 'https://tiles.openfreemap.org/styles/positron', center: coordinates[0], zoom: 5, attributionControl: true, dragRotate: false, pitchWithRotate: false });
+    routePlanMap = map;
+    map.addControl(new window.maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.on('error', () => {
+      if (routePlanMap !== map) return;
+      const status = $('#route-plan-status');
+      if (!status.textContent.includes('No se pudo cargar el fondo')) status.textContent += ' No se pudo cargar el fondo del mapa. Comprueba la conexión; el listado de etapas sigue disponible.';
+    });
+    const groups = new Map();
+    points.forEach(stage => {
+      const key = `${stage.city.lat},${stage.city.lng}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(stage);
+    });
+    groups.forEach(group => {
+      const element = document.createElement('div');
+      element.className = 'route-plan-marker';
+      group.forEach(stage => {
+        const label = document.createElement('div');
+        label.textContent = `${stage.number}. ${stage.city.nombre} (${stage.label})`;
+        element.append(label);
+      });
+      new window.maplibregl.Marker({ element, anchor: 'bottom' }).setLngLat([Number(group[0].city.lng), Number(group[0].city.lat)]).addTo(map);
+    });
+    map.on('load', () => {
+      if (routePlanMap !== map) return;
+      const segments = [];
+      for (let i = 1; i < stages.length; i++) {
+        if (routePlanHasCoords(stages[i - 1].city) && routePlanHasCoords(stages[i].city)) segments.push([stages[i - 1], stages[i]].map(stage => [Number(stage.city.lng), Number(stage.city.lat)]));
+      }
+      map.addSource('route-plan', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: segments } } });
+      map.addLayer({ id: 'route-plan-line', type: 'line', source: 'route-plan', paint: { 'line-color': '#0876c9', 'line-width': 3 } });
+      map.resize();
+      if (coordinates.length > 1) {
+        const horizontal = Math.min(145, (host.clientWidth || 700) / 3);
+        map.fitBounds(coordinates.reduce((bounds, coordinate) => bounds.extend(coordinate), new window.maplibregl.LngLatBounds(coordinates[0], coordinates[0])), { padding: { top: 150, bottom: 40, left: horizontal, right: horizontal }, maxZoom: 11, duration: 0 });
+      }
+    });
+  } catch (error) {
+    routePlanMap?.remove();
+    routePlanMap = null;
+    routePlanFallbackMap(stages, host);
+  }
 }
 
 function photoMapRecordKey(image, fallback) {
@@ -14332,6 +14479,8 @@ async function handleTripConfigAction(id, action) {
     openTripReviewDialog(trip.id);
   } else if (action === 'documents') {
     openTripDocumentsDialog(trip.id);
+  } else if (action === 'route-map') {
+    openRoutePlanMap(trip);
   } else if (action === 'edit') {
     openEditViajeDialog(trip);
   } else if (action === 'delete') {
@@ -14675,7 +14824,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v063');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v064');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15664,7 +15813,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v063').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v064').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -18696,7 +18845,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v063')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v064')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -18704,7 +18853,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v063')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v064')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -18745,12 +18894,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v063');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v064');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v063')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v063')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v064')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v064')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -19379,6 +19528,12 @@ function bindEvents() {
   };
   $('#route-dialog-close').onclick = closeRouteDialog;
   $('#route-dialog-cancel').onclick = closeRouteDialog;
+  $('#route-plan-close').onclick = closeRoutePlanMap;
+  $('#route-plan-done').onclick = closeRoutePlanMap;
+  $('#route-plan-dialog').addEventListener('close', () => {
+    routePlanMap?.remove();
+    routePlanMap = null;
+  });
   $('#route-dialog-form').onsubmit = async event => {
     event.preventDefault();
     try {
@@ -20068,8 +20223,16 @@ function bindEvents() {
     if (target instanceof HTMLInputElement && target.dataset.routeDate) {
       const index = Number(target.dataset.routeDate);
       if (routeEditorState.stops[index]) routeEditorState.stops[index].date = target.value || '';
-      const trip = state.viajes.find(v => Number(v.id) === Number(routeEditorState.tripId));
+      const trip = routeEditorTrip();
       if (tripDateWithinRange(target.value, trip)) routeEditorState.lastDate = target.value;
+      return;
+    }
+    if (target instanceof HTMLInputElement && target.id === 'route-trip-start') {
+      routeEditorState.startDate = target.value;
+      return;
+    }
+    if (target instanceof HTMLInputElement && target.id === 'route-trip-end') {
+      routeEditorState.endDate = target.value;
       return;
     }
     if (target instanceof HTMLInputElement && target.dataset.routePosition) {
@@ -20083,6 +20246,11 @@ function bindEvents() {
   document.addEventListener('click', event => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+    if (target.closest('#route-plan-open')) {
+      const trip = routeEditorTrip();
+      if (trip) openRoutePlanMap(trip, routeEditorState.stops, true);
+      return;
+    }
     const deleteButton = target.closest('[data-route-delete]');
     if (deleteButton) {
       const index = Number(deleteButton.dataset.routeDelete);
@@ -20655,7 +20823,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v063');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v064');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

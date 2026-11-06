@@ -305,3 +305,12 @@ Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente p
 - Guardar ruta cierra el editor y las ventanas modales que estaban debajo al abrirlo. Cancelar conserva esas ventanas. Los errores de validación o persistencia no cierran nada.
 - Menú y desplegable renombrados Añadir/Editar otros viajeros según petición pendiente de Lucio.
 - 486/486 pruebas correctas. Ayuda y PDF regenerados (36 páginas), revisados visualmente y sin palabras fuera de los márgenes. Navegador local deshabilitado: queda pendiente verificar el calendario nativo en Android físico.
+
+## 800v064 — Fechas del viaje y mapa de etapas (06/11/2026)
+
+- Inicio y final editables arriba de Añadir / modificar paradas. Se guardan junto a la ruta en la misma llamada updateViaje; Cancelar no modifica el viaje. La validación usa el intervalo editado y la propuesta de fecha lo respeta.
+- Mapa de las etapas al pie de las ciudades y en Acciones de las listas de viajes de Configuración y Viajes. El mapa del editor es una vista previa sin guardar; el menú muestra datos guardados.
+- Etiquetas numeradas con ciudad, día-mes y noches hasta la siguiente etapa; última hasta el final del viaje. Cero noches para el mismo día, noches sin calcular si faltan fechas o están invertidas. Fechas calculadas en UTC, sin desviaciones por cambio de hora.
+- Mapa interactivo MapLibre con recursos gratuitos ya usados por la app, zoom y desplazamiento. Agrupa etiquetas de visitas al mismo punto, conserva todas las etapas en el listado y no dibuja líneas saltando ciudades sin coordenadas. Vista raster sencilla si no hay WebGL; aviso si faltan coordenadas o falla el fondo por conexión. Las líneas son uniones entre etapas, no carreteras calculadas.
+- Nuevo modal con ayuda contextual. Ayuda HTML y PDF actualizados (37 páginas), revisión visual del PDF y márgenes correctos. 491/491 pruebas: edición atómica de fechas, validaciones, noches y cambio de hora, visitas repetidas, vista previa sin persistencia, coordenadas ausentes y alternativa sin mapa interactivo.
+- Navegador local deshabilitado en Work (comprobado de nuevo): pendiente la revisión visual del mapa y calendarios en móvil físico. No se modificaron datos reales para las pruebas.
