@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v068">
+  <link rel="manifest" href="manifest.webmanifest?v=800v069">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v068">
+  <link rel="stylesheet" href="styles.css?v=800v069">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v068 · 06/11/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v069 · 06/11/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v068</div>
+  <div class="app-version">800v069</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -348,7 +348,7 @@
         <div><label>Latitud</label><input type="number" step="0.000001" id="lugar-lat"></div>
         <div><label>Longitud</label><input type="number" step="0.000001" id="lugar-lng"></div>
       </div>
-      <div class="actions"><button class="btn" id="btn-add-lugar">Añadir</button><button class="ghost" id="btn-locate-lugar" type="button">Localizar</button><span id="msg-lugar" class="small"></span></div>
+      <div class="actions"><button class="btn" id="btn-add-lugar">Añadir</button><button class="ghost" id="btn-locate-lugar" type="button">Localizar</button><button class="ghost" id="btn-city-guide" type="button">Añadir información turística</button><span id="msg-lugar" class="small"></span></div>
       <details class="compact-list" id="lugares-list-panel">
         <summary>Ver listado <span id="lugares-count" class="small"></span></summary>
         <div id="lugares-tree" class="country-tree"></div>
@@ -1002,6 +1002,8 @@
   </form>
 </dialog>
 
+<dialog id="city-guide-dialog" class="modal city-guide-modal" aria-labelledby="city-guide-title"><form id="city-guide-form"><div class="modal-head"><h2 id="city-guide-title">Qué ver y fotografiar</h2><button type="button" class="ghost icon-btn" id="city-guide-close" aria-label="Cerrar información turística">×</button></div><p id="city-guide-context" class="small"></p><label>Introducción<textarea id="city-guide-intro" rows="3" maxlength="1200"></textarea></label><details><summary>Proponer cinco lugares con Gemini gratis</summary><p class="small">Solo se consultan el nombre de la ciudad y su país. Comparte la cuota gratuita de tickets. Se bloquea si no puede confirmarse la gratuidad. La propuesta puede contener errores: revisa lugares y consejos antes de guardar. No se comprueban horarios ni precios actuales.</p><label>Código de acceso (el mismo de Gastos y Grupo)<input type="password" id="city-guide-code" autocomplete="off"></label><button type="button" class="ghost" id="city-guide-code-toggle">Mostrar código</button><label><input type="checkbox" id="city-guide-consent"> Autorizo consultar esta ciudad y país a Google</label><button type="button" class="btn" id="city-guide-propose">Proponer lugares</button></details><p id="city-guide-status" role="status" aria-live="polite"></p><div id="city-guide-items"></div><div class="actions"><button type="submit" class="btn" id="city-guide-save">Guardar información turística</button><button type="button" class="ghost" id="city-guide-cancel">Cancelar</button></div></form></dialog>
+
 <dialog id="route-plan-dialog" class="modal route-plan-modal" aria-labelledby="route-plan-title">
   <div class="modal-head"><h2 id="route-plan-title">Mapa de las etapas</h2><button type="button" class="ghost icon-btn" id="route-plan-close" aria-label="Cerrar mapa">×</button></div>
   <p id="route-plan-status" class="small"></p>
@@ -1014,6 +1016,7 @@
   <ol id="route-plan-stages"></ol>
   <label for="route-share-note">Nota opcional para estas personas</label><textarea id="route-share-note" rows="2" placeholder="Por ejemplo: nos encontramos en Helsinki"></textarea>
   <label for="route-share-pdf-format">Formato del PDF</label><select id="route-share-pdf-format"><option value="summary">Resumen del recorrido</option><option value="brochure">Folleto de viaje</option></select>
+  <label class="route-lodging-share"><input type="checkbox" id="route-share-tourism" checked> Incluir qué ver y fotografiar en el folleto (solo destinos)</label>
   <label class="route-lodging-share"><input type="checkbox" id="route-share-lodgings" checked> Incluir alojamientos y precios de habitación doble, si están completados</label>
   <details><summary>Vista previa de lo que se comparte</summary><textarea id="route-share-preview" rows="8" readonly aria-label="Itinerario que se compartirá"></textarea></details>
   <div class="actions route-share-actions"><button type="button" class="btn" id="route-share-text">WhatsApp / Compartir</button><button type="button" class="ghost" id="route-share-copy">Copiar texto</button><button type="button" class="btn" id="route-share-view-pdf">Ver PDF</button><button type="button" class="ghost" id="route-share-pdf" disabled>Compartir PDF revisado</button></div>
@@ -1418,24 +1421,25 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v068"></script>
-<script src="gpx-import.js?v=800v068"></script>
-<script src="timeline-routing.js?v=800v068"></script>
-<script src="map-model.js?v=800v068"></script>
-<script src="ticket-camera.js?v=800v068"></script>
-<script src="receipt-access.js?v=800v068"></script>
-<script src="expense-receipt-ai.js?v=800v068"></script>
-<script src="group-meals.js?v=800v068"></script>
-<script src="group-ledger.js?v=800v068"></script>
-<script src="group-store.js?v=800v068"></script>
-<script src="group-receipt.js?v=800v068"></script>
-<script src="group-travelers.js?v=800v068"></script>
-<script src="group-ui.js?v=800v068"></script>
-<script src="preparation.js?v=800v068"></script>
-<script src="app.bundle.js?v=800v068"></script>
+<script src="timeline-import.js?v=800v069"></script>
+<script src="gpx-import.js?v=800v069"></script>
+<script src="timeline-routing.js?v=800v069"></script>
+<script src="map-model.js?v=800v069"></script>
+<script src="ticket-camera.js?v=800v069"></script>
+<script src="city-guide.js?v=800v069"></script>
+<script src="receipt-access.js?v=800v069"></script>
+<script src="expense-receipt-ai.js?v=800v069"></script>
+<script src="group-meals.js?v=800v069"></script>
+<script src="group-ledger.js?v=800v069"></script>
+<script src="group-store.js?v=800v069"></script>
+<script src="group-receipt.js?v=800v069"></script>
+<script src="group-travelers.js?v=800v069"></script>
+<script src="group-ui.js?v=800v069"></script>
+<script src="preparation.js?v=800v069"></script>
+<script src="app.bundle.js?v=800v069"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v068';
+    const pageVersion = '800v069';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1490,7 +1494,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v068', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v069', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

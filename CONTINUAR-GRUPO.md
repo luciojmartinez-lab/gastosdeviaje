@@ -350,3 +350,13 @@ Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente p
 - Las etiquetas emergentes del mapa interactivo conservan sus detalles al pulsar, sin mostrarlos por defecto.
 - Información turística: sigue pendiente según la separación de alcance confirmada por Lucio (mapa y compartir primero; lugares de interés después). No se han añadido atracciones ni propuestas de Gemini.
 - 501/501 pruebas pasan. Ayuda HTML y PDF actualizados (37 páginas, 332 bloques), renderizados y revisados; muestra de folleto con nombres sin fechas/noches revisada. Sin cambios en datos reales ni servicios.
+
+## 800v069 — Turismo, mapa más nítido y confirmación de movimientos (06/11/2026)
+
+- Fichas de ciudad con introducción y hasta cinco lugares y consejos fotográficos. Acceso junto a Localizar al crear, desde el listado de ciudades y desde destinos del itinerario. Edición manual y propuesta opcional de Gemini; requiere revisar y guardar. Solo ciudad y país se envían, con el código y la cuota existentes y comprobación obligatoria de ausencia de facturación. Sin servicios ni pagos nuevos.
+- El folleto incluye las fichas de los destinos seleccionados a partir de la página 2, antes de tabla y alojamientos. Ciudades repetidas tienen una sola ficha; tránsito e inicio/regreso se excluyen. Se puede omitir la sección. Las fichas se conservan en copias y restauraciones sin sobrescribir información existente.
+- Resolución de páginas y captura cartográfica aumentada un 50 % por eje, manteniendo límites y limpieza del mapa temporal. Mapa conserva nombres y ruta; fechas y noches en la tabla.
+- Mover puntos, ciudades o fotos en Mapa exige confirmar antes de persistir. Cancelar restaura la ubicación anterior. Las ciudades advierten que su ubicación es compartida por otros viajes.
+- Botón Folleto / informe en Mapa, también sin coordenadas, abre el espacio de etapas y documentos del viaje seleccionado.
+- 512/512 pruebas pasan. Ayuda y PDF regenerados: 38 páginas, 338 bloques, sin texto fuera de márgenes; revisión visual del manual y muestras de resumen, folleto, regreso y textos largos. La información turística comienza en la página 2.
+- QA con datos sintéticos y esquema cartográfico de reserva. Navegador local deshabilitado; pendiente comprobar el gesto de arrastre y aspecto final en móvil físico. No se consumió cuota real de Gemini ni se modificaron datos reales. La comprobación de producción consulta solo la capacidad pública del backend, sin inferencia.

@@ -6140,3 +6140,11 @@ footer {
 
 .route-plan-route-control { display: block; margin: 12px 0; }
 .route-plan-route-control input { width: 20px; height: 20px; vertical-align: middle; }
+
+.city-guide-modal { width: min(900px, 96vw); max-width: 96vw; }
+#city-guide-form label { display: block; margin: 8px 0; }
+#city-guide-form textarea, #city-guide-form input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; }
+#city-guide-form input[type="checkbox"] { width: 20px; height: 20px; vertical-align: middle; }
+#city-guide-items fieldset { margin: 14px 0; padding: 12px; border: 1px solid #d5e0e8; border-radius: 10px; }
+#city-guide-status { white-space: pre-line; padding: 8px 0; }
+#route-plan-stages [data-city-guide] { margin: 5px 0 5px 12px; font-size: 0.85rem; }

@@ -5,12 +5,13 @@ import vm from 'node:vm';
 const app = fs.readFileSync(new URL('../app.bundle.js', import.meta.url), 'utf8');
 const section = (from, to) => app.slice(app.indexOf(from), app.indexOf(to, app.indexOf(from)));
 const prepContext = vm.createContext({});
-for (const file of ['preparation.js','group-meals.js','group-travelers.js']) vm.runInContext(fs.readFileSync(new URL('../'+file, import.meta.url), 'utf8'), prepContext);
+for (const file of ['preparation.js','group-meals.js','group-travelers.js','city-guide.js']) vm.runInContext(fs.readFileSync(new URL('../'+file, import.meta.url), 'utf8'), prepContext);
 const empty = () => ({ cuentas: [], categorias: [], gastos: [], viajes: [], monedas: [], transferencias: [], lugares: [], photoTypes: [], viajeDocumentos: [], blogEntries: [], timelineDays: [] });
 function harness(initial = empty()) {
   const state = structuredClone(initial);
   const context = vm.createContext({ state, Date, Number, Set, Map, Promise, TravelPreparation: prepContext.TravelPreparation, TravelGroup: prepContext.TravelGroup, TravelGroupTravelers:prepContext.TravelGroupTravelers, PREPARATION_CATALOG_SETTING_KEY: 'preparationCatalog',
     numberValue: value => Number(value) || 0, optionalNumberValue: value => value == null ? null : Number(value),
+    cityTourism: value => prepContext.CityGuide.normalize(value), normalizePlaceName: value => String(value || '').trim().toLowerCase(),
     normalizeAccountType: value => value || '', normalizePhotoTypes: value => value || [],
     PHOTO_TYPES_SETTING_KEY: 'photoTypes', DEFAULT_PHOTO_TYPES: [], DEFAULT_MONEDAS: [{codigo:'EUR',eurPorUnidad:1,unidadesPorEuro:1}],
     tripCountryIds: v => v.paisIds || [], tripCityIds: v => v.ciudadIds || [], tripRouteStops: v => v.routeStops || [], tripLodgingLocations: v => v.lodgingLocations || [],
@@ -85,7 +86,7 @@ test('no permite borrar cuentas referenciadas por gastos o transferencias', asyn
 });
 test('backup de viaje incluye la cuenta contraparte de una transferencia', () => {
   const state=fixture(); state.cuentas.push({id:21,nombre:'Base',moneda:'EUR',viajeId:null});
-  const ctx=vm.createContext({ state, Number, Set, Date, TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v068',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
+  const ctx=vm.createContext({ state, Number, Set, Date, TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v069',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
   vm.runInContext(section('function buildTripBackupData', '// Prepare every write'),ctx);
   const backup=ctx.buildTripBackupData(3); assert.ok(backup.cuentas.some(c=>c.id===21)); assert.equal(backup.transferencias.length,1);
 });
@@ -102,7 +103,7 @@ test('catálogo de viajeros y selección por viaje se restauran; importar un via
 
 test('exportación de un viaje incluye únicamente sus contactos y conserva el identificador de catálogo',()=>{
  const state=fixture();state.travelerCatalog=[{id:'ana',name:'Ana García',givenName:'Ana',surnames:'García'},{id:'otro',name:'Otro viajero'}];state.viajes[0].group={participants:[{id:'local',catalogId:'ana',name:'Ana García',active:false}]};
- const ctx=vm.createContext({state,Number,Set,Date,TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v068',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c});vm.runInContext(section('function buildTripBackupData','// Prepare every write'),ctx);
+ const ctx=vm.createContext({state,Number,Set,Date,TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v069',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c});vm.runInContext(section('function buildTripBackupData','// Prepare every write'),ctx);
  const backup=ctx.buildTripBackupData(3);assert.equal(backup.travelerCatalog.length,1);assert.equal(backup.travelerCatalog[0].givenName,'Ana');assert.equal(backup.viajes[0].group.participants[0].catalogId,'ana');
 });
 
@@ -150,4 +151,25 @@ test('una comida inválida impide reemplazar los datos al importar una copia com
     await assert.rejects(mode === 'all' ? ctx.importAll(data) : ctx.importTripBackup(data,50), /difieren/);
     assert.equal(ctx.operations, undefined);
   }
+});
+
+test('la copia conserva la información turística de las ciudades y su revisión',async()=>{
+ const ctx=harness();
+ const tourism={intro:'Ciudad',items:[{name:'Lugar de prueba',description:'Descripción',photoTip:'Consejo'}],source:'manual',reviewed:true};
+ const data={...empty(),lugares:[{id:1,nombre:'Finlandia',parentId:null},{id:2,nombre:'Oulu',parentId:1,tourism}]};
+ await ctx.importAll(data);
+ const city=ctx.operations.find(operation=>operation.store==='lugares'&&operation.type==='add'&&operation.data.id===2)?.data;
+ assert.ok(city);assert.equal(city.tourism.items[0].name,'Lugar de prueba');assert.equal(city.tourism.reviewed,true);
+});
+
+test('importar un viaje recupera una ficha de ciudad vacía dentro de la transacción y conserva una ficha existente',async()=>{
+ const tourism={intro:'Importada',items:[{name:'Lugar importado',description:'Descripción',photoTip:''}],reviewed:true};
+ for(const existingGuide of [null,{intro:'Ficha personal',items:[],reviewed:true}]){
+  const initial=empty();initial.viajes=[{id:50,nombre:'Destino'}];initial.lugares=[{id:1,nombre:'Finlandia',parentId:null},{id:2,nombre:'Oulu',parentId:1,tourism:existingGuide}];
+  const ctx=harness(initial);ctx.updateLugar=()=>{throw new Error('No debe escribir fuera de la transacción');};
+  const data={...empty(),viajes:[{id:3,nombre:'Origen',paisIds:[1],ciudadIds:[2]}],lugares:[{id:1,nombre:'Finlandia',parentId:null},{id:2,nombre:'Oulu',parentId:1,tourism}]};
+  await ctx.importTripBackup(data,50);
+  const update=ctx.operations.find(operation=>operation.store==='lugares'&&operation.type==='put'&&operation.data.id===2);
+  if(existingGuide)assert.equal(update,undefined);else assert.equal(update.data.tourism.items[0].name,'Lugar importado');
+ }
 });

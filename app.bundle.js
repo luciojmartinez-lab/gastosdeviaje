@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v068';
+const APP_VERSION = '800v069';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -92,6 +92,7 @@ const DIALOG_HELP_TARGETS = {
   'map-point-dialog': 'mapa-controles',
   'route-dialog': 'ruta-paradas',
   'route-plan-dialog': 'ruta-paradas',
+  'city-guide-dialog': 'ciudad-turismo',
   'trip-documents-dialog': 'documentos-viaje',
   'trip-review-dialog': 'revisar-viaje',
   'blog-entry-dialog': 'blog-formulario',
@@ -2890,6 +2891,16 @@ async function deleteMapPoint(context = activeMapPointContext) {
   setTab('mapa');
 }
 
+function confirmMapPositionChange(label, point, detail = '') {
+  const message = `¿Quieres guardar la nueva ubicación de «${label}»?\n${detail ? detail + '\n' : ''}Nueva posición: ${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}.\nAceptar guarda el cambio. Cancelar mantiene la ubicación anterior.`;
+  if (confirm(message)) return true;
+  tripMapState.preserveViewportOnNextRender = true;
+  renderTripMap();
+  const info = $('#trip-map-info');
+  if (info) info.textContent = 'Cambio de ubicación cancelado. Se mantiene la posición anterior.';
+  return false;
+}
+
 async function moveMapPoint(context, latitude, longitude) {
   if (!context || Number(context.entryId) <= 0) return;
   const entry = state.blogEntries.find(item => Number(item.id) === Number(context.entryId) && item.tipo === 'punto');
@@ -2899,6 +2910,7 @@ async function moveMapPoint(context, latitude, longitude) {
     longitude: blogPointCoordinate(longitude, -180, 180)
   };
   if (point.latitude == null || point.longitude == null) throw new Error('La nueva posición no es válida');
+  if (!confirmMapPositionChange(entry.descripcion || 'Punto del viaje', point)) return false;
   const trip = state.viajes.find(item => Number(item.id) === Number(entry.viajeId));
   const city = entry.mapCityManual === true
     ? state.lugares.find(item => Number(item.id) === Number(entry.ciudadId))
@@ -2924,6 +2936,7 @@ async function moveMapCity(context, latitude, longitude) {
     longitude: blogPointCoordinate(longitude, -180, 180)
   };
   if (point.latitude == null || point.longitude == null) throw new Error('La nueva posición no es válida');
+  if (!confirmMapPositionChange(city.nombre, point, 'Se cambiarán las coordenadas de esta ciudad en los viajes que la utilizan.')) return false;
   tripMapState.preserveViewportOnNextRender = true;
   await updateLugar(city.id, { lat: point.latitude, lng: point.longitude });
   closeTripMapPhotoPopup();
@@ -2942,7 +2955,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v068');
+    const worker = new Worker('./timeline-import-worker.js?v=800v069');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3952,7 +3965,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v068');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v069');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4882,7 +4895,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v068');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v069');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5018,7 +5031,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v068');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v069');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5572,7 +5585,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v068');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v069');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6065,7 +6078,7 @@ function isPdfDocument(type, name, data) {
 let pdfViewerControllerPromise;
 async function openPdfDocument(blob,name) {
   try{
-    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v068').then(module=>module.createPdfViewer(document)));
+    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v069').then(module=>module.createPdfViewer(document)));
     return await viewer.open(blob,name);
   }catch(error){pdfViewerControllerPromise=null;alert('No se ha podido abrir el visor PDF: '+(error.message||error));}
 }
@@ -7248,12 +7261,13 @@ async function delCategoria(id) {
   return deleteRecord('categorias', Number(id));
 }
 
-async function addLugar({ nombre, parentId = null, lat = null, lng = null }) {
+async function addLugar({ nombre, parentId = null, lat = null, lng = null, tourism = null }) {
   return addRecord('lugares', {
     nombre,
     parentId: parentId ? Number(parentId) : null,
     lat: optionalNumberValue(lat),
-    lng: optionalNumberValue(lng)
+    lng: optionalNumberValue(lng),
+    ...(parentId && tourism ? {tourism: cityTourism(tourism)} : {})
   });
 }
 
@@ -8905,7 +8919,7 @@ function renderLugares() {
     const cityHtml = cityList.length
       ? cityList.map(ciudad => `<div class="place-row" data-editable-type="lugar" data-editable-id="${ciudad.id}">
           <div class="place-name"><strong>${escapeHtml(ciudad.nombre)}</strong><span>${escapeHtml(lugarCoordsLabel(ciudad))}</span></div>
-          <div class="place-actions"><button class="ghost" data-locate-lugar="${ciudad.id}">Localizar</button><button class="ghost" data-edit-lugar="${ciudad.id}">Editar</button><button class="ghost" data-del-lugar="${ciudad.id}">Eliminar</button></div>
+          <div class="place-actions"><button class="ghost" data-locate-lugar="${ciudad.id}">Localizar</button><button class="ghost" data-city-guide="${ciudad.id}">Información turística</button><button class="ghost" data-edit-lugar="${ciudad.id}">Editar</button><button class="ghost" data-del-lugar="${ciudad.id}">Eliminar</button></div>
         </div>`).join('')
       : '<p class="small">Todavía no hay ciudades en este país.</p>';
     return `<details class="country-node" data-country-node="${pais.id}" data-editable-type="lugar" data-editable-id="${pais.id}"${open}>
@@ -9913,6 +9927,98 @@ async function saveRouteDialog() {
   renderMapAfterTripChange();
 }
 
+function cityTourism(value) {
+  return globalThis.CityGuide?.normalize(value) || {intro: '', items: [], source: 'manual', reviewed: false};
+}
+
+let activeCityGuide = null, pendingCityGuide = null, cityGuideController = null;
+function cityGuideFormData() {
+  return cityTourism({intro: $('#city-guide-intro').value, items: Array.from({length: 5}, (_, i) => ({name: $(`[data-guide-name="${i}"]`).value, description: $(`[data-guide-description="${i}"]`).value, photoTip: $(`[data-guide-photo="${i}"]`).value})), source: activeCityGuide?.source, reviewed: true});
+}
+function renderCityGuideFields(guide) {
+  $('#city-guide-intro').value = guide.intro || '';
+  $('#city-guide-items').innerHTML = Array.from({length: 5}, (_, i) => {
+    const item = guide.items[i] || {};
+    const query = encodeURIComponent([item.name, activeCityGuide?.name, activeCityGuide?.country].filter(Boolean).join(', '));
+    return `<fieldset><legend>Lugar ${i + 1}</legend><label>Nombre<input maxlength="160" data-guide-name="${i}" value="${escapeHtml(item.name || '')}"></label><label>Qué ver<textarea rows="3" maxlength="700" data-guide-description="${i}">${escapeHtml(item.description || '')}</textarea></label><label>Consejo fotográfico<textarea rows="2" maxlength="400" data-guide-photo="${i}">${escapeHtml(item.photoTip || '')}</textarea></label>${item.name ? `<a href="https://www.google.com/maps/search/?api=1&query=${query}" target="_blank" rel="noopener">Buscar lugar en el mapa</a>` : ''}</fieldset>`;
+  }).join('');
+}
+function cityGuideStatus(message, error = false) {
+  const status = $('#city-guide-status'); status.textContent = message; status.classList.toggle('error', error);
+  status.scrollIntoView?.({block: 'nearest'});
+}
+function openCityGuide(cityId = null) {
+  const city = cityId ? state.lugares.find(value => Number(value.id) === Number(cityId)) : null;
+  const countryId = Number(city?.parentId || $('#lugar-parent')?.value);
+  const country = state.lugares.find(value => Number(value.id) === countryId && !value.parentId);
+  const name = String(city?.nombre || $('#lugar-nombre')?.value || '').trim();
+  if (!name || !country) { alert('Escribe el nombre de una ciudad y elige su país antes de añadir información turística.'); return; }
+  const pending = pendingCityGuide?.name === name && pendingCityGuide.countryId === countryId ? pendingCityGuide.guide : null;
+  const guide = cityTourism(city?.tourism || pending);
+  activeCityGuide = {cityId: city?.id || null, name, country: country.nombre, countryId, source: guide.source};
+  $('#city-guide-title').textContent = `Qué ver y fotografiar · ${name}`;
+  $('#city-guide-context').textContent = `${country.nombre}. ${city ? 'Esta ficha se reutiliza en todos tus viajes a la ciudad.' : 'Se añadirá cuando guardes la nueva ciudad con el botón Añadir.'}`;
+  $('#city-guide-code').value = globalThis.ReceiptAccess?.get() || '';
+  $('#city-guide-consent').checked = false;
+  renderCityGuideFields(guide); cityGuideStatus('Puedes completar la ficha manualmente o pedir una propuesta revisable.');
+  const dialog = $('#city-guide-dialog'); if (dialog.showModal) dialog.showModal(); else dialog.setAttribute('open', 'open');
+}
+function closeCityGuide() {
+  cityGuideController?.abort(); cityGuideController = null; activeCityGuide = null;
+  $('#city-guide-propose').disabled = false; $('#city-guide-save').disabled = false; $('#city-guide-propose').textContent = 'Proponer lugares';
+  const dialog = $('#city-guide-dialog'); if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
+}
+async function proposeCityGuide() {
+  if (!activeCityGuide || cityGuideController) return;
+  const current = activeCityGuide, code = $('#city-guide-code').value.trim();
+  if (!code) { cityGuideStatus('Introduce el código compartido con Gastos y Grupo.', true); $('#city-guide-code').focus(); return; }
+  if (!$('#city-guide-consent').checked) { cityGuideStatus('Marca la autorización para consultar esta ciudad y su país a Google.', true); return; }
+  globalThis.ReceiptAccess?.save(code);
+  const controller = new AbortController(); cityGuideController = controller;
+  const timer = setTimeout(() => controller.abort(), 40000);
+  $('#city-guide-propose').disabled = true; $('#city-guide-save').disabled = true; $('#city-guide-propose').textContent = 'Consultando Google…';
+  cityGuideStatus('Comprobando gratuidad y preparando la propuesta. No se reintenta automáticamente.');
+  try {
+    const response = await fetch('/.netlify/functions/receipt-ai', {method: 'POST', headers: {'Content-Type': 'application/json', 'x-receipt-access': code}, body: JSON.stringify({mode: 'city-guide', city: current.name, country: current.country, consent: true}), signal: controller.signal});
+    const result = await response.json();
+    if (!response.ok) throw new Error(response.status === 429 ? 'Se ha alcanzado un límite de la cuota gratuita compartida. No se usará pago. Prueba más tarde o completa la ficha manualmente.' : result.message || 'No se pudo obtener la propuesta gratuita.');
+    const guide = globalThis.CityGuide.normalize(result.guide, true);
+    if (activeCityGuide !== current) return;
+    activeCityGuide.source = 'gemini'; renderCityGuideFields(guide);
+    cityGuideStatus('Propuesta recibida. Revisa los nombres, las descripciones y los consejos; después guarda la ficha. Horarios y precios no están verificados.' + (result.usage?.available && Number.isFinite(result.usage.requests) ? ` Registro de la app hoy: ${result.usage.requests} intentos compartidos entre tickets y turismo; el saldo oficial puede variar.` : ''));
+  } catch (error) {
+    if (activeCityGuide === current) cityGuideStatus(error.name === 'AbortError' ? 'La consulta se ha cancelado o ha tardado demasiado. Puedes completar la ficha manualmente.' : (error.message || 'Sin conexión con Google. Puedes completar la ficha manualmente.'), true);
+  } finally {
+    clearTimeout(timer);
+    if (cityGuideController === controller) cityGuideController = null;
+    if (activeCityGuide === current) { $('#city-guide-propose').disabled = false; $('#city-guide-save').disabled = false; $('#city-guide-propose').textContent = 'Proponer lugares'; }
+  }
+}
+async function saveCityGuide() {
+  if (!activeCityGuide || cityGuideController) return;
+  const guide = cityGuideFormData(), current = activeCityGuide;
+  for (let i = 0; i < 5; i++) {
+    if (!$(`[data-guide-name="${i}"]`).value.trim() && ($(`[data-guide-description="${i}"]`).value.trim() || $(`[data-guide-photo="${i}"]`).value.trim())) {
+      cityGuideStatus(`Escribe el nombre del lugar ${i + 1} para conservar su descripción y consejo.`, true); return;
+    }
+  }
+  const entered = Array.from({length: 5}, (_, i) => $(`[data-guide-name="${i}"]`).value.trim()).filter(Boolean);
+  if (entered.length !== guide.items.length) { cityGuideStatus('Hay nombres de lugares repetidos. Corrígelos antes de guardar.', true); return; }
+  $('#city-guide-save').disabled = true;
+  try {
+    if (current.cityId) {
+      const saved = await updateLugar(current.cityId, {tourism: {...guide, updatedAt: new Date().toISOString()}});
+      state.lugares = state.lugares.map(city => Number(city.id) === Number(current.cityId) ? saved : city);
+      if (routePlanShareState) routePlanShareState.stages.forEach(stage => { if (Number(stage.city?.id) === Number(current.cityId)) { stage.city = saved; stage.tourism = guide; } });
+      renderLugares(); if (routePlanShareState) renderRouteSharePreview();
+    } else {
+      pendingCityGuide = {name: current.name, countryId: current.countryId, guide};
+      setMessage('#msg-lugar', `Información turística preparada para ${current.name}. Pulsa Añadir para guardar la ciudad y su ficha.`);
+    }
+    if (activeCityGuide === current) closeCityGuide();
+  } catch (error) { if (activeCityGuide === current) { cityGuideStatus(error.message || 'No se pudo guardar la ficha.', true); $('#city-guide-save').disabled = false; } }
+}
+
 function normalizeRouteLodging(value) {
   if (!value || typeof value !== 'object') return null;
   const text = key => String(value[key] ?? '').trim();
@@ -9975,7 +10081,7 @@ function routePlanStages(trip, stops) {
     const dayMonth = date ? `${date.slice(8, 10)}-${date.slice(5, 7)}` : 'Sin fecha';
     const endpoint = normalizedRouteStopRole(stop.role, index, stages.map(stage => stage.cityId)) === ROUTE_STOP_ROLE_ENDPOINT;
     const label = endpoint ? dayMonth : `${dayMonth} · ${nights === null ? 'noches sin calcular' : `${nights} ${nights === 1 ? 'noche' : 'noches'}`}`;
-    return { city, date, departureDate: nextDate || '', endpoint, nights, label, number: index + 1, lodging: normalizeRouteLodging(stop.lodging) };
+    return { city, date, departureDate: nextDate || '', endpoint, role: normalizedRouteStopRole(stop.role, index, stages.map(stage => stage.cityId)), nights, label, number: index + 1, lodging: normalizeRouteLodging(stop.lodging), tourism: cityTourism(city?.tourism) };
   });
 }
 
@@ -10091,7 +10197,7 @@ function openRoutePlanMap(trip, stops = tripRouteStops(trip), preview = false) {
   routePlanShareState = { name: trip.nombre, stages, preview };
   routePdfPreviewCache = null;
   const list = $('#route-plan-stages');
-  list.innerHTML = stages.map(stage => `<li><label><input type="checkbox" data-route-share-stage="${stage.number}" checked> <strong>${escapeHtml(stage.city?.nombre || 'Ciudad no disponible')}</strong> (${escapeHtml(stage.label)})${routePlanHasCoords(stage.city) ? '' : ' · sin coordenadas'}</label></li>`).join('') || '<li>No hay etapas planificadas.</li>';
+  list.innerHTML = stages.map(stage => `<li><label><input type="checkbox" data-route-share-stage="${stage.number}" checked> <strong>${escapeHtml(stage.city?.nombre || 'Ciudad no disponible')}</strong> (${escapeHtml(stage.label)})${routePlanHasCoords(stage.city) ? '' : ' · sin coordenadas'}</label>${stage.role === ROUTE_STOP_ROLE_DESTINATION && stage.city ? `<button type="button" class="ghost" data-city-guide="${stage.city.id}">Qué ver y fotografiar</button>` : ''}</li>`).join('') || '<li>No hay etapas planificadas.</li>';
   list.onchange = renderRouteSharePreview;
   if ($('#route-share-note')) $('#route-share-note').value = '';
   renderRouteSharePreview();
@@ -10162,11 +10268,11 @@ function selectedRouteShareStages() {
 }
 
 function routeShareExportStages() {
-  return selectedRouteShareStages().map(stage => ({ ...stage, lodging: $('#route-share-lodgings')?.checked === false ? null : stage.lodging }));
+  return selectedRouteShareStages().map(stage => ({ ...stage, lodging: $('#route-share-lodgings')?.checked === false ? null : stage.lodging, tourism: $('#route-share-tourism')?.checked === false ? null : stage.tourism }));
 }
 
 function routePdfPreviewKey() {
-  return JSON.stringify([routePlanShareState?.name, routeShareExportStages(), $('#route-share-note')?.value || '', $('#route-share-pdf-format')?.value || 'summary', showRoutePlanRoute()]);
+  return JSON.stringify([routePlanShareState?.name, routeShareExportStages(), $('#route-share-note')?.value || '', $('#route-share-pdf-format')?.value || 'summary', showRoutePlanRoute(), $('#route-share-tourism')?.checked !== false]);
 }
 
 function routeShareDate(date) {
@@ -10242,14 +10348,14 @@ async function routePdfBaseMap(center, zoom, width, height) {
   try {
     return await new Promise(resolve => {
       timer = setTimeout(() => resolve(null), 10000);
-      map = new window.maplibregl.Map({container: host, style: 'https://tiles.openfreemap.org/styles/positron', center: [center.longitude, center.latitude], zoom: zoom - 1, pixelRatio: 1, interactive: false, attributionControl: false, renderWorldCopies: false, canvasContextAttributes: {preserveDrawingBuffer: true}});
+      map = new window.maplibregl.Map({container: host, style: 'https://tiles.openfreemap.org/styles/positron', center: [center.longitude, center.latitude], zoom: zoom - 1, pixelRatio: 1.5, interactive: false, attributionControl: false, renderWorldCopies: false, canvasContextAttributes: {preserveDrawingBuffer: true}});
       map.on('error', () => resolve(null));
       map.on('idle', () => {
         try {
-          const image = document.createElement('canvas'); image.width = width; image.height = height;
+          const image = document.createElement('canvas'); image.width = Math.round(width * 1.5); image.height = Math.round(height * 1.5);
           const context = image.getContext('2d');
           if (!context) { resolve(null); return; }
-          context.drawImage(map.getCanvas(), 0, 0, width, height);
+          context.drawImage(map.getCanvas(), 0, 0, image.width, image.height);
           resolve(image);
         } catch (error) { resolve(null); }
       });
@@ -10336,9 +10442,10 @@ async function drawRoutePdfMap(draw, stages, box, options = {}) {
 async function routeItineraryPdf(name, stages, note = '', options = {}) {
   if (!stages.length) throw new Error('Selecciona al menos una etapa.');
   const brochure = options.format === 'brochure';
-  const canvas = document.createElement('canvas'); canvas.width = 1080; canvas.height = 1528;
+  const canvas = document.createElement('canvas'); canvas.width = 1620; canvas.height = 2292;
   const draw = canvas.getContext('2d');
   if (!draw) throw new Error('El dispositivo no permite preparar el PDF. Puedes compartir el texto.');
+  draw.scale(1.5, 1.5);
   const pages = []; let y;
   const startPage = (heading = '') => {
     draw.fillStyle = brochure ? '#faf8f2' : '#fff'; draw.fillRect(0, 0, 1080, 1528);
@@ -10348,7 +10455,7 @@ async function routeItineraryPdf(name, stages, note = '', options = {}) {
   };
   const finishPage = async () => {
     draw.fillStyle = '#65717f'; draw.font = '18px Arial'; draw.fillText(`Cuaderno de Bitácora · ${pages.length + 1}`, 60, 1480);
-    const jpeg = await canvasJpegBlob(canvas); pages.push({bytes: new Uint8Array(await jpeg.arrayBuffer()), width: 1080, height: 1528});
+    const jpeg = await canvasJpegBlob(canvas); pages.push({bytes: new Uint8Array(await jpeg.arrayBuffer()), width: canvas.width, height: canvas.height});
   };
   // El mapa siempre precede a la tabla, incluso si aún no hay coordenadas.
   startPage(brochure ? 'UN VIAJE PARA COMPARTIR' : 'Mapa del recorrido');
@@ -10366,6 +10473,36 @@ async function routeItineraryPdf(name, stages, note = '', options = {}) {
   }
   await drawRoutePdfMap(draw, stages, {x: 60, y, w: 960, h: Math.max(350, Math.min(1080, 1400 - y))}, options);
   await finishPage();
+  if (brochure && options.tourism !== false) {
+    const destinations = globalThis.CityGuide?.destinations(stages) || [];
+    for (const stage of destinations) {
+      const cityName = stage.city.nombre, guide = cityTourism(stage.tourism);
+      startPage(`Qué ver y fotografiar / ${cityName}`);
+      const paragraph = async (text, font = '22px Arial', color = '#193c50') => {
+        draw.font = font;
+        for (const line of blogShareWrappedLines(draw, text, 940)) {
+          if (y > 1390) { await finishPage(); startPage(`${cityName} / Qué ver · continuación`); draw.font = font; }
+          draw.fillStyle = color; draw.fillText(line, 60, y); y += 29;
+        }
+        y += 12;
+      };
+      if (!guide.reviewed || (!guide.items.length && !guide.intro)) {
+        await paragraph('Información turística pendiente de completar.');
+        await paragraph('Añade la ficha desde Configuración → Crear/Editar Países / ciudades → Información turística. Después vuelve a preparar el folleto.', '20px Arial', '#536d7b');
+      } else {
+        if (guide.intro) await paragraph(guide.intro);
+        for (const [i, place] of guide.items.entries()) {
+          if (y > 1220) { await finishPage(); startPage(`${cityName} / Qué ver · continuación`); }
+          await paragraph(`${i + 1}. ${place.name}`, 'bold 26px Arial');
+          if (place.description) await paragraph(place.description);
+          if (place.photoTip) await paragraph(`Para fotografiar: ${place.photoTip}`, '20px Arial', '#3f7169');
+          y += 12;
+        }
+        await paragraph('Recomendaciones orientativas. Comprueba horarios, accesos y condiciones antes de la visita.', '18px Arial', '#65717f');
+      }
+      await finishPage();
+    }
+  }
   const tableHeader = () => {
     draw.fillStyle = brochure ? '#dcece6' : '#e8f1fa'; draw.fillRect(55, y - 26, 970, 45);
     draw.fillStyle = '#193c50'; draw.font = 'bold 20px Arial';
@@ -10427,7 +10564,7 @@ async function routeItineraryPdf(name, stages, note = '', options = {}) {
     }
   }
   canvas.width = 1; canvas.height = 1;
-  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v068'));
+  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v069'));
   return pdf.buildImagePdfBlob(pages, {margin: 24});
 }
 
@@ -10436,12 +10573,12 @@ async function viewRoutePdf() {
   if (!stages.length || routeSharePdfBusy) return;
   const key = routePdfPreviewKey(), name = routePlanShareState.name || 'Itinerario';
   const note = $('#route-share-note')?.value || '', format = $('#route-share-pdf-format')?.value || 'summary';
-  const showRoute = showRoutePlanRoute();
+  const showRoute = showRoutePlanRoute(), tourism = $('#route-share-tourism')?.checked !== false;
   const status = $('#route-share-status');
   routeSharePdfBusy = true; renderRouteSharePreview(); status.textContent = 'Preparando PDF para revisar…';
   try {
     const cached = routePdfPreviewCache?.key === key ? routePdfPreviewCache : null;
-    const blob = cached?.blob || await routeItineraryPdf(name, stages, note, {format, showRoute});
+    const blob = cached?.blob || await routeItineraryPdf(name, stages, note, {format, showRoute, tourism});
     if (key !== routePdfPreviewKey()) { status.textContent = 'Han cambiado los datos. Vuelve a pulsar Ver PDF.'; return; }
     const filename = format === 'brochure' ? 'folleto-viaje.pdf' : 'itinerario.pdf';
     await openPdfDocument(blob, filename);
@@ -10624,6 +10761,7 @@ async function moveMapPhoto(context, latitude, longitude) {
     longitude: storedImageCoordinate(longitude, -180, 180)
   };
   if (point.latitude == null || point.longitude == null) throw new Error('La nueva posición no es válida');
+  if (!confirmMapPositionChange(record.descripcion || record.image.name || 'Foto del mapa', point)) return false;
   const targetSignatures = new Set(photoMapImageSignatures(record.image));
   let changed = 0;
   const now = new Date().toISOString();
@@ -13583,6 +13721,7 @@ function renderTripMap() {
           <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" title="Exportar previamente la Cronología de Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología Maps</button>
           <button type="button" data-map-satellite="1" class="${tripMapState.showSatellite ? 'active' : ''}" aria-pressed="${tripMapState.showSatellite}" title="Mostrar u ocultar las imágenes de satélite" disabled>${tripMapState.showSatellite ? 'Mapa normal' : 'Satélite'}</button>
           <button type="button" data-map-add-stop="1" title="Añadir, borrar, clasificar o reordenar paradas del viaje">Añadir / modificar parada</button>
+          <button type="button" data-map-itinerary="1" title="Preparar el folleto o el informe del viaje seleccionado">Folleto / informe</button>
           <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
         </div>
       </div>
@@ -13593,7 +13732,7 @@ function renderTripMap() {
   }
   if (!extentItems.length) {
     destroyTripVectorMap();
-    container.innerHTML = '<div class="map-empty">Añade latitud y longitud a las ciudades para ver el mapa.</div>';
+    container.innerHTML = '<button type="button" class="ghost" data-map-itinerary="1">Folleto / informe</button><div class="map-empty">Añade latitud y longitud a las ciudades para ver el mapa.</div>';
     info.textContent = `Faltan coordenadas: ${missing.map(item => item.ciudad.nombre).join(', ')}.`;
     return;
   }
@@ -13832,6 +13971,7 @@ function renderTripMap() {
         <button type="button" data-map-timeline="1" class="${timelineAvailable && tripMapState.showTimeline ? 'active' : ''}" aria-pressed="${timelineAvailable && tripMapState.showTimeline}" title="Exportar previamente la Cronología de Maps y después importarla en este viaje"${scopedTrips.length === 1 ? '' : ' disabled'}>Cronología Maps</button>
         <button type="button" data-map-satellite="1" class="${tripMapState.showSatellite ? 'active' : ''}" aria-pressed="${tripMapState.showSatellite}" title="${useVectorInteractiveMap ? 'Mostrar u ocultar las imágenes de satélite' : 'La vista de satélite requiere el mapa interactivo'}"${useVectorInteractiveMap ? '' : ' disabled'}>${tripMapState.showSatellite ? 'Mapa normal' : 'Satélite'}</button>
         <button type="button" data-map-add-stop="1" title="Añadir, borrar o reordenar paradas del viaje">Añadir / modificar parada</button>
+          <button type="button" data-map-itinerary="1" title="Preparar el folleto o el informe del viaje seleccionado">Folleto / informe</button>
         <button type="button" data-map-geocode="1" title="Buscar coordenadas reales para las ciudades">Localizar</button>
         <button type="button" data-map-fullscreen="1" class="${fullscreen ? 'active' : ''}" title="${fullscreen ? 'Volver al tamaño normal' : 'Ampliar el mapa a toda la pantalla'}">${fullscreen ? 'Tamaño normal' : 'Pantalla completa'}</button>
       </div>
@@ -14586,7 +14726,8 @@ async function importAll(data) {
       nombre: l.nombre,
       parentId: l.parentId ? Number(l.parentId) : null,
       lat: optionalNumberValue(l.lat),
-      lng: optionalNumberValue(l.lng)
+      lng: optionalNumberValue(l.lng),
+      ...(l.parentId && l.tourism ? {tourism: cityTourism(l.tourism)} : {})
     };
     if (l.id != null) obj.id = l.id;
     await addRecord('lugares', obj);
@@ -14672,13 +14813,19 @@ async function importTripBackup(data, targetTripId) {
   }
 
   for (const l of data.lugares || []) {
-    if (l.id == null || state.lugares.some(existing => Number(existing.id) === Number(l.id))) continue;
+    if (l.id == null) continue;
+    const existing = state.lugares.find(value => Number(value.id) === Number(l.id));
+    if (existing) {
+      if (l.parentId && normalizePlaceName(existing.nombre) === normalizePlaceName(l.nombre) && Number(existing.parentId) === Number(l.parentId) && !cityTourism(existing.tourism).items.length && !cityTourism(existing.tourism).intro && cityTourism(l.tourism).reviewed) await putRecord('lugares', {...existing, tourism: cityTourism(l.tourism), updatedAt: now});
+      continue;
+    }
     await addRecord('lugares', {
       id: Number(l.id),
       nombre: l.nombre,
       parentId: l.parentId ? Number(l.parentId) : null,
       lat: optionalNumberValue(l.lat),
-      lng: optionalNumberValue(l.lng)
+      lng: optionalNumberValue(l.lng),
+      ...(l.parentId && l.tourism ? {tourism: cityTourism(l.tourism)} : {})
     });
   }
   for (const currency of data.monedas || []) {
@@ -15260,7 +15407,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v068');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v069');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16249,7 +16396,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v068').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v069').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -19291,7 +19438,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v068')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v069')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -19299,7 +19446,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v068')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v069')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -19340,12 +19487,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v068');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v069');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v068')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v068')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v069')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v069')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -19984,6 +20131,7 @@ function bindEvents() {
   $('#route-share-pdf-format').onchange = renderRouteSharePreview;
   $('#route-plan-show-route').onchange = syncRoutePlanRouteVisibility;
   $('#route-share-lodgings').onchange = renderRouteSharePreview;
+  $('#route-share-tourism').onchange = renderRouteSharePreview;
   ['all', 'none'].forEach(mode => {
     $(`#route-share-${mode}`).onclick = () => {
       $$('#route-plan-stages [data-route-share-stage]').forEach(input => { input.checked = mode === 'all'; });
@@ -20469,6 +20617,13 @@ function bindEvents() {
     }
   };
 
+  $('#btn-city-guide').onclick = () => openCityGuide();
+  $('#city-guide-close').onclick = closeCityGuide;
+  $('#city-guide-cancel').onclick = closeCityGuide;
+  $('#city-guide-dialog').oncancel = event => {event.preventDefault(); closeCityGuide();};
+  $('#city-guide-propose').onclick = proposeCityGuide;
+  $('#city-guide-code-toggle').onclick = () => {const input = $('#city-guide-code'); input.type = input.type === 'password' ? 'text' : 'password'; $('#city-guide-code-toggle').textContent = input.type === 'password' ? 'Mostrar código' : 'Ocultar código';};
+  $('#city-guide-form').onsubmit = event => {event.preventDefault(); void saveCityGuide();};
   $('#btn-add-lugar').onclick = async () => {
     try {
       const nombre = $('#lugar-nombre').value.trim();
@@ -20477,9 +20632,11 @@ function bindEvents() {
         nombre,
         parentId: $('#lugar-parent').value || null,
         lat: $('#lugar-lat').value,
-        lng: $('#lugar-lng').value
+        lng: $('#lugar-lng').value,
+        tourism: pendingCityGuide?.name === nombre && pendingCityGuide.countryId === Number($('#lugar-parent').value) ? pendingCityGuide.guide : null
       });
       clearFormDraft('config-lugar');
+      pendingCityGuide = null;
       $('#lugar-nombre').value = '';
       $('#lugar-parent').value = '';
       $('#lugar-lat').value = '';
@@ -20711,6 +20868,8 @@ function bindEvents() {
   document.addEventListener('click', event => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
+    const guideButton = target.closest('[data-city-guide]');
+    if (guideButton) { openCityGuide(Number(guideButton.dataset.cityGuide)); return; }
     if (target.closest('#route-plan-open')) {
       const trip = routeEditorTrip();
       if (trip) openRoutePlanMap(trip, routeEditorState.stops, true);
@@ -20954,6 +21113,12 @@ function bindEvents() {
       const mapTimelineButton = target.closest('[data-map-timeline]');
       if (mapTimelineButton) {
         openTimelineDialog();
+        return;
+      }
+      if (target.closest('[data-map-itinerary]')) {
+        const trip = currentMapTrip();
+        if (trip) openRoutePlanMap(trip);
+        else alert('Selecciona un único viaje para preparar su folleto o informe.');
         return;
       }
       const mapAddStopButton = target.closest('[data-map-add-stop]');
@@ -21288,7 +21453,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v068');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v069');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

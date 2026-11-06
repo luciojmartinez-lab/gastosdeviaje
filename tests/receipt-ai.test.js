@@ -281,3 +281,29 @@ test('IA multifoto: rechaza exceso, repetición y fotos inválidas antes de envi
  await assert.rejects(readReceiptWithAI({ticketPhotos:[{data:image},{data:'data:image/jpeg;base64,'+'A'.repeat(4_000_000)}]},{accessCode:'x',consent:true},()=>{},async()=>{calls++;}),/demasiado grandes/);
  assert.equal(calls,0);
 });
+
+test('guía turística gratuita: mismo control de facturación, solo ciudad y país, sin fotos ni datos del viaje',async()=>{
+ const guide={intro:'Propuesta para Oulu',items:[{name:'Lugar de prueba',description:'Descripción de prueba.',photoTip:'Consejo de prueba.'}]};
+ const h=harness({receipt:guide});
+ const response=await h.handler(h.request({mode:'city-guide',city:'Oulu',country:'Finlandia',consent:true,privateTrip:'NO ENVIAR'}));
+ assert.equal(response.status,200);const result=await response.json();
+ assert.equal(result.guide.items.length,1);assert.equal(result.guide.reviewed,false);assert.equal(result.guide.source,'gemini');
+ const body=JSON.parse(h.inferences()[0].init.body);
+ assert.deepEqual(JSON.parse(body.contents[0].parts[0].text),{city:'Oulu',country:'Finlandia'});
+ assert.doesNotMatch(JSON.stringify(body),/NO ENVIAR|test-access-code|inlineData/);
+ assert.match(body.systemInstruction.parts[0].text,/No inventes horarios, precios/);
+ assert.equal(h.calls.filter(call=>call.url.includes('billingInfo')).length,1);
+ for(const billing of [{billingEnabled:true},{billingEnabled:false,billingAccountName:'billingAccounts/test'}]){
+  const blocked=harness({billing,receipt:guide});
+  assert.equal((await blocked.handler(blocked.request({mode:'city-guide',city:'Oulu',country:'Finlandia',consent:true}))).status,503);assert.equal(blocked.inferences().length,0);
+ }
+});
+
+test('guía turística: autorización, entrada inválida y cuota se bloquean sin reintentos ni guardar propuestas',async()=>{
+ const h=harness();
+ for(const body of [{mode:'city-guide',city:'Oulu',country:'Finlandia'},{mode:'city-guide',city:'',country:'Finlandia',consent:true},{mode:'city-guide',city:'Oulu',country:'Finlandia',consent:true,image}])assert.equal((await h.handler(h.request(body))).status,400);
+ assert.equal(h.calls.length,0);
+ const quota=harness({quota:true});assert.equal((await quota.handler(quota.request({mode:'city-guide',city:'Oulu',country:'Finlandia',consent:true}))).status,429);assert.equal(quota.inferences().length,1);
+ const bad=harness({receipt:{intro:'x',items:[{name:'A',description:'D',photoTip:''},{name:'a',description:'D',photoTip:''}]}});
+ assert.equal((await bad.handler(bad.request({mode:'city-guide',city:'Oulu',country:'Finlandia',consent:true}))).status,503);
+});

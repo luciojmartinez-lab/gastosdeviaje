@@ -347,7 +347,7 @@ test('el fondo del PDF usa OpenFreeMap sin clave y libera el mapa temporal al te
     const promise = context.routePdfBaseMap({latitude: 65, longitude: 25}, 5, 960, 900);
     assert.equal(created.options.style, 'https://tiles.openfreemap.org/styles/positron');
     assert.equal(created.options.zoom, 4, 'alinea la escala de MapLibre con la proyección de 256 píxeles');
-    assert.equal(created.options.pixelRatio, 1);
+    assert.equal(created.options.pixelRatio, 1.5);
     created.handlers[event]();
     const result = await promise;
     assert.equal(Boolean(result), event === 'idle');
