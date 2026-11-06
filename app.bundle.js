@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v071';
+const APP_VERSION = '800v072';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2955,7 +2955,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v071');
+    const worker = new Worker('./timeline-import-worker.js?v=800v072');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3965,7 +3965,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v071');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v072');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4895,7 +4895,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v071');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v072');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5031,7 +5031,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v071');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v072');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5585,7 +5585,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v071');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v072');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6078,7 +6078,7 @@ function isPdfDocument(type, name, data) {
 let pdfViewerControllerPromise;
 async function openPdfDocument(blob,name) {
   try{
-    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v071').then(module=>module.createPdfViewer(document)));
+    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v072').then(module=>module.createPdfViewer(document)));
     return await viewer.open(blob,name);
   }catch(error){pdfViewerControllerPromise=null;alert('No se ha podido abrir el visor PDF: '+(error.message||error));}
 }
@@ -9946,16 +9946,22 @@ function renderCityGuideFields(guide) {
 }
 function cityGuidePhotoHtml(index, item = {}) {
   const photo = globalThis.TourismPhotos?.normalize(item.photo);
-  return '<div class="city-guide-photo"><div data-guide-photo-preview="'+index+'">'+(photo?.data ? '<img src="'+photo.data+'" alt="Foto elegida de '+escapeHtml(item.name || 'este lugar')+'"><p class="small">'+escapeHtml(photo.author+' · '+photo.license)+' · <a href="'+escapeHtml(photo.sourceUrl)+'" target="_blank" rel="noopener noreferrer">Fuente y licencia</a></p><button type="button" class="ghost" data-guide-photo-remove="'+index+'">Quitar foto</button>' : '')+'</div><label>Buscar foto libre en Wikimedia<input maxlength="200" data-guide-photo-query="'+index+'" value="'+escapeHtml([item.name, activeCityGuide?.name].filter(Boolean).join(' ').slice(0,200))+'"></label><button type="button" class="ghost" data-guide-photo-search="'+index+'">Buscar foto libre</button><div class="city-guide-photo-results" data-guide-photo-results="'+index+'"></div></div>';
+  return '<div class="city-guide-photo"><div data-guide-photo-preview="'+index+'">'+(photo?.data ? '<p class="small"><strong>✓ Ya tiene foto</strong></p><img src="'+photo.data+'" alt="Foto elegida de '+escapeHtml(item.name || 'este lugar')+'"><p class="small">'+escapeHtml(photo.author+' · '+photo.license)+' · <a href="'+escapeHtml(photo.sourceUrl)+'" target="_blank" rel="noopener noreferrer">Fuente y licencia</a></p><button type="button" class="ghost" data-guide-photo-remove="'+index+'">Quitar foto</button>' : '')+'</div><label>Buscar foto libre en Wikimedia<input maxlength="200" data-guide-photo-query="'+index+'" value="'+escapeHtml([item.name, activeCityGuide?.name].filter(Boolean).join(' ').slice(0,200))+'"></label><button type="button" class="ghost" data-guide-photo-search="'+index+'">'+(photo?.data ? 'Buscar otra foto' : 'Buscar foto libre')+'</button><p class="small city-guide-photo-status" data-guide-photo-status="'+index+'" role="status" aria-live="polite"></p><div class="city-guide-photo-results" data-guide-photo-results="'+index+'"></div></div>';
 }
 async function cityGuidePhotoAction(event) {
   const button = event.target.closest?.('[data-guide-photo-search], [data-guide-photo-use], [data-guide-photo-remove]');
   if (!button || !activeCityGuide || cityGuideController) return;
   const current = activeCityGuide;
+  const photoIndex = Number(button.dataset.guidePhotoSearch ?? button.dataset.guidePhotoRemove ?? button.dataset.guidePhotoUse.split(':')[0]);
+  const photoStatus = (message, error = false) => {
+    const status = $('[data-guide-photo-status="'+photoIndex+'"]');
+    if (status) { status.textContent = message; status.classList.toggle('error', error); }
+  };
   if (button.dataset.guidePhotoRemove != null) {
     const index = Number(button.dataset.guidePhotoRemove); current.photos[index] = null;
     $('[data-guide-photo-preview="'+index+'"]').replaceChildren();
-    cityGuideStatus('Foto quitada de la ficha en edición. Guarda para aplicar el cambio.'); return;
+    $('[data-guide-photo-search="'+index+'"]').textContent = 'Buscar foto libre';
+    photoStatus('Foto quitada de la ficha en edición. Guarda para aplicar el cambio.'); return;
   }
   const controller = new AbortController(); cityGuideController = controller;
   const timer = setTimeout(() => controller.abort(), 25000);
@@ -9964,12 +9970,12 @@ async function cityGuidePhotoAction(event) {
   try {
     if (button.dataset.guidePhotoSearch != null) {
       const index = Number(button.dataset.guidePhotoSearch), query = $('[data-guide-photo-query="'+index+'"]').value;
-      cityGuideStatus('Buscando fotos con licencia de reutilización. Selecciona una imagen que corresponda al lugar.');
+      photoStatus('Buscando fotos con licencia de reutilización. Selecciona una imagen que corresponda al lugar.');
       const photos = await globalThis.TourismPhotos.search(query, {signal:controller.signal});
       if (activeCityGuide !== current) return;
       current.candidates[index] = photos;
       $('[data-guide-photo-results="'+index+'"]').innerHTML = photos.map((photo, n) => '<figure><img loading="lazy" referrerpolicy="no-referrer" src="'+escapeHtml(photo.url)+'" alt="'+escapeHtml(photo.title)+'"><figcaption><strong>'+escapeHtml(photo.title)+'</strong><p>'+escapeHtml(photo.author+' · '+photo.license)+'</p><a href="'+escapeHtml(photo.sourceUrl)+'" target="_blank" rel="noopener noreferrer">Fuente y licencia</a></figcaption><button type="button" class="btn" data-guide-photo-use="'+index+':'+n+'">Usar esta foto</button></figure>').join('');
-      cityGuideStatus(photos.length ? 'Elige una foto y después guarda la ficha. Si no corresponde al lugar, ajusta la búsqueda.' : 'No se encontraron fotos con licencia admitida. Prueba el nombre local del lugar y la ciudad.');
+      photoStatus(photos.length ? 'Elige una foto y después guarda la ficha. Si no corresponde al lugar, ajusta la búsqueda.' : 'No se encontraron fotos con licencia admitida. Prueba el nombre local del lugar y la ciudad.');
     } else {
       const [index, n] = button.dataset.guidePhotoUse.split(':').map(Number), candidate = current.candidates[index]?.[n];
       const blob = await globalThis.TourismPhotos.download(candidate, {signal:controller.signal});
@@ -9982,10 +9988,14 @@ async function cityGuidePhotoAction(event) {
       const wrapper = document.createElement('div'); wrapper.innerHTML = cityGuidePhotoHtml(index, item);
       $('[data-guide-photo-preview="'+index+'"]').innerHTML = wrapper.querySelector('[data-guide-photo-preview]').innerHTML;
       $('[data-guide-photo-results="'+index+'"]').replaceChildren();
-      cityGuideStatus('Foto elegida y reducida para el folleto, con autor y licencia. Guarda la información turística para conservarla.');
+      const preview = $('[data-guide-photo-preview="'+index+'"]');
+      preview.setAttribute('tabindex', '-1'); preview.focus({preventScroll:true});
+      preview.scrollIntoView?.({block:'nearest'});
+      $('[data-guide-photo-search="'+index+'"]').textContent = 'Buscar otra foto';
+      photoStatus('Foto elegida y reducida para el folleto, con autor y licencia. Guarda la información turística para conservarla.');
     }
   } catch (error) {
-    if (activeCityGuide === current) cityGuideStatus(error.name === 'AbortError' ? 'La búsqueda o descarga ha tardado demasiado. Puedes reintentarlo; no se ha cambiado la ficha guardada.' : error.message || 'No se pudo preparar la foto.', true);
+    if (activeCityGuide === current) photoStatus(error.name === 'AbortError' ? 'La búsqueda o descarga ha tardado demasiado. Puedes reintentarlo; no se ha cambiado la ficha guardada.' : error.message || 'No se pudo preparar la foto.', true);
   } finally {
     clearTimeout(timer); if (cityGuideController === controller) cityGuideController = null;
     if (activeCityGuide === current) { button.disabled = false; button.textContent = previous; $('#city-guide-propose').disabled = false; $('#city-guide-save').disabled = false; }
@@ -10644,7 +10654,7 @@ async function routeItineraryPdf(name, stages, note = '', options = {}) {
     }
   }
   canvas.width = 1; canvas.height = 1;
-  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v071'));
+  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v072'));
   return pdf.buildImagePdfBlob(pages, {margin: 24});
 }
 
@@ -15487,7 +15497,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v071');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v072');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16476,7 +16486,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v071').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v072').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -19518,7 +19528,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v071')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v072')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -19526,7 +19536,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v071')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v072')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -19567,12 +19577,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v071');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v072');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v071')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v071')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v072')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v072')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -21534,7 +21544,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v071');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v072');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

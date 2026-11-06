@@ -115,7 +115,7 @@ test('cerrar durante una búsqueda no aplica respuestas tardías y los fallos de
   assert.equal(context.saved, undefined);
   context.TourismPhotos.search = async () => {throw new Error('Sin conexión');};
   await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-search="0"]')});
-  assert.match(context.$('#city-guide-status').textContent, /Sin conexión/);
+  assert.match(context.$('[data-guide-photo-status="0"]').textContent, /Sin conexión/);
   assert.equal(context.$('#city-guide-save').disabled, false);
   assert.equal(context.cityGuideFormData().items[0].name, 'Lugar A');
 });
@@ -128,4 +128,32 @@ test('reduce una foto sin recortarla y libera el canvas; rechaza dimensiones exc
  await context.prepareCityGuidePhoto(new Blob(['jpeg']));assert.deepEqual(drawn,[800,533]);assert.equal(closed,1);
  context.loadImageFile=async()=>({width:12000,height:8000,close(){closed++;}});
  await assert.rejects(context.prepareCityGuidePhoto(new Blob(['jpeg'])),/tamaño reducido/);assert.equal(closed,2);
+});
+
+test('buscar mantiene el lugar actual; elegir y reabrir indica Ya tiene foto y permite cambiarla', async () => {
+  const {context,dom}=fixture(),scrolled=[];
+  dom.window.HTMLElement.prototype.scrollIntoView=function(){scrolled.push(this);};
+  const photo={title:'File:Oulu.jpg',author:'Autora',credit:'Own work',url:'https://upload.wikimedia.org/wikipedia/commons/a/ab/Oulu.jpg',sourceUrl:'https://commons.wikimedia.org/wiki/File:Oulu.jpg',license:'CC BY 4.0',licenseUrl:'https://creativecommons.org/licenses/by/4.0/'};
+  context.TourismPhotos.search=async()=>[photo];context.TourismPhotos.download=async()=>new Blob(['jpeg']);context.prepareCityGuidePhoto=async()=> 'data:image/jpeg;base64,/9j/AA==';
+  context.openCityGuide(2);scrolled.length=0;
+  context.$('[data-guide-name="2"]').value='Lugar tercero';
+  const search=context.$('[data-guide-photo-search="2"]');search.focus();
+  await context.cityGuidePhotoAction({target:search});
+  assert.equal(scrolled.length,0,'buscar no sube al aviso general ni desplaza el formulario');
+  assert.equal(dom.window.document.activeElement,search);
+  assert.match(context.$('[data-guide-photo-status="2"]').textContent,/Elige una foto/);
+  await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-use="2:0"]')});
+  assert.equal(scrolled.length,1);assert.equal(scrolled[0],context.$('[data-guide-photo-preview="2"]'));
+  assert.match(context.$('[data-guide-photo-preview="2"]').textContent,/Ya tiene foto/);
+  assert.equal(search.textContent,'Buscar otra foto');
+  await context.saveCityGuide();context.openCityGuide(2);
+  assert.match(context.$('[data-guide-photo-preview="1"]').textContent,/Ya tiene foto/,'se conserva el indicador tras guardar y reabrir; huecos vacíos se omiten');
+  assert.equal(context.$('[data-guide-photo-search="1"]').textContent,'Buscar otra foto');
+  scrolled.length=0;
+  context.TourismPhotos.search=async()=>{throw Error('Sin conexión');};
+  await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-search="1"]')});
+  assert.equal(scrolled.length,0);assert.match(context.$('[data-guide-photo-status="1"]').textContent,/Sin conexión/);
+  await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-remove="1"]')});
+  assert.equal(scrolled.length,0);assert.doesNotMatch(context.$('[data-guide-photo-preview="1"]').textContent,/Ya tiene foto/);
+  assert.equal(context.$('[data-guide-photo-search="1"]').textContent,'Buscar foto libre');
 });
