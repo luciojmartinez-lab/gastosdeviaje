@@ -6137,3 +6137,6 @@ footer {
 .route-lodging-share { display: block; margin: 12px 0; }
 .route-lodging-share input { width: 20px; height: 20px; vertical-align: middle; }
 @media (max-width: 600px) { .route-lodging-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.route-plan-route-control { display: block; margin: 12px 0; }
+.route-plan-route-control input { width: 20px; height: 20px; vertical-align: middle; }

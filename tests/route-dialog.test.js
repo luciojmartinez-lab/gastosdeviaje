@@ -171,7 +171,7 @@ test('el mapa muestra etiquetas y todas las etapas, agrupa visitas al mismo punt
   markers[0].querySelector('button').click();
   assert.match(dom.window.document.querySelector('#route-plan-label').textContent, /18-08 · 2 noches.*23-08 · 1 noche/);
   maps[0].handlers.load();
-  assert.equal(maps[0].source, undefined, 'el mapa no dibuja líneas entre puntos');
+  assert.equal(maps[0].source.data.geometry.coordinates.length, 1, 'la ruta no salta una etapa sin coordenadas');
   context.closeRoutePlanMap();
   assert.equal(maps[0].removed, true);
 });
@@ -322,6 +322,10 @@ test('el PDF se abre antes de compartir; cambios de formato, selección o alojam
   dom.window.document.querySelector('#route-share-pdf-format').value = 'brochure';
   context.renderRouteSharePreview(); assert.equal(share.disabled, true);
   await context.viewRoutePdf(); assert.equal(built, 2);
+  dom.window.document.body.insertAdjacentHTML('beforeend', '<input type="checkbox" id="route-plan-show-route" checked>');
+  dom.window.document.querySelector('#route-plan-show-route').checked = false;
+  context.renderRouteSharePreview(); assert.equal(share.disabled, true, 'cambiar la ruta exige volver a revisar el PDF');
+  dom.window.document.querySelector('#route-plan-show-route').checked = true;
   dom.window.document.querySelector('#route-share-lodgings').checked = false;
   context.renderRouteSharePreview(); assert.equal(share.disabled, true);
   assert.doesNotMatch(dom.window.document.querySelector('#route-share-preview').value, /Hotel visible|99/);
@@ -361,4 +365,17 @@ test('las etiquetas estáticas se mantienen en el mapa sin cubrir los puntos de 
     assert.ok(box.y >= 0 && box.y + box.h <= 300);
     for (const point of points) assert.equal(point.x > box.x && point.x < box.x + box.w && point.y > box.y && point.y < box.y + box.h, false);
   }
+});
+
+test('la ruta sigue el orden, conserva el regreso y no conecta etapas omitidas o sin coordenadas', () => {
+  const {context} = fixture();
+  const city = (lat, lng) => ({lat, lng});
+  const stages = [{number: 1, city: city(41, 2)}, {number: 2, city: city(60, 24)}, {number: 3, city: city(65, 25)}, {number: 4, city: city(41, 2)}];
+  const segments = context.routePlanSegments(stages);
+  assert.equal(segments.length, 3);
+  assert.equal(segments[0][0][0], 2); assert.equal(segments[0][1][0], 24);
+  assert.equal(segments[2][1][0], 2);
+  assert.equal(context.routePlanSegments([stages[0], stages[2], stages[3]]).length, 1);
+  stages[1].city = {lat: null, lng: null};
+  assert.equal(context.routePlanSegments(stages).length, 1);
 });

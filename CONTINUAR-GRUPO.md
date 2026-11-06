@@ -335,3 +335,11 @@ Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente p
 - Se puede excluir alojamientos y precios del texto y de ambos PDF. Las fichas sin completar o sin precio se indican como pendientes.
 - 500/500 pruebas pasan. Incluye precios y monedas, webs, reordenación repetida, vista previa obligatoria, exclusión de datos, limpieza de mapa temporal y posiciones de etiquetas. Ayuda y PDF regenerados (37 páginas, 332 bloques) y revisados; muestras Resumen, Folleto, origen/regreso y texto largo renderizadas con las funciones reales de exportación.
 - QA sin navegador/WebGL real: la maqueta PDF se revisó con el esquema de reserva. La carga real de OpenFreeMap, el visor y compartir en móvil físico quedan pendientes de revisión visual porque el navegador local está deshabilitado. Se comprobó la documentación oficial de OpenFreeMap y MapLibre. No se contrató ni activó ningún servicio de pago.
+
+## 800v067 — Ruta entre las etapas (06/11/2026)
+
+- Mostrar ruta entre etapas, activado inicialmente, une los puntos en el orden del viaje en el mapa interactivo, el mapa sencillo y ambos formatos PDF. Se puede ocultar conservando puntos y etiquetas.
+- Solo conecta etapas consecutivas con coordenadas. En exportaciones de una selección no salta etapas desmarcadas ni ciudades sin ubicación, y conserva los tramos de regreso. Es una unión orientativa, sin cálculo de carreteras o transportes.
+- La opción forma parte de la clave de la vista previa: cambiarla exige volver a Ver PDF antes de compartir el documento.
+- 501/501 pruebas pasan. Se comprueban orden, regreso, datos ausentes, selecciones parciales e invalidación de vista previa. PDF de folleto con ruta generado y revisado visualmente con el esquema de reserva. Ayuda HTML y PDF actualizados (37 páginas, 332 bloques), revisión visual y márgenes correctos.
+- Sigue pendiente revisar la línea sobre el fondo real en móvil; navegador local deshabilitado. No se añadieron servicios ni costes.

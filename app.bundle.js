@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v066';
+const APP_VERSION = '800v067';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2942,7 +2942,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v066');
+    const worker = new Worker('./timeline-import-worker.js?v=800v067');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3952,7 +3952,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v066');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v067');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4882,7 +4882,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v066');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v067');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5018,7 +5018,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v066');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v067');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5572,7 +5572,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v066');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v067');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6065,7 +6065,7 @@ function isPdfDocument(type, name, data) {
 let pdfViewerControllerPromise;
 async function openPdfDocument(blob,name) {
   try{
-    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v066').then(module=>module.createPdfViewer(document)));
+    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v067').then(module=>module.createPdfViewer(document)));
     return await viewer.open(blob,name);
   }catch(error){pdfViewerControllerPromise=null;alert('No se ha podido abrir el visor PDF: '+(error.message||error));}
 }
@@ -9980,6 +9980,26 @@ function routePlanStages(trip, stops) {
 }
 
 let routePlanMap = null;
+function routePlanSegments(stages) {
+  const segments = [];
+  for (let i = 1; i < stages.length; i++) {
+    const previous = stages[i - 1], current = stages[i];
+    if (current.number !== previous.number + 1 || !routePlanHasCoords(previous.city) || !routePlanHasCoords(current.city)) continue;
+    segments.push([previous.city, current.city].map(city => [Number(city.lng), Number(city.lat)]));
+  }
+  return segments;
+}
+
+function showRoutePlanRoute() { return $('#route-plan-show-route')?.checked !== false; }
+
+function syncRoutePlanRouteVisibility() {
+  const show = showRoutePlanRoute();
+  if (routePlanMap?.getLayer?.('route-plan-line')) routePlanMap.setLayoutProperty('route-plan-line', 'visibility', show ? 'visible' : 'none');
+  const lines = $('#route-plan-map .route-plan-lines');
+  if (lines) lines.style.display = show ? '' : 'none';
+  renderRouteSharePreview();
+}
+
 let routePlanShareState = null;
 function hideRoutePlanLabel() { $('#route-plan-label')?.remove(); }
 function showRoutePlanLabel(group, point, host, nameWidth = 0) {
@@ -10042,7 +10062,11 @@ function routePlanFallbackMap(stages, host) {
     const point = group[0], right = point.x < width / 2;
     return `<g role="button" tabindex="0" data-route-plan-point="${index}" aria-label="Ver etapas de ${escapeHtml(point.city.nombre)}"><circle cx="${point.x}" cy="${point.y}" r="8" fill="#0876c9"/><text x="${point.x + (right ? 14 : -14)}" y="${point.y + 4}" text-anchor="${right ? 'start' : 'end'}" font-size="12" paint-order="stroke" stroke="white" stroke-width="3" fill="#17263c">${escapeHtml(point.city.nombre)}</text></g>`;
   }).join('');
-  host.innerHTML = `<div class="route-plan-raster"><div class="map-tiles">${tiles.html}</div><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Puntos de las etapas; pulsa una ciudad para ver fechas y noches">${markers}</svg><div class="map-attribution">© OpenStreetMap · © CARTO</div></div>`;
+  const lines = routePlanSegments(stages).map(segment => {
+    const [from, to] = segment.map(([lng, lat]) => mapWorldPoint(lat, lng, zoom));
+    return `<line x1="${from.x - tiles.startX}" y1="${from.y - tiles.startY}" x2="${to.x - tiles.startX}" y2="${to.y - tiles.startY}" stroke="#0876c9" stroke-width="3" stroke-opacity="0.8"/>`;
+  }).join('');
+  host.innerHTML = `<div class="route-plan-raster"><div class="map-tiles">${tiles.html}</div><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Ruta y puntos de las etapas; pulsa una ciudad para ver fechas y noches"><g class="route-plan-lines" style="display:${showRoutePlanRoute() ? '' : 'none'}">${lines}</g>${markers}</svg><div class="map-attribution">© OpenStreetMap · © CARTO</div></div>`;
   const reveal = event => {
     const target = event.target.closest?.('[data-route-plan-point]');
     if (!target || (event.type === 'keydown' && !['Enter', ' '].includes(event.key))) return;
@@ -10117,6 +10141,8 @@ function openRoutePlanMap(trip, stops = tripRouteStops(trip), preview = false) {
     map.on('movestart', hideRoutePlanLabel);
     map.on('load', () => {
       if (routePlanMap !== map) return;
+      map.addSource('route-plan', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'MultiLineString', coordinates: routePlanSegments(stages)}}});
+      map.addLayer({id: 'route-plan-line', type: 'line', source: 'route-plan', layout: {visibility: showRoutePlanRoute() ? 'visible' : 'none'}, paint: {'line-color': '#0876c9', 'line-width': 3, 'line-opacity': 0.8}});
       map.resize();
       if (coordinates.length > 1) {
         const horizontal = Math.min(145, (host.clientWidth || 700) / 3);
@@ -10140,7 +10166,7 @@ function routeShareExportStages() {
 }
 
 function routePdfPreviewKey() {
-  return JSON.stringify([routePlanShareState?.name, routeShareExportStages(), $('#route-share-note')?.value || '', $('#route-share-pdf-format')?.value || 'summary']);
+  return JSON.stringify([routePlanShareState?.name, routeShareExportStages(), $('#route-share-note')?.value || '', $('#route-share-pdf-format')?.value || 'summary', showRoutePlanRoute()]);
 }
 
 function routeShareDate(date) {
@@ -10267,6 +10293,13 @@ async function drawRoutePdfMap(draw, stages, box, options = {}) {
   draw.save(); draw.beginPath(); draw.rect(box.x, box.y, box.w, box.h); draw.clip();
   if (image) draw.drawImage(image, box.x, box.y, box.w, box.h);
   draw.restore();
+  if (options.showRoute !== false) {
+    draw.strokeStyle = '#0876c9'; draw.lineWidth = 3;
+    routePlanSegments(stages).forEach(segment => {
+      const [from, to] = segment.map(([lng, lat]) => mapWorldPoint(lat, lng, zoom));
+      draw.beginPath(); draw.moveTo(box.x + from.x - layer.startX, box.y + from.y - layer.startY); draw.lineTo(box.x + to.x - layer.startX, box.y + to.y - layer.startY); draw.stroke();
+    });
+  }
   const groups = new Map();
   points.forEach((stage, i) => {
     const key = `${stage.city.lat},${stage.city.lng}`;
@@ -10295,6 +10328,7 @@ async function drawRoutePdfMap(draw, stages, box, options = {}) {
   const loaded = Boolean(image);
   draw.fillStyle = '#40596a'; draw.font = '17px Arial';
   draw.fillText(loaded ? '© OpenMapTiles · datos © OpenStreetMap / OpenFreeMap. Etapas seleccionadas.' : 'Esquema sin fondo cartográfico: no se pudo cargar el mapa. Etiquetas de las etapas seleccionadas.', box.x, box.y + box.h + 28);
+  if (options.showRoute !== false) draw.fillText('Ruta orientativa entre ciudades; no representa carreteras ni trayectos calculados.', box.x, box.y + box.h + 52);
   if (image) { image.width = 1; image.height = 1; }
   return loaded;
 }
@@ -10393,7 +10427,7 @@ async function routeItineraryPdf(name, stages, note = '', options = {}) {
     }
   }
   canvas.width = 1; canvas.height = 1;
-  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v066'));
+  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v067'));
   return pdf.buildImagePdfBlob(pages, {margin: 24});
 }
 
@@ -10402,11 +10436,12 @@ async function viewRoutePdf() {
   if (!stages.length || routeSharePdfBusy) return;
   const key = routePdfPreviewKey(), name = routePlanShareState.name || 'Itinerario';
   const note = $('#route-share-note')?.value || '', format = $('#route-share-pdf-format')?.value || 'summary';
+  const showRoute = showRoutePlanRoute();
   const status = $('#route-share-status');
   routeSharePdfBusy = true; renderRouteSharePreview(); status.textContent = 'Preparando PDF para revisar…';
   try {
     const cached = routePdfPreviewCache?.key === key ? routePdfPreviewCache : null;
-    const blob = cached?.blob || await routeItineraryPdf(name, stages, note, {format});
+    const blob = cached?.blob || await routeItineraryPdf(name, stages, note, {format, showRoute});
     if (key !== routePdfPreviewKey()) { status.textContent = 'Han cambiado los datos. Vuelve a pulsar Ver PDF.'; return; }
     const filename = format === 'brochure' ? 'folleto-viaje.pdf' : 'itinerario.pdf';
     await openPdfDocument(blob, filename);
@@ -15225,7 +15260,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v066');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v067');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16214,7 +16249,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v066').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v067').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -19256,7 +19291,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v066')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v067')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -19264,7 +19299,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v066')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v067')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -19305,12 +19340,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v066');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v067');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v066')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v066')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v067')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v067')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -19947,6 +19982,7 @@ function bindEvents() {
   $('#route-share-pdf').onclick = shareRoutePdf;
   $('#route-share-view-pdf').onclick = viewRoutePdf;
   $('#route-share-pdf-format').onchange = renderRouteSharePreview;
+  $('#route-plan-show-route').onchange = syncRoutePlanRouteVisibility;
   $('#route-share-lodgings').onchange = renderRouteSharePreview;
   ['all', 'none'].forEach(mode => {
     $(`#route-share-${mode}`).onclick = () => {
@@ -21252,7 +21288,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v066');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v067');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
