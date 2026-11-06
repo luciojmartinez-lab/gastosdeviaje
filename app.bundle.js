@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v074';
+const APP_VERSION = '800v075';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2955,7 +2955,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v074');
+    const worker = new Worker('./timeline-import-worker.js?v=800v075');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3965,7 +3965,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v074');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v075');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4895,7 +4895,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v074');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v075');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5031,7 +5031,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v074');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v075');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5585,7 +5585,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v074');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v075');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6078,7 +6078,7 @@ function isPdfDocument(type, name, data) {
 let pdfViewerControllerPromise;
 async function openPdfDocument(blob,name,viewOptions = {}) {
   try{
-    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v074').then(module=>module.createPdfViewer(document)));
+    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v075').then(module=>module.createPdfViewer(document)));
     return await viewer.open(blob,name,viewOptions);
   }catch(error){pdfViewerControllerPromise=null;alert('No se ha podido abrir el visor PDF: '+(error.message||error));}
 }
@@ -9933,7 +9933,7 @@ function cityTourism(value) {
 
 let activeCityGuide = null, pendingCityGuide = null, cityGuideController = null;
 function cityGuideFormData() {
-  return cityTourism({intro: $('#city-guide-intro').value, items: Array.from({length: 5}, (_, i) => ({name: $(`[data-guide-name="${i}"]`).value, description: $(`[data-guide-description="${i}"]`).value, photoTip: $(`[data-guide-photo="${i}"]`).value, photo: activeCityGuide?.photos?.[i]})), source: activeCityGuide?.source, reviewed: true});
+  return cityTourism({intro: $('#city-guide-intro').value, items: Array.from({length: 5}, (_, i) => ({name: $(`[data-guide-name="${i}"]`).value, description: $(`[data-guide-description="${i}"]`).value, photoTip: $(`[data-guide-photo="${i}"]`).value, photo: activeCityGuide?.photos?.[i]?.source === 'own' ? {...activeCityGuide.photos[i], author:$(`[data-guide-photo-author="${i}"]`).value} : activeCityGuide?.photos?.[i]})), source: activeCityGuide?.source, reviewed: true});
 }
 function renderCityGuideFields(guide) {
   if (activeCityGuide) { activeCityGuide.photos = guide.items.map(item => globalThis.TourismPhotos?.normalize(item.photo)); activeCityGuide.candidates = {}; activeCityGuide.photoChanges = new Set(); }
@@ -9944,16 +9944,22 @@ function renderCityGuideFields(guide) {
     return `<fieldset><legend>Lugar ${i + 1}</legend><label>Nombre<input maxlength="160" data-guide-name="${i}" value="${escapeHtml(item.name || '')}"></label><label>Qué ver<textarea rows="3" maxlength="700" data-guide-description="${i}">${escapeHtml(item.description || '')}</textarea></label><label>Consejo fotográfico<textarea rows="2" maxlength="400" data-guide-photo="${i}">${escapeHtml(item.photoTip || '')}</textarea></label>${cityGuidePhotoHtml(i, item)}${item.name ? `<a href="https://www.google.com/maps/search/?api=1&query=${query}" target="_blank" rel="noopener">Buscar lugar en el mapa</a>` : ''}</fieldset>`;
   }).join('');
 }
+function cityGuidePhotoCaption(photo) {
+  const source = photo.source === 'own' ? 'Foto propia' : photo.source === 'openverse' ? 'Openverse'+(photo.provider ? ' · '+photo.provider : '') : 'Wikimedia Commons';
+  return '<p class="small">'+escapeHtml(source)+'<br>'+escapeHtml(photo.author+' · '+photo.license)+(photo.scope === 'city' ? '<br>Foto general de '+escapeHtml(photo.city)+'; no identifica necesariamente este lugar.' : '')+(photo.sourceUrl ? ' · <a href="'+escapeHtml(photo.sourceUrl)+'" target="_blank" rel="noopener noreferrer">Fuente y licencia</a>' : '<br>No se atribuye una licencia libre a esta foto.')+'</p>';
+}
 function cityGuidePhotoHtml(index, item = {}) {
   const photo = globalThis.TourismPhotos?.normalize(item.photo);
   const pending = !activeCityGuide?.cityId || activeCityGuide?.photoChanges?.has(index);
-  return '<div class="city-guide-photo"><div data-guide-photo-preview="'+index+'">'+(photo?.data ? '<p class="small"><strong>'+ (pending ? '✓ Foto seleccionada · pendiente de guardar' : '✓ Ya tiene foto guardada') +'</strong></p><img src="'+photo.data+'" alt="Foto elegida de '+escapeHtml(item.name || 'este lugar')+'"><p class="small">'+escapeHtml(photo.author+' · '+photo.license)+(photo.scope === 'city' ? '<br>Foto general de '+escapeHtml(photo.city)+'; no identifica necesariamente este lugar.' : '')+' · <a href="'+escapeHtml(photo.sourceUrl)+'" target="_blank" rel="noopener noreferrer">Fuente y licencia</a></p><button type="button" class="ghost" data-guide-photo-remove="'+index+'">Quitar foto</button>' : '')+'</div><label>Buscar foto libre en Wikimedia<input maxlength="200" data-guide-photo-query="'+index+'" value="'+escapeHtml([item.name, activeCityGuide?.name].filter(Boolean).join(' ').slice(0,200))+'"></label><button type="button" class="ghost" data-guide-photo-search="'+index+'">'+(photo?.data ? 'Buscar otra foto' : 'Buscar foto libre')+'</button><button type="button" class="ghost" data-guide-photo-city="'+index+'" hidden>Ver fotos de '+escapeHtml(activeCityGuide?.name || 'la ciudad')+'</button><div class="city-guide-photo-progress"><progress hidden max="100" data-guide-photo-progress="'+index+'" aria-label="Progreso de la foto"></progress><span class="small" data-guide-photo-progress-text="'+index+'" role="status" aria-live="polite"></span></div><p class="small city-guide-photo-status" data-guide-photo-status="'+index+'" role="status" aria-live="polite"></p><div class="city-guide-photo-results" data-guide-photo-results="'+index+'"></div></div>';
+  return '<div class="city-guide-photo"><div data-guide-photo-preview="'+index+'">'+(photo?.data ? '<p class="small"><strong>'+ (pending ? '✓ Foto seleccionada · pendiente de guardar' : '✓ Ya tiene foto guardada') +'</strong></p><img src="'+photo.data+'" alt="Foto elegida de '+escapeHtml(item.name || 'este lugar')+'">'+cityGuidePhotoCaption(photo)+'<button type="button" class="ghost" data-guide-photo-remove="'+index+'">Quitar foto</button>' : '')+'</div><label>Buscar foto libre<input maxlength="200" data-guide-photo-query="'+index+'" value="'+escapeHtml([item.name, activeCityGuide?.name].filter(Boolean).join(' ').slice(0,200))+'"></label><label>Fuente de búsqueda<select data-guide-photo-source="'+index+'"><option value="auto">Wikimedia y Openverse</option><option value="wikimedia">Solo Wikimedia</option><option value="openverse">Solo Openverse</option></select></label><button type="button" class="ghost" data-guide-photo-search="'+index+'">'+(photo?.data ? 'Buscar otra foto' : 'Buscar foto libre')+'</button><button type="button" class="ghost" data-guide-photo-city="'+index+'" hidden>Ver fotos de '+escapeHtml(activeCityGuide?.name || 'la ciudad')+'</button><details class="city-guide-own-photo"><summary>Añadir foto propia</summary><p class="small">Elige una foto de tu autoría o que tengas permiso para incluir en el folleto. Se reduce en este dispositivo; no se envía a Google, Wikimedia ni Openverse.</p><label>Autor / créditos (opcional)<input maxlength="2000" data-guide-photo-author="'+index+'" value="'+escapeHtml(photo?.source === 'own' ? photo.author : '')+'"></label><label>Seleccionar foto propia<input type="file" accept="image/jpeg,image/png,image/webp" data-guide-photo-file="'+index+'"></label></details><div class="city-guide-photo-progress"><progress hidden max="100" data-guide-photo-progress="'+index+'" aria-label="Progreso de la foto"></progress><span class="small" data-guide-photo-progress-text="'+index+'" role="status" aria-live="polite"></span></div><p class="small city-guide-photo-status" data-guide-photo-status="'+index+'" role="status" aria-live="polite"></p><div class="city-guide-photo-results" data-guide-photo-results="'+index+'"></div></div>';
 }
 async function cityGuidePhotoAction(event) {
-  const button = event.target.closest?.('[data-guide-photo-search], [data-guide-photo-city], [data-guide-photo-use], [data-guide-photo-remove]');
+  const button = event.target.closest?.('[data-guide-photo-search], [data-guide-photo-city], [data-guide-photo-file], [data-guide-photo-use], [data-guide-photo-remove]');
   if (!button || !activeCityGuide || cityGuideController) return;
+  const ownFile = button.dataset.guidePhotoFile != null ? button.files?.[0] : null;
+  if (button.dataset.guidePhotoFile != null && !ownFile) return;
   const current = activeCityGuide;
-  const photoIndex = Number(button.dataset.guidePhotoSearch ?? button.dataset.guidePhotoCity ?? button.dataset.guidePhotoRemove ?? button.dataset.guidePhotoUse.split(':')[0]);
+  const photoIndex = Number(button.dataset.guidePhotoSearch ?? button.dataset.guidePhotoCity ?? button.dataset.guidePhotoFile ?? button.dataset.guidePhotoRemove ?? button.dataset.guidePhotoUse.split(':')[0]);
   const photoStatus = (message, error = false) => {
     const status = $('[data-guide-photo-status="'+photoIndex+'"]');
     if (status) { status.textContent = message; status.classList.toggle('error', error); }
@@ -9969,7 +9975,7 @@ async function cityGuidePhotoAction(event) {
       progressText.textContent = 'Descargando foto: '+percent+' % · '+Math.ceil(event.loaded/1024)+' / '+Math.ceil(event.total/1024)+' KB';
     } else {
       progress.removeAttribute('value');
-      progressText.textContent = event.phase === 'download' ? 'Descargando foto: '+Math.ceil(event.loaded/1024)+' KB recibidos' : event.phase === 'prepare' ? 'Reduciendo y preparando la foto…' : event.attempt > 1 ? 'Buscando también con un nombre simplificado…' : 'Buscando fotos…';
+      progressText.textContent = event.phase === 'download' ? 'Descargando foto: '+Math.ceil(event.loaded/1024)+' KB recibidos' : event.phase === 'prepare' ? 'Reduciendo y preparando la foto…' : event.source === 'Openverse' ? 'Buscando en Openverse…' : event.attempt > 1 ? 'Buscando también con un nombre simplificado…' : 'Buscando en Wikimedia…';
     }
   };
   if (button.dataset.guidePhotoRemove != null) {
@@ -9989,22 +9995,24 @@ async function cityGuidePhotoAction(event) {
       const index = photoIndex, query = cityOnly ? current.name : $('[data-guide-photo-query="'+index+'"]').value;
       photoStatus('Buscando fotos con licencia de reutilización. Selecciona una imagen que corresponda al lugar.');
       photoProgress({phase:'search'});
-      let photos = await globalThis.TourismPhotos.search(query, {signal:controller.signal, onProgress:photoProgress, city:current.name});
+      let photos = await globalThis.TourismPhotos.search(query, {signal:controller.signal, onProgress:photoProgress, city:current.name, source:$('[data-guide-photo-source="'+index+'"]')?.value || 'auto'});
       if (cityOnly) photos = photos.map(photo => ({...photo, scope:'city', city:current.name}));
       if (activeCityGuide !== current) return;
       current.candidates[index] = photos;
       const cityButton = $('[data-guide-photo-city="'+index+'"]');
       if (cityButton) cityButton.hidden = photos.length > 0 && !cityOnly;
       if (progress) progress.hidden = true; if (progressText) progressText.textContent = '';
-      $('[data-guide-photo-results="'+index+'"]').innerHTML = photos.map((photo, n) => '<figure><img loading="lazy" referrerpolicy="no-referrer" src="'+escapeHtml(photo.url)+'" alt="'+escapeHtml(photo.title)+'"><figcaption><strong>'+escapeHtml(photo.title)+'</strong><p>'+escapeHtml(photo.author+' · '+photo.license)+(photo.scope === 'city' ? '<br><strong>Foto general de '+escapeHtml(photo.city)+'; no necesariamente de este lugar.</strong>' : '')+'</p><a href="'+escapeHtml(photo.sourceUrl)+'" target="_blank" rel="noopener noreferrer">Fuente y licencia</a></figcaption><button type="button" class="btn" data-guide-photo-use="'+index+':'+n+'">Usar esta foto</button></figure>').join('');
-      photoStatus(photos.length ? (cityOnly ? 'Fotos generales de '+current.name+', no necesariamente de este lugar. ' : '')+'Estas son opciones de búsqueda: aún no están en el folleto. Pulsa Usar esta foto en la que prefieras y después guarda la ficha.' : cityOnly ? 'No hay fotos generales disponibles con licencia y datos completos. Puedes ajustar manualmente la búsqueda.' : 'No hay fotos disponibles para este nombre con licencia y datos completos. Prueba el nombre local o pulsa Ver fotos de la ciudad; no todos los lugares tienen una foto en Wikimedia.');
+      $('[data-guide-photo-results="'+index+'"]').innerHTML = photos.map((photo, n) => '<figure><img loading="lazy" referrerpolicy="no-referrer" src="'+escapeHtml(photo.url)+'" alt="'+escapeHtml(photo.title)+'"><figcaption><strong>'+escapeHtml(photo.title)+'</strong>'+cityGuidePhotoCaption(photo)+'</figcaption><button type="button" class="btn" data-guide-photo-use="'+index+':'+n+'">Usar esta foto</button></figure>').join('');
+      photoStatus(photos.length ? (cityOnly ? 'Fotos generales de '+current.name+', no necesariamente de este lugar. ' : '')+'Estas son opciones de búsqueda: aún no están en el folleto. Pulsa Usar esta foto en la que prefieras y después guarda la ficha.' : cityOnly ? 'No hay fotos generales disponibles con licencia y datos completos. Puedes ajustar manualmente la búsqueda.' : 'No hay fotos disponibles para este nombre con licencia y datos completos. Prueba el nombre local o pulsa Ver fotos de la ciudad; no todos los lugares tienen una foto libre. También puedes añadir una foto propia.');
     } else {
-      const [index, n] = button.dataset.guidePhotoUse.split(':').map(Number), candidate = current.candidates[index]?.[n];
-      photoProgress({phase:'download',loaded:0});
-      const blob = await globalThis.TourismPhotos.download(candidate, {signal:controller.signal, onProgress:photoProgress});
+      const [index, n] = ownFile ? [photoIndex, null] : button.dataset.guidePhotoUse.split(':').map(Number);
+      const candidate = ownFile ? {source:'own', title:ownFile.name.slice(0,500), author:$('[data-guide-photo-author="'+index+'"]').value} : current.candidates[index]?.[n];
+      if (ownFile && (!['image/jpeg','image/png','image/webp'].includes(ownFile.type) || ownFile.size > 25*1024*1024)) throw new Error('Elige una foto JPEG, PNG o WebP de hasta 25 MB.');
+      photoProgress({phase:ownFile ? 'prepare' : 'download',loaded:0});
+      const blob = ownFile || await globalThis.TourismPhotos.download(candidate, {signal:controller.signal, onProgress:photoProgress});
       if (controller.signal.aborted) throw new Error('Preparación cancelada.');
       photoProgress({phase:'prepare'});
-      const data = await prepareCityGuidePhoto(blob);
+      const data = await prepareCityGuidePhoto(blob, {own:!!ownFile});
       if (controller.signal.aborted || activeCityGuide !== current) return;
       current.photos[index] = globalThis.TourismPhotos.normalize({...candidate, data});
       if (!current.photos[index]?.data) throw new Error('No se pudo conservar la copia reducida con su licencia.');
@@ -10026,11 +10034,11 @@ async function cityGuidePhotoAction(event) {
     if (activeCityGuide === current) photoStatus(error.name === 'AbortError' ? 'La búsqueda o descarga ha tardado demasiado. Puedes reintentarlo; no se ha cambiado la ficha guardada.' : error.message || 'No se pudo preparar la foto.', true);
   } finally {
     clearTimeout(timer); if (cityGuideController === controller) cityGuideController = null;
-    if (activeCityGuide === current) { button.disabled = false; button.textContent = previous; $('#city-guide-propose').disabled = false; $('#city-guide-save').disabled = false; }
+    if (activeCityGuide === current) { button.disabled = false; button.textContent = previous; if (ownFile) button.value = ''; $('#city-guide-propose').disabled = false; $('#city-guide-save').disabled = false; }
   }
 }
-async function prepareCityGuidePhoto(blob) {
-  const image = await loadImageFile(blob), canvas = document.createElement('canvas');
+async function prepareCityGuidePhoto(blob, {own = false} = {}) {
+  const image = await loadImageFile(blob, own ? {maxDimension:1200} : {}), canvas = document.createElement('canvas');
   try {
     const width = image.naturalWidth || image.width, height = image.naturalHeight || image.height;
     if (!width || !height || width > 1600 || height > 1600) throw new Error('La foto no tiene un tamaño reducido válido.');
@@ -10661,9 +10669,9 @@ async function routeItineraryPdf(name, stages, note = '', options = {}) {
       } else {
         if (guide.intro) await paragraph(guide.intro);
         for (const [i, place] of guide.items.entries()) {
-          if (y > 1220) { await finishPage(); startPage(`${cityName} / Qué ver · continuación`); }
-          await paragraph(`${i + 1}. ${place.name}`, 'bold 26px Arial');
           const photo = globalThis.TourismPhotos?.normalize(place.photo);
+          if (y > (photo?.data ? 780 : 1220)) { await finishPage(); startPage(`${cityName} / Qué ver · continuación`); }
+          await paragraph(`${i + 1}. ${place.name}`, 'bold 26px Arial');
           if (photo?.data) {
             let image;
             try { image = await loadImageFile(dataUrlToBlob(photo.data)); } catch { /* El texto y los créditos siguen disponibles si la copia está dañada. */ }
@@ -10687,7 +10695,7 @@ async function routeItineraryPdf(name, stages, note = '', options = {}) {
     }
   }
   canvas.width = 1; canvas.height = 1;
-  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v074'));
+  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v075'));
   return pdf.buildImagePdfBlob(pages, {margin: 24});
 }
 
@@ -15530,7 +15538,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v074');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v075');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16519,7 +16527,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v074').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v075').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -19561,7 +19569,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v074')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v075')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -19569,7 +19577,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v074')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v075')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -19610,12 +19618,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v074');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v075');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v074')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v074')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v075')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v075')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -20746,7 +20754,8 @@ function bindEvents() {
   $('#city-guide-dialog').oncancel = event => {event.preventDefault(); closeCityGuide();};
   $('#city-guide-propose').onclick = proposeCityGuide;
   $('#city-guide-code-toggle').onclick = () => {const input = $('#city-guide-code'); input.type = input.type === 'password' ? 'text' : 'password'; $('#city-guide-code-toggle').textContent = input.type === 'password' ? 'Mostrar código' : 'Ocultar código';};
-  $('#city-guide-items').onclick = cityGuidePhotoAction;
+  $('#city-guide-items').onclick = event => { if (!event.target.matches?.('[data-guide-photo-file]')) return cityGuidePhotoAction(event); };
+  $('#city-guide-items').onchange = event => { if (event.target.matches?.('[data-guide-photo-file]')) return cityGuidePhotoAction(event); };
   $('#city-guide-form').onsubmit = event => {event.preventDefault(); void saveCityGuide();};
   $('#btn-add-lugar').onclick = async () => {
     try {
@@ -21577,7 +21586,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v074');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v075');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

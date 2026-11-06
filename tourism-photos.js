@@ -20,16 +20,30 @@
   }
   function normalize(value) {
     if (!value || typeof value !== 'object') return null;
+    const data = typeof value.data === 'string' && value.data.length <= 450000 && /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(value.data) ? value.data : '';
+    if (value.source === 'own') {
+      const title = text(value.title), author = text(value.author);
+      if (!data || !title || title.length > 500 || author.length > 2000) return null;
+      return {source:'own', title, author:author || 'Foto aportada por el usuario', credit:'Fotografía propia o utilizada con autorización del usuario.', license:'Uso autorizado por el usuario', licenseUrl:'', sourceUrl:'', url:'', data};
+    }
     const rights = license(value.license, value.licenseUrl), title = text(value.title), author = text(value.author), credit = text(value.credit);
-    const url = safeUrl(value.url, ['upload.wikimedia.org','thumb.wikimedia.org'], '/wikipedia/commons/');
-    const sourceUrl = safeUrl(value.sourceUrl, ['commons.wikimedia.org'], '/wiki/File:');
+    const openverse = value.source === 'openverse';
+    const id = String(value.openverseId || '');
+    if (openverse && !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id)) return null;
+    const url = openverse ? safeUrl(value.url, ['api.openverse.org'], `/v1/images/${id}/thumb/`) : safeUrl(value.url, ['upload.wikimedia.org','thumb.wikimedia.org'], '/wikipedia/commons/');
+    let sourceUrl = '';
+    if (openverse) {
+      try { const u = new URL(value.sourceUrl); if (u.protocol === 'https:' && !u.username && !u.password && !u.port && /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(u.hostname) && !/^[\d.]+$/.test(u.hostname) && !/\.(local|localhost|internal)$/i.test(u.hostname)) sourceUrl = u.href; } catch {}
+      if (url !== `https://api.openverse.org/v1/images/${id}/thumb/`) return null;
+    } else sourceUrl = safeUrl(value.sourceUrl, ['commons.wikimedia.org'], '/wiki/File:');
     if (!rights || !title || title.length > 500 || author.length > 2000 || credit.length > 3000 || !url || !sourceUrl || (/^CC BY/i.test(rights.license) && !author)) return null;
     const result = {title, author, credit, url, sourceUrl, ...rights};
+    if (openverse) { result.source='openverse'; result.openverseId=id; result.provider=text(value.provider).slice(0,100); }
     if (value.scope === 'city') {
       if (!text(value.city) || text(value.city).length > 120) return null;
       result.scope = 'city'; result.city = text(value.city);
     }
-    if (typeof value.data === 'string' && value.data.length <= 450000 && /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(value.data)) result.data = value.data;
+    if (data) result.data = data;
     return result;
   }
   function fromCommons(page) {
@@ -47,7 +61,33 @@
       seen.add(key); return key in dictionary ? dictionary[key] ? [dictionary[key]] : [] : [word];
     }).join(' ');
   }
-  async function search(query, {signal, fetchImpl = root.fetch, onProgress = () => {}, city = ''} = {}) {
+  function fromOpenverse(value) {
+    if (!value || value.mature !== false || value.unstable__sensitivity?.length) return null;
+    const type = value.license, version = value.license_version;
+    const name = ['by','by-sa'].includes(type) ? `CC ${type.toUpperCase()} ${version}` : type === 'cc0' ? 'CC0' : type === 'pdm' ? 'Public domain' : '';
+    if (!name) return null;
+    return normalize({source:'openverse', openverseId:value.id, title:value.title, author:value.creator, credit:value.attribution, license:name, licenseUrl:value.license_url, url:value.thumbnail, sourceUrl:value.foreign_landing_url, provider:value.source});
+  }
+  async function searchOpenverse(query, {signal, fetchImpl = root.fetch, onProgress = () => {}} = {}) {
+    const q = text(query);
+    if (!q || q.length > 200) throw new Error('Escribe el lugar y la ciudad (máximo 200 caracteres).');
+    const phrase = searchTerms(q) || q;
+    onProgress({phase:'search', source:'Openverse', query:phrase});
+    const params = new URLSearchParams({q:phrase, page_size:'8', license:'by,by-sa,cc0,pdm', mature:'false', excluded_source:'wikimedia'});
+    const response = await fetchImpl('https://api.openverse.org/v1/images/?'+params, {signal, credentials:'omit', referrerPolicy:'no-referrer'});
+    if (!response.ok) throw new Error(response.status === 429 ? 'Openverse ha alcanzado su límite gratuito. Prueba más tarde, elige Wikimedia o añade una foto propia; no se usará pago.' : 'Openverse no está disponible. Puedes elegir Wikimedia o una foto propia.');
+    const result = await response.json();
+    return (Array.isArray(result.results) ? result.results : []).map(fromOpenverse).filter(Boolean).slice(0,4);
+  }
+  async function search(query, options = {}) {
+    const source = options.source || 'wikimedia';
+    if (source === 'openverse') return searchOpenverse(query, options);
+    if (!['wikimedia','auto'].includes(source)) throw new Error('Fuente de fotos no válida.');
+    try { const photos = await searchCommons(query, options); if (photos.length || source !== 'auto') return photos; }
+    catch (error) { if (source !== 'auto' || error.name === 'AbortError' || options.signal?.aborted) throw error; }
+    return searchOpenverse(query, options);
+  }
+  async function searchCommons(query, {signal, fetchImpl = root.fetch, onProgress = () => {}, city = ''} = {}) {
     const q = text(query);
     if (!q || q.length > 200) throw new Error('Escribe el lugar y la ciudad (máximo 200 caracteres).');
     const alias = q.match(/\(([^)]+)\)/)?.[1];
@@ -68,6 +108,7 @@
   async function download(value, {signal, fetchImpl = root.fetch, onProgress = () => {}} = {}) {
     const photo = normalize(value);
     if (!photo) throw new Error('La foto no tiene una licencia de reutilización admitida.');
+    if (photo.source === 'own') throw new Error('La foto propia ya está en el dispositivo y no necesita descarga.');
     const response = await fetchImpl(photo.url, {signal, credentials:'omit', referrerPolicy:'no-referrer', redirect:'error'});
     if (!response.ok || !/^image\/(jpeg|png|webp)(?:;|$)/i.test(response.headers.get('content-type') || '') || Number(response.headers.get('content-length')) > 1500000) throw new Error('No se pudo descargar una copia reducida de la foto.');
     const total = Number(response.headers.get('content-length')) || null;
@@ -81,7 +122,8 @@
   }
   function credits(value) {
     const photo = normalize(value);
+    if (photo?.source === 'own') return [photo.title, `Autor: ${photo.author}`, photo.credit, 'No se atribuye una licencia libre a esta foto.', 'Copia reducida, sin recorte.'];
     return photo ? [photo.scope === 'city' ? `Foto general de ${photo.city}; no identifica necesariamente este lugar.` : '', photo.title, `Autor: ${photo.author || 'No indicado (dominio público)'}`, photo.credit ? `Crédito: ${photo.credit}` : '', `${photo.license} · ${photo.licenseUrl}`, `Fuente: ${photo.sourceUrl}`, 'Copia reducida, sin recorte.'].filter(Boolean) : [];
   }
-  root.TourismPhotos = {normalize, fromCommons, search, download, credits};
+  root.TourismPhotos = {normalize, fromCommons, fromOpenverse, search, download, credits};
 })(globalThis);

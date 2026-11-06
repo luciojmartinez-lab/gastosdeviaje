@@ -183,3 +183,19 @@ test('sin fotos exactas ofrece fotos generales solo al pulsar y conserva esa adv
  await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-use="0:0"]')});await context.saveCityGuide();context.openCityGuide(2);
  assert.equal(context.saved.tourism.items[0].photo.scope,'city');assert.match(context.$('[data-guide-photo-preview="0"]').textContent,/Foto general de Oulu/);
 });
+
+test('la foto propia se prepara sin red, conserva créditos y solo se persiste al guardar',async()=>{
+ const {context,dom}=fixture();context.openCityGuide(2);context.TourismPhotos.download=()=>assert.fail('No debe descargar');context.TourismPhotos.search=()=>assert.fail('No debe consultar');
+ const input=context.$('[data-guide-photo-file="0"]'),file=new dom.window.File(['jpeg'],'mi-foto.jpg',{type:'image/jpeg'});Object.defineProperty(input,'files',{configurable:true,value:[file]});
+ context.$('[data-guide-photo-author="0"]').value='Autora propia';
+ context.prepareCityGuidePhoto=async(blob,options)=>{assert.equal(blob,file);assert.equal(options.own,true);return 'data:image/jpeg;base64,/9j/AA==';};
+ await context.cityGuidePhotoAction({target:input});assert.equal(context.saved,undefined);assert.equal(context.cityGuideFormData().items[0].photo.source,'own');assert.match(context.$('[data-guide-photo-preview="0"]').textContent,/Foto propia/);assert.equal(context.$('[data-guide-photo-preview="0"] a'),null);
+ context.$('[data-guide-photo-author="0"]').value='Créditos corregidos';await context.saveCityGuide();assert.equal(context.saved.tourism.items[0].photo.author,'Créditos corregidos');context.openCityGuide(2);assert.match(context.$('[data-guide-photo-preview="0"]').textContent,/foto guardada/);
+});
+
+test('el selector de fuente llega al buscador y una foto propia inválida no borra la anterior',async()=>{
+ const {context,dom}=fixture();const previous={source:'own',title:'anterior.jpg',author:'Autora',data:'data:image/jpeg;base64,/9j/AA=='};context.state.lugares[1].tourism.items[0].photo=previous;context.openCityGuide(2);let source;
+ context.TourismPhotos.search=async(query,options)=>{source=options.source;return [];};context.$('[data-guide-photo-source="0"]').value='openverse';await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-search="0"]')});assert.equal(source,'openverse');
+ const input=context.$('[data-guide-photo-file="0"]');Object.defineProperty(input,'files',{value:[new dom.window.File(['pdf'],'archivo.pdf',{type:'application/pdf'})]});context.prepareCityGuidePhoto=()=>assert.fail('No debe decodificar PDF');
+ await context.cityGuidePhotoAction({target:input});assert.match(context.$('[data-guide-photo-status="0"]').textContent,/JPEG, PNG o WebP/);assert.equal(context.cityGuideFormData().items[0].photo.data,previous.data);assert.equal(context.saved,undefined);assert.equal(context.$('#city-guide-save').disabled,false);
+});

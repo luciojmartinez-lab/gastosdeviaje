@@ -6164,3 +6164,4 @@ footer {
 .pdf-continuous-sheet canvas[hidden] { display: none; }
 .pdf-viewer-controls input[type="checkbox"] { width: 20px; height: 20px; vertical-align: middle; }
 .city-guide-photo [data-guide-photo-city] { white-space: normal; max-width: 100%; margin: 6px 0; }
+.city-guide-photo select { width: 100%; box-sizing: border-box; } .city-guide-own-photo { margin: 12px 0; padding: 8px; border: 1px solid #d5e0e8; border-radius: 8px; } .city-guide-own-photo input[type="file"] { max-width: 100%; }

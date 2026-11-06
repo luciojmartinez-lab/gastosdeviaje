@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v074">
+  <link rel="manifest" href="manifest.webmanifest?v=800v075">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v074">
+  <link rel="stylesheet" href="styles.css?v=800v075">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v074 · 06/11/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v075 · 06/11/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v074</div>
+  <div class="app-version">800v075</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -1002,7 +1002,7 @@
   </form>
 </dialog>
 
-<dialog id="city-guide-dialog" class="modal city-guide-modal" aria-labelledby="city-guide-title"><form id="city-guide-form"><div class="modal-head"><h2 id="city-guide-title">Qué ver y fotografiar</h2><button type="button" class="ghost icon-btn" id="city-guide-close" aria-label="Cerrar información turística">×</button></div><p id="city-guide-context" class="small"></p><label>Introducción<textarea id="city-guide-intro" rows="3" maxlength="1200"></textarea></label><details><summary>Proponer cinco lugares con Gemini gratis</summary><p class="small">Solo se consultan el nombre de la ciudad y su país. Comparte la cuota gratuita de tickets. Se bloquea si no puede confirmarse la gratuidad. La propuesta puede contener errores: revisa lugares y consejos antes de guardar. No se comprueban horarios ni precios actuales.</p><label>Código de acceso (el mismo de Gastos y Grupo)<input type="password" id="city-guide-code" autocomplete="off"></label><button type="button" class="ghost" id="city-guide-code-toggle">Mostrar código</button><label><input type="checkbox" id="city-guide-consent"> Autorizo consultar esta ciudad y país a Google</label><button type="button" class="btn" id="city-guide-propose">Proponer lugares</button></details><p class="small">Fotos opcionales: busca en Wikimedia Commons, elige una que corresponda al lugar y guarda la ficha. Se consulta solo el texto de búsqueda. Autor, fuente y licencia se conservan en el folleto. La copia reducida queda disponible sin conexión y en los backups. No utiliza Gemini ni su cuota.</p><p id="city-guide-status" role="status" aria-live="polite"></p><div id="city-guide-items"></div><div class="actions"><button type="submit" class="btn" id="city-guide-save">Guardar información turística</button><button type="button" class="ghost" id="city-guide-cancel">Cancelar</button></div></form></dialog>
+<dialog id="city-guide-dialog" class="modal city-guide-modal" aria-labelledby="city-guide-title"><form id="city-guide-form"><div class="modal-head"><h2 id="city-guide-title">Qué ver y fotografiar</h2><button type="button" class="ghost icon-btn" id="city-guide-close" aria-label="Cerrar información turística">×</button></div><p id="city-guide-context" class="small"></p><label>Introducción<textarea id="city-guide-intro" rows="3" maxlength="1200"></textarea></label><details><summary>Proponer cinco lugares con Gemini gratis</summary><p class="small">Solo se consultan el nombre de la ciudad y su país. Comparte la cuota gratuita de tickets. Se bloquea si no puede confirmarse la gratuidad. La propuesta puede contener errores: revisa lugares y consejos antes de guardar. No se comprueban horarios ni precios actuales.</p><label>Código de acceso (el mismo de Gastos y Grupo)<input type="password" id="city-guide-code" autocomplete="off"></label><button type="button" class="ghost" id="city-guide-code-toggle">Mostrar código</button><label><input type="checkbox" id="city-guide-consent"> Autorizo consultar esta ciudad y país a Google</label><button type="button" class="btn" id="city-guide-propose">Proponer lugares</button></details><p class="small">Fotos opcionales: busca en Wikimedia u Openverse, o añade una foto propia. Elige una que corresponda al lugar y guarda la ficha. Se consulta solo el texto de búsqueda en la fuente elegida. La opción conjunta usa Openverse si Wikimedia no tiene opciones válidas. Revisa Fuente y licencia antes de usar una imagen. Autor, fuente y licencia se conservan en el folleto. La copia reducida queda disponible sin conexión y en los backups. No utiliza Gemini ni su cuota.</p><p id="city-guide-status" role="status" aria-live="polite"></p><div id="city-guide-items"></div><div class="actions"><button type="submit" class="btn" id="city-guide-save">Guardar información turística</button><button type="button" class="ghost" id="city-guide-cancel">Cancelar</button></div></form></dialog>
 
 <dialog id="route-plan-dialog" class="modal route-plan-modal" aria-labelledby="route-plan-title">
   <div class="modal-head"><h2 id="route-plan-title">Mapa de las etapas</h2><button type="button" class="ghost icon-btn" id="route-plan-close" aria-label="Cerrar mapa">×</button></div>
@@ -1421,26 +1421,26 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v074"></script>
-<script src="gpx-import.js?v=800v074"></script>
-<script src="timeline-routing.js?v=800v074"></script>
-<script src="map-model.js?v=800v074"></script>
-<script src="ticket-camera.js?v=800v074"></script>
-<script src="tourism-photos.js?v=800v074"></script>
-<script src="city-guide.js?v=800v074"></script>
-<script src="receipt-access.js?v=800v074"></script>
-<script src="expense-receipt-ai.js?v=800v074"></script>
-<script src="group-meals.js?v=800v074"></script>
-<script src="group-ledger.js?v=800v074"></script>
-<script src="group-store.js?v=800v074"></script>
-<script src="group-receipt.js?v=800v074"></script>
-<script src="group-travelers.js?v=800v074"></script>
-<script src="group-ui.js?v=800v074"></script>
-<script src="preparation.js?v=800v074"></script>
-<script src="app.bundle.js?v=800v074"></script>
+<script src="timeline-import.js?v=800v075"></script>
+<script src="gpx-import.js?v=800v075"></script>
+<script src="timeline-routing.js?v=800v075"></script>
+<script src="map-model.js?v=800v075"></script>
+<script src="ticket-camera.js?v=800v075"></script>
+<script src="tourism-photos.js?v=800v075"></script>
+<script src="city-guide.js?v=800v075"></script>
+<script src="receipt-access.js?v=800v075"></script>
+<script src="expense-receipt-ai.js?v=800v075"></script>
+<script src="group-meals.js?v=800v075"></script>
+<script src="group-ledger.js?v=800v075"></script>
+<script src="group-store.js?v=800v075"></script>
+<script src="group-receipt.js?v=800v075"></script>
+<script src="group-travelers.js?v=800v075"></script>
+<script src="group-ui.js?v=800v075"></script>
+<script src="preparation.js?v=800v075"></script>
+<script src="app.bundle.js?v=800v075"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v074';
+    const pageVersion = '800v075';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1495,7 +1495,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v074', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v075', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

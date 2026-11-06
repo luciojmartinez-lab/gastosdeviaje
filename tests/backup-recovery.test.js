@@ -86,7 +86,7 @@ test('no permite borrar cuentas referenciadas por gastos o transferencias', asyn
 });
 test('backup de viaje incluye la cuenta contraparte de una transferencia', () => {
   const state=fixture(); state.cuentas.push({id:21,nombre:'Base',moneda:'EUR',viajeId:null});
-  const ctx=vm.createContext({ state, Number, Set, Date, TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v074',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
+  const ctx=vm.createContext({ state, Number, Set, Date, TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v075',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c });
   vm.runInContext(section('function buildTripBackupData', '// Prepare every write'),ctx);
   const backup=ctx.buildTripBackupData(3); assert.ok(backup.cuentas.some(c=>c.id===21)); assert.equal(backup.transferencias.length,1);
 });
@@ -103,7 +103,7 @@ test('catálogo de viajeros y selección por viaje se restauran; importar un via
 
 test('exportación de un viaje incluye únicamente sus contactos y conserva el identificador de catálogo',()=>{
  const state=fixture();state.travelerCatalog=[{id:'ana',name:'Ana García',givenName:'Ana',surnames:'García'},{id:'otro',name:'Otro viajero'}];state.viajes[0].group={participants:[{id:'local',catalogId:'ana',name:'Ana García',active:false}]};
- const ctx=vm.createContext({state,Number,Set,Date,TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v074',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c});vm.runInContext(section('function buildTripBackupData','// Prepare every write'),ctx);
+ const ctx=vm.createContext({state,Number,Set,Date,TravelGroupTravelers:prepContext.TravelGroupTravelers,APP_VERSION:'800v075',ensureLocalDataUpdatedAt:()=>'',accountForBackup:c=>c});vm.runInContext(section('function buildTripBackupData','// Prepare every write'),ctx);
  const backup=ctx.buildTripBackupData(3);assert.equal(backup.travelerCatalog.length,1);assert.equal(backup.travelerCatalog[0].givenName,'Ana');assert.equal(backup.viajes[0].group.participants[0].catalogId,'ana');
 });
 
@@ -183,5 +183,18 @@ test('la copia completa y por viaje conservan foto turística y licencia sin vol
   if(mode==='all')await ctx.importAll(data);else await ctx.importTripBackup(data,50);
   const city=ctx.operations.find(op=>op.store==='lugares'&&op.data?.nombre==='Oulu').data;
   assert.equal(city.tourism.items[0].photo.data,photo.data);assert.equal(city.tourism.items[0].photo.author,'Autora');assert.equal(city.tourism.items[0].photo.licenseUrl,photo.licenseUrl);
+ }
+});
+
+test('backup completo y de viaje conservan fotos propias y Openverse con sus créditos',async()=>{
+ const dataUrl='data:image/jpeg;base64,/9j/AA==',id='12345678-1234-1234-1234-123456789abc';
+ const own={source:'own',title:'propia.jpg',author:'Autora propia',data:dataUrl};
+ const remote={source:'openverse',openverseId:id,title:'Ciudad',author:'Autor remoto',credit:'Crédito',license:'CC BY 4.0',licenseUrl:'https://creativecommons.org/licenses/by/4.0/',url:`https://api.openverse.org/v1/images/${id}/thumb/`,sourceUrl:'https://example.com/photo',data:dataUrl,provider:'flickr'};
+ for(const mode of ['all','trip']){
+  const data={...empty(),viajes:[{id:3,nombre:'Viaje',paisIds:[1],ciudadIds:[2]}],lugares:[{id:1,nombre:'Finlandia',parentId:null},{id:2,nombre:'Oulu',parentId:1,tourism:{intro:'Ciudad',reviewed:true,items:[{name:'Lugar propio',photo:own},{name:'Lugar remoto',photo:remote}]}}]};
+  const ctx=harness(mode==='all'?empty():{...empty(),viajes:[{id:50,nombre:'Destino'}]});if(mode==='all')await ctx.importAll(data);else await ctx.importTripBackup(data,50);
+  const saved=ctx.operations.find(op=>op.store==='lugares'&&op.data?.nombre==='Oulu').data.tourism.items;
+  assert.equal(saved[0].photo.source,'own');assert.equal(saved[0].photo.author,'Autora propia');assert.equal(saved[0].photo.data,dataUrl);assert.equal(saved[0].photo.licenseUrl,'');
+  assert.equal(saved[1].photo.source,'openverse');assert.equal(saved[1].photo.openverseId,id);assert.equal(saved[1].photo.data,dataUrl);assert.equal(saved[1].photo.licenseUrl,remote.licenseUrl);
  }
 });

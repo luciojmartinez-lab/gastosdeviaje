@@ -82,3 +82,28 @@ test('una foto general conserva su identificación en normalización y créditos
  assert.match(photos.credits(general).join('\n'),/Foto general de Jyväskylä; no identifica necesariamente este lugar/);
  assert.equal(photos.normalize({...photo,scope:'city',city:''}),null);
 });
+
+test('Openverse conserva autor y licencia y descarga únicamente su miniatura reconocida',async()=>{
+ const id='12345678-1234-1234-1234-123456789abc';
+ const item={id,title:'Lugar',creator:'Autora',attribution:'Crédito íntegro',license:'by-sa',license_version:'4.0',license_url:'https://creativecommons.org/licenses/by-sa/4.0/',thumbnail:`https://api.openverse.org/v1/images/${id}/thumb/`,foreign_landing_url:'https://www.flickr.com/photos/author/123',source:'flickr',mature:false};
+ const normalized=photos.fromOpenverse(item);assert.ok(normalized);assert.equal(normalized.source,'openverse');assert.equal(normalized.author,'Autora');assert.equal(normalized.provider,'flickr');
+ for(const change of [{mature:true},{license:'by-nc'},{thumbnail:'https://evil.example/photo.jpg'},{thumbnail:`https://api.openverse.org/v1/images/${id}/thumb/?full_size=true`},{foreign_landing_url:'javascript:alert(1)'},{creator:''},{unstable__sensitivity:['flag']}])assert.equal(photos.fromOpenverse({...item,...change}),null);
+ let called;
+ await photos.download(normalized,{fetchImpl:async url=>{called=url;return new Response('jpeg',{headers:{'content-type':'image/jpeg'}});}});assert.equal(called,item.thumbnail);
+ assert.match(photos.credits(normalized).join('\n'),/Autora/);assert.match(photos.credits(normalized).join('\n'),/flickr.com/);
+});
+
+test('la fuente conjunta usa Openverse solo si Wikimedia no ofrece fotos y no requiere credenciales',async()=>{
+ const id='12345678-1234-1234-1234-123456789abc',urls=[];
+ const item={id,title:'City',creator:'Autora',license:'by',license_version:'4.0',license_url:'https://creativecommons.org/licenses/by/4.0/',thumbnail:`https://api.openverse.org/v1/images/${id}/thumb/`,foreign_landing_url:'https://example.com/photo',mature:false};
+ const result=await photos.search('City',{source:'auto',fetchImpl:async(url,options)=>{urls.push(url);assert.equal(options.credentials,'omit');if(new URL(url).hostname==='commons.wikimedia.org')return Response.json({});return Response.json({results:[item]});}});
+ assert.equal(result.length,1);assert.equal(result[0].source,'openverse');assert.equal(urls.length,2);assert.match(urls[1],/^https:\/\/api.openverse.org/);
+ await assert.rejects(photos.search('City',{source:'openverse',fetchImpl:async()=>new Response('',{status:429})}),/límite gratuito/);
+});
+
+test('las fotos propias necesitan copia local y no reciben una licencia libre ni una URL externa',()=>{
+ const own=photos.normalize({source:'own',title:'foto.jpg',author:'Lucio',data:photo.data});assert.ok(own);assert.equal(own.source,'own');assert.equal(own.sourceUrl,'');assert.equal(own.licenseUrl,'');assert.equal(own.author,'Lucio');
+ assert.equal(photos.normalize({source:'own',title:'foto.jpg',data:'data:text/html;base64,AA=='}),null);
+ assert.match(photos.credits(own).join('\n'),/No se atribuye una licencia libre/);
+ assert.doesNotMatch(photos.credits(own).join('\n'),/creativecommons/);
+});
