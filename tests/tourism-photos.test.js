@@ -66,3 +66,19 @@ test('la descarga comunica bytes y total reales y avanza también sin Content-Le
   assert.equal(blob.size,300);assert.equal(events[0].loaded,0);assert.equal(events[0].total,known?300:null);assert.equal(events[1].loaded,100);assert.equal(events.at(-1).loaded,300);assert.equal(events.at(-1).total,300);
  }
 });
+
+test('traduce Universidad y edificio principal, elimina alias redundantes y conserva la ciudad',async()=>{
+ const queries=[];
+ await photos.search('Edificio principal de la Universidad de Jyväskylä Jyvaskyla',{city:'Jyvaskyla',fetchImpl:async url=>{queries.push(new URL(url).searchParams.get('gsrsearch'));return Response.json(queries.length===1?{}:{query:{pages:[page()]}});}});
+ assert.equal(queries[1],'building main university Jyväskylä filetype:bitmap');assert.equal(queries.length,2);
+ queries.length=0;
+ await photos.search('Parque Alvar Aalto (Alvar Aalto -puisto) Jyvaskyla',{city:'Jyvaskyla',fetchImpl:async url=>{queries.push(new URL(url).searchParams.get('gsrsearch'));return Response.json({});}});
+ assert.equal(queries.length,3);assert.equal(queries[1],'park Alvar Aalto Jyvaskyla filetype:bitmap');assert.equal(queries[2],'Alvar Aalto puisto Jyvaskyla filetype:bitmap');
+ for(const q of queries)assert.match(q,/Jyvaskyla/,'ninguna variante omite la ciudad o busca otro lugar silenciosamente');
+});
+
+test('una foto general conserva su identificación en normalización y créditos del folleto',()=>{
+ const general=photos.normalize({...photo,scope:'city',city:'Jyväskylä'});assert.equal(general.scope,'city');assert.equal(general.city,'Jyväskylä');
+ assert.match(photos.credits(general).join('\n'),/Foto general de Jyväskylä; no identifica necesariamente este lugar/);
+ assert.equal(photos.normalize({...photo,scope:'city',city:''}),null);
+});

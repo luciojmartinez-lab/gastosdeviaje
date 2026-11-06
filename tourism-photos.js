@@ -25,6 +25,10 @@
     const sourceUrl = safeUrl(value.sourceUrl, ['commons.wikimedia.org'], '/wiki/File:');
     if (!rights || !title || title.length > 500 || author.length > 2000 || credit.length > 3000 || !url || !sourceUrl || (/^CC BY/i.test(rights.license) && !author)) return null;
     const result = {title, author, credit, url, sourceUrl, ...rights};
+    if (value.scope === 'city') {
+      if (!text(value.city) || text(value.city).length > 120) return null;
+      result.scope = 'city'; result.city = text(value.city);
+    }
     if (typeof value.data === 'string' && value.data.length <= 450000 && /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(value.data)) result.data = value.data;
     return result;
   }
@@ -35,18 +39,20 @@
     return normalize({title: page.title, author: meta.Artist?.value, credit: meta.Attribution?.value || meta.Credit?.value, url: info.thumburl, sourceUrl: info.descriptionurl, license: meta.LicenseShortName?.value, licenseUrl: meta.LicenseUrl?.value});
   }
   function searchTerms(query) {
-    const dictionary = {plaza:'square',mercado:'market',isla:'',catedral:'cathedral',ayuntamiento:'city hall',iglesia:'church',parque:'park',museo:'museum',puente:'bridge',castillo:'castle',palacio:'palace',playa:'beach',torre:'tower',jardin:'garden',jardines:'gardens',biblioteca:'library'};
+    const dictionary = {plaza:'square',mercado:'market',isla:'',catedral:'cathedral',ayuntamiento:'city hall',iglesia:'church',parque:'park',museo:'museum',puente:'bridge',castillo:'castle',palacio:'palace',playa:'beach',torre:'tower',jardin:'garden',jardines:'gardens',biblioteca:'library',universidad:'university',edificio:'building',principal:'main',estacion:'station',ferrocarril:'railway',teatro:'theatre',monumento:'monument',estatua:'statue',puerto:'harbour',lago:'lake',rio:'river',mirador:'viewpoint',observatorio:'observatory',cementerio:'cemetery',monasterio:'monastery',fortaleza:'fortress',nacional:'national',botanico:'botanical',arte:'art',antiguo:'old',antigua:'old',historia:'history'};
     const seen = new Set();
-    return text(query).split(/\s+/).flatMap(word => {
+    return text(query).replace(/\([^)]*\)/g, ' ').replace(/[(),;:\[\]]/g, ' ').split(/\s+/).filter(Boolean).flatMap(word => {
       const key = word.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       if (seen.has(key) || ['de','del','la','las','el','los'].includes(key)) return [];
       seen.add(key); return key in dictionary ? dictionary[key] ? [dictionary[key]] : [] : [word];
     }).join(' ');
   }
-  async function search(query, {signal, fetchImpl = root.fetch, onProgress = () => {}} = {}) {
+  async function search(query, {signal, fetchImpl = root.fetch, onProgress = () => {}, city = ''} = {}) {
     const q = text(query);
     if (!q || q.length > 200) throw new Error('Escribe el lugar y la ciudad (máximo 200 caracteres).');
-    const queries = [...new Set([q, searchTerms(q)].filter(Boolean))];
+    const alias = q.match(/\(([^)]+)\)/)?.[1];
+    const local = alias && text(city) ? searchTerms(alias.replace(/-/g,' ')+' '+text(city)) : '';
+    const queries = [...new Set([q, searchTerms(q), local].filter(Boolean))];
     for (const [attempt, phrase] of queries.entries()) {
     onProgress({phase:'search', attempt:attempt+1, query:phrase});
     const params = new URLSearchParams({action:'query', format:'json', formatversion:'2', origin:'*', maxlag:'5', generator:'search', gsrsearch:phrase+' filetype:bitmap', gsrnamespace:'6', gsrlimit:'6', prop:'imageinfo', iiprop:'url|size|mime|extmetadata', iiurlwidth:'800', iiurlheight:'600'});
@@ -75,7 +81,7 @@
   }
   function credits(value) {
     const photo = normalize(value);
-    return photo ? [photo.title, `Autor: ${photo.author || 'No indicado (dominio público)'}`, photo.credit ? `Crédito: ${photo.credit}` : '', `${photo.license} · ${photo.licenseUrl}`, `Fuente: ${photo.sourceUrl}`, 'Copia reducida, sin recorte.'].filter(Boolean) : [];
+    return photo ? [photo.scope === 'city' ? `Foto general de ${photo.city}; no identifica necesariamente este lugar.` : '', photo.title, `Autor: ${photo.author || 'No indicado (dominio público)'}`, photo.credit ? `Crédito: ${photo.credit}` : '', `${photo.license} · ${photo.licenseUrl}`, `Fuente: ${photo.sourceUrl}`, 'Copia reducida, sin recorte.'].filter(Boolean) : [];
   }
   root.TourismPhotos = {normalize, fromCommons, search, download, credits};
 })(globalThis);

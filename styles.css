@@ -6163,3 +6163,4 @@ footer {
 .pdf-continuous-sheet canvas { display: block; }
 .pdf-continuous-sheet canvas[hidden] { display: none; }
 .pdf-viewer-controls input[type="checkbox"] { width: 20px; height: 20px; vertical-align: middle; }
+.city-guide-photo [data-guide-photo-city] { white-space: normal; max-width: 100%; margin: 6px 0; }

@@ -170,3 +170,16 @@ test('el progreso de foto permanece en su lugar y diferencia seleccionada de gua
  assert.equal(context.$('[data-guide-photo-progress="0"]').value,100);assert.match(context.$('[data-guide-photo-preview="0"]').textContent,/pendiente de guardar/);
  await context.saveCityGuide();context.openCityGuide(2);assert.match(context.$('[data-guide-photo-preview="0"]').textContent,/foto guardada/);
 });
+
+test('sin fotos exactas ofrece fotos generales solo al pulsar y conserva esa advertencia al guardar',async()=>{
+ const {context}=fixture();context.openCityGuide(2);const queries=[];
+ const photo={title:'File:Oulu.jpg',author:'Autora',credit:'Own work',url:'https://upload.wikimedia.org/wikipedia/commons/a/ab/Oulu.jpg',sourceUrl:'https://commons.wikimedia.org/wiki/File:Oulu.jpg',license:'CC BY 4.0',licenseUrl:'https://creativecommons.org/licenses/by/4.0/'};
+ context.TourismPhotos.search=async query=>{queries.push(query);return query==='Oulu'?[photo]:[];};
+ await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-search="0"]')});
+ assert.equal(queries.length,1);assert.equal(context.$('[data-guide-photo-city="0"]').hidden,false);assert.equal(context.saved,undefined);
+ await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-city="0"]')});
+ assert.equal(queries.length,2);assert.equal(queries[1],'Oulu');assert.match(context.$('[data-guide-photo-results="0"]').textContent,/Foto general de Oulu/);
+ context.TourismPhotos.download=async()=>new Blob(['jpeg']);context.prepareCityGuidePhoto=async()=> 'data:image/jpeg;base64,/9j/AA==';
+ await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-use="0:0"]')});await context.saveCityGuide();context.openCityGuide(2);
+ assert.equal(context.saved.tourism.items[0].photo.scope,'city');assert.match(context.$('[data-guide-photo-preview="0"]').textContent,/Foto general de Oulu/);
+});
