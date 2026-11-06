@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v060';
+const APP_VERSION = '800v061';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2935,7 +2935,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v060');
+    const worker = new Worker('./timeline-import-worker.js?v=800v061');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3945,7 +3945,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v060');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v061');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4875,7 +4875,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v060');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v061');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5011,7 +5011,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v060');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v061');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5565,7 +5565,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v060');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v061');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6058,7 +6058,7 @@ function isPdfDocument(type, name, data) {
 let pdfViewerControllerPromise;
 async function openPdfDocument(blob,name) {
   try{
-    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v060').then(module=>module.createPdfViewer(document)));
+    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v061').then(module=>module.createPdfViewer(document)));
     return await viewer.open(blob,name);
   }catch(error){pdfViewerControllerPromise=null;alert('No se ha podido abrir el visor PDF: '+(error.message||error));}
 }
@@ -9756,28 +9756,26 @@ function renderRouteDialog() {
   const rows = routeEditorState.stops.map((stop, index) => `
     <tr class="route-stop-row" draggable="true" data-route-row="${index}">
       <td><input type="number" min="1" max="${Math.max(1, routeEditorState.stops.length)}" value="${index + 1}" data-route-position="${index}" aria-label="Número de parada"></td>
-      <td><select data-route-city="${index}" aria-label="Ciudad de la parada ${index + 1}">${optionHtml(stop.cityId)}</select></td>
+      <td><div class="route-stop-city"><select data-route-city="${index}" aria-label="Ciudad de la parada ${index + 1}">${optionHtml(stop.cityId)}</select><div class="route-stop-actions">
+        <button type="button" class="ghost icon-btn" data-route-up="${index}" title="Subir parada" aria-label="Subir parada ${index + 1}">↑</button>
+        <button type="button" class="ghost icon-btn" data-route-down="${index}" title="Bajar parada" aria-label="Bajar parada ${index + 1}">↓</button>
+        <button type="button" class="ghost icon-btn" data-route-delete="${index}" title="Borrar parada" aria-label="Eliminar parada ${index + 1}">×</button>
+      </div></div></td>
       <td><select data-route-role="${index}" aria-label="Tipo de la parada ${index + 1}">${routeStopRoleOptionsHtml(stop.role)}</select></td>
       <td><input type="date" min="${escapeHtml(trip.fechaInicio || '')}" max="${escapeHtml(trip.fechaFin || '')}" value="${escapeHtml(stop.date || '')}" data-route-date="${index}" aria-label="Día previsto de la parada ${index + 1}"></td>
-      <td class="route-stop-actions">
-        <button type="button" class="ghost icon-btn" data-route-up="${index}" title="Subir parada">↑</button>
-        <button type="button" class="ghost icon-btn" data-route-down="${index}" title="Bajar parada">↓</button>
-        <button type="button" class="ghost icon-btn" data-route-delete="${index}" title="Borrar parada">×</button>
-      </td>
     </tr>
   `).join('');
   body.innerHTML = `
     <p class="small route-help">Indica si cada parada es destino, tránsito o inicio/regreso. El día previsto es opcional; permite que el mapa de cada día muestre solamente lo que corresponde.</p>
     <div class="table-wrap route-table-wrap">
       <table class="route-stops-table">
-        <thead><tr><th>Nº</th><th>Ciudad</th><th>Tipo</th><th>Día previsto</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>Nº</th><th>Ciudad y acciones</th><th>Tipo</th><th>Día previsto</th></tr></thead>
         <tbody>
-          ${rows || '<tr><td colspan="5" class="small">Todavía no hay paradas planificadas.</td></tr>'}
+          ${rows || '<tr><td colspan="4" class="small">Todavía no hay paradas planificadas.</td></tr>'}
           <tr class="route-add-row">
             <td>${routeEditorState.stops.length + 1}</td>
-            <td><select id="route-add-city" aria-label="Añadir ciudad">${optionHtml('')}</select></td>
+            <td><div class="route-stop-city"><select id="route-add-city" aria-label="Añadir ciudad">${optionHtml('')}</select><button type="button" class="btn ghost icon-btn" data-route-add="1" title="Añadir parada">+</button></div></td>
             <td colspan="2" class="small">Añade la parada y después elige su tipo y día.</td>
-            <td><button type="button" class="btn ghost icon-btn" data-route-add="1" title="Añadir parada">+</button></td>
           </tr>
         </tbody>
       </table>
@@ -14645,7 +14643,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v060');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v061');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15634,7 +15632,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v060').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v061').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -18666,7 +18664,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v060')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v061')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -18674,7 +18672,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v060')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v061')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -18715,12 +18713,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v060');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v061');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v060')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v060')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v061')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v061')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -20621,7 +20619,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v060');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v061');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

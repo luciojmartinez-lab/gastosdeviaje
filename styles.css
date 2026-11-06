@@ -1224,7 +1224,7 @@ input[type="checkbox"] {
 
 .route-stops-table th:nth-child(2),
 .route-stops-table td:nth-child(2) {
-  width: 220px;
+  width: 350px;
 }
 
 .route-stops-table th:nth-child(3),
@@ -1256,6 +1256,23 @@ input[type="checkbox"] {
 .route-stop-actions {
   display: flex;
   gap: 5px;
+}
+
+.route-stop-city {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.route-stop-city select {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+}
+
+.route-stop-city .route-stop-actions {
+  flex: none;
 }
 
 .route-stop-actions .icon-btn,
@@ -4919,7 +4936,7 @@ footer {
 
   .route-stops-table th:nth-child(2),
   .route-stops-table td:nth-child(2) {
-    width: 190px;
+    width: 300px;
   }
 
   .route-stops-table th:nth-child(3),
@@ -6048,3 +6065,39 @@ footer {
 
 .group-item-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
 .group-item-actions > button { width: 100%; min-width: 0; min-height: 44px; padding: 8px 6px; white-space: normal; font-size: 0.9rem; }
+
+/* Paradas: ciudad y acciones siempre visibles en la anchura del móvil. */
+@media (max-width: 600px) {
+  #route-dialog .route-table-wrap { overflow-x: hidden; }
+  #route-dialog .route-stops-table { display: block; width: 100%; min-width: 0; }
+  #route-dialog .route-stops-table thead { display: none; }
+  #route-dialog .route-stops-table tbody { display: block; }
+  #route-dialog .route-stops-table tr {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border, #ddd);
+  }
+  #route-dialog .route-stops-table td {
+    display: block;
+    width: auto;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+  #route-dialog .route-stops-table td:first-child { grid-column: 1; grid-row: 1; align-self: center; }
+  #route-dialog .route-stops-table td:nth-child(2) { grid-column: 2 / 4; grid-row: 1; }
+  #route-dialog .route-stop-row td:nth-child(3) { grid-column: 2; grid-row: 2; }
+  #route-dialog .route-stop-row td:nth-child(4) { grid-column: 3; grid-row: 2; }
+  #route-dialog .route-stop-row td:nth-child(3)::before { content: 'Tipo'; }
+  #route-dialog .route-stop-row td:nth-child(4)::before { content: 'Día previsto'; }
+  #route-dialog .route-stop-row td:nth-child(n+3)::before { display: block; margin-bottom: 3px; font-size: 11px; }
+  #route-dialog .route-stops-table input,
+  #route-dialog .route-stops-table select { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
+  #route-dialog .route-stop-city select { width: 0; }
+  #route-dialog .route-stop-actions { gap: 3px; }
+  #route-dialog .route-stop-actions .icon-btn,
+  #route-dialog .route-add-row .icon-btn { flex: 0 0 32px; width: 32px; height: 40px; min-height: 40px; padding: 0; font-size: 19px; }
+  #route-dialog .route-add-row td:nth-child(3) { grid-column: 2 / 4; grid-row: 2; }
+}

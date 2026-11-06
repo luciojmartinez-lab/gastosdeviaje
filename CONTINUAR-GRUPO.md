@@ -281,3 +281,11 @@ Publicación 800v059: main 644432a enviado a GitHub y servido automáticamente p
 800v060 (04/11/2026): botón ✓ Validar al final de cada concepto/unidad desplegada, en la misma fila que Quitar concepto. Delega en closeConcept, exactamente como check/signo: confirmación de reparto compartido, cálculo de porciones, validación de unidades, cierre con Hecho o modal de seguir editando/cerrar sin marcar. Comprueba el concepto completo aunque haya varias unidades desglosadas; no guarda ni cierra la comida.
 Validación local 800v060: 481/481 pruebas pasan (tmp/tests-800v060.log). Cobertura existente ampliada ejecuta el reparto compartido desde Validar (dos), check (tres) y signo (cinco), y un faltante fraccionado desde Validar. Mantiene borrador/reapertura, selección y céntimos. Chrome con app completa y datos sintéticos a 390×844: botones Validar/Quitar concepto en paralelo; Validar ofrece confirmar tres comensales y, tras Sí, pliega el concepto y marca Hecho sin subir. Captura tmp/validar-800v060.png. Sin llamadas IA ni datos reales modificados. Ayuda HTML/PDF regenerados (36 páginas/330 bloques), revisión visual y ninguna palabra fuera de márgenes.
 Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente por Netlify. tmp/verify-v060.mjs confirma código/HTML/versión/caché 800v060, botón Validar y ayuda correspondiente; PDF del manual idéntico al regenerado. Servidor local detenido y viewport restaurado. .codex-attachments permanece fuera de Git.
+
+## 800v061 — Acciones de paradas visibles en móvil (06/11/2026)
+
+- Subir, Bajar y Eliminar se muestran junto al selector de cada ciudad, también en escritorio. Añadir queda junto al selector de ciudad nueva.
+- En móvil (hasta 600 px), cada parada ocupa dos líneas: número, ciudad y acciones arriba; Tipo y Día previsto debajo. No requiere desplazamiento horizontal para ordenar o eliminar.
+- Ayuda HTML actualizada y PDF regenerado: 36 páginas, 330 bloques. Revisión visual del PDF y comprobación de márgenes sin incidencias.
+- 481/481 pruebas correctas. Comprobación DOM adicional de once paradas: todas las acciones están dentro de la celda de ciudad y conservan sus índices.
+- Revisión visual del navegador no disponible: el control local está deshabilitado en los ajustes de Work. No se ha probado esta versión en un móvil físico.
