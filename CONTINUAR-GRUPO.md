@@ -343,3 +343,10 @@ Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente p
 - La opción forma parte de la clave de la vista previa: cambiarla exige volver a Ver PDF antes de compartir el documento.
 - 501/501 pruebas pasan. Se comprueban orden, regreso, datos ausentes, selecciones parciales e invalidación de vista previa. PDF de folleto con ruta generado y revisado visualmente con el esquema de reserva. Ayuda HTML y PDF actualizados (37 páginas, 332 bloques), revisión visual y márgenes correctos.
 - Sigue pendiente revisar la línea sobre el fondo real en móvil; navegador local deshabilitado. No se añadieron servicios ni costes.
+
+## 800v068 — Nombres de ciudades en el mapa del PDF (06/11/2026)
+
+- Por preferencia de Lucio, el mapa de ambos PDF muestra ruta, puntos y solo nombres de ciudades. Fechas y noches permanecen en la tabla; una ciudad repetida en el mismo punto tiene un solo nombre en el mapa y conserva todas sus visitas en la tabla.
+- Las etiquetas emergentes del mapa interactivo conservan sus detalles al pulsar, sin mostrarlos por defecto.
+- Información turística: sigue pendiente según la separación de alcance confirmada por Lucio (mapa y compartir primero; lugares de interés después). No se han añadido atracciones ni propuestas de Gemini.
+- 501/501 pruebas pasan. Ayuda HTML y PDF actualizados (37 páginas, 332 bloques), renderizados y revisados; muestra de folleto con nombres sin fechas/noches revisada. Sin cambios en datos reales ni servicios.
