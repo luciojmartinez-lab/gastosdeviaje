@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {JSDOM} from 'jsdom';
+import '../tourism-photos.js';
 import '../city-guide.js';
 
 const {CityGuide} = globalThis;
@@ -11,7 +12,7 @@ const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const guide = {intro: 'Ciudad de prueba', items: [{name: 'Lugar A', description: 'Descripción A', photoTip: 'Consejo A'}], reviewed: true};
 function fixture() {
   const dom = new JSDOM(html);
-  const context = {CityGuide, AbortController, setTimeout, clearTimeout, routePlanShareState: null,
+  const context = {CityGuide, TourismPhotos: {...globalThis.TourismPhotos}, document: dom.window.document, AbortController, setTimeout, clearTimeout, routePlanShareState: null,
     $: selector => dom.window.document.querySelector(selector),
     $$: selector => [...dom.window.document.querySelectorAll(selector)],
     state: {lugares: [{id: 1, nombre: 'Finlandia'}, {id: 2, nombre: 'Oulu', parentId: 1, tourism: JSON.parse(JSON.stringify(guide))}]},
@@ -76,4 +77,55 @@ test('la propuesta usa solo ciudad y país, requiere consentimiento y no sustitu
   assert.equal(context.saved, undefined);
   assert.equal(context.state.lugares[1].tourism.items[0].name, 'Lugar A');
   assert.match(context.$('#city-guide-status').textContent, /Revisa/);
+});
+
+test('elegir foto conserva cambios de texto, no guarda sin confirmar y Cancelar descarta la elección', async () => {
+  const {context} = fixture();
+  const photo = {title:'File:Oulu.jpg', author:'Fotógrafo', credit:'Own work', url:'https://upload.wikimedia.org/wikipedia/commons/a/ab/Oulu.jpg', sourceUrl:'https://commons.wikimedia.org/wiki/File:Oulu.jpg', license:'CC BY 4.0', licenseUrl:'https://creativecommons.org/licenses/by/4.0/'};
+  context.TourismPhotos.search = async () => [photo];
+  context.TourismPhotos.download = async () => new Blob(['jpeg']);
+  context.prepareCityGuidePhoto = async () => 'data:image/jpeg;base64,/9j/AA==';
+  context.openCityGuide(2);
+  context.$('[data-guide-description="0"]').value = 'Mi descripción editada';
+  await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-search="0"]')});
+  assert.equal(context.saved, undefined);
+  await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-use="0:0"]')});
+  assert.equal(context.$('[data-guide-description="0"]').value, 'Mi descripción editada');
+  assert.equal(context.cityGuideFormData().items[0].photo.author, 'Fotógrafo');
+  assert.equal(context.saved, undefined);
+  context.closeCityGuide(); context.openCityGuide(2);
+  assert.equal(context.cityGuideFormData().items[0].photo, undefined);
+  await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-search="0"]')});
+  await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-use="0:0"]')});
+  await context.saveCityGuide();
+  assert.equal(context.saved.tourism.items[0].photo.data, 'data:image/jpeg;base64,/9j/AA==');
+  context.openCityGuide(2);
+  await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-remove="0"]')});
+  await context.saveCityGuide();
+  assert.equal(context.saved.tourism.items[0].photo, undefined);
+});
+
+test('cerrar durante una búsqueda no aplica respuestas tardías y los fallos dejan la ficha editable', async () => {
+  const {context} = fixture(); let finish;
+  context.TourismPhotos.search = () => new Promise(resolve=>{finish=resolve;});
+  context.openCityGuide(2);
+  const pending = context.cityGuidePhotoAction({target:context.$('[data-guide-photo-search="0"]')});
+  context.closeCityGuide(); context.openCityGuide(2); finish([]); await pending;
+  assert.equal(context.$('#city-guide-save').disabled, false);
+  assert.equal(context.saved, undefined);
+  context.TourismPhotos.search = async () => {throw new Error('Sin conexión');};
+  await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-search="0"]')});
+  assert.match(context.$('#city-guide-status').textContent, /Sin conexión/);
+  assert.equal(context.$('#city-guide-save').disabled, false);
+  assert.equal(context.cityGuideFormData().items[0].name, 'Lugar A');
+});
+
+test('reduce una foto sin recortarla y libera el canvas; rechaza dimensiones excesivas',async()=>{
+ const {context}=fixture();let closed=0,drawn;
+ context.loadImageFile=async()=>({width:1200,height:800,close(){closed++;}});
+ context.document={createElement:()=>({getContext:()=>({fillRect(){},drawImage(...args){drawn=args.slice(3);}})})};
+ context.canvasToJpeg=async()=>new Blob(['jpeg']);context.readBlobAsDataUrl=async()=> 'data:image/jpeg;base64,/9j/AA==';
+ await context.prepareCityGuidePhoto(new Blob(['jpeg']));assert.deepEqual(drawn,[800,533]);assert.equal(closed,1);
+ context.loadImageFile=async()=>({width:12000,height:8000,close(){closed++;}});
+ await assert.rejects(context.prepareCityGuidePhoto(new Blob(['jpeg'])),/tamaño reducido/);assert.equal(closed,2);
 });

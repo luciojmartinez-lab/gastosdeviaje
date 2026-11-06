@@ -21,7 +21,8 @@
         if (strict) throw new Error('La propuesta tiene lugares vacíos o repetidos.');
         continue;
       }
-      seen.add(key(name)); items.push({name, description, photoTip});
+      const photo = root.TourismPhotos?.normalize(item?.photo);
+      seen.add(key(name)); items.push({name, description, photoTip, ...(photo ? {photo} : {})});
     }
     return {intro: clean(value.intro, 1200), items, source: value.source === 'gemini' ? 'gemini' : 'manual', reviewed: value.reviewed === true};
   }

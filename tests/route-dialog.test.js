@@ -394,7 +394,7 @@ test('el PDF coloca tabla y noches debajo del mapa, continúa sin perder etapas 
       CityGuide: {destinations: stages => stages.slice(0, 1)},
       builder: {buildImagePdfBlob: () => new Blob(['pdf'])}
     };
-    runInNewContext(source.slice(source.indexOf('async function routeItineraryPdf('), source.indexOf('async function viewRoutePdf(')).replace("  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v070'));", '  const pdf = builder;'), context);
+    runInNewContext(source.slice(source.indexOf('async function routeItineraryPdf('), source.indexOf('async function viewRoutePdf(')).replace("  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v071'));", '  const pdf = builder;'), context);
     const stages = Array.from({length: 30}, (_, i) => ({number: i+1, city: {id: i+1, nombre: 'Ciudad '+(i+1)}, date: '2027-08-18', departureDate: '2027-08-20', nights: 2, tourism: {intro: 'INTRO TURISMO', items: [{name: 'Lugar turístico', description: 'Descripción'}], reviewed: true}}));
     await context.routeItineraryPdf('Prueba', stages, '', {format});
     const first = pages[0];
@@ -413,5 +413,20 @@ test('el PDF coloca tabla y noches debajo del mapa, continúa sin perder etapas 
     }
     else assert.equal(tourismPage, -1);
     for (const page of pages) assert.ok(page.every(t => t.y < 1500), 'sin texto fuera de página');
+  }
+});
+
+test('el folleto usa la foto guardada sin red, conserva créditos y continúa si está dañada', async () => {
+  await import('../tourism-photos.js');
+  const photo={title:'File:Cathedral.jpg',author:'Autora de prueba',credit:'Crédito completo',url:'https://upload.wikimedia.org/wikipedia/commons/a/ab/Cathedral.jpg',sourceUrl:'https://commons.wikimedia.org/wiki/File:Cathedral.jpg',license:'CC BY-SA 4.0',licenseUrl:'https://creativecommons.org/licenses/by-sa/4.0/',data:'data:image/jpeg;base64,/9j/AA=='};
+  for(const fail of [false,true]){
+    const texts=[];let images=0,closed=0;
+    const draw={scale(){},fillRect(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},fillText(text){texts.push(text);},drawImage(){images++;}};
+    const context={TourismPhotos:globalThis.TourismPhotos,document:{createElement:()=>({getContext:()=>draw})},blogShareWrappedLines:(draw,text)=>text?[text]:[],canvasJpegBlob:async()=>new Blob(['page']),drawRoutePdfMap:async()=>{},routeShareDate:d=>d,routeLodgingLines:()=>[],cityTourism:value=>value,CityGuide:{destinations:s=>s},builder:{buildImagePdfBlob:()=>new Blob(['pdf'])},dataUrlToBlob:data=>{assert.equal(data,photo.data);return new Blob(['jpeg']);},loadImageFile:async()=>{if(fail)throw Error('Imagen dañada');return{width:800,height:600,close(){closed++;}};},fetch:()=>{throw Error('No debe consultar internet al preparar el PDF');}};
+    runInNewContext(source.slice(source.indexOf('async function routeItineraryPdf('),source.indexOf('async function viewRoutePdf(')).replace("  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v071'));",'  const pdf = builder;'),context);
+    await context.routeItineraryPdf('Viaje',[{number:1,city:{nombre:'Ciudad'},date:'2027-08-18',departureDate:'2027-08-20',nights:2,tourism:{intro:'Intro',items:[{name:'Catedral',description:'Texto conservado',photo}],reviewed:true}}],'',{format:'brochure'});
+    assert.equal(images,fail?0:1);assert.equal(closed,fail?0:1);
+    const text=texts.join('\n');for(const value of [photo.author,photo.licenseUrl,photo.sourceUrl,'Texto conservado'])assert.ok(text.includes(value));
+    if(fail)assert.match(text,/Foto guardada no disponible/);
   }
 });
