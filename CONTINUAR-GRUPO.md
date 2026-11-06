@@ -360,3 +360,10 @@ Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente p
 - Botón Folleto / informe en Mapa, también sin coordenadas, abre el espacio de etapas y documentos del viaje seleccionado.
 - 512/512 pruebas pasan. Ayuda y PDF regenerados: 38 páginas, 338 bloques, sin texto fuera de márgenes; revisión visual del manual y muestras de resumen, folleto, regreso y textos largos. La información turística comienza en la página 2.
 - QA con datos sintéticos y esquema cartográfico de reserva. Navegador local deshabilitado; pendiente comprobar el gesto de arrastre y aspecto final en móvil físico. No se consumió cuota real de Gemini ni se modificaron datos reales. La comprobación de producción consulta solo la capacidad pública del backend, sin inferencia.
+
+## 800v070 — Tabla debajo del mapa y turismo al final (06/11/2026)
+
+- En Resumen y Folleto la tabla de etapas, fechas y noches comienza debajo del mapa en la misma página. Continúa en páginas adicionales con cabecera cuando no cabe, sin omitir filas. El mapa reserva espacio para el comienzo del recorrido.
+- Orden final del Folleto solicitado por Lucio: mapa, tabla del recorrido, alojamientos y, al final, información turística. Se conservan selección, datos guardados y revisión obligatoria del PDF antes de compartir.
+- 513/513 pruebas pasan; nueva comprobación de la composición real con 30 etapas en ambos formatos y orden de todos los alojamientos antes de turismo. Ayuda y PDF regenerados: 38 páginas, 338 bloques; revisión visual de manual y muestras de resumen, folleto, regreso y textos largos. No hay texto fuera de los márgenes del manual.
+- Fotos: solo se analizó viabilidad. No se descargaron ni incorporaron imágenes externas; Google permite buscar licencias pero exige verificar condiciones. Wikimedia Commons es una alternativa gratuita con atribución según cada archivo. Sin nuevos servicios, pagos, llamadas reales a Gemini ni cambios en datos del usuario. Navegador local sigue deshabilitado; QA PDF con datos sintéticos y esquema de reserva.

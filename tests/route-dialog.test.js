@@ -379,3 +379,39 @@ test('la ruta sigue el orden, conserva el regreso y no conecta etapas omitidas o
   stages[1].city = {lat: null, lng: null};
   assert.equal(context.routePlanSegments(stages).length, 1);
 });
+
+test('el PDF coloca tabla y noches debajo del mapa, continúa sin perder etapas y deja turismo después', async () => {
+  for (const format of ['summary', 'brochure']) {
+    const pages = []; let texts = [];
+    const draw = {scale() {}, fillRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText(text, x, y) { texts.push({text, x, y}); }};
+    const canvas = {getContext: () => draw};
+    const context = {
+      document: {createElement: () => canvas},
+      blogShareWrappedLines: (draw, text) => text ? String(text).split('\n') : [],
+      canvasJpegBlob: async () => {pages.push(texts); texts = []; return new Blob(['page']);},
+      drawRoutePdfMap: async (draw, stages, box) => draw.fillText('MAPA', box.x, box.y),
+      routeShareDate: date => date, routeLodgingLines: () => ['ALOJAMIENTO DE PRUEBA'], cityTourism: value => value,
+      CityGuide: {destinations: stages => stages.slice(0, 1)},
+      builder: {buildImagePdfBlob: () => new Blob(['pdf'])}
+    };
+    runInNewContext(source.slice(source.indexOf('async function routeItineraryPdf('), source.indexOf('async function viewRoutePdf(')).replace("  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v070'));", '  const pdf = builder;'), context);
+    const stages = Array.from({length: 30}, (_, i) => ({number: i+1, city: {id: i+1, nombre: 'Ciudad '+(i+1)}, date: '2027-08-18', departureDate: '2027-08-20', nights: 2, tourism: {intro: 'INTRO TURISMO', items: [{name: 'Lugar turístico', description: 'Descripción'}], reviewed: true}}));
+    await context.routeItineraryPdf('Prueba', stages, '', {format});
+    const first = pages[0];
+    assert.ok(first.find(t => t.text === 'MAPA'));
+    assert.ok(first.find(t => t.text === 'Noches'));
+    assert.ok(first.find(t => t.text === 'Ciudad 1'));
+    assert.ok(first.find(t => t.text === 'Noches').y > first.find(t => t.text === 'MAPA').y);
+    const tablePage = pages.findIndex(page => page.some(t => t.text === 'Ciudad 30'));
+    assert.ok(tablePage > 0, 'el recorrido largo continúa en otras páginas');
+    for (let i=1; i<=30; i++) assert.equal(pages.flat().filter(t => t.text === 'Ciudad '+i).length, 1);
+    const tourismPage = pages.findIndex(page => page.some(t => t.text === 'INTRO TURISMO'));
+    if (format === 'brochure') {
+      const lodgingPage = pages.findLastIndex(page => page.some(t => t.text === 'ALOJAMIENTO DE PRUEBA'));
+      assert.ok(lodgingPage >= tablePage);
+      assert.ok(tourismPage > lodgingPage, 'turismo después de todos los alojamientos');
+    }
+    else assert.equal(tourismPage, -1);
+    for (const page of pages) assert.ok(page.every(t => t.y < 1500), 'sin texto fuera de página');
+  }
+});
