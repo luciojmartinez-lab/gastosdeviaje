@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v062';
+const APP_VERSION = '800v063';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -198,6 +198,8 @@ const blogPointMapGesture = {
 const routeEditorState = {
   tripId: null,
   stops: [],
+  lastDate: '',
+  parentDialogs: [],
   dragIndex: null,
   optionMode: 'expenses'
 };
@@ -2935,7 +2937,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v062');
+    const worker = new Worker('./timeline-import-worker.js?v=800v063');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3945,7 +3947,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v062');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v063');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4875,7 +4877,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v062');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v063');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5011,7 +5013,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v062');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v063');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5565,7 +5567,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v062');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v063');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6058,7 +6060,7 @@ function isPdfDocument(type, name, data) {
 let pdfViewerControllerPromise;
 async function openPdfDocument(blob,name) {
   try{
-    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v062').then(module=>module.createPdfViewer(document)));
+    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v063').then(module=>module.createPdfViewer(document)));
     return await viewer.open(blob,name);
   }catch(error){pdfViewerControllerPromise=null;alert('No se ha podido abrir el visor PDF: '+(error.message||error));}
 }
@@ -9786,6 +9788,7 @@ function renderRouteDialog() {
 function openRouteDialog(trip, options = {}) {
   const dialog = $('#route-dialog');
   if (!dialog) return;
+  routeEditorState.parentDialogs = $$('dialog[open]').filter(parent => parent !== dialog);
   const gastos = gastosForSelectorTripScope('#map-viaje')
     .filter(g => Number(g.viajeId) === Number(trip.id));
   const mapCityIds = mapRouteCities(gastos, 0)
@@ -9797,6 +9800,7 @@ function openRouteDialog(trip, options = {}) {
     ? tripRouteStops(trip)
     : normalizeTripRouteStops(trip, mapCityIds);
   routeEditorState.dragIndex = null;
+  routeEditorState.lastDate = [...routeEditorState.stops].reverse().find(stop => tripDateWithinRange(stop.date, trip))?.date || '';
   routeEditorState.optionMode = options.optionMode || 'expenses';
   $('#route-dialog-title').textContent = `Añadir / modificar paradas de ${trip.nombre}`;
   setMessage('#msg-route-dialog', '');
@@ -9805,15 +9809,37 @@ function openRouteDialog(trip, options = {}) {
   else dialog.setAttribute('open', 'open');
 }
 
-function closeRouteDialog() {
+function closeRouteDialog({ saved = false } = {}) {
   const dialog = $('#route-dialog');
+  const parents = routeEditorState.parentDialogs || [];
   routeEditorState.tripId = null;
   routeEditorState.stops = [];
+  routeEditorState.lastDate = '';
+  routeEditorState.parentDialogs = [];
   routeEditorState.dragIndex = null;
   routeEditorState.optionMode = 'expenses';
   if (!dialog) return;
   if (dialog.close) dialog.close();
   else dialog.removeAttribute('open');
+  if (saved) parents.slice().reverse().forEach(parent => {
+    if (!parent.open) return;
+    if (parent.id === 'form-dialog') closeFormDialog();
+    else if (parent.id === 'trip-review-dialog') closeTripReviewDialog();
+    else if (parent.close) parent.close();
+    else parent.removeAttribute('open');
+  });
+}
+
+function prepareRouteDateInput(input) {
+  if (!input || typeof input.matches !== 'function' || !input.matches('input[data-route-date]') || input.value) return;
+  const stop = routeEditorState.stops[Number(input.dataset.routeDate)];
+  const trip = state.viajes.find(v => Number(v.id) === Number(routeEditorState.tripId));
+  if (!stop || !trip) return;
+  const seed = tripDateWithinRange(routeEditorState.lastDate, trip) ? routeEditorState.lastDate : trip.fechaInicio;
+  if (!tripDateWithinRange(seed, trip)) return;
+  input.value = seed;
+  stop.date = seed;
+  routeEditorState.lastDate = seed;
 }
 
 async function saveRouteDialog() {
@@ -9854,7 +9880,7 @@ async function saveRouteDialog() {
   });
   tripMapState.showPlanned = true;
   resetTripMapView();
-  closeRouteDialog();
+  closeRouteDialog({ saved: true });
   await loadAll();
   setSelectedTrips([trip.id]);
   renderLugarSelectors();
@@ -14649,7 +14675,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v062');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v063');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15638,7 +15664,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v062').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v063').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -18670,7 +18696,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v062')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v063')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -18678,7 +18704,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v062')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v063')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -18719,12 +18745,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v062');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v063');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v062')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v062')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v063')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v063')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -20010,6 +20036,8 @@ function bindEvents() {
     if (!target.closest('.currency-code-field')) hideCurrencySuggestions();
   });
 
+  document.addEventListener('pointerdown', event => prepareRouteDateInput(event.target));
+  document.addEventListener('focusin', event => prepareRouteDateInput(event.target));
   document.addEventListener('change', event => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
@@ -20040,6 +20068,8 @@ function bindEvents() {
     if (target instanceof HTMLInputElement && target.dataset.routeDate) {
       const index = Number(target.dataset.routeDate);
       if (routeEditorState.stops[index]) routeEditorState.stops[index].date = target.value || '';
+      const trip = state.viajes.find(v => Number(v.id) === Number(routeEditorState.tripId));
+      if (tripDateWithinRange(target.value, trip)) routeEditorState.lastDate = target.value;
       return;
     }
     if (target instanceof HTMLInputElement && target.dataset.routePosition) {
@@ -20625,7 +20655,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v062');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v063');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

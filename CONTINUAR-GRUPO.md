@@ -297,3 +297,11 @@ Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente p
 - Los cinco títulos Crear de Configuración pasan a Crear/Editar. Versión y fecha de portada/ayuda sincronizadas.
 - Ayuda HTML y PDF regenerados, 36 páginas, revisión visual y márgenes correctos. 484/484 pruebas pasan, incluidas tres de regresión de calendario y guardado.
 - El navegador local sigue deshabilitado; no se ha verificado el selector nativo de Android en un dispositivo físico.
+
+## 800v063 — Fechas consecutivas y cierre de ventanas de ruta (06/11/2026)
+
+- Al entrar en un Día previsto vacío se rellena con la última fecha introducida en la edición, o el inicio del viaje si no hay ninguna. Al abrir una ruta existente se toma la última parada fechada. No se reemplazan fechas existentes ni se rellenan paradas no abiertas; se puede borrar la propuesta.
+- Los eventos pointerdown y focusin preparan el valor antes del selector nativo; change recuerda la última fecha válida.
+- Guardar ruta cierra el editor y las ventanas modales que estaban debajo al abrirlo. Cancelar conserva esas ventanas. Los errores de validación o persistencia no cierran nada.
+- Menú y desplegable renombrados Añadir/Editar otros viajeros según petición pendiente de Lucio.
+- 486/486 pruebas correctas. Ayuda y PDF regenerados (36 páginas), revisados visualmente y sin palabras fuera de los márgenes. Navegador local deshabilitado: queda pendiente verificar el calendario nativo en Android físico.

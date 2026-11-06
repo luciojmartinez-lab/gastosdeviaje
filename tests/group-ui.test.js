@@ -41,7 +41,7 @@ test('check de viajero responde antes de guardar, muestra actividad y revierte s
 test('Otros viajeros explica Yo automático, oculta su casilla y lo incluye al crear comidas',async()=>{
  const ui=await setup();try{
   const group=ui.state.viajes[0].group,own=group.participants.find(p=>p.id===group.selfId);
-  assert.equal(own.name,'Yo');assert.equal(own.id,'p0');assert.equal(ui.$('[data-traveler-select="'+own.catalogId+'"]'),null);assert.match(ui.$('#config-viajeros').textContent,/no necesitas añadirte ni marcarte/);assert.equal(ui.$('#travelers-panel > summary').textContent,'Otros viajeros');assert.equal(ui.$('#group-self').hidden,true);
+  assert.equal(own.name,'Yo');assert.equal(own.id,'p0');assert.equal(ui.$('[data-traveler-select="'+own.catalogId+'"]'),null);assert.match(ui.$('#config-viajeros').textContent,/no necesitas añadirte ni marcarte/);assert.equal(ui.$('#travelers-panel > summary').textContent,'Añadir/Editar otros viajeros');assert.equal(ui.$('#group-self').hidden,true);
   ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);assert.equal(ui.$('[data-group-attendee="p0"]').checked,true);assert.match(ui.$('[data-group-attendee="p0"]').closest('label').textContent,/Yo/);
  }finally{ui.close();}
 });

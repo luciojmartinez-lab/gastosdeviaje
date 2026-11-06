@@ -22,7 +22,7 @@ function fixture(date = '') {
   for (const [start, end] of [
     ['function tripDateWithinRange(', 'function tripRouteArrivalDates('],
     ['function renderRouteDialog(', 'function openRouteDialog('],
-    ['async function saveRouteDialog(', 'function photoMapRecordKey(']
+    ['function closeRouteDialog(', 'function photoMapRecordKey(']
   ]) runInNewContext(source.slice(source.indexOf(start), source.indexOf(end)), context);
   context.renderRouteDialog();
   return {context, dom};
@@ -52,5 +52,45 @@ test('las fechas de parada válidas y el día opcional vacío se conservan al gu
     const {context} = fixture(date);
     await context.saveRouteDialog();
     assert.equal(context.saved.routeStops[0].date, date);
+  }
+});
+
+test('un día vacío propone inicio del viaje o la última fecha y respeta las fechas existentes', () => {
+  const {context, dom} = fixture();
+  const input = dom.window.document.querySelector('[data-route-date]');
+  context.prepareRouteDateInput(input);
+  assert.equal(input.value, '2027-09-06');
+  assert.equal(context.routeEditorState.stops[0].date, '2027-09-06');
+  input.value = '';
+  context.routeEditorState.lastDate = '2027-09-14';
+  context.prepareRouteDateInput(input);
+  assert.equal(input.value, '2027-09-14');
+  input.value = '2027-09-20';
+  context.prepareRouteDateInput(input);
+  assert.equal(input.value, '2027-09-20');
+  input.value = '';
+  context.routeEditorState.lastDate = '2028-01-01';
+  context.prepareRouteDateInput(input);
+  assert.equal(input.value, '2027-09-06');
+});
+
+test('guardar cierra las ventanas de origen; cancelar las conserva; un error no cierra ninguna', async () => {
+  for (const action of ['save', 'cancel', 'invalid', 'failure']) {
+    const {context, dom} = fixture('2027-09-14');
+    dom.window.document.body.insertAdjacentHTML('beforeend', '<dialog id="origin" open></dialog><dialog id="unrelated" open></dialog><dialog id="route-dialog" open></dialog>');
+    const parent = dom.window.document.querySelector('#origin');
+    const route = dom.window.document.querySelector('#route-dialog');
+    context.routeEditorState.parentDialogs = [parent];
+    if (action === 'cancel') context.closeRouteDialog();
+    else if (action === 'invalid') {
+      context.routeEditorState.stops[0].date = '2027-10-01';
+      await assert.rejects(context.saveRouteDialog(), /dentro/);
+    } else if (action === 'failure') {
+      context.updateViaje = async () => { throw new Error('No se pudo guardar'); };
+      await assert.rejects(context.saveRouteDialog(), /No se pudo guardar/);
+    } else await context.saveRouteDialog();
+    assert.equal(route.open, action === 'invalid' || action === 'failure');
+    assert.equal(parent.open, action !== 'save');
+    assert.equal(dom.window.document.querySelector('#unrelated').open, true);
   }
 });
