@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Cuaderno de Bitácora por Lucio J Martínez</title>
-  <link rel="manifest" href="manifest.webmanifest?v=800v065">
+  <link rel="manifest" href="manifest.webmanifest?v=800v066">
   <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css?v=5.24.0">
-  <link rel="stylesheet" href="styles.css?v=800v065">
+  <link rel="stylesheet" href="styles.css?v=800v066">
   <link rel="preload" as="image" href="assets/bitacora-splash-mobile.png" media="(max-width: 640px)">
   <meta name="theme-color" content="#fffaf4">
   <link rel="icon" href="assets/app-icon-192.png" type="image/png">
@@ -25,7 +25,7 @@
     <span></span>
   </div>
   <p>Preparando el viaje...</p>
-  <div class="app-loading-release"><strong>Versión 800v065 · 06/11/2026</strong></div>
+  <div class="app-loading-release"><strong>Versión 800v066 · 06/11/2026</strong></div>
 </div>
 <header>
   <a class="help-link header-help" href="ayuda.html">Ayuda</a>
@@ -41,7 +41,7 @@
     <button id="tab-config"><span class="desktop-label">Configuración</span><span class="mobile-label">Config.</span></button>
     <a class="help-link nav-help" href="ayuda.html">Ayuda</a>
   </nav>
-  <div class="app-version">800v065</div>
+  <div class="app-version">800v066</div>
 </header>
 
 <div id="offline-status" class="offline-status" role="status" aria-live="polite" hidden>
@@ -1012,8 +1012,10 @@
   <div class="actions"><button type="button" class="ghost" id="route-share-all">Todas</button><button type="button" class="ghost" id="route-share-none">Ninguna</button></div>
   <ol id="route-plan-stages"></ol>
   <label for="route-share-note">Nota opcional para estas personas</label><textarea id="route-share-note" rows="2" placeholder="Por ejemplo: nos encontramos en Helsinki"></textarea>
+  <label for="route-share-pdf-format">Formato del PDF</label><select id="route-share-pdf-format"><option value="summary">Resumen del recorrido</option><option value="brochure">Folleto de viaje</option></select>
+  <label class="route-lodging-share"><input type="checkbox" id="route-share-lodgings" checked> Incluir alojamientos y precios de habitación doble, si están completados</label>
   <details><summary>Vista previa de lo que se comparte</summary><textarea id="route-share-preview" rows="8" readonly aria-label="Itinerario que se compartirá"></textarea></details>
-  <div class="actions route-share-actions"><button type="button" class="btn" id="route-share-text">WhatsApp / Compartir</button><button type="button" class="ghost" id="route-share-copy">Copiar texto</button><button type="button" class="ghost" id="route-share-pdf">Compartir PDF</button></div>
+  <div class="actions route-share-actions"><button type="button" class="btn" id="route-share-text">WhatsApp / Compartir</button><button type="button" class="ghost" id="route-share-copy">Copiar texto</button><button type="button" class="btn" id="route-share-view-pdf">Ver PDF</button><button type="button" class="ghost" id="route-share-pdf" disabled>Compartir PDF revisado</button></div>
   <p id="route-share-status" role="status" class="small"></p>
   <button type="button" class="btn" id="route-plan-done">Cerrar mapa</button>
 </dialog>
@@ -1415,24 +1417,24 @@
 </dialog>
 
 <script src="vendor/maplibre/maplibre-gl.js?v=5.24.0"></script>
-<script src="timeline-import.js?v=800v065"></script>
-<script src="gpx-import.js?v=800v065"></script>
-<script src="timeline-routing.js?v=800v065"></script>
-<script src="map-model.js?v=800v065"></script>
-<script src="ticket-camera.js?v=800v065"></script>
-<script src="receipt-access.js?v=800v065"></script>
-<script src="expense-receipt-ai.js?v=800v065"></script>
-<script src="group-meals.js?v=800v065"></script>
-<script src="group-ledger.js?v=800v065"></script>
-<script src="group-store.js?v=800v065"></script>
-<script src="group-receipt.js?v=800v065"></script>
-<script src="group-travelers.js?v=800v065"></script>
-<script src="group-ui.js?v=800v065"></script>
-<script src="preparation.js?v=800v065"></script>
-<script src="app.bundle.js?v=800v065"></script>
+<script src="timeline-import.js?v=800v066"></script>
+<script src="gpx-import.js?v=800v066"></script>
+<script src="timeline-routing.js?v=800v066"></script>
+<script src="map-model.js?v=800v066"></script>
+<script src="ticket-camera.js?v=800v066"></script>
+<script src="receipt-access.js?v=800v066"></script>
+<script src="expense-receipt-ai.js?v=800v066"></script>
+<script src="group-meals.js?v=800v066"></script>
+<script src="group-ledger.js?v=800v066"></script>
+<script src="group-store.js?v=800v066"></script>
+<script src="group-receipt.js?v=800v066"></script>
+<script src="group-travelers.js?v=800v066"></script>
+<script src="group-ui.js?v=800v066"></script>
+<script src="preparation.js?v=800v066"></script>
+<script src="app.bundle.js?v=800v066"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    const pageVersion = '800v065';
+    const pageVersion = '800v066';
     const hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     let refreshing = false;
     let pendingUpdateVersion = '';
@@ -1487,7 +1489,7 @@
       }
     });
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=800v065', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=800v066', { updateViaCache: 'none' })
         .then(registration => {
           const warmCurrentWorker = () => {
             const worker = navigator.serviceWorker.controller || registration.active;

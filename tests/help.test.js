@@ -16,7 +16,7 @@ test('la ayuda identifica fecha y versión y contiene las tres partes principale
 
   assert.match(html, /Fecha de creación:<\/strong> 17 de julio de 2026/);
   assert.match(html, /Última actualización:<\/strong> 6 de noviembre de 2026/);
-  assert.match(html, /Versión documentada:<\/strong> 800v065/);
+  assert.match(html, /Versión documentada:<\/strong> 800v066/);
   assert.match(html, /id="objetivo"/);
   assert.match(html, /1\. Objetivo y filosofía de la aplicación/);
   assert.match(html, /id="flujo"/);

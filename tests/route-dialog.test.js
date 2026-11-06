@@ -265,3 +265,100 @@ test('Mapa en Editar viaje previsualiza valores actuales sin guardar ni cerrar e
   assert.equal(dom.window.document.querySelector('#form-dialog').open, true);
   assert.equal(context.state.viajes[0].fechaInicio, '2027-09-06');
 });
+
+test('el alojamiento se guarda por visita, con precio doble por noche o estancia, sin crear gastos', async () => {
+  const {context} = fixture('2027-09-14');
+  context.routeEditorState.stops[0].lodging = {name: 'Hotel de prueba', doublePrice: '125,50', currency: 'eur', priceBasis: 'stay', info: 'Desayuno incluido', url: 'https://example.com/hotel'};
+  await context.saveRouteDialog();
+  const saved = context.saved.routeStops[0].lodging;
+  assert.equal(saved.doublePrice, 125.5);
+  assert.equal(saved.currency, 'EUR');
+  assert.equal(saved.priceBasis, 'stay');
+  assert.match(context.routeLodgingLines(saved).join('\n'), /Habitación doble: 125,50 EUR por estancia/);
+  assert.equal(context.saved.gastos, undefined);
+  assert.equal(context.normalizeRouteLodging({currency: 'EUR'}), null);
+  assert.equal(context.normalizeRouteLodging({name: 'Gratis', doublePrice: 0}).doublePrice, 0);
+});
+
+test('precios negativos, monedas incorrectas y webs inseguras impiden guardar el alojamiento', async () => {
+  for (const lodging of [{name: 'Hotel', doublePrice: -1}, {doublePrice: 20, currency: 'EURO'}, {name: 'Hotel', url: 'javascript:alert(1)'}]) {
+    const {context} = fixture('2027-09-14');
+    context.routeEditorState.stops[0].lodging = lodging;
+    await assert.rejects(context.saveRouteDialog(), /precio|moneda|web/);
+    assert.equal(context.saved, undefined);
+  }
+});
+
+test('reordenar ciudades repetidas y normalizar el viaje conserva sus alojamientos distintos', () => {
+  const {context} = fixture();
+  runInNewContext(source.slice(source.indexOf('function normalizeTripRouteStops('), source.indexOf('function tripCityIds(')), context);
+  const trip = {ciudadIds: [2, 3, 2], routeStops: [
+    {cityId: 2, lodging: {name: 'Primer hotel'}}, {cityId: 3, lodging: {name: 'Segundo hotel'}}, {cityId: 2, lodging: {name: 'Hotel del regreso'}}
+  ]};
+  const merged = context.mergeTripRouteStops(trip, [2, 2, 3]);
+  assert.equal(merged[0].lodging.name, 'Primer hotel');
+  assert.equal(merged[1].lodging.name, 'Hotel del regreso');
+  assert.equal(merged[2].lodging.name, 'Segundo hotel');
+  assert.equal(context.tripRouteStops({...trip, routeStops: JSON.parse(JSON.stringify(trip.routeStops))})[2].lodging.name, 'Hotel del regreso');
+});
+
+test('el PDF se abre antes de compartir; cambios de formato, selección o alojamientos exigen nueva vista', async () => {
+  const {context, dom} = fixture();
+  context.document = dom.window.document; context.window = {}; context.File = File;
+  dom.window.document.body.insertAdjacentHTML('beforeend', '<dialog id="route-plan-dialog"></dialog><dialog id="pdf-viewer-dialog"></dialog><h2 id="route-plan-title"></h2><p id="route-plan-status"></p><div id="route-plan-map"></div><ol id="route-plan-stages"></ol><textarea id="route-share-preview"></textarea><textarea id="route-share-note"></textarea><select id="route-share-pdf-format"><option value="summary">Resumen</option><option value="brochure">Folleto</option></select><input type="checkbox" id="route-share-lodgings" checked><button id="route-share-text"></button><button id="route-share-copy"></button><button id="route-share-view-pdf"></button><button id="route-share-pdf"></button><p id="route-share-status"></p>');
+  context.state.lugares = [{id: 2, nombre: 'Oulu'}];
+  context.openRoutePlanMap({nombre: 'Finlandia', fechaFin: '2027-09-20'}, [{cityId: 2, date: '2027-09-14', lodging: {name: 'Hotel visible', doublePrice: 99}}], true);
+  let built = 0, shared = 0, opened = 0;
+  context.routeItineraryPdf = async () => { built++; return new Blob(['PDF'], {type: 'application/pdf'}); };
+  context.openPdfDocument = async () => { opened++; dom.window.document.querySelector('#pdf-viewer-dialog').setAttribute('open', ''); };
+  context.navigator = {canShare: () => true, share: async () => { shared++; }};
+  const share = dom.window.document.querySelector('#route-share-pdf');
+  assert.equal(share.disabled, true);
+  await context.shareRoutePdf();
+  assert.equal(opened, 1); assert.equal(shared, 0); assert.equal(built, 1);
+  assert.equal(share.disabled, false);
+  await context.shareRoutePdf();
+  assert.equal(shared, 1); assert.equal(built, 1);
+  dom.window.document.querySelector('#route-share-pdf-format').value = 'brochure';
+  context.renderRouteSharePreview(); assert.equal(share.disabled, true);
+  await context.viewRoutePdf(); assert.equal(built, 2);
+  dom.window.document.querySelector('#route-share-lodgings').checked = false;
+  context.renderRouteSharePreview(); assert.equal(share.disabled, true);
+  assert.doesNotMatch(dom.window.document.querySelector('#route-share-preview').value, /Hotel visible|99/);
+});
+
+test('el fondo del PDF usa OpenFreeMap sin clave y libera el mapa temporal al terminar o fallar', async () => {
+  for (const event of ['idle', 'error']) {
+    const {context, dom} = fixture();
+    context.document = dom.window.document; context.setTimeout = setTimeout; context.clearTimeout = clearTimeout;
+    dom.window.HTMLCanvasElement.prototype.getContext = () => ({drawImage() {}});
+    let created;
+    class FakeMap {
+      constructor(options) { this.options = options; this.handlers = {}; created = this; }
+      on(name, fn) { this.handlers[name] = fn; }
+      getCanvas() { return dom.window.document.createElement('canvas'); }
+      remove() { this.removed = true; }
+    }
+    context.window = {maplibregl: {Map: FakeMap, supported: () => true}};
+    const promise = context.routePdfBaseMap({latitude: 65, longitude: 25}, 5, 960, 900);
+    assert.equal(created.options.style, 'https://tiles.openfreemap.org/styles/positron');
+    assert.equal(created.options.zoom, 4, 'alinea la escala de MapLibre con la proyección de 256 píxeles');
+    assert.equal(created.options.pixelRatio, 1);
+    created.handlers[event]();
+    const result = await promise;
+    assert.equal(Boolean(result), event === 'idle');
+    assert.equal(created.removed, true);
+    assert.equal(dom.window.document.querySelector('[aria-hidden="true"]'), null);
+  }
+});
+
+test('las etiquetas estáticas se mantienen en el mapa sin cubrir los puntos de ciudades cercanas', () => {
+  const {context} = fixture();
+  const points = [{x: 100, y: 100}, {x: 110, y: 120}];
+  const boxes = context.routePdfLabelLayout(points.map(point => ({point, w: 200, h: 38})), points, {x: 0, y: 0, w: 600, h: 300});
+  for (const box of boxes) {
+    assert.ok(box.x >= 0 && box.x + box.w <= 600);
+    assert.ok(box.y >= 0 && box.y + box.h <= 300);
+    for (const point of points) assert.equal(point.x > box.x && point.x < box.x + box.w && point.y > box.y && point.y < box.y + box.h, false);
+  }
+});

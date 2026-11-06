@@ -39,10 +39,10 @@ test('normalización tolera datos antiguos, duplicados e inválidos sin crear se
 test('configuración, navegación y caché incorporan la nueva sección 800v050',()=>{
   const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8'), sw=fs.readFileSync(new URL('../sw.js',import.meta.url),'utf8');
   assert.match(html,/id="tab-preparar"/); assert.match(html,/id="config-preparation"/);
-  assert.ok(html.indexOf('preparation.js?v=800v065')<html.indexOf('app.bundle.js?v=800v065'));
+  assert.ok(html.indexOf('preparation.js?v=800v066')<html.indexOf('app.bundle.js?v=800v066'));
   const core=sw.slice(sw.indexOf('const APP_SHELL_CORE'),sw.indexOf('const APP_SHELL_REQUIRED'));
   const required=sw.slice(sw.indexOf('const APP_SHELL_REQUIRED'),sw.indexOf('const APP_SHELL_OPTIONAL'));
-  assert.match(core,/preparation.js\?v=800v065/); assert.match(required,/preparation.js\?v=800v065/);
+  assert.match(core,/preparation.js\?v=800v066/); assert.match(required,/preparation.js\?v=800v066/);
 });
 
 test('guardado en cola conserva cambios rápidos y el viaje destinatario aunque cambie la pantalla',async()=>{
