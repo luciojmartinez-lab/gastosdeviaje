@@ -289,3 +289,11 @@ Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente p
 - Ayuda HTML actualizada y PDF regenerado: 36 páginas, 330 bloques. Revisión visual del PDF y comprobación de márgenes sin incidencias.
 - 481/481 pruebas correctas. Comprobación DOM adicional de once paradas: todas las acciones están dentro de la celda de ciudad y conservan sus índices.
 - Revisión visual del navegador no disponible: el control local está deshabilitado en los ajustes de Work. No se ha probado esta versión en un móvil físico.
+
+## 800v062 — Calendario de paradas y títulos Crear/Editar (06/11/2026)
+
+- El calendario nativo de Día previsto ya no tiene min/max, que bloqueaban las flechas de mes en Android cuando inicio y fin caían en el mismo mes.
+- Al guardar se valida explícitamente cada fecha: fuera del viaje se conserva la edición, se enfoca la parada y se pide corregir la fecha o las fechas del viaje. Se mantienen el día opcional y la comprobación del orden de la ruta.
+- Los cinco títulos Crear de Configuración pasan a Crear/Editar. Versión y fecha de portada/ayuda sincronizadas.
+- Ayuda HTML y PDF regenerados, 36 páginas, revisión visual y márgenes correctos. 484/484 pruebas pasan, incluidas tres de regresión de calendario y guardado.
+- El navegador local sigue deshabilitado; no se ha verificado el selector nativo de Android en un dispositivo físico.
