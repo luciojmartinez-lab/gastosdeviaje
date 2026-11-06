@@ -44,3 +44,25 @@ test('descarga solo miniaturas admitidas y limita bytes y tipos antes de guardar
   const credits = photos.credits(photo).join('\n');
   for (const value of [photo.author, photo.sourceUrl, photo.license, photo.licenseUrl]) assert.ok(credits.includes(value));
 });
+
+test('licencias CC0 y CC BY con enlaces HTTP/deed de Commons se canonizan sin aceptar otras licencias',()=>{
+ const result=photos.fromCommons(page({LicenseShortName:{value:'CC0'},LicenseUrl:{value:'http://creativecommons.org/publicdomain/zero/1.0/deed.en'}}));
+ assert.ok(result);assert.equal(result.license,'CC0 1.0');assert.equal(result.licenseUrl,'https://creativecommons.org/publicdomain/zero/1.0/');
+ assert.ok(photos.fromCommons(page({LicenseShortName:{value:'CC BY-SA 4.0'},LicenseUrl:{value:'http://creativecommons.org/licenses/by-sa/4.0/deed.es'}})));
+ for(const url of ['http://creativecommons.org.evil/publicdomain/zero/1.0/deed.en','https://creativecommons.org/licenses/by-nc/4.0/','https://creativecommons.org/publicdomain/zero/1.0/?redirect=other'])assert.equal(photos.fromCommons(page({LicenseShortName:{value:'CC0'},LicenseUrl:{value:url}})),null);
+});
+
+test('un nombre español sin fotos tiene una segunda búsqueda simplificada, nunca reintenta errores de red',async()=>{
+ const queries=[],events=[];
+ const result=await photos.search('Plaza del Mercado de Oulu Oulu',{onProgress:e=>events.push(e),fetchImpl:async url=>{queries.push(new URL(url).searchParams.get('gsrsearch'));return Response.json(queries.length===1?{query:{pages:[]}}:{query:{pages:[page()]}});}});
+ assert.equal(result.length,1);assert.equal(queries.length,2);assert.equal(queries[1],'square market Oulu filetype:bitmap');assert.equal(events[1].attempt,2);
+});
+
+test('la descarga comunica bytes y total reales y avanza también sin Content-Length',async()=>{
+ for(const known of [true,false]){
+  const events=[];const chunks=[new Uint8Array(100),new Uint8Array(200)];
+  const stream=new ReadableStream({pull(controller){if(chunks.length)controller.enqueue(chunks.shift());else controller.close();}});
+  const blob=await photos.download(photo,{onProgress:e=>events.push(e),fetchImpl:async()=>new Response(stream,{headers:{'content-type':'image/jpeg',...(known?{'content-length':'300'}:{})}})});
+  assert.equal(blob.size,300);assert.equal(events[0].loaded,0);assert.equal(events[0].total,known?300:null);assert.equal(events[1].loaded,100);assert.equal(events.at(-1).loaded,300);assert.equal(events.at(-1).total,300);
+ }
+});

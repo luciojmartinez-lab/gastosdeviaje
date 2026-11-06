@@ -141,10 +141,10 @@ test('buscar mantiene el lugar actual; elegir y reabrir indica Ya tiene foto y p
   await context.cityGuidePhotoAction({target:search});
   assert.equal(scrolled.length,0,'buscar no sube al aviso general ni desplaza el formulario');
   assert.equal(dom.window.document.activeElement,search);
-  assert.match(context.$('[data-guide-photo-status="2"]').textContent,/Elige una foto/);
+  assert.match(context.$('[data-guide-photo-status="2"]').textContent,/Usar esta foto/);
   await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-use="2:0"]')});
   assert.equal(scrolled.length,1);assert.equal(scrolled[0],context.$('[data-guide-photo-preview="2"]'));
-  assert.match(context.$('[data-guide-photo-preview="2"]').textContent,/Ya tiene foto/);
+  assert.match(context.$('[data-guide-photo-preview="2"]').textContent,/pendiente de guardar/);
   assert.equal(search.textContent,'Buscar otra foto');
   await context.saveCityGuide();context.openCityGuide(2);
   assert.match(context.$('[data-guide-photo-preview="1"]').textContent,/Ya tiene foto/,'se conserva el indicador tras guardar y reabrir; huecos vacíos se omiten');
@@ -156,4 +156,17 @@ test('buscar mantiene el lugar actual; elegir y reabrir indica Ya tiene foto y p
   await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-remove="1"]')});
   assert.equal(scrolled.length,0);assert.doesNotMatch(context.$('[data-guide-photo-preview="1"]').textContent,/Ya tiene foto/);
   assert.equal(context.$('[data-guide-photo-search="1"]').textContent,'Buscar foto libre');
+});
+
+test('el progreso de foto permanece en su lugar y diferencia seleccionada de guardada',async()=>{
+ const {context}=fixture();context.openCityGuide(2);let finish;
+ const photo={title:'File:Oulu.jpg',author:'Autora',credit:'Own work',url:'https://upload.wikimedia.org/wikipedia/commons/a/ab/Oulu.jpg',sourceUrl:'https://commons.wikimedia.org/wiki/File:Oulu.jpg',license:'CC BY 4.0',licenseUrl:'https://creativecommons.org/licenses/by/4.0/'};
+ context.TourismPhotos.search=async()=>[photo];await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-search="0"]')});
+ context.TourismPhotos.download=async(p,{onProgress})=>{onProgress({phase:'download',loaded:50,total:100});return new Promise(resolve=>{finish=resolve;});};
+ context.prepareCityGuidePhoto=async()=> 'data:image/jpeg;base64,/9j/AA==';
+ const downloading=context.cityGuidePhotoAction({target:context.$('[data-guide-photo-use="0:0"]')});
+ assert.equal(context.$('[data-guide-photo-progress="0"]').hidden,false);assert.equal(context.$('[data-guide-photo-progress="0"]').value,50);assert.match(context.$('[data-guide-photo-progress-text="0"]').textContent,/50 %/);
+ assert.equal(context.$('#city-guide-save').disabled,true);finish(new Blob(['jpeg']));await downloading;
+ assert.equal(context.$('[data-guide-photo-progress="0"]').value,100);assert.match(context.$('[data-guide-photo-preview="0"]').textContent,/pendiente de guardar/);
+ await context.saveCityGuide();context.openCityGuide(2);assert.match(context.$('[data-guide-photo-preview="0"]').textContent,/foto guardada/);
 });

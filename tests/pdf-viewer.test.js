@@ -83,3 +83,40 @@ test('el PDF seleccionado se abre junto al nombre en alta y edición y desaparec
   }
  }finally{w.close();}
 });
+
+test('la vista continua deja todas las páginas para deslizar y limita los lienzos a tres páginas cercanas',async()=>{
+ const pdf=fakePdf(20);const ui=setup({loadPdf:async()=>({GlobalWorkerOptions:{},getDocument:()=>({promise:Promise.resolve(pdf),destroy:async()=>pdf.destroy()})})});try{
+  await ui.viewer.open(new Blob(['%PDF']),'folleto.pdf',{continuous:true});
+  const list=ui.$('pdf-viewer-pages');assert.equal(list.hidden,false);assert.equal(list.children.length,20);assert.equal(ui.$('pdf-viewer-continuous').checked,true);
+  assert.equal(list.querySelectorAll('canvas:not([hidden])').length,2);assert.deepEqual(pdf.rendered.map(x=>x.page),[1,2]);
+  const height=parseFloat(list.children[0].style.height)+16;ui.$('pdf-viewer-stage').scrollTop=height*9;ui.$('pdf-viewer-stage').onscroll();await new Promise(resolve=>setTimeout(resolve,100));
+  await until(()=>list.children[9].querySelector('canvas').hidden===false);
+  assert.equal(ui.$('pdf-viewer-page').textContent,'10 / 20');assert.equal(list.children[0].querySelector('canvas').width,1);
+  assert.ok(list.querySelectorAll('canvas:not([hidden])').length<=3);
+  await ui.$('pdf-viewer-next').onclick();assert.equal(ui.$('pdf-viewer-page').textContent,'11 / 20');
+  ui.$('pdf-viewer-zoom').value='3';await ui.$('pdf-viewer-zoom').onchange();
+  assert.equal(ui.$('pdf-viewer-page').textContent,'11 / 20');assert.ok([...list.querySelectorAll('canvas')].reduce((n,c)=>n+c.width*c.height,0)<=6_000_020);
+  await ui.viewer.close();assert.equal(list.children.length,0);assert.ok(pdf.destroyed);
+ }finally{ui.close();}
+});
+
+test('se puede alternar vista continua y página individual conservando la página elegida',async()=>{
+ const ui=setup();try{
+  await ui.viewer.open(new Blob(['%PDF']),'billete.pdf');await ui.$('pdf-viewer-next').onclick();
+  ui.$('pdf-viewer-continuous').checked=true;await ui.$('pdf-viewer-continuous').onchange();assert.equal(ui.$('pdf-viewer-page').textContent,'2 / 3');
+  ui.$('pdf-viewer-continuous').checked=false;await ui.$('pdf-viewer-continuous').onchange();
+  assert.equal(ui.$('pdf-viewer-pages').hidden,true);assert.equal(ui.$('pdf-viewer-page').textContent,'2 / 3');assert.equal(ui.$('pdf-viewer-canvas').hidden,false);
+ }finally{await ui.viewer.close();ui.close();}
+});
+
+
+test('cerrar una vista continua con página lenta no cambia el PDF abierto después',async()=>{
+ const first=fakePdf(10),second=fakePdf(2),get=first.getPage;let resolvePage,loads=0;
+ first.getPage=number=>number===2?new Promise(resolve=>resolvePage=resolve):get(number);
+ const ui=setup({loadPdf:async()=>({GlobalWorkerOptions:{},getDocument:()=>{const pdf=++loads===1?first:second;return{promise:Promise.resolve(pdf),destroy:async()=>pdf.destroy()};}})});
+ try{
+  const opening=ui.viewer.open(new Blob(['%PDF-1']),'folleto.pdf',{continuous:true});await until(()=>resolvePage);
+  await ui.viewer.close();await ui.viewer.open(new Blob(['%PDF-2']),'nuevo.pdf');resolvePage(await get(2));await opening;
+  assert.equal(ui.$('pdf-viewer-title').textContent,'nuevo.pdf');assert.equal(ui.$('pdf-viewer-pages').children.length,0);assert.equal(ui.$('pdf-viewer-canvas').hidden,false);assert.equal(ui.$('pdf-viewer-page').textContent,'1 / 2');
+ }finally{await ui.viewer.close();ui.close();}
+});
