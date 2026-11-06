@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v064';
+const APP_VERSION = '800v065';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2940,7 +2940,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v064');
+    const worker = new Worker('./timeline-import-worker.js?v=800v065');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3950,7 +3950,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v064');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v065');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4880,7 +4880,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v064');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v065');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5016,7 +5016,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v064');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v065');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5570,7 +5570,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v064');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v065');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6063,7 +6063,7 @@ function isPdfDocument(type, name, data) {
 let pdfViewerControllerPromise;
 async function openPdfDocument(blob,name) {
   try{
-    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v064').then(module=>module.createPdfViewer(document)));
+    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v065').then(module=>module.createPdfViewer(document)));
     return await viewer.open(blob,name);
   }catch(error){pdfViewerControllerPromise=null;alert('No se ha podido abrir el visor PDF: '+(error.message||error));}
 }
@@ -9922,15 +9922,42 @@ function routePlanStages(trip, stops) {
     const days = date && nextDate ? (Date.parse(nextDate + 'T00:00:00Z') - Date.parse(date + 'T00:00:00Z')) / 86400000 : NaN;
     const nights = Number.isInteger(days) && days >= 0 ? days : null;
     const dayMonth = date ? `${date.slice(8, 10)}-${date.slice(5, 7)}` : 'Sin fecha';
-    const label = `${dayMonth} · ${nights === null ? 'noches sin calcular' : `${nights} ${nights === 1 ? 'noche' : 'noches'}`}`;
-    return { city, date, nights, label, number: index + 1 };
+    const endpoint = normalizedRouteStopRole(stop.role, index, stages.map(stage => stage.cityId)) === ROUTE_STOP_ROLE_ENDPOINT;
+    const label = endpoint ? dayMonth : `${dayMonth} · ${nights === null ? 'noches sin calcular' : `${nights} ${nights === 1 ? 'noche' : 'noches'}`}`;
+    return { city, date, departureDate: nextDate || '', endpoint, nights, label, number: index + 1 };
   });
 }
 
 let routePlanMap = null;
+let routePlanShareState = null;
+function hideRoutePlanLabel() { $('#route-plan-label')?.remove(); }
+function showRoutePlanLabel(group, point, host, nameWidth = 0) {
+  hideRoutePlanLabel();
+  const box = document.createElement('div');
+  box.id = 'route-plan-label';
+  box.className = 'route-plan-label';
+  box.setAttribute('role', 'status');
+  group.forEach(stage => {
+    const line = document.createElement('div');
+    line.textContent = `${stage.number}. ${stage.city.nombre} (${stage.label})`;
+    box.append(line);
+  });
+  const close = document.createElement('button');
+  close.type = 'button'; close.textContent = '×'; close.setAttribute('aria-label', 'Cerrar etiqueta'); close.onclick = hideRoutePlanLabel;
+  box.append(close); host.append(box);
+  const width = host.clientWidth || 700, height = host.clientHeight || 440;
+  const labelWidth = box.offsetWidth || 240;
+  let left = point.x + nameWidth + 12, top = point.y - 18;
+  if (left + labelWidth > width - 8) left = point.x - labelWidth - 12;
+  if (left < 8) { left = 8; top = point.y + 26; }
+  box.style.left = Math.max(8, Math.min(width - labelWidth - 8, left)) + 'px';
+  box.style.top = Math.max(8, Math.min(height - (box.offsetHeight || 52) - 8, top)) + 'px';
+}
 function closeRoutePlanMap() {
   routePlanMap?.remove();
   routePlanMap = null;
+  hideRoutePlanLabel();
+  routePlanShareState = null;
   const dialog = $('#route-plan-dialog');
   if (dialog?.close) dialog.close();
   else dialog?.removeAttribute('open');
@@ -9952,19 +9979,27 @@ function routePlanFallbackMap(stages, host) {
     const point = mapWorldPoint(stage.city.lat, stage.city.lng, zoom);
     return { ...stage, x: point.x - tiles.startX, y: point.y - tiles.startY };
   });
-  const lines = positioned.slice(1).map((point, index) => point && positioned[index] ? `<line x1="${positioned[index].x}" y1="${positioned[index].y}" x2="${point.x}" y2="${point.y}" stroke="#0876c9" stroke-width="3"/>` : '').join('');
   const groups = new Map();
   positioned.filter(Boolean).forEach(point => {
     const key = `${point.city.lat},${point.city.lng}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(point);
   });
-  const markers = [...groups.values()].map(group => {
+  const groupList = [...groups.values()];
+  const markers = groupList.map((group, index) => {
     const point = group[0], right = point.x < width / 2;
-    const labels = group.map(stage => `${stage.number}. ${stage.city.nombre} (${stage.label})`);
-    return `<g><circle cx="${point.x}" cy="${point.y}" r="5" fill="#0876c9"/><text x="${point.x + (right ? 8 : -8)}" y="${point.y - 10}" text-anchor="${right ? 'start' : 'end'}" font-size="11" paint-order="stroke" stroke="white" stroke-width="3" fill="#17263c">${labels.map((label, i) => `<tspan x="${point.x + (right ? 8 : -8)}" dy="${i ? 15 : 0}">${escapeHtml(label)}</tspan>`).join('')}</text></g>`;
+    return `<g role="button" tabindex="0" data-route-plan-point="${index}" aria-label="Ver etapas de ${escapeHtml(point.city.nombre)}"><circle cx="${point.x}" cy="${point.y}" r="8" fill="#0876c9"/><text x="${point.x + (right ? 14 : -14)}" y="${point.y + 4}" text-anchor="${right ? 'start' : 'end'}" font-size="12" paint-order="stroke" stroke="white" stroke-width="3" fill="#17263c">${escapeHtml(point.city.nombre)}</text></g>`;
   }).join('');
-  host.innerHTML = `<div class="route-plan-raster"><div class="map-tiles">${tiles.html}</div><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Etapas y noches del viaje">${lines}${markers}</svg><div class="map-attribution">© OpenStreetMap · © CARTO</div></div>`;
+  host.innerHTML = `<div class="route-plan-raster"><div class="map-tiles">${tiles.html}</div><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Puntos de las etapas; pulsa una ciudad para ver fechas y noches">${markers}</svg><div class="map-attribution">© OpenStreetMap · © CARTO</div></div>`;
+  const reveal = event => {
+    const target = event.target.closest?.('[data-route-plan-point]');
+    if (!target || (event.type === 'keydown' && !['Enter', ' '].includes(event.key))) return;
+    event.preventDefault();
+    const group = groupList[Number(target.dataset.routePlanPoint)], point = group[0];
+    const rect = host.getBoundingClientRect(), scale = (rect.width || width) / width;
+    showRoutePlanLabel(group, {x: point.x * scale, y: point.y}, host, point.x < width / 2 ? point.city.nombre.length * 7 : 0);
+  };
+  host.onclick = reveal; host.onkeydown = reveal;
 }
 
 function openRoutePlanMap(trip, stops = tripRouteStops(trip), preview = false) {
@@ -9977,11 +10012,18 @@ function openRoutePlanMap(trip, stops = tripRouteStops(trip), preview = false) {
   $('#route-plan-title').textContent = `Mapa de las etapas · ${trip.nombre}`;
   const missing = stages.filter(stage => !routePlanHasCoords(stage.city));
   $('#route-plan-status').textContent = `${preview ? 'Vista previa sin guardar. ' : ''}${stages.length} etapas.${missing.length ? ` Sin coordenadas: ${missing.map(stage => stage.city?.nombre || 'Ciudad no disponible').join(', ')}. Todas las etapas aparecen en el listado.` : ''}`;
-  $('#route-plan-stages').innerHTML = stages.map(stage => `<li><strong>${escapeHtml(stage.city?.nombre || 'Ciudad no disponible')}</strong> (${escapeHtml(stage.label)})${routePlanHasCoords(stage.city) ? '' : ' · sin coordenadas'}</li>`).join('') || '<li>No hay etapas planificadas.</li>';
+  routePlanShareState = { name: trip.nombre, stages, preview };
+  const list = $('#route-plan-stages');
+  list.innerHTML = stages.map(stage => `<li><label><input type="checkbox" data-route-share-stage="${stage.number}" checked> <strong>${escapeHtml(stage.city?.nombre || 'Ciudad no disponible')}</strong> (${escapeHtml(stage.label)})${routePlanHasCoords(stage.city) ? '' : ' · sin coordenadas'}</label></li>`).join('') || '<li>No hay etapas planificadas.</li>';
+  list.onchange = renderRouteSharePreview;
+  if ($('#route-share-note')) $('#route-share-note').value = '';
+  renderRouteSharePreview();
   if (!dialog.open) {
     if (dialog.showModal) dialog.showModal();
     else dialog.setAttribute('open', 'open');
   }
+  hideRoutePlanLabel();
+  host.onclick = null; host.onkeydown = null;
   host.replaceChildren();
   if (!points.length || !window.maplibregl || (typeof window.maplibregl.supported === 'function' && !window.maplibregl.supported())) {
     routePlanFallbackMap(stages, host);
@@ -10006,21 +10048,22 @@ function openRoutePlanMap(trip, stops = tripRouteStops(trip), preview = false) {
     groups.forEach(group => {
       const element = document.createElement('div');
       element.className = 'route-plan-marker';
-      group.forEach(stage => {
-        const label = document.createElement('div');
-        label.textContent = `${stage.number}. ${stage.city.nombre} (${stage.label})`;
-        element.append(label);
-      });
-      new window.maplibregl.Marker({ element, anchor: 'bottom' }).setLngLat([Number(group[0].city.lng), Number(group[0].city.lat)]).addTo(map);
+      const point = document.createElement('button');
+      point.type = 'button'; point.className = 'route-plan-dot';
+      point.setAttribute('aria-label', 'Ver etapas de ' + group[0].city.nombre);
+      const name = document.createElement('span'); name.textContent = group[0].city.nombre;
+      element.append(point, name);
+      point.onclick = event => {
+        event.stopPropagation();
+        const location = map.project([Number(group[0].city.lng), Number(group[0].city.lat)]);
+        showRoutePlanLabel(group, location, host, element.offsetWidth);
+      };
+      name.onclick = point.onclick;
+      new window.maplibregl.Marker({ element, anchor: 'left', offset: [-16, 0] }).setLngLat([Number(group[0].city.lng), Number(group[0].city.lat)]).addTo(map);
     });
+    map.on('movestart', hideRoutePlanLabel);
     map.on('load', () => {
       if (routePlanMap !== map) return;
-      const segments = [];
-      for (let i = 1; i < stages.length; i++) {
-        if (routePlanHasCoords(stages[i - 1].city) && routePlanHasCoords(stages[i].city)) segments.push([stages[i - 1], stages[i]].map(stage => [Number(stage.city.lng), Number(stage.city.lat)]));
-      }
-      map.addSource('route-plan', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: segments } } });
-      map.addLayer({ id: 'route-plan-line', type: 'line', source: 'route-plan', paint: { 'line-color': '#0876c9', 'line-width': 3 } });
       map.resize();
       if (coordinates.length > 1) {
         const horizontal = Math.min(145, (host.clientWidth || 700) / 3);
@@ -10031,6 +10074,173 @@ function openRoutePlanMap(trip, stops = tripRouteStops(trip), preview = false) {
     routePlanMap?.remove();
     routePlanMap = null;
     routePlanFallbackMap(stages, host);
+  }
+}
+
+function selectedRouteShareStages() {
+  const selected = new Set($$('#route-plan-stages [data-route-share-stage]:checked').map(input => Number(input.dataset.routeShareStage)));
+  return (routePlanShareState?.stages || []).filter(stage => selected.has(stage.number));
+}
+
+function routeShareDate(date) {
+  return date ? `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}` : 'Sin fecha';
+}
+
+function routeShareText(name, stages, note = '') {
+  if (!stages.length) return '';
+  const lines = [name || 'Itinerario', 'Etapas compartidas'];
+  stages.forEach(stage => {
+    lines.push('', `${stage.number}. ${stage.city?.nombre || 'Ciudad no disponible'}`, `Llegada: ${routeShareDate(stage.date)}`);
+    if (!stage.endpoint) lines.push(`Salida: ${routeShareDate(stage.departureDate)} · ${stage.nights === null ? 'Noches sin calcular' : `${stage.nights} ${stage.nights === 1 ? 'noche' : 'noches'}`}`);
+    const query = routePlanHasCoords(stage.city) ? `${stage.city.lat},${stage.city.lng}` : stage.city?.nombre;
+    if (query) lines.push(`Mapa: https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`);
+  });
+  if (note.trim()) lines.push('', note.trim());
+  return lines.join('\n');
+}
+
+function renderRouteSharePreview() {
+  const stages = selectedRouteShareStages();
+  const text = routeShareText(routePlanShareState?.name, stages, $('#route-share-note')?.value || '');
+  const preview = $('#route-share-preview');
+  if (preview) preview.value = text;
+  ['route-share-text', 'route-share-copy', 'route-share-pdf'].forEach(id => {
+    const button = $(`#${id}`);
+    if (button) button.disabled = !stages.length || (id === 'route-share-pdf' && routeSharePdfBusy);
+  });
+  const status = $('#route-share-status');
+  if (status) status.textContent = stages.length ? `${stages.length} etapas seleccionadas. Revisa el contenido antes de enviarlo.` : 'Selecciona al menos una etapa para compartir.';
+  return text;
+}
+
+async function copyRouteShareText() {
+  const text = renderRouteSharePreview();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    $('#route-share-status').textContent = 'Itinerario copiado. Puedes pegarlo en WhatsApp.';
+  } catch (error) {
+    const preview = $('#route-share-preview');
+    preview.closest('details').open = true;
+    preview.focus(); preview.select();
+    $('#route-share-status').textContent = 'Texto seleccionado. Cópialo y pégalo en WhatsApp.';
+  }
+}
+
+async function shareRouteText() {
+  const text = renderRouteSharePreview();
+  if (!text) return;
+  try {
+    if (navigator.share) await navigator.share({ title: routePlanShareState.name || 'Itinerario', text });
+    else {
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+      $('#route-share-status').textContent = 'Se ha solicitado abrir WhatsApp. Si el navegador bloquea la ventana, usa Copiar texto.';
+    }
+  } catch (error) {
+    if (error.name !== 'AbortError') await copyRouteShareText();
+  }
+}
+
+let routeItineraryPdfPromise;
+let routeSharePdfBusy = false;
+async function routeItineraryPdf(name, stages, note = '') {
+  if (!stages.length) throw new Error('Selecciona al menos una etapa.');
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080; canvas.height = 1528;
+  const draw = canvas.getContext('2d');
+  if (!draw) throw new Error('El dispositivo no permite preparar el PDF. Puedes compartir el texto.');
+  const pages = [];
+  let y;
+  const startPage = () => {
+    draw.fillStyle = '#fff'; draw.fillRect(0, 0, 1080, 1528);
+    draw.fillStyle = '#17263c'; draw.font = 'bold 32px Arial';
+    y = 65;
+    blogShareWrappedLines(draw, name || 'Itinerario', 960).forEach(line => { draw.fillText(line, 60, y); y += 40; });
+    draw.font = '22px Arial'; draw.fillText('Etapas compartidas', 60, y + 10); y += 60;
+  };
+  const finishPage = async () => {
+    draw.fillStyle = '#65717f'; draw.font = '18px Arial';
+    draw.fillText(`Cuaderno de Bitácora · ${pages.length + 1}`, 60, 1480);
+    const jpeg = await canvasJpegBlob(canvas);
+    pages.push({bytes: new Uint8Array(await jpeg.arrayBuffer()), width: 1080, height: 1528});
+  };
+  const tableHeader = () => {
+    draw.fillStyle = '#e8f1fa'; draw.fillRect(55, y - 26, 970, 45);
+    draw.fillStyle = '#17263c'; draw.font = 'bold 20px Arial';
+    ['Etapa', 'Ciudad', 'Llegada', 'Salida', 'Noches'].forEach((text, i) => draw.fillText(text, [60, 135, 525, 710, 905][i], y)); y += 45;
+  };
+  startPage(); tableHeader();
+  for (const stage of stages) {
+    draw.font = '22px Arial';
+    const names = blogShareWrappedLines(draw, stage.city?.nombre || 'Ciudad no disponible', 365);
+    const height = Math.max(54, names.length * 30 + 20);
+    if (y + height > 1410) { await finishPage(); startPage(); tableHeader(); }
+    draw.fillStyle = '#17263c';
+    draw.fillText(String(stage.number), 60, y);
+    names.forEach((line, i) => draw.fillText(line, 135, y + i * 30));
+    draw.font = '20px Arial';
+    draw.fillText(routeShareDate(stage.date), 525, y);
+    draw.fillText(stage.endpoint ? '—' : routeShareDate(stage.departureDate), 710, y);
+    draw.fillText(stage.endpoint ? '—' : stage.nights === null ? '?' : String(stage.nights), 905, y);
+    y += height;
+    draw.strokeStyle = '#dde3ea'; draw.beginPath(); draw.moveTo(55, y - 22); draw.lineTo(1025, y - 22); draw.stroke();
+  }
+  draw.font = '20px Arial';
+  const notes = [note.trim(), stages.some(stage => stage.nights === null && !stage.endpoint) ? '? = noches sin calcular por fechas incompletas.' : ''].filter(Boolean).join('\n');
+  for (const line of blogShareWrappedLines(draw, notes, 960)) {
+    if (y > 1400) { await finishPage(); startPage(); }
+    draw.fillStyle = '#17263c'; draw.fillText(line, 60, y); y += 30;
+  }
+  await finishPage();
+  const points = stages.filter(stage => routePlanHasCoords(stage.city));
+  if (points.length) {
+    startPage();
+    draw.font = '22px Arial'; draw.fillText('Esquema geográfico de las etapas seleccionadas', 60, y); y += 45;
+    draw.font = '18px Arial'; draw.fillText('Sin fondo cartográfico. Los números corresponden a la tabla.', 60, y); y += 45;
+    const height = Math.min(1000, 1390 - y), width = 880;
+    const world = points.map(stage => ({stage, ...mapWorldPoint(stage.city.lat, stage.city.lng, 0)}));
+    const minX = Math.min(...world.map(p => p.x)), maxX = Math.max(...world.map(p => p.x));
+    const minY = Math.min(...world.map(p => p.y)), maxY = Math.max(...world.map(p => p.y));
+    const scale = Math.min(width / Math.max(maxX - minX, 0.001), height / Math.max(maxY - minY, 0.001));
+    draw.fillStyle = '#edf3f7'; draw.fillRect(60, y, 960, height + 20);
+    const grouped = new Map();
+    world.forEach(point => { const key = `${point.x},${point.y}`; if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(point); });
+    grouped.forEach(group => {
+      const point = group[0], x = 540 + (point.x - (minX + maxX) / 2) * scale, py = y + height / 2 + (point.y - (minY + maxY) / 2) * scale;
+      draw.fillStyle = '#0876c9'; draw.beginPath(); draw.arc(x, py, 7, 0, Math.PI * 2); draw.fill();
+      draw.fillStyle = '#17263c'; draw.font = '20px Arial';
+      const text = `${group.map(p => p.stage.number).join('/')} ${point.stage.city.nombre}`;
+      draw.fillText(text, Math.max(70, Math.min(1010 - draw.measureText(text).width, x + 12)), py - 12);
+    });
+    await finishPage();
+  }
+  canvas.width = 1; canvas.height = 1;
+  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v065'));
+  return pdf.buildImagePdfBlob(pages, {margin: 24});
+}
+
+async function shareRoutePdf() {
+  const stages = selectedRouteShareStages();
+  if (!stages.length || routeSharePdfBusy) return;
+  routeSharePdfBusy = true;
+  const button = $('#route-share-pdf'), status = $('#route-share-status');
+  const name = routePlanShareState.name || 'Itinerario', note = $('#route-share-note').value;
+  button.disabled = true; status.textContent = 'Preparando PDF de las etapas seleccionadas…';
+  try {
+    const blob = await routeItineraryPdf(name, stages, note);
+    const file = new File([blob], 'itinerario.pdf', {type: 'application/pdf'});
+    status.textContent = 'PDF preparado. Elige la aplicación o el contacto para compartirlo.';
+    if (navigator.canShare?.({files: [file]}) && navigator.share) {
+      try { await navigator.share({files: [file], title: name}); return; }
+      catch (error) { if (error.name === 'AbortError') return; }
+    }
+    await saveBlobOnDevice('itinerario.pdf', blob);
+    status.textContent = 'PDF preparado. Puedes adjuntarlo en WhatsApp.';
+  } catch (error) {
+    if (error.name !== 'AbortError') status.textContent = 'No se pudo preparar el PDF: ' + (error.message || error);
+  } finally {
+    routeSharePdfBusy = false;
+    button.disabled = !selectedRouteShareStages().length;
   }
 }
 
@@ -14824,7 +15034,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v064');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v065');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -15813,7 +16023,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v064').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v065').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -18542,7 +18752,7 @@ function openFormDialog({ title, fields, onSubmit, helpTarget = 'referencia' }) 
         : (field.options || []);
       const options = fieldOptions.map(option => `<option value="${escapeHtml(option.value)}"${field.routeList ? '' : (selected.has(String(option.value)) ? ' selected' : '')}${option.parentId != null ? ` data-parent-id="${escapeHtml(option.parentId)}"` : ''}>${escapeHtml(option.label)}</option>`).join('');
       const controls = field.reorder
-        ? `<div class="multi-select-order-actions"><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="-1">Subir</button><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="1">Bajar</button><button class="btn ghost" type="button" data-form-remove="${escapeHtml(field.name)}" title="Quitar de este viaje">X</button><button class="btn ghost" type="button" data-form-reset="${escapeHtml(field.name)}">Restablecer</button>${field.routeTripId ? `<button class="btn ghost" type="button" data-form-route="${escapeHtml(field.routeTripId)}">Añadir / modificar</button>` : ''}</div>`
+        ? `<div class="multi-select-order-actions"><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="-1">Subir</button><button class="btn ghost" type="button" data-form-move="${escapeHtml(field.name)}" data-form-dir="1">Bajar</button><button class="btn ghost" type="button" data-form-remove="${escapeHtml(field.name)}" title="Quitar de este viaje">X</button><button class="btn ghost" type="button" data-form-reset="${escapeHtml(field.name)}">Restablecer</button>${field.routeTripId ? `<button class="btn ghost" type="button" data-form-route="${escapeHtml(field.routeTripId)}">Añadir / modificar</button><button class="btn ghost" type="button" data-form-route-map="${escapeHtml(field.routeTripId)}">Mapa</button>` : ''}</div>`
         : '';
       return `<div class="form-field form-field-${escapeHtml(field.name)} form-field-multiselect"><label>${escapeHtml(field.label)}</label><select id="form-field-${escapeHtml(field.name)}" multiple size="${field.size || 4}">${options}</select>${controls}</div>`;
     }
@@ -18589,6 +18799,16 @@ function openFormDialog({ title, fields, onSubmit, helpTarget = 'referencia' }) 
       } catch (err) {
         setMessage('#msg-form-dialog', err.message || String(err), true);
       }
+    };
+  });
+  $$('#form-dialog-fields [data-form-route-map]').forEach(button => {
+    button.onclick = event => {
+      event.preventDefault();
+      const trip = state.viajes.find(value => Number(value.id) === Number(button.dataset.formRouteMap));
+      if (!trip) return;
+      const values = formDialogValues();
+      const draft = { ...trip, nombre: values.nombre || trip.nombre, fechaInicio: values.fechaInicio, fechaFin: values.fechaFin };
+      openRoutePlanMap(draft, mergeTripRouteStops(draft, values.ciudadIds || []), true);
     };
   });
   const formPaisSelect = $('#form-field-paisIds');
@@ -18845,7 +19065,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v064')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v065')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -18853,7 +19073,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v064')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v065')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -18894,12 +19114,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v064');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v065');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v064')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v064')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v065')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v065')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -19530,6 +19750,16 @@ function bindEvents() {
   $('#route-dialog-cancel').onclick = closeRouteDialog;
   $('#route-plan-close').onclick = closeRoutePlanMap;
   $('#route-plan-done').onclick = closeRoutePlanMap;
+  $('#route-share-note').oninput = renderRouteSharePreview;
+  $('#route-share-text').onclick = shareRouteText;
+  $('#route-share-copy').onclick = copyRouteShareText;
+  $('#route-share-pdf').onclick = shareRoutePdf;
+  ['all', 'none'].forEach(mode => {
+    $(`#route-share-${mode}`).onclick = () => {
+      $$('#route-plan-stages [data-route-share-stage]').forEach(input => { input.checked = mode === 'all'; });
+      renderRouteSharePreview();
+    };
+  });
   $('#route-plan-dialog').addEventListener('close', () => {
     routePlanMap?.remove();
     routePlanMap = null;
@@ -20823,7 +21053,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v064');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v065');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

@@ -6108,8 +6108,9 @@ footer {
 .route-plan-open { margin: 14px 0; }
 .route-plan-modal { width: min(1000px, 96vw); max-width: 96vw; }
 #route-plan-map { position: relative; height: 440px; width: 100%; border-radius: 8px; overflow: hidden; background: #e6eef5; }
-.route-plan-marker { background: #fff; color: #17263c; padding: 5px 8px; border: 2px solid #0876c9; border-radius: 8px; box-shadow: 0 2px 5px #0003; font: 12px/1.4 system-ui, sans-serif; max-width: min(250px, 44vw); overflow-wrap: anywhere; }
-.route-plan-marker div + div { border-top: 1px solid #ddd; margin-top: 3px; padding-top: 3px; }
+.route-plan-marker { display: flex; align-items: center; color: #17263c; font: 600 12px/1.4 system-ui, sans-serif; white-space: nowrap; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+.route-plan-dot { flex: none; display: grid; place-items: center; width: 32px; height: 40px; min-height: 40px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.route-plan-dot::before { content: ""; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%; background: #0876c9; box-shadow: 0 1px 3px #0005; }
 .route-plan-raster { position: relative; width: 100%; height: 440px; overflow: hidden; }
 .route-plan-raster svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 #route-plan-stages { padding-left: 26px; }
@@ -6119,3 +6120,11 @@ footer {
   .route-trip-dates input { padding: 6px; font-size: 13px; }
   .route-plan-modal { padding: 14px; }
 }
+
+.route-plan-label { position: absolute; z-index: 5; padding: 8px 28px 8px 10px; background: white; border: 1px solid #0876c9; border-radius: 8px; box-shadow: 0 2px 8px #0003; max-width: calc(100% - 16px); box-sizing: border-box; overflow-x: auto; font-size: 13px; white-space: nowrap; }
+.route-plan-label > div { white-space: nowrap; }
+.route-plan-label > button { position: absolute; right: 3px; top: 3px; border: 0; background: #eef3fb; padding: 1px 5px; min-height: 24px; cursor: pointer; }
+#route-plan-map [data-route-plan-point] { cursor: pointer; }
+#route-share-note, #route-share-preview { width: 100%; box-sizing: border-box; margin: 6px 0 12px; }
+#route-plan-stages input { width: 20px; height: 20px; vertical-align: middle; }
+.route-share-actions { margin: 14px 0 6px; flex-wrap: wrap; }

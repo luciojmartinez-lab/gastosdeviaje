@@ -314,3 +314,13 @@ Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente p
 - Mapa interactivo MapLibre con recursos gratuitos ya usados por la app, zoom y desplazamiento. Agrupa etiquetas de visitas al mismo punto, conserva todas las etapas en el listado y no dibuja líneas saltando ciudades sin coordenadas. Vista raster sencilla si no hay WebGL; aviso si faltan coordenadas o falla el fondo por conexión. Las líneas son uniones entre etapas, no carreteras calculadas.
 - Nuevo modal con ayuda contextual. Ayuda HTML y PDF actualizados (37 páginas), revisión visual del PDF y márgenes correctos. 491/491 pruebas: edición atómica de fechas, validaciones, noches y cambio de hora, visitas repetidas, vista previa sin persistencia, coordenadas ausentes y alternativa sin mapa interactivo.
 - Navegador local deshabilitado en Work (comprobado de nuevo): pendiente la revisión visual del mapa y calendarios en móvil físico. No se modificaron datos reales para las pruebas.
+
+## 800v065 — Mapa limpio y compartir etapas (06/11/2026)
+
+- Botón Mapa en Editar viaje, junto a Añadir / modificar. Previsualiza nombre, fechas y ciudades del formulario sin guardarlo ni cerrarlo.
+- Mapa de etapas: solo puntos con nombre, sin líneas ni fechas permanentes. Pulsar punto/nombre abre al lado una etiqueta con una línea por visita; se cierra al mover el mapa o con ×. Si falta espacio horizontal permite desplazar la etiqueta sin partirla. Inicio / regreso muestra fecha sin noches. También funciona con teclado y en el mapa sencillo sin WebGL.
+- Compartir etapas dentro del mapa: casillas, Todas/Ninguna, nota opcional y vista previa. WhatsApp / Compartir usa el selector nativo o WhatsApp web; Copiar texto sirve de alternativa. Solo se incluyen etapas marcadas, fechas, noches y enlaces de ciudad, sin cuentas, gastos ni datos de viajeros. Las noches se calculan antes del filtrado, evitando sumar etapas omitidas.
+- Compartir PDF: tabla de etapas seleccionadas y esquema geográfico sin fondo cartográfico (solo selección), generado en el dispositivo y sin conexión. Comparte el archivo o permite guardarlo para adjuntarlo. Control de doble envío durante preparación.
+- Alcance confirmado por Lucio: mapa y compartir etapas ahora; lugares de interés después.
+- 494/494 pruebas pasan. Ayuda HTML y PDF regenerados y revisados (37 páginas, márgenes correctos). PDF de itinerario generado con las funciones reales y canvas local existente: muestra de selección parcial y muestra de 65 etapas, revisadas tras renderizar. No se instalaron dependencias ni se enviaron datos a servicios para esas pruebas.
+- Sigue pendiente revisión visual de la interfaz y del selector de compartir en móvil físico; el navegador local está deshabilitado en Work. Ningún dato real modificado.
