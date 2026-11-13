@@ -5981,7 +5981,10 @@ footer {
 .group-receipt-table th:first-child, .group-receipt-table td:first-child { overflow-wrap: anywhere; }
 .group-receipt-table th:last-child, .group-receipt-table td:last-child { width: 110px; text-align: right; font-variant-numeric: tabular-nums; }
 #group-receipt-message { white-space: pre-wrap; }
-.expense-ai-panel { padding: 12px; margin: 10px 0; border: 1px solid var(--line); border-radius: 10px; }
+.expense-ai-panel { padding: 0; margin: 10px 0; border: 0; }
+.expense-ai-panel > summary { list-style: none; font: 400 13.3333px Arial, sans-serif; white-space: normal; text-align: center; }
+.expense-ai-panel > summary::-webkit-details-marker { display: none; }
+.expense-ai-panel > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 .expense-own-amount { display: block; color: #111827; }
 .expense-pending { display: block; color: #b91c1c; font-weight: 600; font-variant-numeric: tabular-nums; }
 .expense-pending small, .expense-with-pending small, .balance-available-note { display: block; font-size: .8em; }
