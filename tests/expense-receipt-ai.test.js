@@ -35,7 +35,7 @@ test('arranque de la app conecta Gemini, comparte el código de Grupo y sincroni
   await new Promise(resolve=>setTimeout(resolve,1050));assert.match(w.$('#g-ticket-ai-counter').textContent,/1 s/);
   finish(result);for(let i=0;i<100&&!w.$('#g-ticket-ai-apply');i++)await new Promise(resolve=>setTimeout(resolve,5));assert.ok(w.$('#g-ticket-ai-apply'));
   assert.equal(w.$('#g-ticket-ai-progress').value,1);assert.equal(w.$('#g-ticket-ai-read').disabled,false);
-  sources.g={source:'data:new'};w.syncTicketOcrAvailability('g');assert.equal(w.$('#g-ticket-ai-proposal').innerHTML,'');assert.equal(w.$('#g-ticket-ai-consent').checked,false);
+  sources.g={source:'data:new'};w.syncTicketOcrAvailability('g');assert.equal(w.$('#g-ticket-ai-proposal').innerHTML,'');assert.equal(w.$('#g-ticket-ai-consent').checked,true);
  }finally{w.close();}
 });
 async function setup(options={}){
@@ -54,13 +54,13 @@ async function setup(options={}){
 }
 test('propuesta Gemini de gasto requiere consentimiento y revisión, recuerda el código y conserva Lens',async()=>{
  const ui=await setup();try{
-  ui.$('g-ticket-ai-code').value='test-code';ui.click('g-ticket-ai-read');await ui.wait(()=>ui.$('g-ticket-ai-status').textContent.includes('Autoriza'));assert.equal(ui.reads(),0);
+  ui.$('g-ticket-ai-code').value='test-code';assert.equal(ui.$('g-ticket-ai-consent').checked,true);ui.$('g-ticket-ai-consent').checked=false;ui.click('g-ticket-ai-read');await ui.wait(()=>ui.$('g-ticket-ai-status').textContent.includes('Autoriza'));assert.equal(ui.reads(),0);
   assert.equal(ui.$('expense-ai-error-dialog').open,true);assert.match(ui.$('expense-ai-error-message').textContent,/Autoriza/);ui.$('expense-ai-error-dialog').querySelector('button').click();assert.equal(ui.$('expense-ai-error-dialog').open,false);
   ui.$('g-ticket-ai-consent').checked=true;ui.click('g-ticket-ai-read');await ui.wait(()=>!!ui.$('g-ticket-ai-apply'));
   assert.equal(ui.reads(),1);assert.equal(ui.applied(),0);assert.equal(ui.$('g-ticket-ai-save-translation').checked,false);assert.ok(ui.$('g-ticket-translate'));assert.ok(ui.$('g-ticket-read'));
   assert.equal(ui.w.localStorage.getItem('cuaderno.receiptAccess.v1'),'test-code');ui.click('g-ticket-ai-apply');await ui.wait(()=>ui.applied()===1);assert.equal(ui.state.args[2],false);
   assert.match(ui.$('g-ticket-ai-usage').parentElement.querySelector('summary').textContent,/7 \/ 500/);
-  ui.setSource('data:other');assert.equal(ui.$('g-ticket-ai-consent').checked,false);assert.equal(ui.$('g-ticket-ai-proposal').innerHTML,'');
+  ui.setSource('data:other');assert.equal(ui.$('g-ticket-ai-consent').checked,true);assert.equal(ui.$('g-ticket-ai-proposal').innerHTML,'');
  }finally{ui.close();}
 });
 test('emisor japonés en alta y edición: muestra nombre legible y original, y aplica el legible tras revisión',async()=>{
@@ -265,4 +265,8 @@ test('la clasificación de imagen usa el nombre configurado más específico, no
   w.state.photoTypes=[{id:'unrelated',nombre:'Transporte'}];assert.equal(w.expenseAIPhotoType(choice),null);
   w.state.photoTypes=[{id:'custom',nombre:' Material   deportivo '}];assert.equal(w.expenseAIPhotoType({categoryName:'Material deportivo'}).id,'custom');
  }finally{w.close();}
+});
+
+test('la autorización empieza marcada, no lee al abrir y desmarcarla bloquea incluso al cambiar foto',async()=>{
+ const ui=await setup();try{assert.equal(ui.$('g-ticket-ai-consent').checked,true);assert.equal(ui.reads(),0);ui.$('g-ticket-ai-code').value='test';ui.$('g-ticket-ai-consent').checked=false;ui.setSource('otra-foto');assert.equal(ui.$('g-ticket-ai-consent').checked,false);ui.click('g-ticket-ai-read');await ui.wait(()=>ui.$('expense-ai-error-dialog').open);assert.equal(ui.reads(),0);}finally{ui.close();}
 });

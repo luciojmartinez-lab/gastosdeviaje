@@ -303,7 +303,7 @@
   function updatePhotos(photos) {
     api().setTicketPhotos(editor.meal,photos);
     editor.meal.ocrPhotoChangeText=editor.meal.ocrText||null;$('#group-ticket-datetime').textContent='';
-    $('#group-meal-reviewed').checked=false;$('#group-ai-consent').checked=false;
+    $('#group-meal-reviewed').checked=false;
     renderTicket();stash();
   }
   function setAIReadDisabled(disabled) {
@@ -322,7 +322,7 @@
     $('#group-meal-reviewed').checked=false;$('#group-meal-file').value='';$('#group-meal-text').value=meal.ocrText||'';
     $('#group-text-panel').open=!!meal.ocrText;$('#group-parse-replace').hidden=true;$('#group-ocr-progress-wrap').hidden=true;
     $('#group-ai-read-confirm').after($('#group-ocr-progress-wrap'));
-    setAIReadDisabled(true);$('#group-ai-consent').checked=false;$('#group-ai-status').textContent='Comprobando disponibilidad de la IA gratuita…';
+    setAIReadDisabled(true);$('#group-ai-consent').checked=true;$('#group-ai-status').textContent='Comprobando disponibilidad de la IA gratuita…';
     const activeEditor=editor;
     Promise.resolve(host.aiStatus?.()||{enabled:false,message:'La IA gratuita está pendiente de activación.'}).then(status=>{
       if(editor!==activeEditor)return;aiEnabled=status.enabled===true;

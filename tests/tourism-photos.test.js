@@ -107,3 +107,15 @@ test('las fotos propias necesitan copia local y no reciben una licencia libre ni
  assert.match(photos.credits(own).join('\n'),/No se atribuye una licencia libre/);
  assert.doesNotMatch(photos.credits(own).join('\n'),/creativecommons/);
 });
+
+test('Flickr prepara enlaces a fotos propias y generales sin claves ni enlaces de invitación',()=>{
+ const links=photos.flickrLinks('Catedral de Hetta','https://www.flickr.com/photos/luciojmartinez/albums');
+ const own=new URL(links.own),general=new URL(links.global);assert.equal(own.hostname,'www.flickr.com');assert.equal(own.searchParams.get('user_id'),'luciojmartinez');assert.equal(own.searchParams.get('text'),'cathedral Hetta');assert.equal(general.searchParams.has('user_id'),false);assert.equal(links.albums,'https://www.flickr.com/photos/luciojmartinez/albums');
+ assert.equal(photos.flickrLinks('Hetta','').own,null);
+ for(const value of ['https://www.flickr.com/gp/owner/private-token','https://flickr.com.evil/photos/owner/albums','http://www.flickr.com/photos/owner','https://www.flickr.com/photos/owner/albums?api_key=secret'])assert.throws(()=>photos.flickrLinks('Hetta',value),/enlace público/);
+});
+
+test('el tamaño fotográfico se adapta a móvil o PC y nunca toma un táctil grande como escritorio',()=>{
+ assert.deepEqual(photos.photoTarget({width:1440,coarse:false}),{width:1280,height:960,maxBytes:600000});assert.deepEqual(photos.photoTarget({width:400,coarse:true}),{width:800,height:600,maxBytes:330000});assert.equal(photos.photoTarget({width:1200,coarse:true}).width,800);
+ assert.equal(photos.normalize({...photo,data:'data:image/jpeg;base64,/9j/'+'A'.repeat(900000)}).data,undefined);
+});

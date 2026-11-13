@@ -498,7 +498,7 @@ test('IA pide consentimiento, muestra propuesta revisable y no guarda el código
   ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
   ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
   assert.equal(ui.$('#group-ai-panel').contains(ui.$('#group-ai-read')),false);
-  ui.click('#group-ai-read');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('autorizas'));
+  assert.equal(ui.$('#group-ai-consent').checked,true);ui.input('#group-ai-consent',false);ui.click('#group-ai-read');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('autorizas'));
   assert.equal(ui.$('#group-ai-panel').open,true);
   assert.equal(calls,0);ui.input('#group-ai-consent',true);ui.input('#group-ai-code','private-test-code');ui.click('#group-ai-read');
   await ui.waitFor(()=>ui.$('#group-meal-items').querySelectorAll('fieldset').length===1 && !ui.$('#group-ai-read').disabled);
@@ -506,7 +506,7 @@ test('IA pide consentimiento, muestra propuesta revisable y no guarda el código
   assert.equal(ui.$('#group-meal-reviewed').checked,false);assert.equal(ui.state.gastos.length,0);
   assert.equal(ui.$('#group-text-panel').open,true);assert.equal(ui.$('#group-ocr-progress').value,100);
   ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.startsWith('Foto cargada'));
-  assert.equal(ui.$('#group-ai-consent').checked,false);
+  assert.equal(ui.$('#group-ai-consent').checked,true);
   ui.click('#group-close-editor');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
   assert.ok(!JSON.stringify([...ui.drafts.values()]).includes('private-test-code'));
  }finally{ui.close();}
@@ -617,7 +617,7 @@ test('fallo de conexión a Gemini conserva fotos y permite recuperar, guardar bo
   ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
   const draft=ui.state.viajes[0].group.meals[0];assert.equal(draft.status,'draft');assert.equal(draft.ticketData,photo);assert.equal(ui.state.gastos.length,0);assert.equal(ui.state.transferencias.length,0);
   ui.click('[data-group-edit]');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);
-  assert.equal(calls,1);assert.equal(ui.$('#group-ai-consent').checked,false);ui.input('#group-ai-consent',true);ui.click('#group-ai-read');await ui.waitFor(()=>ui.$('#group-meal-total').value==='12.00');
+  assert.equal(calls,1);assert.equal(ui.$('#group-ai-consent').checked,true);ui.input('#group-ai-consent',true);ui.click('#group-ai-read');await ui.waitFor(()=>ui.$('#group-meal-total').value==='12.00');
   assert.equal(calls,2);assert.equal(ui.$('#group-meal-ticket img').src,photo);assert.equal(ui.state.gastos.length,0);
  }finally{ui.close();}
 });
@@ -783,7 +783,7 @@ test('el código correcto se recuerda tras reabrir la aplicación y puede olvida
  try{
   reopened.click('#group-new-meal');await reopened.waitFor(()=>!reopened.$('#group-ai-read').disabled);
   assert.equal(reopened.$('#group-ai-code').value,saved);assert.equal(reopened.$('#group-ai-access-entry').hidden,true);
-  assert.equal(reopened.$('#group-ai-consent').checked,false);
+  assert.equal(reopened.$('#group-ai-consent').checked,true);
   reopened.click('#group-ai-change-code');assert.equal(reopened.$('#group-ai-access-entry').hidden,false);
   reopened.click('#group-ai-forget-code');assert.equal(reopened.w.localStorage.getItem('cuaderno.receiptAccess.v1'),null);
   assert.equal(reopened.$('#group-ai-code').value,'');assert.equal(reopened.state.viajes.length,1);
@@ -856,7 +856,7 @@ test('multifoto: añade tandas, evita copias idénticas, ordena, quita y recuper
   assert.match(ui.$('#group-meal-message').textContent,/omitido 1 fotos idénticas/);
   ui.input('#group-ai-consent',true);ui.input('#group-meal-reviewed',true);
   ui.click('[data-group-ticket-action="up"][data-ticket-index="2"]');
-  assert.equal(ui.$('#group-ai-consent').checked,false);assert.equal(ui.$('#group-meal-reviewed').checked,false);
+  assert.equal(ui.$('#group-ai-consent').checked,true);assert.equal(ui.$('#group-meal-reviewed').checked,false);
   const expected=[photos[0],photos[2],photos[1]];
   assert.deepEqual([...ui.$('#group-meal-ticket').querySelectorAll('img')].map(img=>img.src),expected.map(p=>p.data));
   ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
@@ -899,7 +899,7 @@ test('multifoto: lee el conjunto ordenado y una unión dudosa conserva conceptos
   assert.equal(ui.$('[data-item-field="name"]').value,'Plato revisado');assert.equal(calls,1);
   ui.click('[data-group-ticket-action="up"][data-ticket-index="1"]');ui.click('#group-parse-text');
   await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('fotos o su orden han cambiado'));
-  assert.equal(ui.$('[data-item-field="name"]').value,'Plato revisado');assert.equal(ui.$('#group-ai-consent').checked,false);
+  assert.equal(ui.$('[data-item-field="name"]').value,'Plato revisado');assert.equal(ui.$('#group-ai-consent').checked,true);
  }finally{ui.close();}
 });
 
@@ -994,5 +994,12 @@ test('No a compartir abre el aviso anterior sin modificar comensales y permite e
   assert.equal(ui.$('#group-units-dialog').open,true);assert.equal(ui.$('#group-units-edit').textContent,'Seguir editando');assert.equal(ui.$('#group-units-close').textContent,'Cerrar sin marcar');assert.match(ui.$('#group-units-message').textContent,/Sobran 2 unidades/);assert.equal(ui.$('[data-item-person="p0"]').value,'1');
   ui.click('#group-units-edit');assert.equal(ui.$('.group-concept-details').hidden,false);assert.equal(ui.$('[data-group-item-confirm]').checked,false);
   ui.click('[data-group-item-toggle]');ui.click('#group-units-close');ui.click('#group-units-close');assert.equal(ui.$('.group-concept-details').hidden,true);assert.equal(ui.$('[data-group-item-confirm]').checked,false);assert.equal(ui.$('[data-item-person="p0"]').value,'1');
+ }finally{ui.close();}
+});
+
+test('Grupo abre con autorización marcada pero no envía fotos hasta pulsar y respeta desmarcarla',async()=>{
+ let calls=0;const ui=await setup({recognizeAI:async()=>{calls++;return{itemsStatus:'reconciled',fields:{total:10},itemText:'Comida 10,00',text:'Comida 10,00'};}});try{
+  ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);assert.equal(ui.$('#group-ai-consent').checked,true);assert.equal(calls,0);
+  ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.input('#group-ai-code','test-code');ui.input('#group-ai-consent',false);ui.click('#group-ai-read');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('autorizas'));assert.equal(calls,0);
  }finally{ui.close();}
 });

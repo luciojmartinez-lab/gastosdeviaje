@@ -20,7 +20,7 @@
   }
   function normalize(value) {
     if (!value || typeof value !== 'object') return null;
-    const data = typeof value.data === 'string' && value.data.length <= 450000 && /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(value.data) ? value.data : '';
+    const data = typeof value.data === 'string' && value.data.length <= 850000 && /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(value.data) ? value.data : '';
     if (value.source === 'own') {
       const title = text(value.title), author = text(value.author);
       if (!data || !title || title.length > 500 || author.length > 2000) return null;
@@ -61,6 +61,9 @@
       seen.add(key); return key in dictionary ? dictionary[key] ? [dictionary[key]] : [] : [word];
     }).join(' ');
   }
+  function photoTarget({width=root.innerWidth||0,coarse=root.matchMedia?.('(pointer:coarse)')?.matches||false}={}) {
+    return width>=900&&!coarse ? {width:1280,height:960,maxBytes:600000} : {width:800,height:600,maxBytes:330000};
+  }
   function fromOpenverse(value) {
     if (!value || value.mature !== false || value.unstable__sensitivity?.length) return null;
     const type = value.license, version = value.license_version;
@@ -93,9 +96,10 @@
     const alias = q.match(/\(([^)]+)\)/)?.[1];
     const local = alias && text(city) ? searchTerms(alias.replace(/-/g,' ')+' '+text(city)) : '';
     const queries = [...new Set([q, searchTerms(q), local].filter(Boolean))];
+    const target=photoTarget();
     for (const [attempt, phrase] of queries.entries()) {
     onProgress({phase:'search', attempt:attempt+1, query:phrase});
-    const params = new URLSearchParams({action:'query', format:'json', formatversion:'2', origin:'*', maxlag:'5', generator:'search', gsrsearch:phrase+' filetype:bitmap', gsrnamespace:'6', gsrlimit:'6', prop:'imageinfo', iiprop:'url|size|mime|extmetadata', iiurlwidth:'800', iiurlheight:'600'});
+    const params = new URLSearchParams({action:'query', format:'json', formatversion:'2', origin:'*', maxlag:'5', generator:'search', gsrsearch:phrase+' filetype:bitmap', gsrnamespace:'6', gsrlimit:'6', prop:'imageinfo', iiprop:'url|size|mime|extmetadata', iiurlwidth:String(target.width), iiurlheight:String(target.height)});
     const response = await fetchImpl('https://commons.wikimedia.org/w/api.php?'+params, {signal, credentials:'omit', referrerPolicy:'no-referrer'});
     if (!response.ok) throw new Error('Wikimedia no está disponible. Puedes probar más tarde.');
     const result = await response.json();
@@ -125,5 +129,21 @@
     if (photo?.source === 'own') return [photo.title, `Autor: ${photo.author}`, photo.credit, 'No se atribuye una licencia libre a esta foto.', 'Copia reducida, sin recorte.'];
     return photo ? [photo.scope === 'city' ? `Foto general de ${photo.city}; no identifica necesariamente este lugar.` : '', photo.title, `Autor: ${photo.author || 'No indicado (dominio público)'}`, photo.credit ? `Crédito: ${photo.credit}` : '', `${photo.license} · ${photo.licenseUrl}`, `Fuente: ${photo.sourceUrl}`, 'Copia reducida, sin recorte.'].filter(Boolean) : [];
   }
-  root.TourismPhotos = {normalize, fromCommons, fromOpenverse, search, download, credits};
+  function flickrProfile(value) {
+    if (!String(value || '').trim()) return null;
+    try {
+      const url=new URL(String(value).trim()), match=url.pathname.match(/^\/photos\/([a-z0-9_@-]{1,100})(?:\/albums(?:\/(\d+))?)?\/?$/i);
+      if (url.protocol!=='https:' || !['www.flickr.com','flickr.com'].includes(url.hostname) || url.username || url.password || url.port || url.search || url.hash || !match) throw Error();
+      return {owner:match[1],url:`https://www.flickr.com/photos/${match[1]}/albums${match[2]?'/'+match[2]:''}`};
+    } catch { throw new Error('Introduce un enlace público de perfil o álbum: https://www.flickr.com/photos/tu_usuario/albums. No uses claves ni enlaces de invitación.'); }
+  }
+  function flickrLinks(query, profile) {
+    const q=text(query); if (!q || q.length>200) throw new Error('Escribe el lugar y la ciudad para buscar en Flickr.');
+    const user=flickrProfile(profile), phrase=searchTerms(q)||q;
+    const params=new URLSearchParams({text:phrase,sort:'relevance',view_all:'1'});
+    const global=`https://www.flickr.com/search/?${params}`;
+    if(user)params.set('user_id',user.owner);
+    return {global,own:user?`https://www.flickr.com/search/?${params}`:null,albums:user?.url||null};
+  }
+  root.TourismPhotos = {normalize, fromCommons, fromOpenverse, search, download, credits, flickrProfile, flickrLinks, photoTarget};
 })(globalThis);

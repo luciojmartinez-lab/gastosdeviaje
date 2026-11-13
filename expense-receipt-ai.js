@@ -42,7 +42,7 @@
     if(!codeInput.value.trim()&&access.get()&&document.activeElement!==codeInput)restore(prefix);
     const source=host.source(prefix),value=state[prefix];
     const context=host.context(prefix);
-    if(value.source!==source?.source||value.context!==context){value.source=source?.source;value.context=context;value.sequence++;value.proposal=null;$(prefix+'-ticket-ai-proposal').innerHTML='';$(prefix+'-ticket-ai-consent').checked=false;$(prefix+'-ticket-ai-applied').hidden=true;message(prefix,'');}
+    if(value.source!==source?.source||value.context!==context){if(value.context!==context)$(prefix+'-ticket-ai-consent').checked=true;value.source=source?.source;value.context=context;value.sequence++;value.proposal=null;$(prefix+'-ticket-ai-proposal').innerHTML='';$(prefix+'-ticket-ai-applied').hidden=true;message(prefix,'');}
     $(prefix+'-ticket-ai-read').disabled=!source||value.busy||host.localBusy(prefix);
   }
   async function read(prefix){

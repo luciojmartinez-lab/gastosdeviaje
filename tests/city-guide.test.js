@@ -70,7 +70,7 @@ test('al crear una ciudad prepara la ficha para Añadir y exige elegir antes el 
 test('la propuesta usa solo ciudad y país, requiere consentimiento y no sustituye la ficha guardada', async () => {
   const {context} = fixture(); let sent;
   context.fetch = async (url, options) => {sent = JSON.parse(options.body); return Response.json({guide: {...guide, source: 'gemini', reviewed: false}});};
-  context.openCityGuide(2); await context.proposeCityGuide(); assert.equal(sent, undefined);
+  context.openCityGuide(2); assert.equal(context.$('#city-guide-consent').checked,true);context.$('#city-guide-consent').checked=false;await context.proposeCityGuide();assert.equal(sent, undefined);
   context.$('#city-guide-consent').checked = true;
   await context.proposeCityGuide();
   assert.deepEqual(sent, {mode: 'city-guide', city: 'Oulu', country: 'Finlandia', consent: true});
@@ -198,4 +198,20 @@ test('el selector de fuente llega al buscador y una foto propia inválida no bor
  context.TourismPhotos.search=async(query,options)=>{source=options.source;return [];};context.$('[data-guide-photo-source="0"]').value='openverse';await context.cityGuidePhotoAction({target:context.$('[data-guide-photo-search="0"]')});assert.equal(source,'openverse');
  const input=context.$('[data-guide-photo-file="0"]');Object.defineProperty(input,'files',{value:[new dom.window.File(['pdf'],'archivo.pdf',{type:'application/pdf'})]});context.prepareCityGuidePhoto=()=>assert.fail('No debe decodificar PDF');
  await context.cityGuidePhotoAction({target:input});assert.match(context.$('[data-guide-photo-status="0"]').textContent,/JPEG, PNG o WebP/);assert.equal(context.cityGuideFormData().items[0].photo.data,previous.data);assert.equal(context.saved,undefined);assert.equal(context.$('#city-guide-save').disabled,false);
+});
+
+test('Flickr conserva solo el perfil público y prepara búsquedas sin enviar ni guardar una foto',()=>{
+ const {context}=fixture(),storage=new Map();context.localStorage={getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)};
+ context.openCityGuide(2);context.$('#city-guide-flickr-profile').value='https://www.flickr.com/photos/luciojmartinez/albums';
+ context.cityGuideFlickrAction({target:context.$('[data-guide-flickr="0"]')});
+ const links=context.$('[data-guide-flickr-results="0"]').querySelectorAll('a');assert.equal(links.length,3);assert.equal(new URL(links[0].href).searchParams.get('user_id'),'luciojmartinez');assert.match(context.$('[data-guide-flickr-results="0"]').textContent,/800 × 600/);assert.equal(context.saved,undefined);
+ context.closeCityGuide();context.openCityGuide(2);assert.equal(context.$('#city-guide-flickr-profile').value,'https://www.flickr.com/photos/luciojmartinez/albums');
+ context.$('#city-guide-flickr-profile').value='https://www.flickr.com/gp/owner/token';context.saveCityGuideFlickrProfile();assert.match(context.$('#city-guide-flickr-status').textContent,/enlace público/);assert.equal(storage.get('bitacora.flickrProfile'),'https://www.flickr.com/photos/luciojmartinez/albums');
+});
+
+test('en PC prepara una foto mayor manteniendo el límite de peso y reduce calidad si hace falta',async()=>{
+ const {context}=fixture();let canvas,options,compressions=0;
+ context.TourismPhotos.photoTarget=()=>({width:1280,height:960,maxBytes:600000});context.loadImageFile=async(blob,value)=>{options=value;return{width:1400,height:1100,close(){}};};context.document={createElement:()=>canvas={getContext:()=>({fillRect(){},drawImage(){}})}};
+ context.canvasToJpeg=async()=>new Blob([new Uint8Array(++compressions===1?700000:500000)]);context.readBlobAsDataUrl=async()=> 'data:image/jpeg;base64,/9j/AA==';
+ await context.prepareCityGuidePhoto(new Blob(['jpeg']),{own:true});assert.equal(options.maxDimension,1280);assert.equal(compressions,2);assert.equal(canvas.width,1);assert.equal(canvas.height,1);
 });
