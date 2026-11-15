@@ -435,3 +435,9 @@ Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente p
 - Gastos en PC con puntero fino y ancho >=1100 usa contenedor hasta 1600px, tabla fija ajustada y columnas que envuelven; reglas móviles intactas. Aspecto físico pendiente de comprobar.
 - La descarga llamaba a la recuperación de referencias: una copia con gastos de un viaje ausente puede recrear Viaje recuperado N. No se inspeccionaron datos reales del PC, por lo que la secuencia concreta de Lucio no queda confirmada. Las eliminaciones se recuerdan en appSettings, atómicas con el borrado; una descarga antigua conserva esa decisión local y deja los otros viajes intactos. Debe borrar el viaje 6 una vez más en 079, porque el borrado anterior no tiene marcador. Referencias cruzadas abortan sin sustituir datos. Importar un archivo manualmente que incluya ese viaje retira su marcador. No se borraron datos del usuario.
 - 548 pruebas correctas; regresión de copia antigua con referencias huérfanas y viaje eliminado, incluyendo etapas con clave textual y otros viajes conservados. Ayuda/PDF regenerados (40 páginas, 350 bloques) y revisados visualmente, márgenes correctos.
+
+## 800v080 — Icono antiguo de tren y libro (15/11/2026)
+
+- Diseño generado con imagegen: tren de vapor en un libro antiguo, pergamino y tinta. Original conservado en assets, exportaciones PNG 32/180/192/512 e ICO multirresolución. Variante maskable 512 con margen seguro independiente para Android.
+- Manifiesto PWA, favicon PNG/ICO, apple-touch-icon y caché offline apuntan a nuevos nombres para renovar los recursos. El icono de instalaciones ya existentes depende de la renovación del navegador/sistema; puede requerir recrear acceso. No se cambió la portada ni datos del usuario.
+- 548 pruebas correctas, manifiesto/recursos/caché comprobados; ayuda y PDF regenerados (40 páginas, 350 bloques) y revisados visualmente. Pendiente comprobar renovación de iconos en instalaciones físicas.

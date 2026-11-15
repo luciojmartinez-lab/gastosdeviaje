@@ -21,22 +21,38 @@
       "url": "url",
       "files": {
         "name": "photos",
-        "accept": ["image/jpeg", "image/png", "image/webp", "text/plain", ".jpg", ".jpeg", ".png", ".webp", ".txt"]
+        "accept": [
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+          "text/plain",
+          ".jpg",
+          ".jpeg",
+          ".png",
+          ".webp",
+          ".txt"
+        ]
       }
     }
   },
   "icons": [
     {
-      "src": "assets/app-icon-192.png",
+      "src": "assets/train-book-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "assets/app-icon-512.png",
+      "src": "assets/train-book-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "assets/train-book-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
