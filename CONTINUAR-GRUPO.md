@@ -422,3 +422,9 @@ Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente p
 - Alta y edición: el acceso desplegable a Gemini usa las mismas clases de botón azul y ancho completo de Pegar respuesta de Lens IA, sin triángulo nativo. Se conserva el despliegue accesible por teclado y su foco visible. El botón interior de lectura ocupa también todo el ancho. No se inicia lectura al desplegar.
 - Ayuda HTML y PDF actualizados, versión y fecha coherentes también en los pies del manual. 545/545 pruebas correctas; PDF de 39 páginas y 345 bloques regenerado, revisión visual completa y márgenes sin desbordamientos. Sin llamadas reales a Gemini ni cambios en datos del usuario. Aspecto en móvil físico pendiente.
 - Reservas: propuesta explicada a Lucio, sin implementar: dos fechas (reserva/pago previsto), bloque Pagos pendientes encima de gastos sin afectar saldos y acción Marcar como pagado con fecha real/cuenta. Separar pagos por realizar de devoluciones por cobrar de comidas.
+
+## 800v078 — Reservas pendientes de pago (15/11/2026)
+
+- Alta/edición con Pendiente de pago y fecha prevista, fecha de reserva conservada. Bloque inicial filtrado y total previsto independiente. Revisar / Marcar como pagado abre edición; desmarcar propone hoy y permite confirmar cuenta, importe y fecha.
+- Registro contable pendiente con importe e importeEur cero, cuantía prevista en pendingAmount, estado y fechas explícitos. Al confirmar se contabiliza mediante updateGasto y al devolverlo a pendiente se revierte. Backups/importaciones conservan campos por expansión del registro. No se modifican datos reales ni se clasifican reservas antiguas automáticamente.
+- 547 pruebas correctas, incluidas transiciones y cambio de cuenta. Ayuda/PDF regenerados, 40 páginas y 347 bloques, revisión visual sin desbordamientos. Pendiente comprobación en móvil físico.

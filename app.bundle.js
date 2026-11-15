@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v077';
+const APP_VERSION = '800v078';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -577,6 +577,7 @@ function installDialogHelpLinks() {
 }
 
 const ADD_EXPENSE_DRAFT_FIELDS = [
+  '#g-payment-pending', '#g-payment-due',
   '#g-fecha', '#g-hora', '#g-viaje', '#g-cuenta', '#g-moneda',
   '#g-cat', '#g-subcat', '#g-pais', '#g-ciudad', '#g-importe',
   '#g-tipo', '#g-desc', '#g-ticket-type', '#g-extra-images-map'
@@ -2955,7 +2956,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v077');
+    const worker = new Worker('./timeline-import-worker.js?v=800v078');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3965,7 +3966,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v077');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v078');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4895,7 +4896,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v077');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v078');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5031,7 +5032,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v077');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v078');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5585,7 +5586,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v077');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v078');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6078,7 +6079,7 @@ function isPdfDocument(type, name, data) {
 let pdfViewerControllerPromise;
 async function openPdfDocument(blob,name,viewOptions = {}) {
   try{
-    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v077').then(module=>module.createPdfViewer(document)));
+    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v078').then(module=>module.createPdfViewer(document)));
     return await viewer.open(blob,name,viewOptions);
   }catch(error){pdfViewerControllerPromise=null;alert('No se ha podido abrir el visor PDF: '+(error.message||error));}
 }
@@ -7714,7 +7715,7 @@ async function delMoneda(codigo) {
   return deleteRecord('monedas', String(codigo).toUpperCase());
 }
 
-async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', ticketSize = 0, ticketWidth = 0, ticketHeight = 0, ticketPhotoTypeId = '', ticketPhotoTypeName = '', ticketLatitude = null, ticketLongitude = null, ticketLocationSource = '', ticketCapturedDate = '', ticketCapturedTime = '', ticketMapEnabled = false, ticketTranslationName = '', ticketTranslationType = '', ticketTranslationData = '', ticketTranslationSize = 0, ticketTranslationWidth = 0, ticketTranslationHeight = 0, ticketTranslationText = '', ticketTranslationSourceLanguages = [], ticketTranslationKind = '', extraImages = [] }) {
+async function addGasto({ paymentPending = false, paymentDue = '', reservationDate = '', fecha, hora = '', viajeId, cuentaId, moneda, catId, subcatId = null, paisId = null, ciudadId = null, importe, desc = '', ticketName = '', ticketType = '', ticketData = '', ticketSize = 0, ticketWidth = 0, ticketHeight = 0, ticketPhotoTypeId = '', ticketPhotoTypeName = '', ticketLatitude = null, ticketLongitude = null, ticketLocationSource = '', ticketCapturedDate = '', ticketCapturedTime = '', ticketMapEnabled = false, ticketTranslationName = '', ticketTranslationType = '', ticketTranslationData = '', ticketTranslationSize = 0, ticketTranslationWidth = 0, ticketTranslationHeight = 0, ticketTranslationText = '', ticketTranslationSourceLanguages = [], ticketTranslationKind = '', extraImages = [] }) {
   if (!hasValidCurrency(moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   const account = state.cuentas.find(c => c.id === Number(cuentaId));
   if (account?.groupClearing) throw new Error('Registra el consumo de grupo desde Grupo → Comidas.');
@@ -7722,6 +7723,7 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
   if (account && account.viajeId && Number(viajeId) !== Number(account.viajeId)) throw new Error('Esa cuenta pertenece a otro viaje');
   const amount = numberValue(importe);
   if (amount === 0) throw new Error('El importe no puede ser cero');
+  if (paymentPending && amount < 0) throw new Error('El pago previsto debe ser mayor que cero');
   const now = new Date().toISOString();
   const storedExtraImages = Array.isArray(extraImages) ? extraImages : [];
   const ticketLocation = ticketData
@@ -7737,8 +7739,9 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     subcatId: subcatId ? Number(subcatId) : null,
     paisId: paisId ? Number(paisId) : null,
     ciudadId: ciudadId ? Number(ciudadId) : null,
-    importe: amount,
-    importeEur: toEur(amount, moneda),
+    paymentPending, paymentDue, reservationDate: reservationDate || fecha, pendingAmount: paymentPending ? amount : 0,
+    importe: paymentPending ? 0 : amount,
+    importeEur: paymentPending ? 0 : toEur(amount, moneda),
     desc,
     ticketName,
     ticketType,
@@ -7767,7 +7770,7 @@ async function addGasto({ fecha, hora = '', viajeId, cuentaId, moneda, catId, su
     createdAt: now,
     updatedAt: now
   });
-  if (account) {
+  if (account && !paymentPending) {
     await updateCuenta(account.id, { saldoActual: +(numberValue(account.saldoActual) - amount).toFixed(2) });
   }
   return id;
@@ -7812,7 +7815,8 @@ async function updateGasto(id, patch) {
   next.moneda = account.moneda;
   if (!hasValidCurrency(next.moneda)) throw new Error('Configura la equivalencia de esa moneda antes de usarla');
   next.importe = numberValue(next.importe);
-  if (next.importe === 0) throw new Error('El importe no puede ser cero');
+  if (next.paymentPending) { next.pendingAmount = numberValue(patch.importe ?? current.pendingAmount); if(next.pendingAmount <= 0) throw new Error('El pago previsto debe ser mayor que cero'); next.importe = 0; } else { next.pendingAmount = 0; }
+  if (next.importe === 0 && !next.paymentPending) throw new Error('El importe no puede ser cero');
   next.importeEur = toEur(next.importe, next.moneda);
   const saved = await updateRecord('gastos', Number(id), next);
   const oldAccount = await getOne('cuentas', Number(current.cuentaId));
@@ -9039,7 +9043,18 @@ function renderGastosTabla() {
   tbody.innerHTML = '';
   applyExpenseViewMode();
   updateMobileClearFilters();
-  const rows = filteredGastos();
+  const allRows = filteredGastos();
+  const pendingRows = allRows.filter(g => g.paymentPending);
+  if(pendingRows.length){
+    const heading=document.createElement('tr');heading.innerHTML='<td colspan="10"><strong>Pagos pendientes</strong> · No incluidos en lo gastado ni descontados del saldo</td>';tbody.appendChild(heading);
+    for(const g of pendingRows.sort((a,b)=>(a.paymentDue||'9999').localeCompare(b.paymentDue||'9999'))){
+      const tr=document.createElement('tr');const cell=document.createElement('td');cell.colSpan=10;
+      cell.textContent=[g.paymentDue || 'Sin fecha prevista',g.desc || 'Reserva',numberValue(g.pendingAmount).toLocaleString('es-ES',{minimumFractionDigits:2})+' '+g.moneda].join(' · ');
+      const button=document.createElement('button');button.type='button';button.className='btn ghost';button.textContent='Revisar / Marcar como pagado';button.onclick=()=>openEditGasto(g);cell.append(' ',button);tr.append(cell);tbody.append(tr);
+    }
+    const summary=document.createElement('tr');const cell=document.createElement('td');cell.colSpan=10;cell.textContent='Total previsto: '+pendingRows.reduce((s,g)=>s+toEur(g.pendingAmount,g.moneda),0).toLocaleString('es-ES',{style:'currency',currency:'EUR'});summary.append(cell);tbody.append(summary);
+  }
+  const rows = allRows.filter(g => !g.paymentPending);
   const expensesInBlog = new Set(state.blogEntries
     .filter(entry => entry.tipo === 'gasto' && entry.sourceGastoId)
     .map(entry => Number(entry.sourceGastoId)));
@@ -10719,7 +10734,7 @@ async function routeItineraryPdf(name, stages, note = '', options = {}) {
     }
   }
   canvas.width = 1; canvas.height = 1;
-  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v077'));
+  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v078'));
   return pdf.buildImagePdfBlob(pages, {margin: 24});
 }
 
@@ -15562,7 +15577,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v077');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v078');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16551,7 +16566,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v077').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v078').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -18264,6 +18279,10 @@ function openEditGasto(gasto) {
   activeEditExpenseActionAnchor = captureExpenseActionAnchor(gasto.id);
   activeEditTicketRecord = gasto.ticketData ? { ...gasto } : null;
   $('#edit-gasto-id').value = gasto.id;
+  $('#edit-gasto-payment-pending').checked = gasto.paymentPending === true;
+  $('#edit-gasto-payment-due').value = gasto.paymentDue || '';
+  $('#edit-gasto-payment-pending').onchange = () => { if(gasto.paymentPending && !$('#edit-gasto-payment-pending').checked) $('#edit-gasto-fecha').value = todayIso(); };
+  $('#edit-gasto-payment-reference').textContent = gasto.reservationDate ? 'Reserva: '+gasto.reservationDate : '';
   $('#edit-gasto-fecha').value = gasto.fecha || todayIso();
   $('#edit-gasto-hora').value = expenseTimeValue(gasto) || currentLocalTime();
   $('#edit-gasto-viaje').value = gasto.viajeId ? String(gasto.viajeId) : '';
@@ -18278,7 +18297,7 @@ function openEditGasto(gasto) {
   $('#edit-gasto-pais').value = gasto.paisId ? String(gasto.paisId) : '';
   renderEditCiudades();
   $('#edit-gasto-ciudad').value = gasto.ciudadId ? String(gasto.ciudadId) : '';
-  const currentAmount = numberValue(gasto.importe);
+  const currentAmount = numberValue(gasto.paymentPending ? gasto.pendingAmount : gasto.importe);
   $('#edit-gasto-tipo').value = currentAmount < 0 ? 'ingreso' : 'gasto';
   $('#edit-gasto-importe').value = Math.abs(currentAmount);
   $('#edit-gasto-desc').value = gasto.desc || '';
@@ -19593,7 +19612,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v077')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v078')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -19601,7 +19620,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v077')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v078')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -19642,12 +19661,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v077');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v078');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v077')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v077')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v078')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v078')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -20342,6 +20361,7 @@ function bindEvents() {
         ticketPatch.ticketPhotoTypeName = selectedTicketType ? selectedTicketType.nombre : '';
       }
       await updateGasto(id, {
+        paymentPending: $('#edit-gasto-payment-pending').checked, paymentDue: $('#edit-gasto-payment-due').value, reservationDate: current.reservationDate || current.fecha,
         fecha: $('#edit-gasto-fecha').value || todayIso(),
         hora: $('#edit-gasto-hora').value || currentLocalTime(),
         viajeId: $('#edit-gasto-viaje').value || null,
@@ -20521,6 +20541,7 @@ function bindEvents() {
       const selectedTicketType = ticket ? photoTypeById($('#g-ticket-type').value) : null;
       const extraImages = await readSelectedExpenseExtraImages('g');
       await addGasto({
+        paymentPending: $('#g-payment-pending').checked, paymentDue: $('#g-payment-due').value, reservationDate: fecha,
         fecha,
         hora: $('#g-hora').value || currentLocalTime(),
         viajeId: $('#g-viaje').value || null,
@@ -21611,7 +21632,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v077');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v078');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }
