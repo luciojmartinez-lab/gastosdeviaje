@@ -32,7 +32,8 @@ test('borrado integral incluye Grupo cerrado, cuentas, movimientos, imágenes y 
    const expected=store==='viajes'?data[store].filter(r=>r.id!==3):store==='cuentas'?data[store].filter(r=>r.viajeId!==3):store==='gastos'?data[store].filter(r=>r.viajeId!==3&&r.cuentaId!==10):store==='transferencias'?data[store].filter(r=>r.groupTripId!==3):data[store].filter(r=>r.viajeId!==3);
    assert.deepEqual(result[store],expected,store);
   }
-  assert.deepEqual(result.appSettings,data.appSettings.filter(r=>r.key!=='groupMealDraft:3').sort((a,b)=>a.key.localeCompare(b.key)));
+  assert.equal(result.appSettings.find(r=>r.key==='deletedTrip:3').tripId,3);
+  assert.deepEqual(result.appSettings.filter(r=>r.key!=='deletedTrip:3'),data.appSettings.filter(r=>r.key!=='groupMealDraft:3').sort((a,b)=>a.key.localeCompare(b.key)));
   for(const store of ['categorias','lugares','monedas','localBackups'])assert.deepEqual(result[store],data[store]);
   const beforeAgain=await snapshot(db);await assert.rejects(ctx.delViaje(3),/ya no existe/);assert.deepEqual(await snapshot(db),beforeAgain);
  }finally{db.close();}
@@ -66,4 +67,10 @@ test('confirmación nombra el viaje, explica backup individual y no borra al abr
  vm.runInContext(section('function openDeleteViajeDialog','function planTripDeletion'),ctx);ctx.openDeleteViajeDialog(3);
  assert.equal(calls,0);assert.equal(options.fields.length,0);assert.match(options.title,/Test <especial>/);assert.match(fields.innerHTML,/Test &lt;especial&gt;/);assert.match(fields.innerHTML,/todos y solo/);assert.match(fields.innerHTML,/backup solo de este viaje/);assert.equal(button.textContent,'Sí, borrar el viaje');
  const first=options.onSubmit();assert.equal(button.disabled,true);await assert.rejects(options.onSubmit(),/Espera/);assert.equal(calls,1);release();await first;assert.equal(button.disabled,false);
+});
+
+test('la nube antigua no recrea viajes eliminados localmente y conserva los demás',()=>{
+ const ctx=vm.createContext({});vm.runInContext(section('function planTripDeletion','async function delViaje'),ctx);vm.runInContext(section('function recoverBackupReferences','async function importAll'),ctx);vm.runInContext(section('function excludeLocallyDeletedCloudTrips','async function performCloudDownload'),ctx);
+ const data=initial();delete data.viajes[0];data.viajes=data.viajes.filter(Boolean);data.viajeDocumentos=data.tripDocuments;
+ const result=ctx.excludeLocallyDeletedCloudTrips(data,[{tripId:3}]);assert.equal(result.viajes.some(v=>v.id===3),false);assert.equal(result.gastos.some(g=>g.viajeId===3),false);assert.equal(result.timelineDays.some(g=>g.viajeId===3),false);assert.equal(result.viajes[0].id,9);assert.equal(data.gastos.length,4);
 });
