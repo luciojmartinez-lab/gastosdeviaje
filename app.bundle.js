@@ -1,6 +1,6 @@
 const DB_NAME = 'gastos_viaje_db';
 const DB_VERSION = 10;
-const APP_VERSION = '800v080';
+const APP_VERSION = '800v081';
 const BLOG_TRANSIT_CITY_VALUE = '__transit__';
 const ROUTE_STOP_ROLE_DESTINATION = 'destination';
 const ROUTE_STOP_ROLE_TRANSIT = 'transit';
@@ -2956,7 +2956,7 @@ function parseTimelineFileInWorker(file, trip) {
       }));
   }
   return new Promise((resolve, reject) => {
-    const worker = new Worker('./timeline-import-worker.js?v=800v080');
+    const worker = new Worker('./timeline-import-worker.js?v=800v081');
     worker.addEventListener('message', event => {
       const payload = event.data || {};
       if (payload.type === 'status') {
@@ -3719,7 +3719,8 @@ function backupReasonLabel(reason) {
     entry: 'Entrada en la app',
     manual: 'Copia manual',
     'before-sync': 'Antes de sincronizar',
-    'after-sync': 'Después de sincronizar'
+    'after-sync': 'Después de sincronizar',
+    'before-delete': 'Antes de eliminar un viaje'
   };
   return labels[reason] || 'Copia local';
 }
@@ -3966,7 +3967,7 @@ async function readImageMetadataForFile(file) {
       && typeof file.arrayBuffer === 'function';
     if ((!imageGpsCache.has(file) || !imageDateTimeCache.has(file)) && canContainExif) {
       try {
-        imageLocationModulePromise ||= import('./image-location.js?v=800v080');
+        imageLocationModulePromise ||= import('./image-location.js?v=800v081');
         const locationReader = await imageLocationModulePromise;
         const buffer = await file.arrayBuffer();
         const exifPoint = locationReader.extractImageGpsFromArrayBuffer(buffer);
@@ -4896,7 +4897,7 @@ async function recognizeExpenseTicketSource(prefix, source, options = {}) {
     setTicketOcrStatus(prefix, options.preparingMessage
       || `Preparando lectura en ${languages.map(ticketOcrLanguageName).join(', ')}…`);
     await warmTicketOcrLanguages(languages);
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v080');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v081');
     const ocr = await ticketOcrModulePromise;
     const result = await ocr.recognizeTicket(source.source, {
       type: source.type,
@@ -5032,7 +5033,7 @@ async function readLensTicketText(prefix, text, options = {}) {
   if (!sourceText) return null;
   try {
     setTicketOcrStatus(prefix, 'Analizando el texto reconocido por Google Lens…');
-    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v080');
+    ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v081');
     const ocr = await ticketOcrModulePromise;
     const fields = ocr.extractTicketFields(sourceText);
     if (fields.merchant) {
@@ -5586,7 +5587,7 @@ async function imageViewerExportBlob(record) {
   const point = storedImageCoordinates(record);
   const blob = record?.blob;
   if (!blob || !point || !/jpe?g/i.test(String(record.type || blob.type || ''))) return blob;
-  imageLocationModulePromise ||= import('./image-location.js?v=800v080');
+  imageLocationModulePromise ||= import('./image-location.js?v=800v081');
   const metadata = await imageLocationModulePromise;
   return metadata.embedGpsInJpegBlob(blob, point.latitude, point.longitude);
 }
@@ -6079,7 +6080,7 @@ function isPdfDocument(type, name, data) {
 let pdfViewerControllerPromise;
 async function openPdfDocument(blob,name,viewOptions = {}) {
   try{
-    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v080').then(module=>module.createPdfViewer(document)));
+    const viewer=await (pdfViewerControllerPromise ||= import('./pdf-viewer.js?v=800v081').then(module=>module.createPdfViewer(document)));
     return await viewer.open(blob,name,viewOptions);
   }catch(error){pdfViewerControllerPromise=null;alert('No se ha podido abrir el visor PDF: '+(error.message||error));}
 }
@@ -7358,6 +7359,7 @@ function planTripDeletion(snapshot, id) {
 }
 
 async function delViaje(id) {
+  if(typeof createSyncBackup === 'function') await createSyncBackup('before-delete');
   const names=['viajes','cuentas','gastos','transferencias','tripDocuments','blogEntries','timelineDays','appSettings'];
   const db=await openDB();
   await new Promise((resolve,reject)=>{
@@ -10738,7 +10740,7 @@ async function routeItineraryPdf(name, stages, note = '', options = {}) {
     }
   }
   canvas.width = 1; canvas.height = 1;
-  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v080'));
+  const pdf = await (routeItineraryPdfPromise ||= import('./share-pdf.js?v=800v081'));
   return pdf.buildImagePdfBlob(pages, {margin: 24});
 }
 
@@ -15581,7 +15583,7 @@ async function blogShareCanvasPdfBlob(canvas) {
     sourceY += sourceHeight;
   }
 
-  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v080');
+  blogSharePdfModulePromise ||= import('./share-pdf.js?v=800v081');
   const pdfBuilder = await blogSharePdfModulePromise;
   return pdfBuilder.buildImagePdfBlob(pageImages, { pageWidth, pageHeight, margin });
 }
@@ -16570,7 +16572,7 @@ function readBlobAsDataUrl(blob) {
 }
 
 function loadImageFile(file, options = {}) {
-  if(options.maxDimension)return import('./image-decode.js?v=800v080').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
+  if(options.maxDimension)return import('./image-decode.js?v=800v081').then(module=>module.decodeImageFile(file,{maxDimension:options.maxDimension,loadFallback:()=>loadImageFile(file)}));
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -18876,14 +18878,9 @@ function setCloudDownloadProgress(active) {
 }
 
 function excludeLocallyDeletedCloudTrips(data, markers) {
-  if(!markers.length)return data;
-  const recovered=recoverBackupReferences(data);
-  const snapshot={...recovered,tripDocuments:[...(data.viajeDocumentos||[])],appSettings:[],transferencias:[...(data.transferencias||[])],gastos:[...(data.gastos||[])],blogEntries:[...(data.blogEntries||[])],timelineDays:[...(data.timelineDays||[])]};
-  for(const marker of markers){
-    if(!snapshot.viajes.some(trip=>Number(trip.id)===Number(marker.tripId)))continue;
-    for(const operation of planTripDeletion(snapshot,marker.tripId)) snapshot[operation.store]=snapshot[operation.store].filter(item=>String(item.id)!==String(operation.key));
-  }
-  return {...data,viajes:snapshot.viajes,cuentas:snapshot.cuentas,gastos:snapshot.gastos,transferencias:snapshot.transferencias,viajeDocumentos:snapshot.tripDocuments,blogEntries:snapshot.blogEntries,timelineDays:snapshot.timelineDays};
+  // A local numeric id is not proof that a cloud record is disposable.
+  // Keep the complete cloud snapshot; deletion requires explicit review.
+  return data;
 }
 
 async function performCloudDownload() {
@@ -18895,7 +18892,7 @@ async function performCloudDownload() {
     await createSyncBackup('before-sync');
     let hydratedData = await hydrateCloudBackupData(remote.data);
     const deletedTrips=(await getAll('appSettings')).filter(item=>String(item.key).startsWith('deletedTrip:'));
-    const retainedLocalDeletion=deletedTrips.some(marker=>[...(hydratedData.viajes||[]),...(hydratedData.gastos||[]),...(hydratedData.cuentas||[])].some(item=>Number(item.viajeId)===Number(marker.tripId)||((hydratedData.viajes||[]).includes(item)&&Number(item.id)===Number(marker.tripId))));
+    const retainedLocalDeletion = false;
     hydratedData = excludeLocallyDeletedCloudTrips(hydratedData,deletedTrips);
     await withDataTrackingPaused(() => importAll(hydratedData));
     setLocalDataUpdatedAt(retainedLocalDeletion ? new Date().toISOString() : remote.updatedAt || remote.savedAt || new Date().toISOString());
@@ -19632,7 +19629,7 @@ function bindExpenseAIEvents() {
     localBusy:prefix=>!!$(`#${prefix}-ticket-read`)?.dataset.busy,
     sync:syncTicketOcrAvailability,
     hasTranslation:prefix=>!!pendingExpenseTicketTranslations[prefix]?.data,
-    status:async code=>(await import('./receipt-ai.js?v=800v080')).getReceiptAIStatus(fetch,code),
+    status:async code=>(await import('./receipt-ai.js?v=800v081')).getReceiptAIStatus(fetch,code),
     prepare:async prefix=>{
       await pendingExpenseTicketLocationChecks[prefix];
       const source=ticketOcrSource(prefix);if(!source)throw new Error('Selecciona una foto del ticket.');
@@ -19640,7 +19637,7 @@ function bindExpenseAIEvents() {
       if(!(blob instanceof Blob)||!/^image\//.test(blob.type))throw new Error('Gemini necesita una imagen. Para un PDF puedes usar Leer ticket (OCR local), o añadir una captura.');
       return compressGroupTicketPhoto(new File([blob],source.name||'ticket.jpg',{type:blob.type}));
     },
-    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v080')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
+    read:async(photo,code,progress)=>(await import('./receipt-ai.js?v=800v081')).readReceiptWithAI({ticketData:photo.data},{accessCode:code,consent:true,mode:'expense',categories:expenseAICategoryOptions()},progress),
     apply:applyExpenseAIProposal
   });
 }
@@ -19681,12 +19678,12 @@ function bindGroupEvents() {
       return photos;
     },
     recognize: async (meal, progress) => {
-      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v080');
+      ticketOcrModulePromise ||= import('./ticket-ocr.js?v=800v081');
       const ocr = await ticketOcrModulePromise;
       return recognizeGroupTicket(meal,progress,ocr.recognizeTicket);
     },
-    aiStatus: async () => (await import('./receipt-ai.js?v=800v080')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
-    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v080')).readReceiptWithAI(meal, options, progress),
+    aiStatus: async () => (await import('./receipt-ai.js?v=800v081')).getReceiptAIStatus(fetch,ReceiptAccess.get()),
+    recognizeAI: async (meal, options, progress) => (await import('./receipt-ai.js?v=800v081')).readReceiptWithAI(meal, options, progress),
     share: async text => {
       if (navigator.share) { try { await navigator.share({ title: 'Reparto de comida', text }); return; } catch (error) { if (error.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); }
@@ -21653,7 +21650,7 @@ async function saveBlogCameraOriginal() {
   const point = storedImageCoordinates(activeBlogImage);
   let exportBlob = file;
   if (point && /jpe?g/i.test(String(file.type || file.name || ''))) {
-    imageLocationModulePromise ||= import('./image-location.js?v=800v080');
+    imageLocationModulePromise ||= import('./image-location.js?v=800v081');
     const metadata = await imageLocationModulePromise;
     exportBlob = await metadata.embedGpsInJpegBlob(file, point.latitude, point.longitude);
   }

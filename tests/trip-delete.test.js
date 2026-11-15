@@ -69,8 +69,10 @@ test('confirmación nombra el viaje, explica backup individual y no borra al abr
  const first=options.onSubmit();assert.equal(button.disabled,true);await assert.rejects(options.onSubmit(),/Espera/);assert.equal(calls,1);release();await first;assert.equal(button.disabled,false);
 });
 
-test('la nube antigua no recrea viajes eliminados localmente y conserva los demás',()=>{
+test('un identificador borrado localmente no autoriza a quitar registros de una copia de nube',()=>{
  const ctx=vm.createContext({});vm.runInContext(section('function planTripDeletion','async function delViaje'),ctx);vm.runInContext(section('function recoverBackupReferences','async function importAll'),ctx);vm.runInContext(section('function excludeLocallyDeletedCloudTrips','async function performCloudDownload'),ctx);
  const data=initial();delete data.viajes[0];data.viajes=data.viajes.filter(Boolean);data.viajeDocumentos=data.tripDocuments;
- const result=ctx.excludeLocallyDeletedCloudTrips(data,[{tripId:3}]);assert.equal(result.viajes.some(v=>v.id===3),false);assert.equal(result.gastos.some(g=>g.viajeId===3),false);assert.equal(result.timelineDays.some(g=>g.viajeId===3),false);assert.equal(result.viajes[0].id,9);assert.equal(data.gastos.length,4);
+ const result=ctx.excludeLocallyDeletedCloudTrips(data,[{tripId:3}]);assert.equal(result,data);assert.equal(result.gastos.length,4);assert.equal(result.timelineDays.length,2);assert.equal(result.viajes[0].id,9);
 });
+
+test('si falla la copia de seguridad previa no se elimina ningún dato del viaje',async()=>{const db=await database();try{const before=await snapshot(db),{ctx}=context(db);ctx.createSyncBackup=async reason=>{assert.equal(reason,'before-delete');throw Error('Sin espacio para copia');};await assert.rejects(()=>ctx.delViaje(3),/Sin espacio/);assert.deepEqual(await snapshot(db),before);}finally{db.close();}});
