@@ -448,3 +448,9 @@ Publicación 800v060: main 44d48c5 enviado a GitHub y servido automáticamente p
 - Retirado el filtrado destructivo de la descarga por marcas locales de identificadores borrados. La nube se importa completa sin esa eliminación adicional. No hay tratamiento especial de nombres, números de viaje ni usuarios. Puede reaparecer un viaje recuperado si la copia contiene referencias huérfanas; revisar antes de borrar.
 - Copia completa antes de delViaje. Si la copia falla se aborta el borrado; prueba con IndexedDB confirma que ningún registro cambia. Las marcas existentes no ejecutan eliminación automática.
 - 549 pruebas correctas; fuente/PDF regenerados (40 páginas, 350 bloques) y revisados visualmente, sin desbordamientos. No se modificaron datos reales ni se sincronizó a la nube. Recuperación y auditoría del resto canceladas por Lucio; no se afirma que el billete fuera el único afectado.
+
+## 800v082 — PDF en Gemini (17/11/2026)
+
+- Gastos, alta y edición: Gemini admite PDF nativo hasta 2,9 MB y las imágenes anteriores. Conserva el adjunto original. Rechazo local de tamaño/cabecera y validación del servidor antes de contactar Google. Sin cambios en facturación ni datos de usuario.
+- Prompt para reservas: no duplicar totales entre páginas ni confundir estancia con fecha de compra; revisar pago pendiente manualmente.
+- 550 pruebas correctas, incluida integración cliente/servicio simulada para PDF e imágenes; no se enviaron documentos reales a Google. Ayuda regenerada, 40 páginas revisadas sin desbordamientos.

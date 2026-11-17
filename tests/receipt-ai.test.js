@@ -278,7 +278,7 @@ test('IA multifoto: rechaza exceso, repetición y fotos inválidas antes de envi
  assert.equal((await h.handler(h.request({images:[image,photo],image}))).status,400);assert.equal(h.calls.length,0);
  let calls=0;
  await assert.rejects(readReceiptWithAI({ticketPhotos:[{data:image},{data:image}]},{accessCode:'x',consent:true},()=>{},async()=>{calls++;}),/repetida/);
- await assert.rejects(readReceiptWithAI({ticketPhotos:[{data:image},{data:'data:image/jpeg;base64,'+'A'.repeat(4_000_000)}]},{accessCode:'x',consent:true},()=>{},async()=>{calls++;}),/demasiado grandes/);
+ await assert.rejects(readReceiptWithAI({ticketPhotos:[{data:image},{data:'data:image/jpeg;base64,'+'A'.repeat(4_000_000)}]},{accessCode:'x',consent:true},()=>{},async()=>{calls++;}),/superan el límite/);
  assert.equal(calls,0);
 });
 
@@ -306,4 +306,17 @@ test('guía turística: autorización, entrada inválida y cuota se bloquean sin
  const quota=harness({quota:true});assert.equal((await quota.handler(quota.request({mode:'city-guide',city:'Oulu',country:'Finlandia',consent:true}))).status,429);assert.equal(quota.inferences().length,1);
  const bad=harness({receipt:{intro:'x',items:[{name:'A',description:'D',photoTip:''},{name:'a',description:'D',photoTip:''}]}});
  assert.equal((await bad.handler(bad.request({mode:'city-guide',city:'Oulu',country:'Finlandia',consent:true}))).status,503);
+});
+
+
+test('PDF de gasto llega intacto a Gemini y conserva las imágenes',async()=>{
+ const pdf='data:application/pdf;base64,'+Buffer.from('%PDF-1.4\n documento de prueba \n%%EOF').toString('base64');
+ for(const data of [pdf,image]){
+  const h=harness({receipt:foreignReceipt});
+  const result=await readReceiptWithAI({ticketData:data},{consent:true,accessCode:'test-access-code',mode:'expense'},()=>{},(url,init)=>h.handler(new Request('https://test.netlify.app'+url,init)));
+  assert.equal(result.fields.total,1850);
+  const part=JSON.parse(h.inferences()[0].init.body).contents[0].parts[0].inlineData;
+  assert.equal(part.mimeType,data===pdf?'application/pdf':'image/jpeg');assert.equal(part.data,data.split(',')[1]);
+ }
+ const h=harness();assert.equal((await h.handler(h.request({mode:'expense',image:'data:application/pdf;base64,'+Buffer.alloc(48).toString('base64')}))).status,400);assert.equal(h.inferences().length,0);
 });

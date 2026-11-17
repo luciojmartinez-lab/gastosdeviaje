@@ -98,8 +98,8 @@ export async function readReceiptWithAI(meal, { accessCode, consent, mode='group
   if (consent !== true) throw new Error('Marca que autorizas enviar las fotos de este ticket a Google para leerlo.');
   if (!String(accessCode || '').trim()) throw new Error('Introduce el código de acceso a la lectura gratuita.');
   const images=Array.isArray(meal.ticketPhotos)&&meal.ticketPhotos.length?meal.ticketPhotos.map(photo=>photo?.data):meal.ticketData?[meal.ticketData]:[];
-  if(!images.length||images.length>8||images.some(image=>typeof image!=='string'||!/^data:image\/(jpeg|png|webp);base64,/i.test(image)))throw new Error('Añade entre una y ocho fotos JPEG, PNG o WebP del ticket.');
-  if(images.reduce((sum,image)=>sum+image.length,0)>4_000_000)throw new Error('Las fotos juntas son demasiado grandes. Recorta el fondo o elige fotos más pequeñas; no se ha enviado ninguna.');
+  if(!images.length||images.length>8||images.some(image=>typeof image!=='string'||!(mode==='expense'?/^data:(?:image\/(?:jpeg|png|webp)|application\/pdf);base64,/i:/^data:image\/(jpeg|png|webp);base64,/i).test(image)))throw new Error(mode==='expense'?'Añade una imagen JPEG, PNG o WebP, o un PDF del ticket.':'Añade entre una y ocho fotos JPEG, PNG o WebP del ticket.');
+  if(images.reduce((sum,image)=>sum+image.length,0)>4_000_000)throw new Error('El archivo o las fotos superan el límite de envío. Reduce su tamaño; no se ha enviado nada.');
   if(new Set(images).size!==images.length)throw new Error('Hay una foto repetida. Quita la copia antes de leer el ticket.');
   const categoryOptions=mode==='expense'?normalizeReceiptCategories(categories):[];
   onProgress({ status: 'Comprobando acceso gratuito y leyendo con Google…', progress: 0.1 });

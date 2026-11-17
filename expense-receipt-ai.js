@@ -50,16 +50,16 @@
     const input=$(prefix+'-ticket-ai-code'),code=input.value.trim()||access.get();
     if(code){input.value=code;access.save(code);}
     if(host.localBusy(prefix))throw new Error('Espera a que termine la lectura local.');
-    if(!$(prefix+'-ticket-ai-consent').checked)throw new Error('Autoriza enviar esta foto y las categorías a Google para leerla.');
+    if(!$(prefix+'-ticket-ai-consent').checked)throw new Error('Autoriza enviar este archivo y las categorías a Google para leerlo.');
     if(!code){$(prefix+'-ticket-ai-access').hidden=false;throw new Error('Introduce el código de acceso que usas en Grupo.');}
     value.busy=true;value.proposal=null;$(prefix+'-ticket-ai-proposal').innerHTML='';host.sync(prefix);sync(prefix);
     const sequence=++value.sequence,source=host.source(prefix)?.source,context=host.context(prefix);
     const started=Date.now();progress(prefix,true,started);$(prefix+'-ticket-ai-read').textContent='Leyendo con Gemini…';
     const timer=root.setInterval(()=>progress(prefix,true,started),500);
     try{
-      message(prefix,'Preparando la foto…');
+      message(prefix,'Preparando el archivo…');
       const photo=await host.prepare(prefix);
-      if(sequence!==value.sequence||source!==host.source(prefix)?.source)throw new Error('La foto ha cambiado mientras se preparaba. Autoriza la foto actual y vuelve a leerla.');
+      if(sequence!==value.sequence||source!==host.source(prefix)?.source)throw new Error('El archivo ha cambiado mientras se preparaba. Revisa el archivo actual y vuelve a leerlo.');
       const result=await host.read(photo,code,progress=>message(prefix,progress.status));
       if(sequence!==value.sequence||source!==host.source(prefix)?.source||context!==host.context(prefix)||!host.isOpen(prefix))return;
       value.proposal=result;value.proposalSource=source;value.proposalContext=context;
