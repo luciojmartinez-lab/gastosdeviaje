@@ -278,7 +278,8 @@
     for(const item of meal.items){
       const shares=item.common?Object.fromEntries(meal.attendees.map(id=>[id,1])):item.shares||{};
       if(!(Number(shares[participantId])>0))continue;
-      const shared=Object.values(shares).filter(weight=>Number(weight)>0).length>1;
+      const diners=Object.values(shares).filter(weight=>Number(weight)>0).length;
+      const shared=diners>1 && diners>Number(item.quantity??1);
       rows.push({name:item.name,label:item.name+(item.common?' (común)':shared?' (compartido)':''),amountCents:split(item.amountCents,shares)[participantId]});
     }
     const payment=mealPayments(group,meal).find(row=>row.id===participantId);

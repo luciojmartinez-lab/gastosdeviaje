@@ -205,3 +205,15 @@ test('solo propone compartir por igual unidades individuales con varios checks d
  const candidates=api.sharedUnitCandidates(items,['a','b','c']);assert.equal(candidates.length,1);assert.equal(candidates[0].id,'unit');assert.equal(candidates[0].people.length,3);
  assert.equal(api.sharedUnitCandidates([{id:'common',quantity:1,common:true}],['a','b','c']).length,1);
 });
+
+test('dos batidos individuales y un batido repartido entre dos',()=>{
+  const group=fixture(),meal=group.meals[0];
+  const item={id:'batido',name:'Batido Mix Natural',quantity:2,amountCents:1500,shares:{a:1,b:1}};
+  meal.items=[item];meal.totalCents=1500;
+  for(const id of ['a','b']){
+    const row=api.personalReceipt(group,meal,id).rows[0];
+    assert.equal(row.label,item.name);assert.equal(row.amountCents,750);
+  }
+  item.quantity=1;item.shares={a:0.5,b:0.5};
+  assert.equal(api.personalReceipt(group,meal,'b').rows[0].label,'Batido Mix Natural (compartido)');
+});
