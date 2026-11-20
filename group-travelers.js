@@ -37,6 +37,7 @@
       }
       const used=new Set(ownCatalog?[ownCatalog.id]:[]);let modified=!own||source.selfId!==selfId;
       const participants=(source.participants||[]).map(person=>{
+        if(person.mealGuest && person.id!==selfId)return person;
         if(person.id===selfId){
           if(person.name==='Yo'&&person.active===true&&person.isUser===true)return person;
           modified=true;return {...person,...(ownCatalog?{catalogId:ownCatalog.id}:{}),name:'Yo',active:true,isUser:true,originalName:person.originalName||person.name};
@@ -58,7 +59,11 @@
   function apply(catalog,trips,settings,action){
     const result=reconcile(catalog,trips),items=result.items,viajes=result.viajes;
     const person=items.find(item=>item.id===action.id);
-    if(action.type==='add'){
+    if(action.type==='guest'){
+      const name=clean(action.name);
+      if(!name||name.length>160)throw new Error('Nombre no válido.');
+      if(!items.some(item=>nameKey(item.name)===nameKey(name)))items.push({id:newId(items,name),name});
+    }else if(action.type==='add'){
       const parts=identity(action);
       if(items.some(item=>nameKey(item.name)===nameKey(parts.name)))throw new Error('Ya existe un viajero con ese nombre y apellidos: '+parts.name+'.');
       items.push({id:newId(items,parts.name),...parts});

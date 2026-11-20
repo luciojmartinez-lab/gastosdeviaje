@@ -18,7 +18,7 @@ async function setup(options={}){
  const state={selectedViajeIds:[1]},drafts=new Map();
  async function load(){await w.TravelGroupTravelers.ensure(db);await new Promise((resolve,reject)=>{const tx=db.transaction(stores);tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);stores.forEach(name=>{const req=tx.objectStore(name).getAll();req.onsuccess=()=>state[name]=req.result;});});const catalog=state.appSettings.find(row=>row.key===w.TravelGroupTravelers.KEY);state.travelerCatalog=catalog.items;state.travelerCatalogRevision=catalog.revision;}
  await load();let ocrCalls=0;
- w.TravelGroupUI.mount({prepareReceipt:options.prepareReceipt,shareReceipt:options.shareReceipt,downloadReceipt:options.downloadReceipt,aiStatus:options.aiStatus||(async()=>({enabled:true,message:'Comprobación gratuita por foto'})),recognizeAI:options.recognizeAI,expenseScope:options.expenseScope,showTravelers:()=>{w.document.querySelector('#view-config').style.display='';w.document.querySelector('#travelers-panel').open=true;},saveTravelers:async(revision,action)=>{await options.beforeTravelersSave?.();const result=await w.TravelGroupTravelers.save(db,revision,action);if(action.type==='select'){state.viajes=state.viajes.map(trip=>trip.id===result.trip.id?result.trip:trip);state.travelerCatalog=result.items;state.travelerCatalogRevision=result.revision;}else{await load();w.TravelGroupUI.render();}},getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{await options.beforeSave?.();const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>{await options.cacheDraft?.();drafts.set(value.tripId,JSON.parse(JSON.stringify(value)));},readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:options.recognize || (async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};}),share:async text=>assert.match(text,/Pendiente|pendiente/)});
+ w.TravelGroupUI.mount({saveCasual:async(revision,group)=>{w.TravelGroup.validate(group);assert.equal(revision,state.casualMeals?.revision||0);state.casualMeals={...group,revision:revision+1};},prepareReceipt:options.prepareReceipt,shareReceipt:options.shareReceipt,downloadReceipt:options.downloadReceipt,aiStatus:options.aiStatus||(async()=>({enabled:true,message:'Comprobación gratuita por foto'})),recognizeAI:options.recognizeAI,expenseScope:options.expenseScope,showTravelers:()=>{w.document.querySelector('#view-config').style.display='';w.document.querySelector('#travelers-panel').open=true;},saveTravelers:async(revision,action)=>{await options.beforeTravelersSave?.();const result=await w.TravelGroupTravelers.save(db,revision,action);if(action.type==='select'){state.viajes=state.viajes.map(trip=>trip.id===result.trip.id?result.trip:trip);state.travelerCatalog=result.items;state.travelerCatalogRevision=result.revision;}else{await load();w.TravelGroupUI.render();}},getState:()=>state,selectTrip:id=>{state.selectedViajeIds=[Number(id)];w.TravelGroupUI.render();},save:async(id,revision,group)=>{await options.beforeSave?.();const saved=await w.TravelGroupStore.save(db,id,revision,group);await load();w.TravelGroupUI.render();return saved;},cacheDraft:async value=>{await options.cacheDraft?.();drafts.set(value.tripId,JSON.parse(JSON.stringify(value)));},readDraft:async id=>drafts.get(id),clearDraft:async id=>drafts.delete(id),refresh:load,readTicket:options.readTicket ? input=>options.readTicket(w,input) : async()=>({name:'ticket.jpg',type:'image/jpeg',data:'data:image/jpeg;base64,dGVzdA=='}),recognize:options.recognize || (async meal=>{ocrCalls++;assert.equal(meal.ticketName,'ticket.jpg');return{text:'12 Menús 24,00 288,00\nPan y agua 12,00\nTOTAL 300,00',fields:{total:300,merchant:'Restaurante prueba'}};}),share:async text=>assert.match(text,/Pendiente|pendiente/)});
  const $=selector=>w.document.querySelector(selector);
  const input=(selector,value)=>{const element=$(selector);if(element.type==='checkbox')element.checked=value;else element.value=value;element.dispatchEvent(new w.Event('input',{bubbles:true}));element.dispatchEvent(new w.Event('change',{bubbles:true}));};
  const click=selector=>$(selector).click();
@@ -1001,5 +1001,29 @@ test('Grupo abre con autorización marcada pero no envía fotos hasta pulsar y r
  let calls=0;const ui=await setup({recognizeAI:async()=>{calls++;return{itemsStatus:'reconciled',fields:{total:10},itemText:'Comida 10,00',text:'Comida 10,00'};}});try{
   ui.click('#group-new-meal');await ui.waitFor(()=>!ui.$('#group-ai-read').disabled);assert.equal(ui.$('#group-ai-consent').checked,true);assert.equal(calls,0);
   ui.input('#group-meal-file','');await ui.waitFor(()=>ui.$('#group-meal-ticket img'));ui.input('#group-ai-code','test-code');ui.input('#group-ai-consent',false);ui.click('#group-ai-read');await ui.waitFor(()=>ui.$('#group-meal-message').textContent.includes('autorizas'));assert.equal(calls,0);
+ }finally{ui.close();}
+});
+
+test('cena sin viaje conserva invitados ocasionales y comparte la agenda con los viajes',async()=>{
+ const ui=await setup();
+ try{
+  ui.state.selectedViajeIds=[];ui.w.TravelGroupUI.render();
+  ui.input('#group-trip','-1');ui.click('#group-new-meal');
+  await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  const add=async(name,remember)=>{
+   ui.w.prompt=()=>name;ui.w.confirm=()=>remember;ui.click('#meal-add-guest');
+   await ui.waitFor(()=>Array.from(ui.$('#group-meal-attendees').querySelectorAll('label')).some(label=>label.textContent.includes(name)&&label.querySelector('input').checked));
+  };
+  await add('Carme',true);await add('Invitado ocasional',false);
+  ui.click('#group-save-draft');await ui.waitFor(()=>!ui.$('#group-meal-dialog').open);
+  assert.equal(ui.state.casualMeals.meals[0].attendees.length,3);
+  assert.equal(ui.state.viajes[0].group.meals.length,0);
+  assert.ok(ui.state.travelerCatalog.some(p=>p.name==='Carme'));
+  assert.ok(!ui.state.travelerCatalog.some(p=>p.name==='Invitado ocasional'));
+  ui.click('[data-group-toggle]');ui.w.confirm=()=>true;ui.click('[data-group-delete]');
+  await ui.waitFor(()=>ui.state.casualMeals.meals.length===0&&!ui.$('#group-new-meal').disabled);
+  ui.input('#group-trip','1');ui.click('#group-new-meal');await ui.waitFor(()=>ui.$('#group-meal-dialog').open);
+  assert.match(ui.$('#group-meal-attendees').textContent,/Carme/);
+  assert.doesNotMatch(ui.$('#group-meal-attendees').textContent,/Invitado ocasional/);
  }finally{ui.close();}
 });

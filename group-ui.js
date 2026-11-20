@@ -150,6 +150,8 @@
     $('#group-payment-save').textContent=payment?'Guardar cambios':'Guardar devolución';
     $('#group-payment-message').textContent='';$('#group-payment-meal').value=meal.id;
     $('#group-payment-from').innerHTML=options(paymentRows(meal).filter(row=>row.remaining>0).map(row=>({id:row.id,name:`${name(group,row.id)} · ${payment?'máximo':'pendiente'} ${api().money(row.remaining)}`})),payment?.fromId||'','Quién devuelve');
+    $('#group-payment-account').hidden=selectedTrip.id===casualId;
+    $('#group-payment-account-label').hidden=selectedTrip.id===casualId;
     $('#group-payment-account').innerHTML=options(accounts(selectedTrip.id),payment?.accountId||'','Elige una cuenta');
     $('#group-payment-date').value=payment?.date||today();$('#group-payment-amount').value=payment?amount(payment.amountCents):'';
     $('#group-payment-to').textContent=`Recibe: ${name(group,meal.payerId)}`;
@@ -158,7 +160,11 @@
     paymentAccountState();
     $('#group-payment-dialog').showModal();
   }
-  const trip = () => host.getState().viajes.find(value => Number(value.id) === Number($('#group-trip').value));
+  const casualId=-1;
+  let casualMode=false;
+  const selectedJourney=()=>host.getState().viajes.find(value=>String(value.id)===String(host.getState().selectedViajeIds?.[0])&&host.getState().selectedViajeIds.length===1);
+  const casualTrip=()=>({id:casualId,nombre:'Cena puntual (sin viaje)',group:host.getState().casualMeals||api().normalize({selfId:'__user__',participants:[{id:'__user__',name:'Yo',active:true}]})});
+  const trip=()=>casualMode?casualTrip():selectedJourney();
   const current = () => api().normalize(trip()?.group);
   const name = (group,id) => group.participants.find(person=>person.id===id)?.name || 'Persona no disponible';
   function showError(text){
@@ -196,28 +202,30 @@
     if(travelersSaving||saving)return;
     const revision=host.getState().travelerCatalogRevision||0;travelersSaving=true;
     pendingTravelerSelection=action.type==='select'?action:null;
-    const selectedTrip=trip();renderTravelers(host.getState(),selectedTrip,selectedTrip?.group||api().normalize());
+    const selectedTrip=selectedJourney();renderTravelers(host.getState(),selectedTrip,selectedTrip?.group||api().normalize());
     message('Guardando viajeros…',false,'#travelers-message');
     try{await host.saveTravelers(revision,action);message(text,false,'#travelers-message');}
     finally{
       travelersSaving=false;pendingTravelerSelection=null;
-      if(action.type==='select'&&host.getState().activeTab==='config'){const selected=trip();renderTravelers(host.getState(),selected,selected?.group||api().normalize());}
+      if(action.type==='select'&&host.getState().activeTab==='config'){const selected=selectedJourney();renderTravelers(host.getState(),selected,selected?.group||api().normalize());}
       else render();
     }
   }
   async function commit(group, expected = group.revision, tripId = trip()?.id) {
     if(saving) throw new Error('Espera a que termine el guardado anterior.');
     saving=true; all('#view-grupo button, #config-viajeros button, #group-meal-dialog button, #group-payment-dialog button').forEach(button=>button.disabled=true);
-    try { return await host.save(tripId,expected,group); }
+    try { return Number(tripId)===casualId?await host.saveCasual(expected,group):await host.save(tripId,expected,group); }
     finally { saving=false;all('#view-grupo button, #config-viajeros button, #group-meal-dialog button, #group-payment-dialog button').forEach(button=>button.disabled=false);render(); }
   }
   function render() {
     if(!host || !$('#group-trip')) return;
     const state=host.getState(), selected=state.selectedViajeIds?.length===1?String(state.selectedViajeIds[0]):'';
-    $('#group-trip').innerHTML=options(state.viajes,selected,'Elige un viaje');
+    $('#group-trip').innerHTML=options([{id:casualId,nombre:'Cena puntual (sin viaje)'},...state.viajes],casualMode?casualId:selected,'Elige un viaje o cena puntual');
     const selectedTrip=trip(),group=selectedTrip?.group||api().normalize();
     $('#group-content').hidden=!selectedTrip; $('#group-empty').hidden=!!selectedTrip;
-    renderTravelers(state,selectedTrip,group);
+    renderTravelers(state,selectedJourney(),selectedJourney()?.group||api().normalize());
+    $('#group-configure-people').parentElement.hidden=casualMode;
+    $('#meal-with-agenda').hidden=casualMode||group.participants.some(p=>p.active&&p.id!==group.selfId);
     if(!selectedTrip)return;
     $('#group-selected-people').textContent='Participantes del viaje: '+(ordered(group.participants.filter(person=>person.active)).map(person=>person.name).join(', ')||'ninguno seleccionado. Abre Configurar otros viajeros.');
     const balances=group.meals.some(meal=>meal.status==='closed')?ordered(api().balances(group).filter(row=>row.active||row.consumed||row.advanced||row.sent||row.received)):[];
@@ -232,7 +240,7 @@
       if(closed){mealTotals.amount+=meal.totalCents;mealTotals.pending+=pending;}
       const pendingMarkup=pending>0?`<span class="expense-pending">${api().money(pending)}<small>Pendiente</small></span>`:'';
       const date=meal.date?meal.date.split('-').reverse().join('/'):'Sin fecha';
-      return `<tr class="group-meal-row" data-group-meal-row="${esc(meal.id)}"><td class="group-meal-date"><time datetime="${esc(meal.date)}">${esc(date)}</time></td><td><button type="button" class="group-meal-toggle" data-group-toggle="${esc(meal.id)}" aria-expanded="${expanded}" aria-controls="${detailId}"><span aria-hidden="true">${expanded?'−':'+'}</span><span>${esc(meal.name||'Comida sin nombre')}</span></button>${closed?'':'<span class="badge group-meal-draft">Borrador</span>'}</td><td class="group-meal-amount"><span class="expense-own-amount">${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Por revisar'}</span>${pendingMarkup}</td></tr><tr id="${detailId}" class="group-meal-body"${expanded?'':' hidden'}><td colspan="3"><article class="group-meal-card"><p><span class="badge">${closed?'Cerrada':'Borrador'}</span> ${esc(meal.date)}${meal.time?' · '+esc(meal.time):''} · ${meal.attendees.length} asistentes · ${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Total por revisar'}${closed?` · Pagó ${esc(name(group,meal.payerId))}`:''}</p><div class="actions"><button class="btn ghost" type="button" data-group-edit="${esc(meal.id)}">${closed?'Revisar / corregir':'Continuar'}</button>${closed?`<button class="btn ghost" type="button" data-group-share="${esc(meal.id)}">Compartir resumen</button><button class="btn ghost" type="button" data-group-receipt="${esc(meal.id)}">Justificante individual</button><button class="btn ghost" type="button" data-group-collect="${esc(meal.id)}">Registrar devolución</button>`:`<button class="ghost" type="button" data-group-delete="${esc(meal.id)}">Eliminar borrador</button>`}</div>${closed?`<div class="table-wrap"><table><thead><tr><th>Asistente</th><th>Consumo</th><th>Devuelto / cubierto</th><th>Pendiente</th></tr></thead><tbody>${payments.map(row=>`<tr><td>${esc(name(group,row.id))}</td><td>${api().money(row.due)}</td><td>${api().money(row.paid)}</td><td>${api().money(row.remaining)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['due','paid','remaining'].map(key=>`<td>${api().money(sum(payments,key))}</td>`).join('')}</tr></tfoot></table></div>`:''}${group.settlements.filter(payment=>payment.mealId===meal.id).map(payment=>`<p class="group-payment">${esc(payment.date||'')} · ${esc(name(group,payment.fromId))} → ${esc(name(group,payment.toId))}: ${api().money(payment.amountCents)} ${payment.voided?`<strong>Anulada: ${esc(payment.voidReason)}</strong>`:`<span class="group-payment-actions"><button type="button" class="ghost" data-group-payment-edit="${esc(payment.id)}" aria-label="Editar devolución de ${esc(name(group,payment.fromId))}">Editar</button><button type="button" class="ghost" data-group-void="${esc(payment.id)}">Anular registro</button></span>`}</p>`).join('')}</article></td></tr>`;
+      return `<tr class="group-meal-row" data-group-meal-row="${esc(meal.id)}"><td class="group-meal-date"><time datetime="${esc(meal.date)}">${esc(date)}</time></td><td><button type="button" class="group-meal-toggle" data-group-toggle="${esc(meal.id)}" aria-expanded="${expanded}" aria-controls="${detailId}"><span aria-hidden="true">${expanded?'−':'+'}</span><span>${esc(meal.name||'Comida sin nombre')}</span></button>${closed?'':'<span class="badge group-meal-draft">Borrador</span>'}</td><td class="group-meal-amount"><span class="expense-own-amount">${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Por revisar'}</span>${pendingMarkup}</td></tr><tr id="${detailId}" class="group-meal-body"${expanded?'':' hidden'}><td colspan="3"><article class="group-meal-card"><p><span class="badge">${closed?'Cerrada':'Borrador'}</span> ${esc(meal.date)}${meal.time?' · '+esc(meal.time):''} · ${meal.attendees.length} asistentes · ${Number.isSafeInteger(meal.totalCents)?api().money(meal.totalCents):'Total por revisar'}${closed?` · Pagó ${esc(name(group,meal.payerId))}`:''}</p><div class="actions"><button class="btn ghost" type="button" data-group-edit="${esc(meal.id)}">${closed?'Revisar / corregir':'Continuar'}</button>${closed?`<button class="btn ghost" type="button" data-group-share="${esc(meal.id)}">Compartir resumen</button>${casualMode?`<button type="button" data-copy-casual="${esc(meal.id)}">Copiar resumen</button><button type="button" data-group-delete="${esc(meal.id)}">Borrar cena</button>`:''}<button class="btn ghost" type="button" data-group-receipt="${esc(meal.id)}">Justificante individual</button><button class="btn ghost" type="button" data-group-collect="${esc(meal.id)}">Registrar devolución</button>`:`<button class="ghost" type="button" data-group-delete="${esc(meal.id)}">Eliminar borrador</button>`}</div>${closed?`<div class="table-wrap"><table><thead><tr><th>Asistente</th><th>Consumo</th><th>Devuelto / cubierto</th><th>Pendiente</th></tr></thead><tbody>${payments.map(row=>`<tr><td>${esc(name(group,row.id))}</td><td>${api().money(row.due)}</td><td>${api().money(row.paid)}</td><td>${api().money(row.remaining)}</td></tr>`).join('')}</tbody><tfoot><tr><th scope="row">Total</th>${['due','paid','remaining'].map(key=>`<td>${api().money(sum(payments,key))}</td>`).join('')}</tr></tfoot></table></div>`:''}${group.settlements.filter(payment=>payment.mealId===meal.id).map(payment=>`<p class="group-payment">${esc(payment.date||'')} · ${esc(name(group,payment.fromId))} → ${esc(name(group,payment.toId))}: ${api().money(payment.amountCents)} ${payment.voided?`<strong>Anulada: ${esc(payment.voidReason)}</strong>`:`<span class="group-payment-actions"><button type="button" class="ghost" data-group-payment-edit="${esc(payment.id)}" aria-label="Editar devolución de ${esc(name(group,payment.fromId))}">Editar</button><button type="button" class="ghost" data-group-void="${esc(payment.id)}">Anular registro</button></span>`}</p>`).join('')}</article></td></tr>`;
     }).join('');
     $('#group-meals').innerHTML=mealRows?`<table class="group-meals-table" aria-label="Comidas del viaje"><colgroup><col class="group-meal-date-column"><col><col class="group-meal-amount-column"></colgroup><thead><tr><th scope="col">Fecha</th><th scope="col">Descripción</th><th scope="col" class="group-meal-amount">Importe</th></tr></thead><tbody>${mealRows}</tbody>${group.meals.some(meal=>meal.status==='closed')?`<tfoot><tr><th scope="row" colspan="2">Total cerradas</th><td class="group-meal-amount"><span class="expense-own-amount">${api().money(mealTotals.amount)}</span>${mealTotals.pending>0?`<span class="expense-pending">${api().money(mealTotals.pending)}<small>Pendiente</small></span>`:''}</td></tr></tfoot>`:''}</table>`:'<p class="small">Todavía no hay comidas. Añade viajeros y pulsa Nueva comida.</p>';
     $('#group-new-meal').disabled=saving;
@@ -240,7 +248,7 @@
   function stash(force = false) {
     if(!editor||discarding)return;
     const activeEditor=editor;
-    const saved=JSON.parse(JSON.stringify({ tripId: editor.tripId, revision: editor.revision, meal: editor.meal }));
+    const saved=JSON.parse(JSON.stringify({ tripId: editor.tripId, revision: editor.revision, guests: editor.group.participants.filter(p=>p.mealGuest), meal: editor.meal }));
     clearTimeout(cacheTimer);
     const write = () => { cacheTail=cacheTail.catch(()=>{}).then(()=>host.cacheDraft(saved));cacheTail.catch(error=>{if(editor===activeEditor&&!discarding)message(`No se pudo guardar el borrador local: ${error.message}`,true,'#group-meal-message');}); };
     if (force) write(); else cacheTimer=setTimeout(write,300);
@@ -309,6 +317,14 @@
   function setAIReadDisabled(disabled) {
     for(const id of ['#group-ai-read','#group-ai-read-confirm'])$(id).disabled=disabled;
   }
+  const sameName=(a,b)=>a.localeCompare(b,'es',{sensitivity:'base'})===0;
+  function addAgenda(group){
+    const own=new Set(host.getState().viajes.map(t=>t.group?.participants.find(p=>p.id===t.group.selfId)?.catalogId));
+    for(const person of host.getState().travelerCatalog||[]){
+      if(own.has(person.id)||group.participants.some(p=>p.catalogId===person.id||p.id===person.id))continue;
+      group.participants.push({...person,catalogId:person.id,active:false,mealGuest:true});
+    }
+  }
   function mountMeal() {
     const meal=editor.meal,group=editor.group;
     openConcepts.clear();
@@ -316,9 +332,10 @@
     meal.items.forEach(item=>{item.mode='weights';});
     restoreAICode();
     $('#group-meal-name').value=meal.name||'';$('#group-meal-date').value=meal.date||today();$('#group-meal-time').value=meal.time||'';$('#group-ticket-datetime').textContent='';$('#group-meal-total').value=amount(meal.totalCents);
-    $('#group-meal-payer').innerHTML=options(ordered(group.participants.filter(person=>person.active||person.id===meal.payerId)),meal.payerId,'Quién pagó al restaurante');
+    $('#group-meal-payer').innerHTML=options(ordered(group.participants.filter(person=>person.active||meal.attendees.includes(person.id)||person.id===meal.payerId)),meal.payerId,'Quién pagó al restaurante');
+    $('#group-meal-account').parentElement.hidden=editor.tripId===casualId;
     $('#group-meal-account').innerHTML=options(accounts(editor.tripId),meal.accountId,'Cuenta real si pagaste tú');
-    $('#group-meal-attendees').innerHTML=ordered(group.participants.filter(person=>person.active||meal.attendees.includes(person.id))).map(person=>`<label class="check-option"><input type="checkbox" data-group-attendee="${esc(person.id)}"${meal.attendees.includes(person.id)?' checked':''}> ${esc(person.name)}</label>`).join('');
+    $('#group-meal-attendees').innerHTML=ordered(group.participants.filter(person=>person.active||meal.attendees.includes(person.id)||(host.getState().travelerCatalog||[]).some(p=>p.id===person.catalogId))).map(person=>`<label class="check-option"><input type="checkbox" data-group-attendee="${esc(person.id)}"${meal.attendees.includes(person.id)?' checked':''}> ${esc(person.name)}</label>`).join('');
     $('#group-meal-reviewed').checked=false;$('#group-meal-file').value='';$('#group-meal-text').value=meal.ocrText||'';
     $('#group-text-panel').open=!!meal.ocrText;$('#group-parse-replace').hidden=true;$('#group-ocr-progress-wrap').hidden=true;
     $('#group-ai-read-confirm').after($('#group-ocr-progress-wrap'));
@@ -333,10 +350,10 @@
     message('El OCR propone conceptos. Comprueba cada línea, el total y la asignación antes de cerrar.',false,'#group-meal-message');renderItems();
     if(!$('#group-meal-dialog').open)$('#group-meal-dialog').showModal();
   }
-  async function openMeal(id,resume=false) {
+  async function openMeal(id,resume=false,agenda=false) {
     const selectedTrip=trip();if(!selectedTrip)return;
     const group=current();let changed=false;
-    if(!id&&!resume&&!group.participants.some(person=>person.active&&person.id!==group.selfId)){
+    if(!casualMode&&!agenda&&!id&&!resume&&!group.participants.some(person=>person.active&&person.id!==group.selfId)){
       $('#group-people-needed-message').textContent=group.participants.some(person=>person.id!==group.selfId)
         ? 'No hay viajeros seleccionados para este viaje. Selecciona gente en Configuración → Otros viajeros para registrar una comida.'
         : 'Todavía no has creado ningún grupo para este viaje. Añade gente al catálogo y selecciónala en Configuración → Otros viajeros para crearlo.';
@@ -344,12 +361,19 @@
       return;
     }
     const previousDraft=await host.readDraft(selectedTrip.id);
+    if(casualMode&&previousDraft&&!resume&&previousDraft.meal.id!==id){
+      if(!confirm('Hay una cena con cambios locales. ¿Recuperarla ahora?'))return;
+      return openMeal(null,true);
+    }
     editorDraftBefore=previousDraft?JSON.parse(JSON.stringify(previousDraft)):null;
     if(resume){if(!previousDraft)throw new Error('No hay un borrador local en este viaje.');editor=JSON.parse(JSON.stringify(previousDraft));editor.group=group;changed=editor.revision!==group.revision;}
     else {
       const original=group.meals.find(meal=>meal.id===id);
       editor={tripId:selectedTrip.id,revision:group.revision,group,meal:original?JSON.parse(JSON.stringify(original)):{id:uid(),name:'',date:today(),currency:'EUR',status:'draft',attendees:group.participants.filter(person=>person.active).map(person=>person.id),payerId:'',accountId:null,totalCents:null,items:[]}};
     }
+    for(const guest of editor.guests||[])if(!group.participants.some(p=>p.id===guest.id))group.participants.push(guest);
+    addAgenda(group);
+    if(casualMode&&!resume&&!id)editor.meal.name='Cena puntual';
     mountMeal();stash();
     if(changed)message('El grupo ha cambiado: revisa el borrador antes de aplicarlo.',true,'#group-meal-message');
   }
@@ -381,6 +405,7 @@
     if(closed&&!$('#group-meal-reviewed').checked)throw new Error('Confirma que has revisado el ticket y el reparto.');
     const next=api().normalize(editor.group),meal=JSON.parse(JSON.stringify(editor.meal));meal.status=closed?'closed':'draft';
     const index=next.meals.findIndex(value=>value.id===meal.id);if(index<0)next.meals.push(meal);else next.meals[index]=meal;
+    next.participants=next.participants.filter(p=>!p.mealGuest||api().participantInUse(next,p.id));
     next.enabled=true;
     mealSaving=true;
     try{
@@ -482,18 +507,18 @@
     host=callbacks;
     $('#group-error-close').onclick=()=>$('#group-error-dialog').close();
     $('#group-saving-dialog').oncancel=event=>event.preventDefault();
-    $('#group-trip').onchange=()=>host.selectTrip($('#group-trip').value);
-    $('#group-settings-save').onclick=safe(async()=>{const group=current();group.enabled=true;group.selfId=$('#group-self').value;group.integrate=$('#group-integrate').checked;await commit(group);message('Identidad e integración guardadas.',false,'#travelers-message');});
+    $('#group-trip').onchange=()=>{casualMode=Number($('#group-trip').value)===casualId;if(casualMode)render();else host.selectTrip($('#group-trip').value);};
+    $('#group-settings-save').onclick=safe(async()=>{const group=api().normalize(selectedJourney()?.group);group.enabled=true;group.selfId=$('#group-self').value;group.integrate=$('#group-integrate').checked;await commit(group,group.revision,selectedJourney()?.id);message('Identidad e integración guardadas.',false,'#travelers-message');});
     $('#group-add-people').onclick=safe(async()=>{
       if(travelersSaving||saving)return;
       await changeTravelers({type:travelerEditingId?'rename':'add',id:travelerEditingId,givenName:$('#group-people').value,surnames:$('#traveler-surnames').value},travelerEditingId?'Nombre y apellidos actualizados.':'Viajero añadido al catálogo. Márcalo para incluirlo en este viaje.');resetTravelerEditor();
     },'#travelers-message');
     $('#traveler-cancel-edit').onclick=()=>resetTravelerEditor();
-    $('#travelers-trip').onchange=()=>host.selectTrip($('#travelers-trip').value);
+    $('#travelers-trip').onchange=()=>{casualMode=false;host.selectTrip($('#travelers-trip').value);};
     $('#group-configure-people').onclick=()=>host.showTravelers?.();
     $('#config-viajeros').onchange=safe(async event=>{
       const input=event.target;if(!input.dataset.travelerSelect)return;
-      await changeTravelers({type:'select',id:input.dataset.travelerSelect,tripId:trip()?.id,checked:input.checked},'Selección de viajeros guardada para este viaje.');
+      await changeTravelers({type:'select',id:input.dataset.travelerSelect,tripId:selectedJourney()?.id,checked:input.checked},'Selección de viajeros guardada para este viaje.');
     },'#travelers-message');
     $('#config-viajeros').onclick=safe(async event=>{
       const button=event.target.closest('button');if(!button)return;
@@ -506,7 +531,25 @@
       }
       if(button.dataset.travelerDelete&&confirm(`¿Eliminar a ${person.name} del catálogo y de los viajes donde esté seleccionado? Solo se permite si no tiene historial.`))await changeTravelers({type:'delete',id:person.id},'Viajero eliminado del catálogo.');
     },'#travelers-message');
-    $('#group-rebase').onclick=safe(async()=>{if(!editor)return;await host.refresh();const fresh=host.getState().viajes.find(trip=>Number(trip.id)===Number(editor.tripId));if(!fresh)throw new Error('El viaje ya no existe.');editor.group=api().normalize(fresh.group);editor.revision=editor.group.revision;mountMeal();message('Borrador conservado sobre la versión actual. Comprueba de nuevo asistentes, pagador, conceptos y devoluciones antes de guardar.',false,'#group-meal-message');stash();},'#group-meal-message');
+    $('#group-rebase').onclick=safe(async()=>{if(!editor)return;await host.refresh();const fresh=editor.tripId===casualId?casualTrip():host.getState().viajes.find(trip=>Number(trip.id)===Number(editor.tripId));if(!fresh)throw new Error('El viaje ya no existe.');const guests=editor.group.participants.filter(p=>p.mealGuest);editor.group=api().normalize(fresh.group);for(const p of guests)if(!editor.group.participants.some(v=>v.id===p.id))editor.group.participants.push(p);editor.revision=editor.group.revision;mountMeal();message('Borrador conservado sobre la versión actual. Comprueba de nuevo asistentes, pagador, conceptos y devoluciones antes de guardar.',false,'#group-meal-message');stash();},'#group-meal-message');
+    $('#meal-with-agenda').onclick=safe(()=>openMeal(null,false,true));
+    $('#meal-add-guest').onclick=safe(async()=>{
+      const name=prompt('Nombre del comensal')?.trim().replace(/\s+/g,' ');
+      if(!name)return;
+      if(name.length>160)throw new Error('El nombre supera los 160 caracteres.');
+      const group=editor.group;
+      let guest=group.participants.find(p=>sameName(p.name,name));
+      if(!guest?.catalogId&&(!guest||guest.id!==group.selfId)&&confirm('¿Guardar a '+name+' en la agenda para próximas comidas y viajes?')){
+        await host.saveTravelers(host.getState().travelerCatalogRevision||0,{type:'guest',name});
+        const saved=host.getState().travelerCatalog.find(p=>sameName(p.name,name));
+        if(guest){guest.catalogId=saved.id;guest.mealGuest=true;}
+        else {addAgenda(group);guest=group.participants.find(p=>p.catalogId===saved.id);}
+      }
+      if(!guest){guest={id:uid(),name,active:false,mealGuest:true};group.participants.push(guest);}
+      editor.meal.attendees=[...new Set([...editor.meal.attendees,guest.id])];
+      editor.meal.items.forEach(item=>item.participantsConfirmed=false);
+      mountMeal();stash(true);
+    },'#group-meal-message');
     $('#group-new-meal').onclick=safe(()=>openMeal());$('#group-resume').onclick=safe(()=>openMeal(null,true));
     $('#group-people-needed-close').onclick=()=>$('#group-people-needed-dialog').close();
     $('#group-people-needed-dialog').onclose=()=>{
@@ -544,7 +587,7 @@
       if(element.id!=='group-meal-reviewed')$('#group-meal-reviewed').checked=false;
       preview();stash();
     };
-    $('#group-meal-form').onchange=event=>{const element=event.target;if(element.dataset.groupItemConfirm){const concept=conceptGroups(editor.meal.items).find(group=>group.id===element.dataset.groupItemConfirm);if(concept){if(element.checked&&!openConcepts.has(concept.id)){concept.items.forEach(item=>item.participantsConfirmed=false);openConcepts.add(concept.id);renderItems();stash();}else if(element.checked)closeConcept(concept.id);else{concept.items.forEach(item=>item.participantsConfirmed=false);stash();}}return;}if(element.dataset.groupAttendee){const id=element.dataset.groupAttendee;editor.meal.attendees=element.checked?[...new Set([...editor.meal.attendees,id])]:editor.meal.attendees.filter(value=>value!==id);editor.meal.items.forEach(item=>item.participantsConfirmed=false);$('#group-meal-reviewed').checked=false;renderItems();stash();}else if(element.dataset.itemField==='quantity')renderItems();else if(element.dataset.itemField==='name'){const editing=editor;setTimeout(()=>{if(editor===editing)renderItems();},0);}};
+    $('#group-meal-form').onchange=event=>{const element=event.target;if(element.dataset.groupItemConfirm){const concept=conceptGroups(editor.meal.items).find(group=>group.id===element.dataset.groupItemConfirm);if(concept){if(element.checked&&!openConcepts.has(concept.id)){concept.items.forEach(item=>item.participantsConfirmed=false);openConcepts.add(concept.id);renderItems();stash();}else if(element.checked)closeConcept(concept.id);else{concept.items.forEach(item=>item.participantsConfirmed=false);stash();}}return;}if(element.dataset.groupAttendee){const id=element.dataset.groupAttendee;editor.meal.attendees=element.checked?[...new Set([...editor.meal.attendees,id])]:editor.meal.attendees.filter(value=>value!==id);editor.meal.items.forEach(item=>item.participantsConfirmed=false);$('#group-meal-reviewed').checked=false;$('#group-meal-payer').innerHTML=options(ordered(editor.group.participants.filter(p=>p.active||editor.meal.attendees.includes(p.id)||p.id===editor.meal.payerId)),editor.meal.payerId,'Quién pagó al restaurante');renderItems();stash();}else if(element.dataset.itemField==='quantity')renderItems();else if(element.dataset.itemField==='name'){const editing=editor;setTimeout(()=>{if(editor===editing)renderItems();},0);}};
     $('#group-meal-items').onclick=safe(event=>{
       const button=event.target.closest('button');if(!button)return;
       if(button.dataset.groupItemValidate){closeConcept(button.dataset.groupItemValidate);return;}
@@ -647,6 +690,16 @@
       const button=event.target.closest('button');if(!button)return;const group=current();
       if(button.dataset.groupToggle){const key=String(trip().id)+'|'+button.dataset.groupToggle;if(openMeals.has(key))openMeals.delete(key);else openMeals.add(key);render();all('[data-group-toggle]').find(value=>value.dataset.groupToggle===button.dataset.groupToggle)?.focus({preventScroll:true});return;}
       if(button.dataset.groupEdit)return openMeal(button.dataset.groupEdit);
+      if(button.dataset.copyCasual){const meal=group.meals.find(m=>m.id===button.dataset.copyCasual);const total=api().allocation(meal).totals[group.selfId]||0;const advanced=meal.payerId===group.selfId?meal.totalCents:0;await navigator.clipboard.writeText(api().summary(group,meal)+'\nMi consumo: '+api().money(total)+' · Mi adelanto: '+api().money(advanced));message('Resumen copiado.');return;}
+      if(casualMode&&button.dataset.groupDelete){
+        const id=button.dataset.groupDelete;
+        if(!confirm('¿Borrar esta cena y sus devoluciones?'))return;
+        group.meals=group.meals.filter(m=>m.id!==id);group.settlements=group.settlements.filter(p=>p.mealId!==id);
+        group.participants=group.participants.filter(p=>api().participantInUse(group,p.id));
+        await commit(group);
+        const draft=await host.readDraft(casualId);if(draft?.meal.id===id)await host.clearDraft(casualId);
+        return;
+      }
       if(button.dataset.groupDelete){if(!confirm('Eliminar este borrador de comida?'))return;group.meals=group.meals.filter(meal=>meal.id!==button.dataset.groupDelete);return commit(group);}
       if(button.dataset.groupVoid){const payment=group.settlements.find(payment=>payment.id===button.dataset.groupVoid);const reason=prompt('Motivo de la anulación (se conserva el registro):');if(!reason?.trim())return;payment.voided=true;payment.voidReason=reason.trim();return commit(group);}
       if(button.dataset.groupShare){const meal=group.meals.find(meal=>meal.id===button.dataset.groupShare);await host.share(api().summary(group,meal));message('Resumen preparado para compartir.');return;}
@@ -677,7 +730,7 @@
   async function openMealForTrip(tripId,mealId){
     const selectedTrip=host.getState().viajes.find(value=>Number(value.id)===Number(tripId));
     if(!selectedTrip||!api().normalize(selectedTrip.group).meals.some(meal=>meal.id===mealId))throw new Error('La comida vinculada no está disponible.');
-    await host.selectTrip(selectedTrip.id);host.showGroup?.();
+    casualMode=false;await host.selectTrip(selectedTrip.id);host.showGroup?.();
     openMeals.add(String(selectedTrip.id)+'|'+mealId);render();
     return openMeal(mealId);
   }
