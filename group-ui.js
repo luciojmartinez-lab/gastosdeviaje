@@ -36,7 +36,7 @@
     $('#group-receipt-dialog').showModal();return renderReceipt();
   }
   function showAICode(visible) {
-    $('#group-ai-code').type=visible?'text':'password';
+    access.showCode($('#group-ai-code'),visible);
     const button=$('#group-ai-toggle-code'),label=visible?'Ocultar código':'Mostrar código';
     button.setAttribute('aria-pressed',String(visible));button.setAttribute('aria-label',label);button.title=label;
   }
@@ -664,7 +664,7 @@
       }finally{input.value='';reading=false;controls.forEach(selector=>$(selector).disabled=false);setAIReadDisabled(!aiEnabled);renderTicket();}
     },'#group-meal-message');
     $('#group-ocr').onclick=safe(extract,'#group-meal-message');
-    $('#group-ai-toggle-code').onclick=()=>showAICode($('#group-ai-code').type==='password');
+    $('#group-ai-toggle-code').onclick=()=>showAICode($('#group-ai-code').dataset.accessCode==='hidden');
     $('#group-ai-code').oninput=$('#group-ai-code').onchange=()=>{access.save($('#group-ai-code').value);};
     access.subscribe(({reason})=>{
       if(reason==='forget'||reason==='external'||document.activeElement!==$('#group-ai-code'))$('#group-ai-code').value=access.get();

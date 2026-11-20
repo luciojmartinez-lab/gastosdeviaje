@@ -31,5 +31,10 @@
     }catch{return;}
     persistent=!!code;storageError='';notify('external');
   });
-  root.ReceiptAccess={get,save,forget,description,isPersistent:()=>persistent,subscribe:listener=>{listeners.add(listener);return()=>listeners.delete(listener);}};
+  function showCode(input,visible){
+    input.dataset.accessCode=visible?'visible':'hidden';
+    input.type=visible||root.CSS?.supports('-webkit-text-security','disc')?'text':'password';
+  }
+  root.document?.querySelectorAll('[data-access-code]').forEach(input=>showCode(input,false));
+  root.ReceiptAccess={showCode,get,save,forget,description,isPersistent:()=>persistent,subscribe:listener=>{listeners.add(listener);return()=>listeners.delete(listener);}};
 })(globalThis);

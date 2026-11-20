@@ -34,7 +34,7 @@
     if(!access.get())$(prefix+'-ticket-ai-access').hidden=false;
     $(prefix+'-ticket-ai-code-status').textContent=access.description();
   }
-  function restore(prefix){refreshCode(prefix,'restore');$(prefix+'-ticket-ai-access').hidden=!!access.get()&&access.isPersistent();$(prefix+'-ticket-ai-code').type='password';$(prefix+'-ticket-ai-eye').textContent='Mostrar';$(prefix+'-ticket-ai-eye').setAttribute('aria-pressed','false');}
+  function restore(prefix){refreshCode(prefix,'restore');$(prefix+'-ticket-ai-access').hidden=!!access.get()&&access.isPersistent();access.showCode($(prefix+'-ticket-ai-code'),false);$(prefix+'-ticket-ai-eye').textContent='Mostrar';$(prefix+'-ticket-ai-eye').setAttribute('aria-pressed','false');}
   async function status(prefix){const value=await host.status($(prefix+'-ticket-ai-code').value.trim());const usage=$(prefix+'-ticket-ai-usage');usage.textContent=value.usageText||value.message;usage.parentElement.querySelector('summary').textContent=value.usage?.available?`Registro hoy: ${value.usage.requests} / ${value.limits.daily} · ${Math.max(0,value.limits.daily-value.usage.requests)} restantes estimados*`:'Cuota gratuita y uso registrado';}
   function sync(prefix){
     if(!host||!$(prefix+'-ticket-ai-read'))return;
@@ -98,11 +98,11 @@
   function mount(config){host=config;for(const prefix of ['g','edit-gasto']){
     state[prefix]={sequence:0,busy:false,proposal:null};restore(prefix);
     $(prefix==='g'?'add-gasto-form':'edit-gasto-form').addEventListener('reset',event=>root.queueMicrotask(()=>{if(!event.defaultPrevented)restore(prefix);}));
-    $(prefix+'-ticket-ai-panel').ontoggle=()=>{if($(prefix+'-ticket-ai-panel').open){if($(prefix+'-ticket-ai-access').hidden||!$(prefix+'-ticket-ai-code').value)restore(prefix);else $(prefix+'-ticket-ai-code').type='password';status(prefix).catch(()=>{});sync(prefix);}};
+    $(prefix+'-ticket-ai-panel').ontoggle=()=>{if($(prefix+'-ticket-ai-panel').open){if($(prefix+'-ticket-ai-access').hidden||!$(prefix+'-ticket-ai-code').value)restore(prefix);else access.showCode($(prefix+'-ticket-ai-code'),false);status(prefix).catch(()=>{});sync(prefix);}};
     $(prefix+'-ticket-ai-read').onclick=safe(prefix,()=>read(prefix));
     $(prefix+'-ticket-ai-code').oninput=$(prefix+'-ticket-ai-code').onchange=()=>{access.save($(prefix+'-ticket-ai-code').value);};
-    $(prefix+'-ticket-ai-change-code').onclick=()=>{$(prefix+'-ticket-ai-access').hidden=false;$(prefix+'-ticket-ai-code').type='password';};
-    $(prefix+'-ticket-ai-eye').onclick=()=>{const visible=$(prefix+'-ticket-ai-code').type==='password';$(prefix+'-ticket-ai-code').type=visible?'text':'password';$(prefix+'-ticket-ai-eye').textContent=visible?'Ocultar':'Mostrar';$(prefix+'-ticket-ai-eye').setAttribute('aria-pressed',String(visible));};
+    $(prefix+'-ticket-ai-change-code').onclick=()=>{$(prefix+'-ticket-ai-access').hidden=false;access.showCode($(prefix+'-ticket-ai-code'),false);};
+    $(prefix+'-ticket-ai-eye').onclick=()=>{const visible=$(prefix+'-ticket-ai-code').dataset.accessCode==='hidden';access.showCode($(prefix+'-ticket-ai-code'),visible);$(prefix+'-ticket-ai-eye').textContent=visible?'Ocultar':'Mostrar';$(prefix+'-ticket-ai-eye').setAttribute('aria-pressed',String(visible));};
     sync(prefix);
   }access.subscribe(({reason})=>{for(const prefix of ['g','edit-gasto'])refreshCode(prefix,reason);});}
   root.ExpenseReceiptAIUI={mount,sync,isBusy:prefix=>state[prefix]?.busy===true};

@@ -6176,3 +6176,5 @@ footer {
   #tabla-gastos th:nth-child(9), #tabla-gastos td:nth-child(9) { width: 25%; min-width: 0; }
   #tabla-gastos select { min-width: 0; max-width: 100%; }
 }
+
+input[data-access-code="hidden"] { -webkit-text-security: disc; }
